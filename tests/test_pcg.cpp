@@ -257,7 +257,7 @@ TEST_CASE("procedural graph steps keep, thin, move and order points the same eve
 TEST_CASE("pcg.run fills a 3D world from a graph and replaces what it made before") {
     const Project project("pcg_test_project");
     project.write("rock.prefab.json", R"({"format": 1, "components": {
-        "BoxMesh": {"size": [0.5, 0.5, 0.5]}, "MeshInstance3D": {}, "Transform3D": {}}})");
+        "BoxGeometry": {"size": [0.5, 0.5, 0.5]}, "Model3D": {}, "Transform3D": {}}})");
     project.write("grass.foliage.json", R"({"format": 1, "kind": "grass", "mesh": "made:blade",
         "density": 2})");
     project.write("valley.pcg.json", R"({"format": 1, "seed": 7, "budget": {"entities": 200},
@@ -275,11 +275,11 @@ TEST_CASE("pcg.run fills a 3D world from a graph and replaces what it made befor
          "command": "entity.create",
          "params": {"id": "$id", "components": {
             "Transform3D": {"position": "$position"},
-            "OmniLight3D": {"light_energy": {"$pick": [1, 2]}}}}},
+            "PointLight3D": {"light_energy": {"$pick": [1, 2]}}}}},
         {"name": "walk", "op": "route", "from": ["spread"], "closed": true}]})");
     REQUIRE(project
                 .call("entity.create", R"({"id": "valley", "components": {
-        "PlaneMesh": {"size": [20, 20]}, "MeshInstance3D": {}, "Transform3D": {}}})")
+        "PlaneGeometry": {"size": [20, 20]}, "Model3D": {}, "Transform3D": {}}})")
                 .ok);
     world::World& world = project.world();
 
@@ -329,19 +329,18 @@ TEST_CASE("pcg.run fills a 3D world from a graph and replaces what it made befor
         rock_places.push_back(at);
     }
     CHECK(std::cmp_equal(
-        world.ecs().get<world::MultiMeshInstance3D>(world.find("v_trees")).instances.size(),
-        rocks));
+        world.ecs().get<world::ModelInstances3D>(world.find("v_trees")).instances.size(), rocks));
     // Commands' entities: lifted 2 m, energies picked by seed, and adopted by v.
     std::set<float> energies;
     for (const entt::entity child : children) {
-        if (const auto* light = world.ecs().try_get<world::OmniLight3D>(child); light != nullptr) {
+        if (const auto* light = world.ecs().try_get<world::PointLight3D>(child); light != nullptr) {
             CHECK(world.ecs().get<world::Transform3D>(child).position.y == doctest::Approx(2.0F));
             energies.insert(light->light_energy);
         }
     }
     CHECK_FALSE(energies.empty());
     CHECK(energies.size() <= 2);
-    const auto& walk = world.ecs().get<world::Path3D>(world.find("v_walk"));
+    const auto& walk = world.ecs().get<world::Spline3D>(world.find("v_walk"));
     CHECK(std::cmp_equal(walk.points.size(), rocks));
     CHECK(walk.closed);
 
@@ -396,14 +395,14 @@ TEST_CASE("pcg.run follows entities, storyboard places and paths, in 3D and 2D")
         {"command": "entity.create", "params": {"id": "inn", "components": {
             "Transform3D": {"position": [10, 0, 5]}, "StoryRef": {"ids": ["place/inn"]}}}},
         {"command": "entity.create", "params": {"id": "well", "components": {
-            "Transform3D": {"position": [-10, 0, 0]}, "OmniLight3D": {}}}},
+            "Transform3D": {"position": [-10, 0, 0]}, "PointLight3D": {}}}},
         {"command": "entity.create", "params": {"id": "road", "components": {
             "Transform3D": {"position": [0, 0, 5]},
-            "Path3D": {"points": [{"position": [0, 0, 0]}, {"position": [10, 0, 0]}]}}}}]})")
+            "Spline3D": {"points": [{"position": [0, 0, 0]}, {"position": [10, 0, 0]}]}}}}]})")
                 .ok);
     command::Reply reply = project.call("pcg.run", R"({"into": "town", "graph": {"format": 1,
       "nodes": [
-        {"name": "places", "op": "entities", "story": ["place/inn"], "with": ["OmniLight3D"]},
+        {"name": "places", "op": "entities", "story": ["place/inn"], "with": ["PointLight3D"]},
         {"name": "posts", "op": "path", "path": "road", "spacing": 2.5, "side": 1},
         {"name": "near_inn", "op": "near", "from": ["posts"], "story": ["place/inn"],
          "range": [0, 6]},
@@ -422,7 +421,7 @@ TEST_CASE("pcg.run follows entities, storyboard places and paths, in 3D and 2D")
     CHECK(sign.x == doctest::Approx(5.0F));
     CHECK(sign.z == doctest::Approx(6.0F));
 
-    // 2D: a grid over a tile map's grass cells, foliage and a route along a Path2D.
+    // 2D: a grid over a tile map's grass cells, foliage and a route along a Spline2D.
     project.write("ground.tileset.json", R"({"format": 1, "tile_size": [16, 16], "sources": {
         "a": {"texture": "tiles.png", "tiles": {"0,0": {"name": "grass"},
                                                 "1,0": {"name": "rock"}}}}})");
@@ -431,12 +430,12 @@ TEST_CASE("pcg.run follows entities, storyboard places and paths, in 3D and 2D")
     REQUIRE(project
                 .call("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "map", "components": {
-            "TileMapLayer": {"tile_set": "ground.tileset.json", "legend": {"g": "grass",
+            "TileLayer2D": {"tile_set": "ground.tileset.json", "legend": {"g": "grass",
                              "r": "rock"}, "rows": ["ggrr", "ggrr"]},
             "Transform2D": {}}}},
         {"command": "entity.create", "params": {"id": "trail", "components": {
             "Transform2D": {"position": [0, 100]},
-            "Path2D": {"points": [{"position": [0, 0]}, {"position": [64, 0]}]}}}}]})")
+            "Spline2D": {"points": [{"position": [0, 0]}, {"position": [64, 0]}]}}}}]})")
                 .ok);
     reply = project.call("pcg.run", R"({"into": "meadow", "graph": {"format": 1, "space": "2d",
       "nodes": [
@@ -468,7 +467,7 @@ TEST_CASE("pcg.preview and pcg.check look at a graph without placing anything") 
         "vertices": [[0, 0, 0], [0, 0, 10], [10, 0, 10], [10, 0, 0]]})");
     REQUIRE(project
                 .call("entity.create", R"({"id": "floor", "components": {
-        "NavigationRegion3D": {"navigation_mesh": "floor.navmesh.json"}, "Transform3D": {}}})")
+        "NavArea3D": {"navigation_mesh": "floor.navmesh.json"}, "Transform3D": {}}})")
                 .ok);
     const std::string graph = R"({"format": 1, "budget": {"points": 30}, "nodes": [
         {"name": "g", "op": "grid", "area": [0, 0, 20, 10], "spacing": 2,

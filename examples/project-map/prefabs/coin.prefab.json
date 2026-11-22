@@ -1,6 +1,6 @@
 {
   "components": {
-    "Area2D": {},
+    "Zone2D": {},
     "Coin": {
       "value": 1
     },

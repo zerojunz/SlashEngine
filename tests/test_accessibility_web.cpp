@@ -71,21 +71,21 @@ void make_form(Session& s) {
         {"command": "entity.create", "params": {"id": "title", "components": {
             "Label": {"text": "Sign up"}}}},
         {"command": "entity.create", "params": {"id": "name", "components": {
-            "LineEdit": {"placeholder_text": "Your name"},
-            "Control": {"accessibility_name": "Name", "tooltip_text": "As on your card",
+            "TextField": {"placeholder_text": "Your name"},
+            "Widget": {"accessibility_name": "Name", "tooltip_text": "As on your card",
                         "custom_minimum_size": [120, 0]}}}},
         {"command": "entity.create", "params": {"id": "news", "components": {
             "CheckBox": {"text": "News", "button_pressed": true}}}},
         {"command": "entity.create", "params": {"id": "volume", "components": {
             "Slider": {"value": 50, "step": 5},
-            "Control": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
+            "Widget": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
                         "accessibility_labeled_by_nodes": ["title"]}}}},
         {"command": "entity.create", "params": {"id": "mute", "components": {
             "Button": {"text": "Mute", "toggle_mode": true},
-            "Control": {"accessibility_description": "Silences the game"}}}},
+            "Widget": {"accessibility_description": "Silences the game"}}}},
         {"command": "entity.create", "params": {"id": "form", "components": {
-            "BoxContainer": {"vertical": true},
-            "Control": {"children": ["title", "name", "news", "volume", "mute"],
+            "StackBox": {"vertical": true},
+            "Widget": {"children": ["title", "name", "news", "volume", "mute"],
                         "accessibility_live": "polite"}}}}
     ]})");
 }

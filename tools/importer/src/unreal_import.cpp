@@ -17,6 +17,7 @@
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -3252,6 +3253,7 @@ private:
         json::Value scene;
         scene["format"] = 1;
         scene["entities"] = json::Value(std::move(entities));
+        world::upgrade_scene(scene);
         const world::FileReader reader = planned_files();
         for (int pass = 0; pass < 64; ++pass) {
             const auto errors = world::validate_scene(components_, scene, reader);

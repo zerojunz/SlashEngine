@@ -698,20 +698,20 @@ void lay_out_title(Journaled& run) {
                  R"({"task": "Lay out the title screen", "steps": ["Backdrop", "Start button"]})")
             .ok);
     REQUIRE(run.call("entity.create", R"({"id": "sky", "components": {
-        "Control": {"anchor_right": 1, "anchor_bottom": 1},
-        "ColorRect": {"color": [0.25, 0.45, 0.8, 1]}}})")
+        "Widget": {"anchor_right": 1, "anchor_bottom": 1},
+        "ColorFill": {"color": [0.25, 0.45, 0.8, 1]}}})")
                 .ok);
     REQUIRE(run.call("scene.save", R"({"path": "title.scene.json"})").ok);
     REQUIRE(run.call("work.plan", R"({"done": [1]})").ok);
     REQUIRE(run.call("entity.create", R"({"id": "start", "components": {
-        "Control": {"offset_left": 540, "offset_top": 420, "offset_right": 740,
+        "Widget": {"offset_left": 540, "offset_top": 420, "offset_right": 740,
                     "offset_bottom": 480},
-        "ColorRect": {"color": [0.95, 0.7, 0.2, 1]}}})")
+        "ColorFill": {"color": [0.95, 0.7, 0.2, 1]}}})")
                 .ok);
     REQUIRE(run.call("work.checkpoint", R"({"label": "start <button>"})").ok);
     REQUIRE(
         run.call("component.set",
-                 R"({"id": "start", "components": {"ColorRect": {"color": [0.3, 0.85, 0.4, 1]}}})")
+                 R"({"id": "start", "components": {"ColorFill": {"color": [0.3, 0.85, 0.4, 1]}}})")
             .ok);
     REQUIRE(run.call("scene.save", R"({"path": "title.scene.json"})").ok);
 }

@@ -1,9 +1,9 @@
 // Buttons, focus and hover, as Godot's: main.scene.json is a title menu. A column holds a Play
-// button, three toggle buttons in one button_group (at most one is on), a TextureButton that
+// button, three toggle buttons in one button_group (at most one is on), a ImageButton that
 // mutes the sound, a disabled Online button and a Quit button whose shortcut is ui_cancel
 // (Escape). The menu system below reads the buttons' UI events, as gameplay code does.
 //
-// This program writes the TextureButton's three textures, checks the menu with ui.layout, then
+// This program writes the ImageButton's three textures, checks the menu with ui.layout, then
 // works it as an agent does over MCP or JSON-RPC: it hovers and clicks with input.inject, moves
 // focus with the arrow keys, taps with a finger, presses Escape and calls ui.press, reading the
 // UI events with events.read. Then it draws the menu into a texture.

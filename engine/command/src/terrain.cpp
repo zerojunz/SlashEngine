@@ -77,7 +77,7 @@ json::Value points_property(std::string_view description) {
 }
 
 json::Value id_property() {
-    json::Value schema = property("string", "An entity with an HTerrain.");
+    json::Value schema = property("string", "An entity with an Terrain3D.");
     schema["minLength"] = 1;
     schema["maxLength"] = 255;
     return schema;
@@ -162,20 +162,20 @@ bool valid_resolution(int resolution) {
     return resolution >= 65 && resolution <= 4097 && ((resolution - 1) & (resolution - 2)) == 0;
 }
 
-// One of an HTerrain's map files: its path ("" for none) and what it held before the command,
+// One of an Terrain3D's map files: its path ("" for none) and what it held before the command,
 // nullopt when it doesn't exist yet.
 struct MapFile {
     std::string path;
     std::optional<std::string> before;
 };
 
-// An entity's HTerrain and its maps as the command finds them, edits staged earlier in a batch
+// An entity's Terrain3D and its maps as the command finds them, edits staged earlier in a batch
 // included: a heightmap that doesn't exist yet is flat at the bottom of height_range, a splat
 // map the first texture everywhere and a color map white with no holes.
 struct Target {
     std::string id;
     entt::entity entity = entt::null;
-    world::HTerrain terrain;
+    world::Terrain3D terrain;
     scene3d::TerrainMaps maps;
     MapFile heightmap;
     MapFile splatmap;
@@ -205,16 +205,16 @@ std::optional<Reply> find_terrain(Session& session, const json::Value& params, T
     if (out.entity == entt::null) {
         return unknown_entity(world, out.id, "/id");
     }
-    const auto* terrain = world.ecs().try_get<const world::HTerrain>(out.entity);
+    const auto* terrain = world.ecs().try_get<const world::Terrain3D>(out.entity);
     if (terrain == nullptr) {
-        return param_error(code::kInvalidParams, "/id", quoted(out.id) + " has no HTerrain");
+        return param_error(code::kInvalidParams, "/id", quoted(out.id) + " has no Terrain3D");
     }
     out.terrain = *terrain;
     const int r = terrain->resolution;
     if (!valid_resolution(r)) {
         return param_error(code::kInvalidArgument, "/id",
                            quoted(out.id) +
-                               "'s HTerrain resolution is a power of two plus one from 65 to "
+                               "'s Terrain3D resolution is a power of two plus one from 65 to "
                                "4097, such as 513, not " +
                                std::to_string(r));
     }
@@ -296,7 +296,7 @@ std::optional<Reply> need_map(const Target& target, std::string_view name, const
                               std::string_view suffix, std::string_view example) {
     if (path.empty()) {
         return param_error(code::kInvalidArgument, "/id",
-                           quoted(target.id) + "'s HTerrain names no " + std::string(name) +
+                           quoted(target.id) + "'s Terrain3D names no " + std::string(name) +
                                " to write: set " + std::string(name) + " to a path such as " +
                                quoted(example));
     }
@@ -373,7 +373,7 @@ std::optional<Reply> write_heights(Session& session, Target& target, json::Value
     if (low < range.x || high > range.y) {
         range = {std::min<real_t>(range.x, std::floor(low)),
                  std::max<real_t>(range.y, std::ceil(high))};
-        session.world().ecs().get<world::HTerrain>(target.entity).height_range = range;
+        session.world().ecs().get<world::Terrain3D>(target.entity).height_range = range;
         target.terrain.height_range = range;
         result["height_range"] = point_value(range);
     }
@@ -409,7 +409,7 @@ Reply finish(Session& session, json::Value result, json::Array written) {
     return Reply::success(std::move(result));
 }
 
-// An HTerrain's bounds and holes, or what is at points over it: the height and normal there and
+// An Terrain3D's bounds and holes, or what is at points over it: the height and normal there and
 // the nearest cell's texture weights, color and hole, as HTerrainData's get_interpolated_height_at
 // and the maps' pixels.
 Reply terrain_get(Session& session, const json::Value& params) {
@@ -512,7 +512,7 @@ Reply terrain_get(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Makes heights from noise, as HTerrain's generator dialog, and writes them.
+// Makes heights from noise, as Terrain3D's generator dialog, and writes them.
 Reply terrain_generate(Session& session, const json::Value& params) {
     Target target;
     if (auto failed = find_terrain(session, params, target)) {
@@ -567,7 +567,7 @@ Reply terrain_generate(Session& session, const json::Value& params) {
     return finish(session, std::move(result), std::move(written));
 }
 
-// Paints dabs of a round brush at points, as HTerrain's painter, and writes the maps they change.
+// Paints dabs of a round brush at points, as Terrain3D's painter, and writes the maps they change.
 Reply terrain_brush(Session& session, const json::Value& params) {
     Target target;
     if (auto failed = find_terrain(session, params, target)) {
@@ -627,7 +627,7 @@ Reply terrain_brush(Session& session, const json::Value& params) {
         dab.color = {static_cast<float>(rgb[0].as_double()), static_cast<float>(rgb[1].as_double()),
                      static_cast<float>(rgb[2].as_double()), 1.0F};
     }
-    // Slopes in degrees from flat, as HTerrain's slope limit slider, as the normal's y.
+    // Slopes in degrees from flat, as Terrain3D's slope limit slider, as the normal's y.
     const Vec2 slope = pair(params, "slope", {0.0F, 90.0F});
     dab.slope_min = cos_sin(std::min<real_t>(slope.y, 90.0F) * kPi / 180.0F).x;
     dab.slope_max = cos_sin(std::max<real_t>(slope.x, 0.0F) * kPi / 180.0F).x + 0.001F;
@@ -670,7 +670,7 @@ struct SourceHeights {
     bool absolute = false;
 };
 
-// HTerrain's _get_adjusted_map_size: each side's next power of two plus one, the smaller of the
+// Terrain3D's _get_adjusted_map_size: each side's next power of two plus one, the smaller of the
 // two, from 65 to 4097.
 int adjusted_map_size(std::uint32_t width, std::uint32_t height) {
     const auto side = [](std::uint32_t size) {
@@ -723,7 +723,7 @@ std::optional<Reply> read_raw(const std::string& path, const std::string& bytes,
     return std::nullopt;
 }
 
-// An OpenEXR file's first channel, in meters as it is, as HTerrain imports EXR heightmaps.
+// An OpenEXR file's first channel, in meters as it is, as Terrain3D imports EXR heightmaps.
 std::optional<Reply> read_exr(const std::string& path, const std::string& bytes,
                               SourceHeights& out) {
 #if SLASH_HAS_TINYEXR
@@ -805,7 +805,7 @@ std::optional<Reply> read_source_heights(Session& session, const std::string& pa
     return std::nullopt;
 }
 
-// A splat map or color map to import: a PNG of the terrain's resolution, as HTerrain's
+// A splat map or color map to import: a PNG of the terrain's resolution, as Terrain3D's
 // _import_map takes it.
 std::optional<Reply> read_source_map(Session& session, const json::Value& params,
                                      std::string_view key, int resolution,
@@ -836,7 +836,7 @@ std::optional<Reply> read_source_map(Session& session, const json::Value& params
     return std::nullopt;
 }
 
-// Stretches a map to a new resolution, as HTerrain's resize does when an import changes it.
+// Stretches a map to a new resolution, as Terrain3D's resize does when an import changes it.
 std::vector<std::uint8_t> stretch_map(const std::vector<std::uint8_t>& pixels, int from, int to) {
     render::Image image;
     image.width = static_cast<std::uint32_t>(from);
@@ -846,7 +846,7 @@ std::vector<std::uint8_t> stretch_map(const std::vector<std::uint8_t>& pixels, i
     return render::resize_image(image, size, size).pixels;
 }
 
-// Imports maps made by other tools into an HTerrain, as its import dialog does: a heightmap sizes
+// Imports maps made by other tools into an Terrain3D, as its import dialog does: a heightmap sizes
 // the terrain to the smaller side's next power of two plus one (65 to 4097), cropping the file or
 // repeating its last row and column, and stretches the maps it keeps; PNG and RAW heights go from
 // min_height to max_height, EXR heights are meters as they are.
@@ -865,7 +865,7 @@ Reply terrain_import(Session& session, const json::Value& params) {
     json::Value result;
     result["id"] = target.id;
     json::Array written;
-    world::HTerrain& terrain = session.world().ecs().get<world::HTerrain>(target.entity);
+    world::Terrain3D& terrain = session.world().ecs().get<world::Terrain3D>(target.entity);
     if (heightmap != nullptr) {
         if (auto failed = need_heightmap(target)) {
             return std::move(*failed);
@@ -969,7 +969,7 @@ void register_terrain_commands(Registry& registry) {
     using enum Capability;
     registry.add({
         .name = "terrain.get",
-        .description = "Returns an HTerrain's resolution, bounds, hole count and problems; or "
+        .description = "Returns an Terrain3D's resolution, bounds, hole count and problems; or "
                        "at points [x, z] the ground's position, normal, texture weights, color "
                        "and holes. In its space, or the world's with global.",
         .capabilities = {Read},
@@ -987,7 +987,7 @@ void register_terrain_commands(Registry& registry) {
     json::Value seed = integer_property("The noise's seed. Default 0.", -1'000'000, 1'000'000);
     registry.add({
         .name = "terrain.generate",
-        .description = "Makes an HTerrain's heights from fractal noise, as HTerrain's "
+        .description = "Makes an Terrain3D's heights from fractal noise, as Terrain3D's "
                        "generator: curved, shaped into an island and eroded, or added to the "
                        "heights it has with additive. Heights are the heightmap's meters, "
                        "before map_scale. Writes the heightmap, widening height_range to hold "
@@ -1049,10 +1049,10 @@ void register_terrain_commands(Registry& registry) {
     });
     registry.add({
         .name = "terrain.import",
-        .description = "Imports maps from other tools into an HTerrain, as HTerrain's import "
+        .description = "Imports maps from other tools into an Terrain3D, as Terrain3D's import "
                        "dialog: a heightmap sizes the terrain to its smaller side's next power "
                        "of two plus one; then a splatmap and colormap of that size. Writes the "
-                       "HTerrain's own maps.",
+                       "Terrain3D's own maps.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema(
@@ -1087,8 +1087,8 @@ void register_terrain_commands(Registry& registry) {
     color["maxItems"] = 3;
     registry.add({
         .name = "terrain.brush",
-        .description = "Paints an HTerrain with a round brush at each point [x, z] in turn, as "
-                       "HTerrain's painter. Writes the heightmap, splatmap or colormap it "
+        .description = "Paints an Terrain3D with a round brush at each point [x, z] in turn, as "
+                       "Terrain3D's painter. Writes the heightmap, splatmap or colormap it "
                        "changes; returns the cells changed. In its space, or the world's with "
                        "global.",
         .capabilities = {Edit, Filesystem},

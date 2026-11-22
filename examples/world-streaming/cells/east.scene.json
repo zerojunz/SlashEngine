@@ -2,17 +2,17 @@
   "entities": {
     "ground": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [100.0, 1.0, 100.0]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [100.0, 1.0, 100.0]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "StaticBody3D": {},
+        "Surface3D": {
           "albedo_color": [0.3, 0.45, 0.35, 1.0]
         },
-        "StaticBody3D": {},
         "Transform3D": {
           "children": ["tower"]
         }
@@ -20,10 +20,10 @@
     },
     "tower": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [2.0, 4.0, 2.0]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "Transform3D": {
           "position": [10.0, 2.0, 0.0]
         }

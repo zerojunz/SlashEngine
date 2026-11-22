@@ -127,15 +127,15 @@ constexpr std::string_view kCrateProfile = R"({"format": 1, "material": "wood", 
 constexpr std::string_view kCrate3D = R"({
     "Transform3D": {"position": [0, 0.5, 0]},
     "StaticBody3D": {},
-    "CollisionShape3D": {"shape": "box", "size": [1, 1, 1]},
-    "BoxMesh": {"size": [1, 1, 1]},
-    "MeshInstance3D": {},
+    "Collider3D": {"shape": "box", "size": [1, 1, 1]},
+    "BoxGeometry": {"size": [1, 1, 1]},
+    "Model3D": {},
     "Destructible3D": {"profile": "crate.damage.json"}})";
 
 constexpr std::string_view kCrate2D = R"({
     "Transform2D": {"position": [0, 0]},
     "StaticBody2D": {},
-    "CollisionShape2D": {"shape": "rectangle", "size": [64, 64]},
+    "Collider2D": {"shape": "rectangle", "size": [64, 64]},
     "Polygon2D": {"polygon": [[-32, -32], [32, -32], [32, 32], [-32, 32]]},
     "Destructible2D": {"profile": "crate.damage.json"}})";
 
@@ -171,20 +171,20 @@ TEST_CASE("damage effects: a hit leaves debris, a decal and a sound that go in t
     const auto& ecs = scene.world.ecs();
     const entt::entity chips = scene.world.find("crate_debris");
     REQUIRE((chips != entt::null));
-    CHECK(ecs.get<const world::CPUParticles3D>(chips).amount == 10);
-    CHECK(ecs.get<const world::CPUParticles3D>(chips).one_shot);
+    CHECK(ecs.get<const world::Emitter3D>(chips).amount == 10);
+    CHECK(ecs.get<const world::Emitter3D>(chips).one_shot);
     // The decal faces back the way the hit came, out of the crate's front.
     const entt::entity decal = scene.world.find("crate_decal");
     REQUIRE((decal != entt::null));
     CHECK(ecs.get<const world::Decal>(decal).texture_albedo == "scorch.png");
     const entt::entity sound = scene.world.find("crate_sound");
     REQUIRE((sound != entt::null));
-    CHECK(ecs.get<const world::AudioStreamPlayer3D>(sound).stream == "knock.wav");
+    CHECK(ecs.get<const world::SoundPlayer3D>(sound).stream == "knock.wav");
 
     // A heavier hit throws them all, under names of their own.
     auto heavy = physics3d::damage_body(scene.world, crate, 60.0F, "blunt", Vec3{0, 1.0F, 0});
     REQUIRE(heavy.ok());
-    CHECK(ecs.get<const world::CPUParticles3D>(scene.world.find("crate_debris_2")).amount == 20);
+    CHECK(ecs.get<const world::Emitter3D>(scene.world.find("crate_debris_2")).amount == 20);
     // Damage with no point leaves nothing.
     auto unseen = physics3d::damage_body(scene.world, crate, 10.0F, "blunt", std::nullopt);
     REQUIRE(unseen.ok());
@@ -212,11 +212,11 @@ TEST_CASE("damage effects: a 2D hit leaves its effects in pixels, and a break it
     CHECK(hit.value().effects ==
           std::vector<std::string>{"crate_debris", "crate_decal", "crate_sound"});
     const auto& ecs = scene.world.ecs();
-    const auto& chips = ecs.get<const world::CPUParticles2D>(scene.world.find("crate_debris"));
+    const auto& chips = ecs.get<const world::Emitter2D>(scene.world.find("crate_debris"));
     CHECK(chips.amount == 20);
     CHECK(chips.initial_velocity_max == doctest::Approx(2.0 * 64.0));
     CHECK(ecs.get<const world::Sprite2D>(scene.world.find("crate_decal")).texture == "scorch.png");
-    CHECK(ecs.all_of<world::AudioStreamPlayer2D>(scene.world.find("crate_sound")));
+    CHECK(ecs.all_of<world::SoundPlayer2D>(scene.world.find("crate_sound")));
 
     // Breaking it leaves wood's break effects: chips and dust.
     auto broke = physics2d::damage_body_2d(scene.world, crate, 5000.0F, "blunt", Vec2{0, 0});
@@ -239,14 +239,14 @@ TEST_CASE("damage effects: a break budget spreads breaks from impacts over ticks
         "impact": {"threshold": 1, "damage": 100},
         "fracture": {"pattern": "voronoi", "pieces": 4, "levels": 1}})";
     scene.create("floor", R"({"Transform3D": {}, "StaticBody3D": {},
-        "CollisionShape3D": {"shape": "box", "size": [20, 1, 20]}})");
+        "Collider3D": {"shape": "box", "size": [20, 1, 20]}})");
     for (const char* x : {"-3", "0", "3"}) {
         scene.create(std::string("vase") + x, std::string(R"({
             "Transform3D": {"position": [)") + x + R"(, 3, 0]},
             "RigidBody3D": {},
-            "CollisionShape3D": {"shape": "box", "size": [0.5, 0.5, 0.5]},
-            "BoxMesh": {"size": [0.5, 0.5, 0.5]},
-            "MeshInstance3D": {},
+            "Collider3D": {"shape": "box", "size": [0.5, 0.5, 0.5]},
+            "BoxGeometry": {"size": [0.5, 0.5, 0.5]},
+            "Model3D": {},
             "Destructible3D": {"profile": "vase.damage.json"}})");
     }
     const auto pieces = [&] {
@@ -279,9 +279,9 @@ TEST_CASE("damage effects: fracture cuts the same pieces on any number of thread
         const entt::entity wall = scene.create("wall", R"({
             "Transform3D": {"position": [0, 1, 0]},
             "StaticBody3D": {},
-            "CollisionShape3D": {"shape": "box", "size": [2, 2, 0.3]},
-            "BoxMesh": {"size": [2, 2, 0.3]},
-            "MeshInstance3D": {},
+            "Collider3D": {"shape": "box", "size": [2, 2, 0.3]},
+            "BoxGeometry": {"size": [2, 2, 0.3]},
+            "Model3D": {},
             "Destructible3D": {"profile": "wall.damage.json"}})");
         scene.step(1);
         auto broken = physics3d::break_body(scene.world, wall, 2.0F);
@@ -325,7 +325,7 @@ struct Project {
             {"van.damage.json", R"({"format": 1, "material": "metal", "health": 50})"},
             {"main.scene.json", R"({"format": 1, "entities": {
                 "hunter": {"components": {"Transform3D": {"position": [0, 0, 8]},
-                                          "CharacterBody3D": {}}},
+                                          "CharacterMover3D": {}}},
                 "deer": {"components": {"Transform3D": {},
                     "Creature3D": {"recipe": "fauna/deer.creature.json"},
                     "Destructible3D": {"profile": "flesh.damage.json"}}},

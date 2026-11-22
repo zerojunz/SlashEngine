@@ -5,8 +5,8 @@
 // (slash/world/creature.hpp). It roams around home, grazes and rests, keeps with its herd, flock or
 // school, flees people as its temperament says and what hunts it, hunts when hungry, attacks or
 // comes to people, follows its owner once tamed, and carries its rider. In 3D it moves its
-// Transform3D (or sets its CharacterBody3D's velocity), faces where it goes and plays its model's
-// animations on its AnimationPlayer; in 2D it moves its Transform2D in pixels (ground animals left
+// Transform3D (or sets its CharacterMover3D's velocity), faces where it goes and plays its model's
+// animations on its Animator; in 2D it moves its Transform2D in pixels (ground animals left
 // and right, fliers and swimmers anywhere), mirrors it with flip_h and turns its cut-out's bones.
 //
 // Events, each with the creature's ID: creature_noticed (who), creature_fled (from),

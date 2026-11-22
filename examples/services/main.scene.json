@@ -5,23 +5,23 @@
         "Button": {
           "text": "100 coins"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "coins": {
       "components": {
-        "Control": {},
         "Label": {
           "text": "0 coins"
-        }
+        },
+        "Widget": {}
       }
     },
     "column": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "children": ["coins", "watch_ad", "buy_coins"],
           "custom_minimum_size": [160.0, 0.0]
         }
@@ -32,7 +32,7 @@
         "Button": {
           "text": "Watch an ad for 25 coins"
         },
-        "Control": {}
+        "Widget": {}
       }
     }
   },

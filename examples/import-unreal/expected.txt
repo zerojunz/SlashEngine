@@ -320,14 +320,14 @@ project.import {"source":"unreal"}
   "entities": {
     "bonus_coin": {
       "components": {
-        "Area3D": {},
         "CoinPickup": {},
-        "CollisionShape3D": {
+        "Collider3D": {
           "shape": "sphere"
         },
         "Transform3D": {
           "position": [6.0, 0.8, 2.0]
-        }
+        },
+        "Zone3D": {}
       }
     },
     "coin": {
@@ -344,7 +344,7 @@ project.import {"source":"unreal"}
     },
     "coin_mesh": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "cast_shadow": "off",
           "mesh": "unreal/Content/Props/SM_Coin.glb"
         },
@@ -355,7 +355,7 @@ project.import {"source":"unreal"}
     },
     "crate": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "unreal/Content/Props/SM_Crate.glb"
         },
         "RigidBody3D": {
@@ -372,7 +372,7 @@ project.import {"source":"unreal"}
     },
     "crate_stack": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "unreal/Content/Props/SM_Crate_MI_CrateDark.glb"
         },
         "Transform3D": {
@@ -383,7 +383,7 @@ project.import {"source":"unreal"}
     },
     "embers": {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 20,
           "color": [1.0, 0.45, 0.1, 1.0],
           "direction": [0.0, 1.0, 0.0],
@@ -396,8 +396,8 @@ project.import {"source":"unreal"}
           "seed": 7,
           "spread": 20.0
         },
-        "QuadMesh": {},
-        "StandardMaterial3D": {
+        "QuadGeometry": {},
+        "Surface3D": {
           "billboard_keep_scale": true,
           "billboard_mode": "particles",
           "shading_mode": "unshaded",
@@ -411,10 +411,7 @@ project.import {"source":"unreal"}
     },
     "environment": {
       "components": {
-        "PhysicalSkyMaterial": {
-          "energy_multiplier": 2.901642
-        },
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_source": "sky",
           "background_mode": "sky",
           "fog_density": 0.002,
@@ -425,12 +422,15 @@ project.import {"source":"unreal"}
           "reflected_light_source": "sky",
           "tonemap_mode": "aces",
           "tonemap_white": 6.0
+        },
+        "SkyScattering": {
+          "energy_multiplier": 2.901642
         }
       }
     },
     "floor": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "unreal/Content/Props/SM_Floor.glb"
         },
         "Transform3D": {}
@@ -438,24 +438,24 @@ project.import {"source":"unreal"}
     },
     "goal": {
       "components": {
-        "Area3D": {},
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [2.0, 2.0, 4.0]
         },
         "Transform3D": {
           "position": [8.0, 1.0, 0.0]
-        }
+        },
+        "Zone3D": {}
       }
     },
     "guard": {
       "components": {
-        "AnimationTree": {
+        "AnimationGraph": {
           "libraries": {
             "": "unreal/Content/Characters/ABP_Guard.anim.json"
           },
           "tree_root": "unreal/Content/Characters/ABP_Guard.animtree.json"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "unreal/Content/Characters/SK_Hero.glb"
         },
         "Transform3D": {
@@ -465,10 +465,10 @@ project.import {"source":"unreal"}
     },
     "hero": {
       "components": {
-        "CharacterBody3D": {
+        "CharacterMover3D": {
           "floor_max_angle": 0.781297
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "height": 1.76,
           "radius": 0.34,
           "shape": "capsule"
@@ -490,11 +490,11 @@ project.import {"source":"unreal"}
     },
     "hero_character_mesh0": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "Idle",
           "library": "unreal/Content/Characters/A_Idle.anim.json"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "unreal/Content/Characters/SK_Hero.glb"
         },
         "Transform3D": {
@@ -517,7 +517,7 @@ project.import {"source":"unreal"}
     },
     "hills": {
       "components": {
-        "HTerrain": {
+        "Terrain3D": {
           "colormap": "unreal/Content/Maps/Main_hills.color.png",
           "height_range": [-256.0, 255.99219],
           "heightmap": "unreal/Content/Maps/Main_hills.height.png",
@@ -530,7 +530,7 @@ project.import {"source":"unreal"}
     },
     "lamp": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.784314, 0.588235, 1.0],
           "light_energy": 2.0,
           "light_size": 0.1,
@@ -569,7 +569,7 @@ project.import {"source":"unreal"}
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_angular_distance": 0.5357,
           "light_color": [1.0, 0.941176, 0.862745, 1.0],
           "shadow_enabled": true
@@ -582,7 +582,7 @@ project.import {"source":"unreal"}
     },
     "wall": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [10.0, 2.0, 0.2]
         },
         "StaticBody3D": {},
@@ -593,7 +593,7 @@ project.import {"source":"unreal"}
     },
     "wind": {
       "components": {
-        "AudioStreamPlayer3D": {
+        "SoundPlayer3D": {
           "autoplay": true,
           "max_distance": 24.0,
           "stream": "unreal/Content/Audio/Wind.audio.json",
@@ -1010,7 +1010,7 @@ world.query {"include":["AnimationPlayer"],"with":["AnimationPlayer"]}
   "entities": [
     {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "Idle",
           "audio_max_polyphony": 32,
           "backwards": false,
@@ -1032,7 +1032,7 @@ world.query {"include":["AnimationTree"],"omit_defaults":true,"with":["Animation
   "entities": [
     {
       "components": {
-        "AnimationTree": {
+        "AnimationGraph": {
           "libraries": {
             "": "unreal/Content/Characters/ABP_Guard.anim.json"
           },

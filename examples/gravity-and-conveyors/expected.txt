@@ -17,8 +17,8 @@ physics.gravity {"ids":["hero","rock_below","probe"]}
 physics.raycast {"from":[100,150],"to":[100,250]}
 {"hit":{"fraction":0.45,"id":"conveyor","normal":[0,-1],"point":[100,195]}}
 -- with space's override off, the probe falls with the project's gravity
-component.set {"components":{"Area2D":{"gravity_space_override":"disabled"}},"id":"space"}
-{"changed":{"Area2D":{"gravity_space_override":"disabled"}},"id":"space"}
+component.set {"components":{"Zone2D":{"gravity_space_override":"disabled"}},"id":"space"}
+{"changed":{"Zone2D":{"gravity_space_override":"disabled"}},"id":"space"}
 tick 240: crate at (218.7, 242.0); hero at (58.0, 178.8) on the floor, carried at 60.0
   rock_left at (351.0, 129.9), 35.4 from the planet's center
   rock_below at (370.0, 135.0), 35.0 from the planet's center

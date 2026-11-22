@@ -57,6 +57,7 @@ endif()
 
 add_executable(slash_tests
     test_main.cpp
+    test_aliases.cpp
     test_ai.cpp
     test_alpha_hash.cpp
     test_analytics_endpoint.cpp
@@ -557,7 +558,7 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_scene_validate_invalid_frames PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"the sheet has 4 frames, numbered from 0\",\"path\":\"/animations/walk/frames/1\"")
 
-    # The models-3d example's glTF model, checked as MeshInstance3D loads it.
+    # The models-3d example's glTF model, checked as Model3D loads it.
     add_test(NAME cli_scene_validate_model COMMAND slash-cli scene validate
         ${PROJECT_SOURCE_DIR}/examples/models-3d/models/house.gltf)
     set_tests_properties(cli_scene_validate_model PROPERTIES
@@ -628,7 +629,7 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid_tiles.scene.json
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     set_tests_properties(cli_scene_validate_invalid_tile_layer PROPERTIES
-        PASS_REGULAR_EXPRESSION "\"path\":\"/entities/map/components/TileMapLayer/legend/w\"")
+        PASS_REGULAR_EXPRESSION "\"path\":\"/entities/map/components/TileLayer2D/legend/w\"")
 
     add_test(NAME cli_schema_font COMMAND slash-cli schema font)
     set_tests_properties(cli_schema_font PROPERTIES
@@ -657,7 +658,7 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid_ui.scene.json
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     set_tests_properties(cli_scene_validate_invalid_ui PROPERTIES
-        PASS_REGULAR_EXPRESSION "\"message\":\"a control can't be its own child\",\"path\":\"/entities/panel/components/Control/children/1\"}.*\"path\":\"/entities/hint/components/Control/theme_override_colors/font_colour\"")
+        PASS_REGULAR_EXPRESSION "\"message\":\"a control can't be its own child\",\"path\":\"/entities/panel/components/Widget/children/1\"}.*\"path\":\"/entities/hint/components/Widget/theme_override_colors/font_colour\"")
 
     add_test(NAME cli_schema_theme COMMAND slash-cli schema theme)
     set_tests_properties(cli_schema_theme PROPERTIES

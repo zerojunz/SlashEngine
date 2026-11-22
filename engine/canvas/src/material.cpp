@@ -551,7 +551,7 @@ json::Value schema(bool list_ops) {
     properties["light_mode"]["enum"] = json::Array{"normal", "unshaded", "light_only"};
     properties["light_mode"]["default"] = "normal";
     properties["light_mode"]["description"] =
-        "How 2D lights shade it, as Godot's: normal, unshaded (lights and CanvasModulate leave it "
+        "How 2D lights shade it, as Godot's: normal, unshaded (lights and AmbientTint2D leave it "
         "alone) or light_only (shown only where lights reach).";
     properties["params"]["type"] = "object";
     properties["params"]["additionalProperties"] = param;
@@ -574,7 +574,7 @@ json::Value schema(bool list_ops) {
     properties["shader_type"]["default"] = "canvas_item";
     properties["shader_type"]["description"] =
         "What it draws, as Godot's shader_type: sprites and controls (canvas_item), meshes "
-        "(spatial, which needs a shader; MeshInstance3D's material_override names it), or a "
+        "(spatial, which needs a shader; Model3D's material_override names it), or a "
         "screen pass over the 3D world (compositor, which needs a shader; a .pipeline.json "
         "effect names it).";
     json::Array modes;

@@ -1,6 +1,6 @@
 // The background of a frame's 3D world, as Godot's Compatibility renderer draws it
-// (drivers/gles3/shaders/sky.glsl): a ProceduralSkyMaterial, PhysicalSkyMaterial or
-// PanoramaSkyMaterial (scene/resources/3d/sky_material.cpp) worked out for each pixel's view
+// (drivers/gles3/shaders/sky.glsl): a SkyGradient, SkyScattering or
+// SkyPanorama (scene/resources/3d/sky_material.cpp) worked out for each pixel's view
 // direction, or the background color when fog covers it, then fogged, exposed and tonemapped as
 // meshes are; or for Forward+ as its renderer draws it (servers/rendering/renderer_rd/shaders/
 // environment/sky.glsl), from linear colors and left linear for forward_post.hlsl. It draws one triangle over the
@@ -13,8 +13,8 @@ float4 vs_main(uint id : SV_VertexID) : SV_Position {
     return float4(corner * 2.0 - 1.0, 0.0, 1.0);
 }
 
-// A ProceduralSkyMaterial's sky_cover, a PhysicalSkyMaterial's night_sky or a
-// PanoramaSkyMaterial's panorama.
+// A SkyGradient's sky_cover, a SkyScattering's night_sky or a
+// SkyPanorama's panorama.
 Texture2D<float4> sky_texture : register(t0, space2);
 SamplerState sky_sampler : register(s0, space2);
 
@@ -29,7 +29,7 @@ static const uint kSkyLinear = 4u;
 
 static const float kPi = 3.14159265359;
 
-// A DirectionalLight3D the sky shows, as Godot's DirectionalLightData.
+// A SunLight3D the sky shows, as Godot's DirectionalLightData.
 struct SkyLight {
     float4 direction_energy; // toward the light, in the world; its energy
     float4 color_size;       // sRGB (linear with kSkyLinear); the cosine of its angular radius

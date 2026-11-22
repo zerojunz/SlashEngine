@@ -17,8 +17,8 @@
 #include <unordered_map>
 #include <vector>
 
-// 2D lights in a world, as Godot's: PointLight2D, DirectionalLight2D, LightOccluder2D and
-// CanvasModulate made into what the render device shades draws with (render::Lighting and each
+// 2D lights in a world, as Godot's: PointLight2D, SunLight2D, Occluder2D and
+// AmbientTint2D made into what the render device shades draws with (render::Lighting and each
 // draw's render::Shading). Shadows
 // are cast on the CPU into one row of render::kShadowMapWidth texels per shadowed light: a point
 // light's row goes round it from -pi, holding the nearest occluder's distance at each angle, and a
@@ -45,17 +45,17 @@ struct SceneLight {
 
 // How lights shade one canvas's draws, as Godot's viewport lights each canvas it draws.
 struct CanvasLighting {
-    // A CanvasModulate is in it or an enabled light's layer range holds its layer, so its draws
+    // A AmbientTint2D is in it or an enabled light's layer range holds its layer, so its draws
     // are shaded.
     bool lit = false;
-    std::int32_t layer = 0;                               // the world's 0, a CanvasLayer's layer
-    std::array<float, 4> ambient{1.0F, 1.0F, 1.0F, 1.0F}; // its CanvasModulate's color
+    std::int32_t layer = 0;                               // the world's 0, a ScreenLayer's layer
+    std::array<float, 4> ambient{1.0F, 1.0F, 1.0F, 1.0F}; // its AmbientTint2D's color
     // Where its positions are in the coordinates lights are placed in, the world canvas's (see
     // render::Shading::to_lights); none for the world's.
     std::optional<std::array<float, 6>> to_lights;
 };
 
-// What a world's lights make. Lights, occluders and CanvasModulates in a hidden CanvasLayer are
+// What a world's lights make. Lights, occluders and CanvasModulates in a hidden ScreenLayer are
 // left out.
 struct SceneLighting {
     // Some canvas is lit, so the frame needs its lights.
@@ -63,7 +63,7 @@ struct SceneLighting {
     // Each canvas's, by its place in world::Canvases::all(); with no canvases, the world's alone.
     std::vector<CanvasLighting> canvases;
     // Enabled lights in the order their entities were made, up to render::kMaxLights, each in the
-    // world canvas's coordinates: one in a CanvasLayer goes where its canvas puts it on the
+    // world canvas's coordinates: one in a ScreenLayer goes where its canvas puts it on the
     // screen.
     std::vector<SceneLight> lights;
     // The shadow map: one row per light whose shadow_row is set, RGBA.
@@ -71,7 +71,7 @@ struct SceneLighting {
     std::vector<std::uint8_t> shadow_pixels;
 };
 
-// Why a light, occluder or CanvasModulate was left out.
+// Why a light, occluder or AmbientTint2D was left out.
 struct LightProblem {
     entt::entity entity = entt::null;
     std::string message;

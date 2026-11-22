@@ -8,11 +8,11 @@ a bee flies round the listener once every four seconds, moved by
 committed), then plays the game the way an agent does over MCP (tools `step`, `audio_state`,
 `audio_capture`) or JSON-RPC. `expected.txt` holds each call and its reply.
 
-- The bee's `AudioStreamPlayer3D` pans over the speakers by Godot's Spcap: each speaker's gain
+- The bee's `SoundPlayer3D` pans over the speakers by Godot's Spcap: each speaker's gain
   grows as it faces the sound, so the buzz moves from the front speakers to the right, the rear
   and the left as the bee goes round. `audio.state` shows `volume` (the front pair) and
   `speakers`: the `center`, the `lfe` and the `rear` and `side` pairs.
-- The music's `AudioStreamPlayer` has `mix_target` `surround`, so it plays on every speaker; the
+- The music's `SoundPlayer` has `mix_target` `surround`, so it plays on every speaker; the
   announcer's has `center`, so it plays on the center speaker and the LFE.
 - `audio.capture` measures each speaker's level, and with `path` writes a `.wav` file with a
   channel for each speaker.

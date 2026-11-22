@@ -87,7 +87,7 @@ struct Recorded {
                     .ok());
         REQUIRE(slash::platform::write_file(root + "/prefabs/crate.prefab.json", R"({"format": 1,
             "components": {"RigidBody2D": {"contact_monitor": true},
-                           "CollisionShape2D": {"size": [24, 24]}}})")
+                           "Collider2D": {"size": [24, 24]}}})")
                     .ok());
         options.project_root = root;
         recorder = std::make_unique<Engine>(options);
@@ -100,7 +100,7 @@ struct Recorded {
         engine.ok("batch", R"({"commands": [
             {"command": "entity.create", "params": {"id": "floor", "components": {
                 "Transform2D": {"position": [160, 170]}, "StaticBody2D": {},
-                "CollisionShape2D": {"size": [320, 20]}}}},
+                "Collider2D": {"size": [320, 20]}}}},
             {"command": "entity.create", "params": {"id": "crate_a",
                 "extends": "prefabs/crate.prefab.json",
                 "components": {"Transform2D": {"position": [100, 40]}}}},
@@ -109,7 +109,7 @@ struct Recorded {
                 "components": {"Transform2D": {"position": [110, 0]}}}},
             {"command": "entity.create", "params": {"id": "ball", "components": {
                 "Transform2D": {"position": [200, 20]}, "RigidBody2D": {"bounce": 0.5},
-                "CollisionShape2D": {"shape": "circle", "radius": 8}}}}]})");
+                "Collider2D": {"shape": "circle", "radius": 8}}}}]})");
 
         CHECK(engine.ok("replay.record", R"({"path": "replays/run.replay.json"})") ==
               parse(R"({"recording": "replays/run.replay.json", "tick": 0})"));
@@ -326,7 +326,7 @@ TEST_CASE("replay.seek finds the first tick an entity matches") {
 
     // The ball rolls left from the command at tick 40.
     const std::string rolling = R"("with": ["RigidBody2D"], "where": [
-        {"component": "CollisionShape2D", "field": "shape", "value": "circle"},
+        {"component": "Collider2D", "field": "shape", "value": "circle"},
         {"component": "RigidBody2D", "field": "linear_velocity.x", "op": "<", "value": 0}])";
     CHECK(engine.ok("replay.seek", R"({"path": "replays/run.replay.json", )" + rolling + "}") ==
           parse(R"({"found": true, "count": 1, "entities": ["ball"], "truncated": false,

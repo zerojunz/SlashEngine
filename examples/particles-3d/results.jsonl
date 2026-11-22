@@ -5,8 +5,8 @@
 {"id":5,"jsonrpc":"2.0","result":{"alive":40,"bounds":[1.7802,0.1759,-0.2641,0.5664,1.3353,0.5384]}}
 {"id":6,"jsonrpc":"2.0","result":{"colors":[[0.494,0.725,0.945,1],[1,0.69,0.302,1],[1,1,1,1],[0.051,0.071,0.149,1]],"drawn":{"meshes":4},"height":90,"width":160}}
 {"id":7,"jsonrpc":"2.0","result":{"drawn":{"meshes":4},"height":90,"path":"shots/particles.png","width":160}}
-{"id":8,"jsonrpc":"2.0","result":{"changed":{"CPUParticles3D":{"emitting":false}},"id":"fountain"}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"Emitter3D":{"emitting":false}},"id":"fountain"}}
 {"id":9,"jsonrpc":"2.0","result":{"tick":130,"ticks":90}}
 {"id":10,"jsonrpc":"2.0","result":{"alive":0,"bounds":null}}
 {"id":11,"jsonrpc":"2.0","result":{"id":"embers"}}
-{"id":12,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"embers","message":"has no mesh to draw at its particles: set mesh to a model file, or add a QuadMesh or another primitive mesh","path":"/components/CPUParticles3D/mesh"}],"viewport":[160,90]}}
+{"id":12,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"embers","message":"has no mesh to draw at its particles: set mesh to a model file, or add a QuadGeometry or another primitive mesh","path":"/components/Emitter3D/mesh"}],"viewport":[160,90]}}

@@ -6,13 +6,13 @@ a glove deformed by a skin of three bones, `Shoulder`, `Elbow` and `Hand`, whose
 weighted between the bones around each joint. It holds two animations: `Wave-loop`, which swings
 the elbow and hand back and forth and loops because of its name, as Godot's import hint, and
 `Point`, which turns the shoulder. [main.scene.json](main.scene.json) draws it with a
-`MeshInstance3D` and plays it with an `AnimationPlayer` whose library is the model itself:
+`Model3D` and plays it with an `Animator` whose library is the model itself:
 
 ```json
 "arm": {
   "components": {
-    "AnimationPlayer": {"animation": "Wave-loop", "library": "models/arm.gltf", "playing": false},
-    "MeshInstance3D": {"mesh": "models/arm.gltf"},
+    "Animator": {"animation": "Wave-loop", "library": "models/arm.gltf", "playing": false},
+    "Model3D": {"mesh": "models/arm.gltf"},
     "Transform3D": {}
   }
 }

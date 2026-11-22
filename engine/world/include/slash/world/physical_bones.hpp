@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-// How each PhysicalBone3D takes part in physics, as its PhysicalBoneSimulator3D and the bones of
+// How each SimulatedBone3D takes part in physics, as its BoneSimulation3D and the bones of
 // the model it poses decide: engine/scene3d, which knows models, works it out, and
 // engine/physics3d, which knows none, builds the bodies and joints from it.
 namespace slash::world {
@@ -51,7 +51,7 @@ void set_physical_bone_linker(World& world, PhysicalBoneLinker linker);
 
 // Where the animated pose puts each physical bone's body this tick, in the world: what
 // engine/scene3d's skeleton_modifiers system works out before the physics step, and what
-// physics3d turns bodies toward with their PhysicalBone3D drive.
+// physics3d turns bodies toward with their SimulatedBone3D drive.
 using PhysicalBoneTargets = std::unordered_map<entt::entity, Affine3D>;
 void set_physical_bone_targets(World& world, PhysicalBoneTargets targets);
 // The targets as they were last set; null when none were.

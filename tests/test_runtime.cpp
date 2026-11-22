@@ -225,7 +225,7 @@ TEST_CASE("a headless game plays animations and counts the sprites it would draw
                                      "texture": "hero.png", "hframes": 2, "fps": 30}}})")
                 .ok());
     REQUIRE(platform::write_file(root + "/main.scene.json", R"({"entities": {
-        "hero": {"components": {"Transform2D": {}, "AnimatedSprite2D": {
+        "hero": {"components": {"Transform2D": {}, "Flipbook2D": {
             "sprite_frames": "hero.frames.json"}}},
         "rock": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "hero.png"}}},
         "ghost": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "gone.png"}}}
@@ -243,7 +243,7 @@ TEST_CASE("a headless game plays animations and counts the sprites it would draw
     // Three ticks of 1/60 s at 30 frames per second: frame 1, halfway through.
     const auto& world = game.value()->world();
     const entt::entity hero = world.find("hero");
-    CHECK(world.ecs().get<slash::world::AnimatedSprite2D>(hero).frame == 1);
+    CHECK(world.ecs().get<slash::world::Flipbook2D>(hero).frame == 1);
     CHECK(world.ecs().get<slash::world::Sprite2D>(hero).frame == 1);
 }
 

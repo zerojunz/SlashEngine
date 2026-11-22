@@ -445,9 +445,9 @@ std::vector<ModelSkeleton> model_skeletons(const Model& model) {
                 skeleton = node.skeleton;
                 ModelSkeleton& made = out[static_cast<std::size_t>(skeleton)];
                 if (parent_skeleton != skeleton && made.path.empty()) {
-                    // A skeleton right under another's bone hangs from a BoneAttachment3D.
+                    // A skeleton right under another's bone hangs from a BoneSocket3D.
                     const std::string under =
-                        parent_skeleton >= 0 ? join(parent_path, "BoneAttachment3D") : parent_path;
+                        parent_skeleton >= 0 ? join(parent_path, "BoneSocket3D") : parent_path;
                     std::set<std::string>& taken = skeleton_names[under];
                     std::string child = "Skeleton3D";
                     for (int n = 2; taken.contains(child); ++n) {
@@ -458,7 +458,7 @@ std::vector<ModelSkeleton> model_skeletons(const Model& model) {
                 }
                 path = made.path;
             } else {
-                // A node under a bone hangs from a BoneAttachment3D named after it.
+                // A node under a bone hangs from a BoneSocket3D named after it.
                 const bool attached = parent_skeleton >= 0 && !node.skinned;
                 path = join(attached ? join(parent_path, name) : parent_path, name);
             }

@@ -101,7 +101,7 @@ void add_bake_properties(json::Value& properties, bool three_d) {
             names_of(kPartition3DNames), "watershed", "How Recast splits the walkable area.");
         properties["geometry_parsed_geometry_type"] =
             names_property(names_of(kParsedGeometryNames), "both",
-                           "What under the region bakes: MeshInstance3D meshes, static bodies' "
+                           "What under the region bakes: Model3D meshes, static bodies' "
                            "shapes, or both.");
         properties["geometry_collision_mask"] =
             mask_property("Static bodies on these physics layers bake.");
@@ -180,9 +180,9 @@ json::Value file_schema(bool three_d) {
     out["title"] = three_d ? "SlashEngine navigation mesh" : "SlashEngine navigation polygon";
     out["description"] =
         three_d ? "Convex polygons a 3D map's paths go over, as Godot's NavigationMesh; a "
-                  "NavigationRegion3D places it."
+                  "NavArea3D places it."
                 : "Convex polygons a 2D map's paths go over, as Godot's NavigationPolygon; a "
-                  "NavigationRegion2D places it.";
+                  "NavArea2D places it.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format"};

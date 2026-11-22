@@ -22,7 +22,7 @@ namespace {
 constexpr std::string_view kBullet = R"({
   "components": {
     "Transform2D": {"position": [10.0, 20.0]},
-    "MultiplayerSynchronizer": {
+    "NetSync": {
       "properties": [
         {"path": "Transform2D/position"},
         {"path": "Transform2D/rotation", "spawn": false, "replication_mode": "on_change"},
@@ -51,7 +51,7 @@ struct Game {
         const json::Value scene = json::parse(R"({
           "entities": {
             "level": {"components": {"Transform2D": {}}},
-            "spawner": {"components": {"MultiplayerSpawner": {
+            "spawner": {"components": {"NetSpawner": {
               "spawnable_scenes": ["bullet.prefab.json"], "spawn_path": "level"}}}
           },
           "format": 1
@@ -218,12 +218,11 @@ TEST_CASE("replication: custom spawns, client authority and visibility") {
                 {"entities",
                  json::Object{
                      {std::string(id),
-                      json::Object{
-                          {"components",
-                           json::Object{{"Transform2D", json::Object{{"position", data}}},
-                                        {"MultiplayerSynchronizer", json::parse(R"({"properties": [
+                      json::Object{{"components",
+                                    json::Object{{"Transform2D", json::Object{{"position", data}}},
+                                                 {"NetSync", json::parse(R"({"properties": [
                                                         {"path": "Transform2D/position/x"}]})")
-                                                                        .value()}}}}}}},
+                                                                 .value()}}}}}}},
                 {"format", 1}};
             auto loaded = world::load_scene(w, scene);
             if (!loaded) {

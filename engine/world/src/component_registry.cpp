@@ -1,7 +1,10 @@
 #include "slash/world/component_registry.hpp"
 
+#include "slash/world/aliases.hpp"
+
 #include <algorithm>
 #include <entt/core/hashed_string.hpp>
+#include <utility>
 
 namespace slash::world {
 namespace {
@@ -163,6 +166,15 @@ Result<void> ComponentType::assign(World& world, entt::entity entity, const json
     if (!world.valid(entity)) {
         return make_error(ErrorCode::NotFound, "the entity does not exist");
     }
+    if (values.is_object() && std::ranges::any_of(values.as_object(), [&](const auto& entry) {
+            return current_field_name(name_, entry.first) != entry.first;
+        })) {
+        // Fields given by their old names (slash/world/aliases.hpp).
+        json::Value upgraded;
+        upgraded[name_] = values;
+        upgrade_components(upgraded);
+        return ops_.assign(world, type_hash_, entity, upgraded[name_], path);
+    }
     return ops_.assign(world, type_hash_, entity, values, path);
 }
 
@@ -215,15 +227,23 @@ json::Value ComponentType::schema(SchemaBuilder& builder) const {
 }
 
 const ComponentType* ComponentRegistry::find(std::string_view name) const {
-    const auto it = std::ranges::find_if(
-        types_, [&](const std::unique_ptr<ComponentType>& type) { return type->name() == name; });
+    const auto named = [&](std::string_view wanted) {
+        return std::ranges::find_if(types_, [&](const std::unique_ptr<ComponentType>& type) {
+            return type->name() == wanted;
+        });
+    };
+    auto it = named(name);
+    if (it == types_.end()) {
+        // A component's old name (slash/world/aliases.hpp).
+        if (const std::string_view current = current_component_name(name); current != name) {
+            it = named(current);
+        }
+    }
     return it == types_.end() ? nullptr : it->get();
 }
 
 ComponentType* ComponentRegistry::find_mutable(std::string_view name) {
-    const auto it = std::ranges::find_if(
-        types_, [&](const std::unique_ptr<ComponentType>& type) { return type->name() == name; });
-    return it == types_.end() ? nullptr : it->get();
+    return const_cast<ComponentType*>(std::as_const(*this).find(name)); // NOLINT
 }
 
 ComponentType& ComponentRegistry::insert(std::unique_ptr<ComponentType> type) {

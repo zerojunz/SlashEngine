@@ -11,7 +11,7 @@ a frame with dav1d, built from its C files with no assembly and one thread
 (`cmake/Dependencies.cmake`), going on from the frame before or from the key frame before a
 seek; `to_rgba` (`src/convert.cpp`) turns its YUV into RGBA8 with integer math by the sequence
 header's matrix and range. `video::install` (called by `canvas::install`) adds the `video`
-system (priority 1140, `src/video.cpp`), which plays each `VideoStreamPlayer` as Godot's
+system (priority 1140, `src/video.cpp`), which plays each `Video` as Godot's
 `NOTIFICATION_INTERNAL_PROCESS` and keeps each player's decoder and frame by entity ID
 (`video::shown`). `ui::layout` sizes and draws a player as a control, and the texture path
 `video:<id>` (`video::kTexturePrefix`) is that player's frame wherever `CanvasRenderer` takes a

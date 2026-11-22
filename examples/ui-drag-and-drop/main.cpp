@@ -32,7 +32,7 @@ namespace world = slash::world;
 
 // The slot an item is in: the control whose children hold it.
 entt::entity slot_of(world::World& w, entt::entity item) {
-    for (const auto [entity, control] : w.ecs().view<world::Control>().each()) {
+    for (const auto [entity, control] : w.ecs().view<world::Widget>().each()) {
         if (std::ranges::find(control.children, item) != control.children.end()) {
             return entity;
         }
@@ -55,13 +55,13 @@ void inventory(world::World& w, double /*tick_seconds*/) {
         if (from == entt::null || to == from) {
             continue;
         }
-        auto& left = w.ecs().get<world::Control>(from).children;
+        auto& left = w.ecs().get<world::Widget>(from).children;
         std::erase(left, item);
         if (event.id == "trash") {
             w.destroy(item);
             continue;
         }
-        auto& slot = w.ecs().get<world::Control>(to).children;
+        auto& slot = w.ecs().get<world::Widget>(to).children;
         left = slot;
         slot = {item};
     }

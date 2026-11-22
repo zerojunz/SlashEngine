@@ -82,29 +82,29 @@ void check_names(std::vector<Problem>& problems, const std::string& id, std::str
         }
         problems.push_back(
             {.id = id,
-             .path = "/components/Control/" + std::string(field) + "/" + json::pointer_escape(name),
+             .path = "/components/Widget/" + std::string(field) + "/" + json::pointer_escape(name),
              .message = std::move(message)});
     }
 }
 
-// A CodeEdit makes the TextEdit on its entity a code editor; its lines, and the lines of the
-// TextEdit's gutters, are lines of the text, and a gutter shows text or icons.
+// A CodeEditor makes the TextArea on its entity a code editor; its lines, and the lines of the
+// TextArea's gutters, are lines of the text, and a gutter shows text or icons.
 void check_code_edits(const world::World& world, std::vector<Problem>& problems) {
     std::vector<std::pair<std::string, entt::entity>> found;
     for (const auto [entity] : world.ecs().storage<entt::entity>()->each()) {
         if (!world.id_of(entity).empty() &&
-            world.ecs().any_of<world::CodeEdit, world::TextEdit>(entity)) {
+            world.ecs().any_of<world::CodeEditor, world::TextArea>(entity)) {
             found.emplace_back(world.id_of(entity), entity);
         }
     }
     std::ranges::sort(found);
     for (const auto& [id, entity] : found) {
-        const auto* edit = world.ecs().try_get<world::TextEdit>(entity);
-        const auto* code = world.ecs().try_get<world::CodeEdit>(entity);
+        const auto* edit = world.ecs().try_get<world::TextArea>(entity);
+        const auto* code = world.ecs().try_get<world::CodeEditor>(entity);
         if (edit == nullptr) {
             problems.push_back({.id = id,
-                                .path = "/components/CodeEdit",
-                                .message = "a CodeEdit makes the TextEdit on its entity a code "
+                                .path = "/components/CodeEditor",
+                                .message = "a CodeEditor makes the TextArea on its entity a code "
                                            "editor, and this one has none"});
             continue;
         }
@@ -124,14 +124,14 @@ void check_code_edits(const world::World& world, std::vector<Problem>& problems)
                   std::pair{"bookmarked_lines", &code->bookmarked_lines},
                   std::pair{"executing_lines", &code->executing_lines}}) {
                 for (std::size_t i = 0; i < lines->size(); ++i) {
-                    past("/components/CodeEdit/" + std::string(field) + "/" + std::to_string(i),
+                    past("/components/CodeEditor/" + std::string(field) + "/" + std::to_string(i),
                          (*lines)[i]);
                 }
             }
         }
         for (std::size_t g = 0; g < edit->gutters.size(); ++g) {
             const world::TextEditGutter& gutter = edit->gutters[g];
-            const std::string at = "/components/TextEdit/gutters/" + std::to_string(g);
+            const std::string at = "/components/TextArea/gutters/" + std::to_string(g);
             if (gutter.type != "string" && gutter.type != "icon") {
                 std::string message =
                     R"(a gutter shows "string" or "icon", not ")" + gutter.type + "\"";
@@ -264,17 +264,15 @@ text::Fonts* fonts(const world::World& world) {
 bool is_control(const world::World& world, entt::entity entity) {
     return world.valid(entity) &&
            (world.ecs()
-                .any_of<world::Control, world::Label, world::ColorRect, world::Panel,
-                        world::TextureRect, world::NinePatchRect, world::ProgressBar,
-                        world::VideoStreamPlayer>(entity) ||
+                .any_of<world::Widget, world::Label, world::ColorFill, world::Panel, world::Picture,
+                        world::NineSlice, world::ProgressBar, world::Video>(entity) ||
             world.ecs()
-                .any_of<world::Button, world::CheckBox, world::CheckButton, world::OptionButton,
-                        world::MenuButton, world::TextureButton, world::LineEdit, world::TextEdit,
+                .any_of<world::Button, world::CheckBox, world::ToggleSwitch, world::Dropdown,
+                        world::MenuButton, world::ImageButton, world::TextField, world::TextArea,
                         world::Slider, world::ScrollBar>(entity) ||
             world.ecs()
-                .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
-                        world::CenterContainer, world::FlowContainer, world::PanelContainer,
-                        world::ScrollContainer>(entity));
+                .any_of<world::StackBox, world::GridBox, world::MarginBox, world::CenterBox,
+                        world::FlowBox, world::PanelBox, world::ScrollBox>(entity));
 }
 
 std::vector<std::string_view> control_classes(const world::World& world, entt::entity entity) {
@@ -286,44 +284,44 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     if (ecs.all_of<world::CheckBox>(entity)) {
         classes.emplace_back("CheckBox");
     }
-    if (ecs.all_of<world::CheckButton>(entity)) {
-        classes.emplace_back("CheckButton");
+    if (ecs.all_of<world::ToggleSwitch>(entity)) {
+        classes.emplace_back("ToggleSwitch");
     }
-    if (ecs.all_of<world::OptionButton>(entity)) {
-        classes.emplace_back("OptionButton");
+    if (ecs.all_of<world::Dropdown>(entity)) {
+        classes.emplace_back("Dropdown");
     }
     if (ecs.all_of<world::MenuButton>(entity)) {
         classes.emplace_back("MenuButton");
     }
-    if (ecs.all_of<world::TextureButton>(entity)) {
-        classes.emplace_back("TextureButton");
+    if (ecs.all_of<world::ImageButton>(entity)) {
+        classes.emplace_back("ImageButton");
     }
-    if (ecs.all_of<world::LineEdit>(entity)) {
-        classes.emplace_back("LineEdit");
+    if (ecs.all_of<world::TextField>(entity)) {
+        classes.emplace_back("TextField");
     }
-    if (ecs.all_of<world::TextEdit, world::CodeEdit>(entity)) {
-        classes.emplace_back("CodeEdit");
+    if (ecs.all_of<world::TextArea, world::CodeEditor>(entity)) {
+        classes.emplace_back("CodeEditor");
     }
-    if (ecs.all_of<world::TextEdit>(entity)) {
-        classes.emplace_back("TextEdit");
+    if (ecs.all_of<world::TextArea>(entity)) {
+        classes.emplace_back("TextArea");
     }
     if (ecs.all_of<world::Label>(entity)) {
         classes.emplace_back("Label");
     }
-    if (ecs.all_of<world::ColorRect>(entity)) {
-        classes.emplace_back("ColorRect");
+    if (ecs.all_of<world::ColorFill>(entity)) {
+        classes.emplace_back("ColorFill");
     }
     if (ecs.all_of<world::Panel>(entity)) {
         classes.emplace_back("Panel");
     }
-    if (ecs.all_of<world::TextureRect>(entity)) {
-        classes.emplace_back("TextureRect");
+    if (ecs.all_of<world::Picture>(entity)) {
+        classes.emplace_back("Picture");
     }
-    if (ecs.all_of<world::NinePatchRect>(entity)) {
-        classes.emplace_back("NinePatchRect");
+    if (ecs.all_of<world::NineSlice>(entity)) {
+        classes.emplace_back("NineSlice");
     }
-    if (ecs.all_of<world::VideoStreamPlayer>(entity)) {
-        classes.emplace_back("VideoStreamPlayer");
+    if (ecs.all_of<world::Video>(entity)) {
+        classes.emplace_back("Video");
     }
     if (ecs.all_of<world::ProgressBar>(entity)) {
         classes.emplace_back("ProgressBar");
@@ -334,35 +332,35 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
     if (const auto* bar = ecs.try_get<world::ScrollBar>(entity); bar != nullptr) {
         classes.emplace_back(bar->vertical ? "VScrollBar" : "HScrollBar");
     }
-    if (const auto* box = ecs.try_get<world::BoxContainer>(entity); box != nullptr) {
+    if (const auto* box = ecs.try_get<world::StackBox>(entity); box != nullptr) {
         classes.emplace_back(box->vertical ? "VBoxContainer" : "HBoxContainer");
     }
-    if (ecs.all_of<world::GridContainer>(entity)) {
-        classes.emplace_back("GridContainer");
+    if (ecs.all_of<world::GridBox>(entity)) {
+        classes.emplace_back("GridBox");
     }
-    if (ecs.all_of<world::MarginContainer>(entity)) {
-        classes.emplace_back("MarginContainer");
+    if (ecs.all_of<world::MarginBox>(entity)) {
+        classes.emplace_back("MarginBox");
     }
-    if (ecs.all_of<world::CenterContainer>(entity)) {
-        classes.emplace_back("CenterContainer");
+    if (ecs.all_of<world::CenterBox>(entity)) {
+        classes.emplace_back("CenterBox");
     }
-    if (const auto* flow = ecs.try_get<world::FlowContainer>(entity); flow != nullptr) {
+    if (const auto* flow = ecs.try_get<world::FlowBox>(entity); flow != nullptr) {
         classes.emplace_back(flow->vertical ? "VFlowContainer" : "HFlowContainer");
     }
-    if (ecs.all_of<world::PanelContainer>(entity)) {
-        classes.emplace_back("PanelContainer");
+    if (ecs.all_of<world::PanelBox>(entity)) {
+        classes.emplace_back("PanelBox");
     }
-    if (ecs.all_of<world::ScrollContainer>(entity)) {
-        classes.emplace_back("ScrollContainer");
+    if (ecs.all_of<world::ScrollBox>(entity)) {
+        classes.emplace_back("ScrollBox");
     }
     if (classes.empty()) {
-        classes.emplace_back("Control");
+        classes.emplace_back("Widget");
     }
     return classes;
 }
 
 std::string_view mouse_filter_name(const world::World& world, entt::entity entity) {
-    const auto* control = world.ecs().try_get<world::Control>(entity);
+    const auto* control = world.ecs().try_get<world::Widget>(entity);
     if (control != nullptr && !control->mouse_filter.empty()) {
         if (control->mouse_filter == "ignore" || control->mouse_filter == "pass") {
             return control->mouse_filter;
@@ -370,18 +368,20 @@ std::string_view mouse_filter_name(const world::World& world, entt::entity entit
         return "stop";
     }
     const std::vector<std::string_view> classes = control_classes(world, entity);
-    const std::string_view type = classes.empty() ? "Control" : classes.front();
-    if (type == "Label" || type == "NinePatchRect") {
+    const std::string_view type = classes.empty() ? "Widget" : classes.front();
+    if (type == "Label" || type == "NineSlice") {
         return "ignore";
     }
-    if (type == "TextureRect" || (type.ends_with("Container") && type != "PanelContainer")) {
+    if (type == "Picture" ||
+        (type.ends_with("Container") ||
+         (type.ends_with("Box") && type != "PanelBox" && type != "CheckBox"))) {
         return "pass";
     }
     return "stop";
 }
 
 std::string_view focus_mode_name(const world::World& world, entt::entity entity) {
-    const auto* control = world.ecs().try_get<world::Control>(entity);
+    const auto* control = world.ecs().try_get<world::Widget>(entity);
     const std::string_view mode = control != nullptr ? control->focus_mode : std::string_view();
     if (mode == "all" || mode == "click" || mode == "none" || mode == "accessibility") {
         return mode;
@@ -393,7 +393,7 @@ std::string_view focus_mode_name(const world::World& world, entt::entity entity)
     }
     return button_of(world, entity) != nullptr ||
                    world.ecs()
-                       .any_of<world::TextureButton, world::LineEdit, world::TextEdit,
+                       .any_of<world::ImageButton, world::TextField, world::TextArea,
                                world::Slider>(entity)
                ? "all"
                : "none";
@@ -416,10 +416,10 @@ const world::Button* button_of(const world::World& world, entt::entity entity) {
     if (const auto* box = ecs.try_get<world::CheckBox>(entity); box != nullptr) {
         return box;
     }
-    if (const auto* check = ecs.try_get<world::CheckButton>(entity); check != nullptr) {
+    if (const auto* check = ecs.try_get<world::ToggleSwitch>(entity); check != nullptr) {
         return check;
     }
-    if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+    if (const auto* option = ecs.try_get<world::Dropdown>(entity); option != nullptr) {
         return option;
     }
     return ecs.try_get<world::MenuButton>(entity);
@@ -436,10 +436,10 @@ world::Button* button_of(world::World& world, entt::entity entity) {
     if (auto* box = ecs.try_get<world::CheckBox>(entity); box != nullptr) {
         return box;
     }
-    if (auto* check = ecs.try_get<world::CheckButton>(entity); check != nullptr) {
+    if (auto* check = ecs.try_get<world::ToggleSwitch>(entity); check != nullptr) {
         return check;
     }
-    if (auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+    if (auto* option = ecs.try_get<world::Dropdown>(entity); option != nullptr) {
         return option;
     }
     return ecs.try_get<world::MenuButton>(entity);
@@ -456,11 +456,11 @@ std::string_view button_type(const world::World& world, entt::entity entity) {
     if (ecs.all_of<world::CheckBox>(entity)) {
         return "CheckBox";
     }
-    if (ecs.all_of<world::CheckButton>(entity)) {
-        return "CheckButton";
+    if (ecs.all_of<world::ToggleSwitch>(entity)) {
+        return "ToggleSwitch";
     }
-    if (ecs.all_of<world::OptionButton>(entity)) {
-        return "OptionButton";
+    if (ecs.all_of<world::Dropdown>(entity)) {
+        return "Dropdown";
     }
     return ecs.all_of<world::MenuButton>(entity) ? "MenuButton" : "";
 }
@@ -470,14 +470,14 @@ std::vector<world::PopupMenuItem> popup_items(const world::World& world, entt::e
         return {};
     }
     const auto& ecs = world.ecs();
-    if (const auto* popup = ecs.try_get<world::PopupMenu>(owner); popup != nullptr) {
+    if (const auto* popup = ecs.try_get<world::PopupList>(owner); popup != nullptr) {
         return popup->items;
     }
     if (const auto* menu = ecs.try_get<world::MenuButton>(owner); menu != nullptr) {
         return menu->items;
     }
     std::vector<world::PopupMenuItem> items;
-    if (const auto* option = ecs.try_get<world::OptionButton>(owner); option != nullptr) {
+    if (const auto* option = ecs.try_get<world::Dropdown>(owner); option != nullptr) {
         items.reserve(option->items.size());
         for (std::size_t i = 0; i < option->items.size(); ++i) {
             const world::OptionButtonItem& each = option->items[i];
@@ -603,29 +603,29 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
     }
     std::ranges::sort(entities);
     check_buttons(world, problems);
-    // A CodeHighlighter colors the TextEdit on its entity, by color regions that keep to
+    // A SyntaxColors colors the TextArea on its entity, by color regions that keep to
     // add_color_region's rules.
     std::vector<std::pair<std::string, entt::entity>> highlighters;
-    for (const auto [entity, highlighter] : world.ecs().view<world::CodeHighlighter>().each()) {
+    for (const auto [entity, highlighter] : world.ecs().view<world::SyntaxColors>().each()) {
         if (!world.id_of(entity).empty()) {
             highlighters.emplace_back(world.id_of(entity), entity);
         }
     }
     std::ranges::sort(highlighters);
     for (const auto& [id, entity] : highlighters) {
-        const auto& highlighter = world.ecs().get<world::CodeHighlighter>(entity);
-        if (!world.ecs().all_of<world::TextEdit>(entity)) {
+        const auto& highlighter = world.ecs().get<world::SyntaxColors>(entity);
+        if (!world.ecs().all_of<world::TextArea>(entity)) {
             problems.push_back({.id = id,
-                                .path = "/components/CodeHighlighter",
-                                .message = "a CodeHighlighter colors the TextEdit on its entity, "
+                                .path = "/components/SyntaxColors",
+                                .message = "a SyntaxColors colors the TextArea on its entity, "
                                            "and this one has none"});
         }
         for (const auto& [key, color] : highlighter.color_regions) {
             if (std::string error = color_region_error(highlighter, key); !error.empty()) {
-                problems.push_back({.id = id,
-                                    .path = "/components/CodeHighlighter/color_regions/" +
-                                            json::pointer_escape(key),
-                                    .message = std::move(error)});
+                problems.push_back(
+                    {.id = id,
+                     .path = "/components/SyntaxColors/color_regions/" + json::pointer_escape(key),
+                     .message = std::move(error)});
             }
         }
     }
@@ -634,13 +634,13 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
         const auto& ecs = world.ecs();
         // One container places the children; the first in control_classes' order.
         const std::array<std::pair<std::string_view, bool>, 7> containers{{
-            {"BoxContainer", ecs.all_of<world::BoxContainer>(entity)},
-            {"GridContainer", ecs.all_of<world::GridContainer>(entity)},
-            {"MarginContainer", ecs.all_of<world::MarginContainer>(entity)},
-            {"CenterContainer", ecs.all_of<world::CenterContainer>(entity)},
-            {"FlowContainer", ecs.all_of<world::FlowContainer>(entity)},
-            {"PanelContainer", ecs.all_of<world::PanelContainer>(entity)},
-            {"ScrollContainer", ecs.all_of<world::ScrollContainer>(entity)},
+            {"StackBox", ecs.all_of<world::StackBox>(entity)},
+            {"GridBox", ecs.all_of<world::GridBox>(entity)},
+            {"MarginBox", ecs.all_of<world::MarginBox>(entity)},
+            {"CenterBox", ecs.all_of<world::CenterBox>(entity)},
+            {"FlowBox", ecs.all_of<world::FlowBox>(entity)},
+            {"PanelBox", ecs.all_of<world::PanelBox>(entity)},
+            {"ScrollBox", ecs.all_of<world::ScrollBox>(entity)},
         }};
         std::string_view first;
         for (const auto& [type, has] : containers) {
@@ -673,36 +673,36 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
         if (const world::Button* button = button_of(world, entity); button != nullptr) {
             check_language(button_type(world, entity), button->language);
         }
-        if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
-            check_language("LineEdit", edit->language);
+        if (const auto* edit = ecs.try_get<world::TextField>(entity); edit != nullptr) {
+            check_language("TextField", edit->language);
             if (to_utf32(edit->secret_character).size() > 1) {
                 problems.push_back({.id = id,
-                                    .path = "/components/LineEdit/secret_character",
+                                    .path = "/components/TextField/secret_character",
                                     .message = "a secret character is one character; the "
                                                "others are left out"});
             }
-            if (ecs.any_of<world::Label, world::TextureButton>(entity) ||
+            if (ecs.any_of<world::Label, world::ImageButton>(entity) ||
                 button_of(world, entity) != nullptr) {
                 problems.push_back(
                     {.id = id,
-                     .path = "/components/LineEdit",
-                     .message = "a LineEdit draws its own text and takes its own input; put the "
+                     .path = "/components/TextField",
+                     .message = "a TextField draws its own text and takes its own input; put the "
                                 "Label or button in another control"});
             }
         }
-        if (const auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
-            check_language("TextEdit", edit->language);
-            if (ecs.any_of<world::Label, world::TextureButton, world::LineEdit>(entity) ||
+        if (const auto* edit = ecs.try_get<world::TextArea>(entity); edit != nullptr) {
+            check_language("TextArea", edit->language);
+            if (ecs.any_of<world::Label, world::ImageButton, world::TextField>(entity) ||
                 button_of(world, entity) != nullptr) {
                 problems.push_back(
                     {.id = id,
-                     .path = "/components/TextEdit",
-                     .message = "a TextEdit draws its own text and takes its own input; put the "
-                                "Label, button or LineEdit in another control"});
+                     .path = "/components/TextArea",
+                     .message = "a TextArea draws its own text and takes its own input; put the "
+                                "Label, button or TextField in another control"});
             }
         }
 
-        const auto* control = ecs.try_get<world::Control>(entity);
+        const auto* control = ecs.try_get<world::Widget>(entity);
         if (control == nullptr) {
             continue;
         }
@@ -721,7 +721,7 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
                     [](const ThemeItems& t) -> const auto& { return t.styles; });
         for (const auto& [name, path] : control->theme_override_icons) {
             const std::string at =
-                "/components/Control/theme_override_icons/" + json::pointer_escape(name);
+                "/components/Widget/theme_override_icons/" + json::pointer_escape(name);
             if (std::string error = icon_path_error(path); !error.empty()) {
                 problems.push_back({.id = id, .path = at, .message = std::move(error)});
                 continue;
@@ -746,14 +746,14 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
             }
             if (!error->second.empty()) {
                 problems.push_back({.id = id,
-                                    .path = "/components/Control/theme_override_fonts/" +
+                                    .path = "/components/Widget/theme_override_fonts/" +
                                             json::pointer_escape(name),
                                     .message = error->second});
             }
         }
         for (const auto& [name, doc] : control->theme_override_styles) {
             const std::string at =
-                "/components/Control/theme_override_styles/" + json::pointer_escape(name);
+                "/components/Widget/theme_override_styles/" + json::pointer_escape(name);
             const std::vector<json::ValidationError> errors = validate_style_box(doc);
             for (const json::ValidationError& error : errors) {
                 problems.push_back({.id = id, .path = at + error.path, .message = error.message});

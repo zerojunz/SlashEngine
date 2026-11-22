@@ -192,7 +192,7 @@ struct CollisionCache {
     std::mutex mutex;
     struct Entry {
         std::weak_ptr<const Model> model;
-        std::shared_ptr<const std::vector<world::CollisionShape3D>> shapes;
+        std::shared_ptr<const std::vector<world::Collider3D>> shapes;
     };
     std::map<const Model*, Entry> entries;
 
@@ -204,7 +204,7 @@ struct CollisionCache {
             if (entry.shapes == nullptr) {
                 continue;
             }
-            for (const world::CollisionShape3D& shape : *entry.shapes) {
+            for (const world::Collider3D& shape : *entry.shapes) {
                 part.bytes += sizeof(shape) +
                               ((shape.points.capacity() + shape.faces.capacity()) * sizeof(Vec3));
             }
@@ -220,11 +220,11 @@ CollisionCache* find_cache(const world::World& world) {
     return found != nullptr ? found->get() : nullptr;
 }
 
-std::shared_ptr<const std::vector<world::CollisionShape3D>> shapes_of(const Model& model) {
+std::shared_ptr<const std::vector<world::Collider3D>> shapes_of(const Model& model) {
     if (model.collision.empty()) {
         return nullptr;
     }
-    return std::make_shared<const std::vector<world::CollisionShape3D>>(collision_shapes(model));
+    return std::make_shared<const std::vector<world::Collider3D>>(collision_shapes(model));
 }
 
 } // namespace
@@ -346,11 +346,11 @@ Result<std::size_t> generate_collision(Model& model, std::string_view kind,
     return model.collision.size();
 }
 
-std::vector<world::CollisionShape3D> collision_shapes(const Model& model) {
-    std::vector<world::CollisionShape3D> out;
+std::vector<world::Collider3D> collision_shapes(const Model& model) {
+    std::vector<world::Collider3D> out;
     out.reserve(model.collision.size());
     for (const ModelCollision& collision : model.collision) {
-        world::CollisionShape3D shape;
+        world::Collider3D shape;
         if (collision.convex) {
             shape.shape = "convex_polygon";
             shape.points = collision.points;
@@ -369,9 +369,9 @@ std::vector<world::CollisionShape3D> collision_shapes(const Model& model) {
     return out;
 }
 
-std::shared_ptr<const std::vector<world::CollisionShape3D>> model_shapes(const world::World& world,
-                                                                         entt::entity entity) {
-    const auto* mesh = world.ecs().try_get<world::MeshInstance3D>(entity);
+std::shared_ptr<const std::vector<world::Collider3D>> model_shapes(const world::World& world,
+                                                                   entt::entity entity) {
+    const auto* mesh = world.ecs().try_get<world::Model3D>(entity);
     // A broken piece of a model collides as its own hull, not the model's shapes.
     if (mesh == nullptr || mesh->mesh.empty() || !is_model_path(mesh->mesh) ||
         world.ecs().all_of<world::FracturePiece3D>(entity)) {
@@ -424,7 +424,7 @@ void install_model_collision(world::World& world, ModelLoader models) {
 
 std::vector<ModelBody> model_bodies(const world::World& world) {
     std::vector<ModelBody> bodies;
-    for (const entt::entity entity : world.ecs().view<const world::MeshInstance3D>()) {
+    for (const entt::entity entity : world.ecs().view<const world::Model3D>()) {
         if (auto shapes = model_shapes(world, entity); shapes != nullptr) {
             bodies.push_back({.entity = entity, .shapes = std::move(shapes)});
         }

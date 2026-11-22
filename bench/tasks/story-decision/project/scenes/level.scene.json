@@ -2,7 +2,7 @@
   "entities": {
     "slime": {
       "components": {
-        "CharacterBody2D": {},
+        "CharacterMover2D": {},
         "StoryRef": {
           "ids": ["character/slime"]
         },

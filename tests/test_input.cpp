@@ -185,7 +185,7 @@ TEST_CASE("text editing actions use Ctrl on a PC, and Command and Option on a Ma
     CHECK(pc.find("ui_text_backspace_all_to_left")->events.empty());
     CHECK(
         mac.find_event("ui_text_backspace_all_to_left", key(Key::Backspace, {.meta = true}), true));
-    // TextEdit's: new lines, indenting, scrolling and focus mode.
+    // TextArea's: new lines, indenting, scrolling and focus mode.
     CHECK(pc.find_event("ui_text_newline", key(Key::Enter, {}), true));
     CHECK(pc.find_event("ui_text_newline_blank", key(Key::Enter, {.ctrl = true}), true));
     CHECK(mac.find_event("ui_text_newline_above", key(Key::Enter, {.shift = true, .meta = true}),

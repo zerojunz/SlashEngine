@@ -34,7 +34,7 @@
     },
     "ground": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "g": "grass"
           },
@@ -46,14 +46,14 @@
     },
     "health": {
       "components": {
-        "Control": {
+        "ProgressBar": {
+          "value": 60.0
+        },
+        "Widget": {
           "offset_bottom": 20.0,
           "offset_left": 220.0,
           "offset_right": 312.0,
           "offset_top": 8.0
-        },
-        "ProgressBar": {
-          "value": 60.0
         }
       }
     },
@@ -62,7 +62,7 @@
         "Button": {
           "text": "Pause"
         },
-        "Control": {
+        "Widget": {
           "offset_bottom": 26.0,
           "offset_left": 130.0,
           "offset_right": 190.0,
@@ -82,14 +82,14 @@
     },
     "score": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "Score 120"
+        },
+        "Widget": {
           "offset_bottom": 22.0,
           "offset_left": 8.0,
           "offset_right": 108.0,
           "offset_top": 6.0
-        },
-        "Label": {
-          "text": "Score 120"
         }
       }
     },
@@ -105,7 +105,7 @@
     },
     "sparks": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 6,
           "gravity": [0.0, 0.0],
           "initial_velocity_max": 30.0,

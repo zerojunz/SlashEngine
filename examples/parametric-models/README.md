@@ -1,7 +1,7 @@
 # Parametric models
 
 Props written as text: a `.model.json` recipe names its parameters, materials and parts, and the
-engine builds the mesh when it loads the file, so a `MeshInstance3D` draws a recipe as it draws a
+engine builds the mesh when it loads the file, so a `Model3D` draws a recipe as it draws a
 glTF file. Parts are Godot's CSG shapes (box, sphere, cylinder, torus, polygon pushed, spun or swept
 along a path) and its capsule and prism meshes, combined with their children in order as Godot's
 CSG nodes are, with bevels on boxes and cylinders and arrays of copies.
@@ -26,7 +26,7 @@ be an expression over them, in Godot's `Expression` syntax:
 Each top-level part is a node of the model with a mesh of its own: the top, rounded by its bevel,
 and the four legs, two arrays of two. Making the table longer is changing `width`; the legs move
 with it. [props/vase.model.json](props/vase.model.json) spins a profile around y, as Godot's
-`CSGPolygon3D` in spin mode, and cuts its mouth out with a cylinder child whose `operation` is
+`SolidExtrusion3D` in spin mode, and cuts its mouth out with a cylinder child whose `operation` is
 `subtraction`.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

@@ -50,7 +50,7 @@ Vec4 times(Vec4 a, Vec4 b) {
 }
 
 const std::string* model_path(const world::World& world, entt::entity entity) {
-    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<const world::Model3D>(entity);
     if (instance == nullptr || instance->mesh.empty() || !is_model_path(instance->mesh)) {
         return nullptr;
     }
@@ -158,7 +158,7 @@ struct Loaded {
     std::uint64_t version = 0;
 };
 
-Result<Loaded> groom_of(const world::World& world, const world::HairInstance3D& hair) {
+Result<Loaded> groom_of(const world::World& world, const world::Hair3D& hair) {
     if (hair.groom.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           "names no groom: set groom to a .groom.json file");
@@ -170,7 +170,7 @@ Result<Loaded> groom_of(const world::World& world, const world::HairInstance3D& 
     }
     if (loaded.value().groom->space != "3d") {
         return make_error(ErrorCode::InvalidArgument,
-                          "\"" + hair.groom + "\" is a 2D groom; a HairInstance3D needs a 3D one");
+                          "\"" + hair.groom + "\" is a 2D groom; a Hair3D needs a 3D one");
     }
     return Loaded{.groom = loaded.value().groom, .version = loaded.value().version};
 }
@@ -200,7 +200,7 @@ void groom_points(const world::Groom& groom, const HairRoot& root, real_t size,
 } // namespace
 
 std::string hair_key(const world::World& world, entt::entity entity) {
-    const auto* hair = world.ecs().try_get<const world::HairInstance3D>(entity);
+    const auto* hair = world.ecs().try_get<const world::Hair3D>(entity);
     const std::string* path = model_path(world, entity);
     if (hair == nullptr || path == nullptr) {
         return {};
@@ -231,9 +231,9 @@ std::string hair_key(const world::World& world, entt::entity entity) {
 namespace {
 
 Result<std::shared_ptr<const HairGrowth3D>> grow(const world::World& world, entt::entity entity) {
-    const auto* hair = world.ecs().try_get<const world::HairInstance3D>(entity);
+    const auto* hair = world.ecs().try_get<const world::Hair3D>(entity);
     if (hair == nullptr) {
-        return make_error(ErrorCode::InvalidArgument, "has no HairInstance3D");
+        return make_error(ErrorCode::InvalidArgument, "has no Hair3D");
     }
     auto groom_loaded = groom_of(world, *hair);
     if (!groom_loaded) {
@@ -241,7 +241,7 @@ Result<std::shared_ptr<const HairGrowth3D>> grow(const world::World& world, entt
     }
     if (model_path(world, entity) == nullptr) {
         return make_error(ErrorCode::InvalidArgument,
-                          "hair needs a MeshInstance3D drawing a model file to grow on");
+                          "hair needs a Model3D drawing a model file to grow on");
     }
     auto section = model_section(world, entity, hair->section);
     if (!section) {
@@ -532,20 +532,19 @@ render::Image hair_shell_image() {
 
 std::vector<Problem> check_hair(const world::World& world) {
     std::vector<Problem> problems;
-    for (const auto [entity, hair] : world.ecs().view<const world::HairInstance3D>().each()) {
+    for (const auto [entity, hair] : world.ecs().view<const world::Hair3D>().each()) {
         if (auto groom = groom_of(world, hair); !groom) {
-            problems.push_back({entity, "/components/HairInstance3D/groom", groom.error().message});
+            problems.push_back({entity, "/components/Hair3D/groom", groom.error().message});
             continue;
         }
         if (model_path(world, entity) == nullptr) {
-            problems.push_back({entity, "/components/HairInstance3D",
-                                "hair needs a MeshInstance3D drawing a model file to grow on; "
+            problems.push_back({entity, "/components/Hair3D",
+                                "hair needs a Model3D drawing a model file to grow on; "
                                 "it draws nothing until it has one"});
             continue;
         }
         if (auto growth = hair_growth(world, entity); !growth) {
-            problems.push_back(
-                {entity, "/components/HairInstance3D/section", growth.error().message});
+            problems.push_back({entity, "/components/Hair3D/section", growth.error().message});
         }
     }
     return problems;

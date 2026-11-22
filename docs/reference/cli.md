@@ -150,7 +150,7 @@ F3 shows and hides a panel in the window's top left corner, for the person watch
 
 The buttons run the `pause`, `play` and `step` commands through the game's session, as an agent
 would, so a recording keeps the steps and `undo` takes one back. Shapes draws every
-`CollisionShape2D` and `CollisionPolygon2D` over the world as Godot's Visible Collision Shapes
+`Collider2D` and `PolygonCollider2D` over the world as Godot's Visible Collision Shapes
 does, whether or not the panel shows. The game never sees F3, or clicks and touches on the
 panel. An agent shows the panel and the shapes with
 [`debug.overlay`](commands.md#debugoverlay), and sees the shapes itself in
@@ -191,7 +191,7 @@ recipe, a [`.water.json`](scene-format.md#water) recipe, or a
 recipe), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the brains its NPC agents name, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
-file, and one a scene's `MeshInstance3D` names, is converted with the artist's own Blender first
+file, and one a scene's `Model3D` names, is converted with the artist's own Blender first
 if it hasn't been (`SLASH_BLENDER_PATH`; see [Blender models](scene-format.md#blender-models)).
 
 ```bash
@@ -217,27 +217,27 @@ reported at `/shader` with the shader file and line.
 {"instructions":5,"valid":true}
 ```
 
-Each [`TileMapLayer`](scene-format.md#tile-map-layers) in a scene or prefab must use a tile set
+Each [`TileLayer2D`](scene-format.md#tile-map-layers) in a scene or prefab must use a tile set
 that loads, and its legend and rows must name tiles there:
 
 ```json
-{"errors":[{"message":"the tile set has no tile named \"watr\"; did you mean \"water\"?","path":"/entities/map/components/TileMapLayer/legend/w"}],"valid":false}
+{"errors":[{"message":"the tile set has no tile named \"watr\"; did you mean \"water\"?","path":"/entities/map/components/TileLayer2D/legend/w"}],"valid":false}
 ```
 
-Each [`AnimationPlayer`](scene-format.md#animations) must use a library that loads, with the
+Each [`Animator`](scene-format.md#animations) must use a library that loads, with the
 animation it names, and its `targets` must name every target the library's tracks use:
 
 ```json
-{"errors":[{"message":"no entity for target \"sword\", which hero.anim.json's tracks name; add it to targets; did you mean \"swrd\"?","path":"/entities/hero/components/AnimationPlayer/targets"}],"valid":false}
+{"errors":[{"message":"no entity for target \"sword\", which hero.anim.json's tracks name; add it to targets; did you mean \"swrd\"?","path":"/entities/hero/components/Animator/targets"}],"valid":false}
 ```
 
-Each [`AnimationTree`](scene-format.md#animation-trees) must use a tree and libraries that load,
+Each [`AnimationGraph`](scene-format.md#animation-trees) must use a tree and libraries that load,
 with every animation and filter track the tree names, a `root_motion_track` some animation
 moves, `parameters` the tree has with values they take and `targets` for every target the
 tracks use, and a deterministic tree needs a `RESET` key for each value track:
 
 ```json
-{"errors":[{"message":"hero.animtree.json has no parameter \"speed/blend_amout\"; did you mean \"speed/blend_amount\"?","path":"/entities/hero/components/AnimationTree/parameters/speed~1blend_amout"}],"valid":false}
+{"errors":[{"message":"hero.animtree.json has no parameter \"speed/blend_amout\"; did you mean \"speed/blend_amount\"?","path":"/entities/hero/components/AnimationGraph/parameters/speed~1blend_amout"}],"valid":false}
 ```
 
 A scene's [controls](scene-format.md#ui-and-text) must lay out as written: each `children`
@@ -246,15 +246,15 @@ container, theme override names are ones the control's types have, style box ove
 valid, and themes, theme type variations, fonts and textures load:
 
 ```json
-{"errors":[{"message":"a control can't be its own child","path":"/entities/body/components/Control/children/0"},{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/entities/hint/components/Control/theme_override_colors/font_colour"}],"valid":false}
+{"errors":[{"message":"a control can't be its own child","path":"/entities/body/components/Widget/children/0"},{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/entities/hint/components/Widget/theme_override_colors/font_colour"}],"valid":false}
 ```
 
-Each `GPUParticles2D`'s [`sub_emitter`](scene-format.md#sub-emitters) must name another emitter
+Each `GpuEmitter2D`'s [`sub_emitter`](scene-format.md#sub-emitters) must name another emitter
 that no emitter whose ID sorts first already has, without looping back or making a chain of more
 than 8:
 
 ```json
-{"errors":[{"message":"\"sparks\" is already the sub-emitter of \"rockets\"","path":"/entities/zebra/components/GPUParticles2D/sub_emitter"}],"valid":false}
+{"errors":[{"message":"\"sparks\" is already the sub-emitter of \"rockets\"","path":"/entities/zebra/components/GpuEmitter2D/sub_emitter"}],"valid":false}
 ```
 
 A theme file's types must be control types or variations of them, with the items those types
@@ -264,7 +264,7 @@ have:
 {"errors":[{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/types/Label/colors/font_colour"}],"valid":false}
 ```
 
-A model is checked as `MeshInstance3D` loads it: a file that doesn't load is one error at `""`
+A model is checked as `Model3D` loads it: a file that doesn't load is one error at `""`
 saying why, and an image beside it that can't be read or decoded is one at its
 `/images/<index>/uri`:
 

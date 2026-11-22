@@ -76,10 +76,10 @@ const world::Button* button_of(const world::World& world, entt::entity entity) {
     if (const auto* b = ecs.try_get<world::CheckBox>(entity); b != nullptr) {
         return b;
     }
-    if (const auto* b = ecs.try_get<world::CheckButton>(entity); b != nullptr) {
+    if (const auto* b = ecs.try_get<world::ToggleSwitch>(entity); b != nullptr) {
         return b;
     }
-    if (const auto* b = ecs.try_get<world::OptionButton>(entity); b != nullptr) {
+    if (const auto* b = ecs.try_get<world::Dropdown>(entity); b != nullptr) {
         return b;
     }
     if (const auto* b = ecs.try_get<world::MenuButton>(entity); b != nullptr) {
@@ -106,10 +106,10 @@ json::Value screen(command::Session& session, const json::Value& args) {
         } else if (const auto percent = layout.percentages.find(placed.entity);
                    percent != layout.percentages.end()) {
             text = percent->second.source;
-        } else if (const auto* edit = ecs.try_get<world::LineEdit>(placed.entity);
+        } else if (const auto* edit = ecs.try_get<world::TextField>(placed.entity);
                    edit != nullptr) {
             text = edit->text;
-        } else if (const auto* area = ecs.try_get<world::TextEdit>(placed.entity);
+        } else if (const auto* area = ecs.try_get<world::TextArea>(placed.entity);
                    area != nullptr) {
             text = area->text;
         }
@@ -150,7 +150,7 @@ json::Array ui_list(command::Session& session) {
         json::Value item;
         std::string label;
         bool enabled = true;
-        if (const auto* option = ecs.try_get<world::OptionButton>(e); option != nullptr) {
+        if (const auto* option = ecs.try_get<world::Dropdown>(e); option != nullptr) {
             item["kind"] = "combo";
             json::Array options;
             for (const world::OptionButtonItem& entry : option->items) {
@@ -165,7 +165,7 @@ json::Array ui_list(command::Session& session) {
             }
             label = option->text;
             enabled = !option->disabled;
-        } else if (ecs.any_of<world::CheckBox, world::CheckButton>(e)) {
+        } else if (ecs.any_of<world::CheckBox, world::ToggleSwitch>(e)) {
             const world::Button* button = button_of(world, e);
             item["kind"] = "checkbox";
             item["checked"] = button->button_pressed;
@@ -180,7 +180,7 @@ json::Array ui_list(command::Session& session) {
             }
             label = button->text;
             enabled = !button->disabled;
-        } else if (const auto* texture = ecs.try_get<world::TextureButton>(e); texture != nullptr) {
+        } else if (const auto* texture = ecs.try_get<world::ImageButton>(e); texture != nullptr) {
             item["kind"] = texture->toggle_mode ? "checkbox" : "button";
             if (texture->toggle_mode) {
                 item["checked"] = texture->button_pressed;
@@ -192,7 +192,7 @@ json::Array ui_list(command::Session& session) {
             item["min"] = r2(slider->min_value);
             item["max"] = r2(slider->max_value);
             enabled = slider->editable;
-        } else if (const auto* edit = ecs.try_get<world::LineEdit>(e); edit != nullptr) {
+        } else if (const auto* edit = ecs.try_get<world::TextField>(e); edit != nullptr) {
             item["kind"] = "text_input";
             item["value"] = edit->text;
             if (!edit->placeholder_text.empty()) {
@@ -200,7 +200,7 @@ json::Array ui_list(command::Session& session) {
             }
             label = edit->placeholder_text;
             enabled = edit->editable;
-        } else if (const auto* area = ecs.try_get<world::TextEdit>(e); area != nullptr) {
+        } else if (const auto* area = ecs.try_get<world::TextArea>(e); area != nullptr) {
             item["kind"] = "text_input";
             item["value"] = area->text;
             if (!area->placeholder_text.empty()) {
@@ -212,7 +212,7 @@ json::Array ui_list(command::Session& session) {
             continue;
         }
         if (label.empty()) {
-            if (const auto* control = ecs.try_get<world::Control>(e);
+            if (const auto* control = ecs.try_get<world::Widget>(e);
                 control != nullptr && !control->accessibility_name.empty()) {
                 label = control->accessibility_name;
             } else {

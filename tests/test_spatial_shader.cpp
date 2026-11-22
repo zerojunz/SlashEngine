@@ -1271,8 +1271,8 @@ TEST_CASE("a spatial shader reads the wind at its mesh's origin as WIND") {
     scene.files["materials/windy.material.json"] = R"({"format": 1,
         "render_mode": ["unshaded"], "shader": "shaders/windy.hlsl", "shader_type": "spatial"})";
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
-    scene.create("box", R"({"Transform3D": {}, "BoxMesh": {},
-        "MeshInstance3D": {"material_override": "materials/windy.material.json"}})");
+    scene.create("box", R"({"Transform3D": {}, "BoxGeometry": {},
+        "Model3D": {"material_override": "materials/windy.material.json"}})");
     const auto center = [&] {
         auto captured = canvas::capture(scene.world, scene.assets, {.scale = 0.125F});
         REQUIRE_MESSAGE(captured.ok(), (captured.ok() ? "" : captured.error().message));
@@ -1292,7 +1292,7 @@ TEST_CASE("a spatial shader reads the wind at its mesh's origin as WIND") {
     CHECK(blown[2] == 0);
 }
 
-TEST_CASE("MeshInstance3D's material_override draws a spatial material or a StandardMaterial3D") {
+TEST_CASE("Model3D's material_override draws a spatial material or a Surface3D") {
     Scene scene;
     scene.files["shaders/paint.hlsl"] =
         "void fragment() {\n    ALBEDO = tint.rgb;\n    EMISSION = tint.rgb * glow;\n}\n";
@@ -1305,9 +1305,9 @@ TEST_CASE("MeshInstance3D's material_override draws a spatial material or a Stan
     scene.files["materials/flat.material.json"] = R"({"format": 1, "color": [1, 0, 0, 1]})";
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
     scene.create("sun", R"({"Transform3D": {"rotation": [-0.6, 0.3, 0]},
-                            "DirectionalLight3D": {}})");
-    const entt::entity box = scene.create("box", R"({"Transform3D": {}, "MeshInstance3D": {},
-        "BoxMesh": {}})");
+                            "SunLight3D": {}})");
+    const entt::entity box = scene.create("box", R"({"Transform3D": {}, "Model3D": {},
+        "BoxGeometry": {}})");
     const auto center = [&](const canvas::Capture& captured) {
         const render::Image& image = captured.image;
         const std::size_t at =
@@ -1321,7 +1321,7 @@ TEST_CASE("MeshInstance3D's material_override draws a spatial material or a Stan
         return center(captured.value());
     };
     const std::array<int, 3> plain = draw();
-    auto& instance = scene.world.ecs().get<world::MeshInstance3D>(box);
+    auto& instance = scene.world.ecs().get<world::Model3D>(box);
     instance.material_override = "materials/paint.material.json";
     const std::array<int, 3> painted = draw();
     CHECK(painted[1] > painted[0] + 60);
@@ -1342,7 +1342,7 @@ TEST_CASE("MeshInstance3D's material_override draws a spatial material or a Stan
     instance.material_override = "materials/flat.material.json";
     std::vector<scene3d::Problem> problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 1);
-    CHECK(problems[0].path == "/components/MeshInstance3D/material_override");
+    CHECK(problems[0].path == "/components/Model3D/material_override");
     CHECK(problems[0].message == "\"materials/flat.material.json\" is a canvas material; a mesh "
                                  "takes one with \"shader_type\": \"spatial\"");
     instance.material_override = "materials/gone.material.json";

@@ -19,7 +19,7 @@ ui.layout {"ids":["title","start","quit","version"]}
 ```
 
 - Labels and buttons show their text translated, as Godot's controls do, unless their
-  `Control.auto_translate_mode` (or a parent's) is `disabled`, as the version label's is.
+  `Widget.auto_translate_mode` (or a parent's) is `disabled`, as the version label's is.
 - A locale takes the translations that match it best: `fr_CA` has none of its own, so it takes
   French's. Where no translation has a message, the fallback locale's (`en`) answers, and else
   the text as written: Polish has no "Options", so it stays in English. The menu could as well

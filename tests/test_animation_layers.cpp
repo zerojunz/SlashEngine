@@ -263,14 +263,14 @@ TEST_CASE("animation layers: animation.edit writes layers, preview measures, tun
     CHECK(bad.message.find("\"walk\"") != std::string::npos);
 }
 
-TEST_CASE("animation layers: an AnimationPlayer poses its model by the layered animation") {
+TEST_CASE("animation layers: an Animator poses its model by the layered animation") {
     LegsProject project("animation_layers_player_project");
     project.ok("animation.edit", R"({"library": "walks.anim.json", "animation": "walk",
         "set": {"from": {"model": "legs.glb", "animation": "Walk-loop"},
                 "layers": [{"name": "big", "amplitude": 2}]}})");
     project.ok("entity.create", R"({"id": "legs", "components": {
-        "Transform3D": {}, "MeshInstance3D": {"mesh": "legs.glb"},
-        "AnimationPlayer": {"library": "walks.anim.json", "animation": "walk",
+        "Transform3D": {}, "Model3D": {"mesh": "legs.glb"},
+        "Animator": {"library": "walks.anim.json", "animation": "walk",
                             "playing": false, "time": 0.25}}})");
     const json::Value bones =
         project.ok("skeleton.get", R"({"id": "legs", "bones": ["LeftUpperLeg"]})");

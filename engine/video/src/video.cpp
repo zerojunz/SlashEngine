@@ -18,7 +18,7 @@ std::string key_of(const world::World& world, entt::entity entity) {
     return id.empty() ? "#" + std::to_string(entt::to_integral(entity)) : std::string(id);
 }
 
-// One VideoStreamPlayer's playback, as Godot's VideoStreamPlayback: its stream, the decoder and
+// One Video's playback, as Godot's VideoStreamPlayback: its stream, the decoder and
 // the frame it shows.
 struct Player {
     std::string stream;
@@ -61,8 +61,8 @@ struct VideoSystem {
         auto& ecs = world.ecs();
         std::set<std::string, std::less<>> seen;
         std::vector<std::string> finished;
-        for (const entt::entity entity : ecs.view<world::VideoStreamPlayer>()) {
-            auto& component = ecs.get<world::VideoStreamPlayer>(entity);
+        for (const entt::entity entity : ecs.view<world::Video>()) {
+            auto& component = ecs.get<world::Video>(entity);
             std::string key = key_of(world, entity);
             Player& player = players[key];
             seen.insert(key);
@@ -173,7 +173,7 @@ void install(world::World& world, asset::Assets& assets) {
                             [system](const world::World& /*world*/) { return system->memory(); });
     world.add_system(
         "video", [system](world::World& w, double tick_seconds) { system->run(w, tick_seconds); },
-        {.doc = "Plays each VideoStreamPlayer and decodes the frame it shows.", .priority = 1140});
+        {.doc = "Plays each Video and decodes the frame it shows.", .priority = 1140});
 }
 
 Shown shown(const world::World& world, std::string_view entity) {
@@ -186,7 +186,7 @@ Shown shown(const world::World& world, std::string_view entity) {
         // A player the system hasn't run yet has nothing to show either.
         const entt::entity id = world.find(entity);
         Shown none;
-        none.player = world.valid(id) && world.ecs().all_of<world::VideoStreamPlayer>(id);
+        none.player = world.valid(id) && world.ecs().all_of<world::Video>(id);
         return none;
     }
     const Player& player = found->second;

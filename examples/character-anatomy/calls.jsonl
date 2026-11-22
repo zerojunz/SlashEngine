@@ -9,8 +9,8 @@
 {"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":60}}
 {"jsonrpc":"2.0","id":10,"method":"flesh.get","params":{"id":"bram","muscles":["core"]}}
 {"jsonrpc":"2.0","id":11,"method":"frame.capture","params":{"points":[[80,40],[95,40]]}}
-{"jsonrpc":"2.0","id":12,"method":"entity.create","params":{"id":"muscles","components":{"Transform3D":{"position":[0.7,0,0]},"MeshInstance3D":{"mesh":"characters/bram.character.json::muscles"}}}}
-{"jsonrpc":"2.0","id":13,"method":"entity.create","params":{"id":"skeleton","components":{"Transform3D":{"position":[-0.7,0,0]},"MeshInstance3D":{"mesh":"characters/bram.character.json::skeleton"}}}}
+{"jsonrpc":"2.0","id":12,"method":"entity.create","params":{"id":"muscles","components":{"Transform3D":{"position":[0.7,0,0]},"Model3D":{"mesh":"characters/bram.character.json::muscles"}}}}
+{"jsonrpc":"2.0","id":13,"method":"entity.create","params":{"id":"skeleton","components":{"Transform3D":{"position":[-0.7,0,0]},"Model3D":{"mesh":"characters/bram.character.json::skeleton"}}}}
 {"jsonrpc":"2.0","id":14,"method":"model.inspect","params":{"id":"muscles","brief":true}}
 {"jsonrpc":"2.0","id":15,"method":"frame.capture","params":{"points":[[40,40],[120,40]]}}
 {"jsonrpc":"2.0","id":16,"method":"character.place","params":{"recipe":"characters/bram.character.json","id":"bram_2d","at":[80,85],"pixels_per_meter":40,"flesh":true}}

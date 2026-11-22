@@ -18,7 +18,7 @@ namespace {
 
 constexpr std::string_view kSectionField = "/components/Cloth3D/section";
 
-// The model an entity's MeshInstance3D draws and its version, through the world's assets, else
+// The model an entity's Model3D draws and its version, through the world's assets, else
 // read with its file reader.
 struct Loaded {
     std::shared_ptr<const Model> model;
@@ -59,7 +59,7 @@ ModelLoader loader_of(const world::World& world) {
 }
 
 const std::string* model_path(const world::World& world, entt::entity entity) {
-    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<const world::Model3D>(entity);
     if (instance == nullptr || instance->mesh.empty() || !is_model_path(instance->mesh)) {
         return nullptr;
     }
@@ -100,8 +100,7 @@ Result<std::shared_ptr<const ClothSection>> cloth_section(const world::World& wo
         return make_error(ErrorCode::InvalidArgument, "has no Cloth3D");
     }
     if (model_path(world, entity) == nullptr) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "cloth needs a MeshInstance3D drawing a model file");
+        return make_error(ErrorCode::InvalidArgument, "cloth needs a Model3D drawing a model file");
     }
     return model_section(world, entity, cloth->section);
 }
@@ -110,8 +109,7 @@ Result<std::shared_ptr<const ClothSection>>
 model_section(const world::World& world, entt::entity entity, const std::string& name) {
     const std::string* path = model_path(world, entity);
     if (path == nullptr) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "needs a MeshInstance3D drawing a model file");
+        return make_error(ErrorCode::InvalidArgument, "needs a Model3D drawing a model file");
     }
     auto loaded = model_of(world, *path);
     if (!loaded) {
@@ -323,7 +321,7 @@ std::vector<Problem> check_cloths(const world::World& world) {
     for (const entt::entity entity : ecs.view<const world::Cloth3D>()) {
         if (model_path(world, entity) == nullptr) {
             problems.push_back({entity, "/components/Cloth3D",
-                                "cloth needs a MeshInstance3D drawing a model file; it is "
+                                "cloth needs a Model3D drawing a model file; it is "
                                 "ignored until it has one"});
             continue;
         }

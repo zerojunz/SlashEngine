@@ -18,13 +18,13 @@ audio.play {"id":"bat"}
 step {"ticks":2}
 {"tick":20,"ticks":2}
 audio.state {"ids":["bat"]}
-{"buses":[{"effects":[{"type":"spectrum_analyzer"},{"discarded_frames":7168,"frames_available":7680,"type":"capture"},{"type":"record"}],"name":"Master","peak_db":-17.7,"volume_db":0},{"effects":[{"enabled":false,"type":"pitch_shift"}],"mute":true,"name":"Voice","peak_db":null,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Cave","peak_db":null,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"bat","kind":"AudioStreamPlayer2D","length":3,"position":0.0377,"stream":"audio/chirp.wav","voices":1,"volume":[0.5203,0.3797]}]}
+{"buses":[{"effects":[{"type":"spectrum_analyzer"},{"discarded_frames":7168,"frames_available":7680,"type":"capture"},{"type":"record"}],"name":"Master","peak_db":-17.7,"volume_db":0},{"effects":[{"enabled":false,"type":"pitch_shift"}],"mute":true,"name":"Voice","peak_db":null,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Cave","peak_db":null,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"bat","kind":"SoundPlayer2D","length":3,"position":0.0377,"stream":"audio/chirp.wav","voices":1,"volume":[0.5203,0.3797]}]}
 component.set {"components":{"Transform2D":{"position":[480,180]}},"id":"bat"}
 {"changed":{"Transform2D":{"position":[480.0,180.0]}},"id":"bat"}
 step {"ticks":2}
 {"tick":22,"ticks":2}
 audio.state {"ids":["bat"]}
-{"buses":[{"effects":[{"type":"spectrum_analyzer"},{"discarded_frames":8704,"frames_available":7680,"type":"capture"},{"type":"record"}],"name":"Master","peak_db":-15.6,"volume_db":0},{"effects":[{"enabled":false,"type":"pitch_shift"}],"mute":true,"name":"Voice","peak_db":null,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Cave","peak_db":-15.6,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Cave","id":"bat","kind":"AudioStreamPlayer2D","length":3,"position":0.0726,"stream":"audio/chirp.wav","voices":1,"volume":[0.4025,0.5175]}]}
+{"buses":[{"effects":[{"type":"spectrum_analyzer"},{"discarded_frames":8704,"frames_available":7680,"type":"capture"},{"type":"record"}],"name":"Master","peak_db":-15.6,"volume_db":0},{"effects":[{"enabled":false,"type":"pitch_shift"}],"mute":true,"name":"Voice","peak_db":null,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Cave","peak_db":-15.6,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Cave","id":"bat","kind":"SoundPlayer2D","length":3,"position":0.0726,"stream":"audio/chirp.wav","voices":1,"volume":[0.4025,0.5175]}]}
 audio.record {"recording":true}
 {"recording":true,"seconds":0}
 step {"ticks":30}
@@ -32,4 +32,4 @@ step {"ticks":30}
 audio.record {"path":"build/take.wav","recording":false}
 {"path":"build/take.wav","recording":false,"seconds":0.4992}
 audio.state {}
-{"buses":[{"effects":[{"type":"spectrum_analyzer"},{"discarded_frames":30720,"frames_available":7680,"type":"capture"},{"seconds":0.4992,"type":"record"}],"name":"Master","peak_db":-2,"volume_db":0},{"effects":[{"enabled":false,"type":"pitch_shift"}],"mute":true,"name":"Voice","peak_db":null,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Cave","peak_db":-2,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Cave","id":"bat","kind":"AudioStreamPlayer2D","length":3,"position":0.5718,"stream":"audio/chirp.wav","voices":1,"volume":[0.4025,0.5175]},{"bus":"Voice","id":"voice","kind":"AudioStreamPlayer","length":3,"position":0.8737,"stream":"audio/hum.wav","voices":1,"volume":[1,1]}]}
+{"buses":[{"effects":[{"type":"spectrum_analyzer"},{"discarded_frames":30720,"frames_available":7680,"type":"capture"},{"seconds":0.4992,"type":"record"}],"name":"Master","peak_db":-2,"volume_db":0},{"effects":[{"enabled":false,"type":"pitch_shift"}],"mute":true,"name":"Voice","peak_db":null,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Cave","peak_db":-2,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Cave","id":"bat","kind":"SoundPlayer2D","length":3,"position":0.5718,"stream":"audio/chirp.wav","voices":1,"volume":[0.4025,0.5175]},{"bus":"Voice","id":"voice","kind":"SoundPlayer","length":3,"position":0.8737,"stream":"audio/hum.wav","voices":1,"volume":[1,1]}]}

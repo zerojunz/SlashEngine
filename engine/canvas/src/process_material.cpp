@@ -268,7 +268,7 @@ json::Value schema(bool list_ops) {
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine particle process material";
     schema["description"] =
-        "How a GPUParticles2D's or GPUParticles3D's particles start and move: Godot's "
+        "How a GpuEmitter2D's or GpuEmitter3D's particles start and move: Godot's "
         "ParticleProcessMaterial, with its property names. Angles are in degrees, lengths in "
         "pixels in 2D and meters in 3D; vectors are [x, y] or [x, y, z], z only in 3D.";
     schema["type"] = "object";
@@ -404,7 +404,7 @@ json::Value schema(bool list_ops) {
     properties["collision_mode"]["enum"] = std::move(modes);
     properties["collision_mode"]["default"] = "disabled";
     properties["collision_mode"]["description"] =
-        "What particles do on touching a collider (in 2D a LightOccluder2D with sdf_collision, "
+        "What particles do on touching a collider (in 2D a Occluder2D with sdf_collision, "
         "in 3D a GPUParticlesCollision3D): bounce off (rigid) or die (hide_on_contact).";
     properties["collision_friction"] =
         number("For rigid, the fraction of the speed along the surface lost.", 0.0, 0.0, 1.0);

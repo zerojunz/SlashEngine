@@ -129,7 +129,7 @@ JPH::RMat44 place_matrix_of(const world::Affine3D& transform) {
             to_jolt_place(transform.origin)};
 }
 
-BuiltShape build_shape(const world::CollisionShape3D& shape, const Settings& settings) {
+BuiltShape build_shape(const world::Collider3D& shape, const Settings& settings) {
     // Godot's collision_margin_fraction: no more of a box, cylinder or hull than this fraction
     // of its shortest half extent is rounded off.
     const float margin_fraction = std::max(settings.collision_margin_fraction, 0.0F);

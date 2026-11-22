@@ -19,7 +19,7 @@ frame.summary {"ids":["hills","cloud","player","heart","score"]}
   `parallax_2d` system places it each tick from the current camera.
 - `sky` holds a cloud that scrolls at half speed and drifts left on its own: `autoscroll`
   moves a repeating `Parallax2D` along by itself.
-- `hud` is a `CanvasLayer`. What its `children` list draws in its own canvas, over the world and
+- `hud` is a `ScreenLayer`. What its `children` list draws in its own canvas, over the world and
   apart from the camera: the heart sprite and the coin counter stay put however the level
   scrolls. `frame.summary` and `ui.layout` name the layer each thing is in.
 - `canvas.convert` turns window pixels into the world through the camera, as Godot's

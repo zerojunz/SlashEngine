@@ -34,9 +34,9 @@ inline constexpr std::string_view kDamageSuffix = ".damage.json";
 struct DamageState {
     float below = 0.5F;                // of its full health
     bool tinted = false;               // whether tint is set
-    Vec4 tint{1.0F, 1.0F, 1.0F, 1.0F}; // multiplies its StandardMaterial3D's albedo (2D: modulate)
-    std::string material; // a material file its MeshInstance3D draws with in place of its own
-    std::string mesh;     // a model file it draws in place of its own (2D: a texture)
+    Vec4 tint{1.0F, 1.0F, 1.0F, 1.0F}; // multiplies its Surface3D's albedo (2D: modulate)
+    std::string material;              // a material file its Model3D draws with in place of its own
+    std::string mesh;                  // a model file it draws in place of its own (2D: a texture)
 };
 
 // How it breaks.
@@ -69,7 +69,7 @@ struct DeformSettings {
 };
 
 // A burst of particles a hit or a break leaves: chips and shards (debris) or a cloud (dust),
-// made a one-shot CPUParticles3D or CPUParticles2D. Lengths are meters, which 2D takes at 64
+// made a one-shot Emitter3D or Emitter2D. Lengths are meters, which 2D takes at 64
 // pixels a meter.
 struct ParticleEffect {
     int amount = 0;        // particles; 0: none
@@ -90,7 +90,7 @@ struct DecalEffect {
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
 };
 
-// A sound a hit or a break makes: an AudioStreamPlayer3D (2D: AudioStreamPlayer2D) where it was.
+// A sound a hit or a break makes: an SoundPlayer3D (2D: SoundPlayer2D) where it was.
 struct SoundEffect {
     std::string stream; // a sound file; "" for none
     float volume_db = 0.0F;

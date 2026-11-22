@@ -1302,9 +1302,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     // counts the wind's seconds and plays animations, runs ragdolls, drives vehicles, steps 2D and
     // 3D physics, checks synchronizers' visibility, steps navigation, runs NPCs, moves the camera
     // and parallax, runs particles, hands over models' replies and plays sound with built-in
-    // systems that run late. The particle systems are threaded: the CPU ones and GPUParticles2D's
-    // run at the same time, and GPUParticles3D's, which loads vector fields' textures as
-    // GPUParticles2D's loads its own, runs after them.
+    // systems that run late. The particle systems are threaded: the CPU ones and GpuEmitter2D's
+    // run at the same time, and GpuEmitter3D's, which loads vector fields' textures as
+    // GpuEmitter2D's loads its own, runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
@@ -1336,19 +1336,19 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Keeps each Character2D's and Creature2D's cut-out: a child per bone with its Transform2D and a Polygon2D of what its recipe draws there.",
          "priority": 880},
         {"name": "animation_player",
-         "doc": "Plays each AnimationPlayer's animation on its entity's components.",
+         "doc": "Plays each Animator's animation on its entity's components.",
          "priority": 900},
         {"name": "animation_tree",
-         "doc": "Blends each AnimationTree's animations into its entity's components.",
+         "doc": "Blends each AnimationGraph's animations into its entity's components.",
          "priority": 910},
         {"name": "ragdoll",
          "doc": "Keeps each Ragdoll3D's bodies, joints and muscles as its profile says and runs its states: hit reactions, falls and getting back up.",
          "priority": 915},
         {"name": "skeleton_modifiers",
-         "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, moves the physical bones that follow the pose and puts bone attachments where their bones are.",
+         "doc": "Steps the chains of FabrikIK3D, CcdIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, moves the physical bones that follow the pose and puts bone attachments where their bones are.",
          "priority": 920},
         {"name": "path_follow",
-         "doc": "Wraps each PathFollow2D's and PathFollow3D's progress and places it on its parent's curve.",
+         "doc": "Wraps each SplineFollower2D's and SplineFollower3D's progress and places it on its parent's curve.",
          "priority": 930},
         {"name": "ragdoll_2d",
          "doc": "Keeps each Ragdoll2D's bodies, shapes, joints and muscles as its profile says and runs its states: hit reactions, falls and getting back up.",
@@ -1399,7 +1399,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Bends Foliage3D and Foliage2D instances away from character and rigid bodies within their type's interaction_radius and springs them back.",
          "priority": 970},
         {"name": "animated_sprite_2d",
-         "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
+         "doc": "Plays each Flipbook2D's animation on its Sprite2D.", "priority": 1000},
         {"name": "camera_2d",
          "doc": "Moves the current Camera2D's drag margins and smoothing on by the tick.",
          "priority": 1050},
@@ -1410,42 +1410,42 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Plays each VisualEffect3D's and VisualEffect2D's recipe, its layers as entities under it, and shakes the current cameras by CameraShakes.",
          "priority": 1090},
         {"name": "cpu_particles_2d",
-         "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
+         "doc": "Emits, moves and ages each Emitter2D's particles.", "priority": 1100,
          "threaded": true, "stage": 35, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
-         "writes": ["CPUParticles2D"]},
+         "writes": ["Emitter2D"]},
         {"name": "cpu_particles_3d",
-         "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
+         "doc": "Emits, moves and ages each Emitter3D's particles.", "priority": 1100,
          "threaded": true, "stage": 35, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
-         "writes": ["CPUParticles3D"]},
+         "writes": ["Emitter3D"]},
         {"name": "particle_simulation_2d",
-         "doc": "Runs each ParticleSimulation2D's stages over its CPUParticles2D: neighbors, curl noise, collision, attributes and events.",
+         "doc": "Runs each ParticleSimulation2D's stages over its Emitter2D: neighbors, curl noise, collision, attributes and events.",
          "priority": 1105},
         {"name": "particle_simulation_3d",
-         "doc": "Runs each ParticleSimulation3D's stages over its CPUParticles3D: neighbors, curl noise, collision, attributes and events.",
+         "doc": "Runs each ParticleSimulation3D's stages over its Emitter3D: neighbors, curl noise, collision, attributes and events.",
          "priority": 1105},
         {"name": "gpu_particles_2d",
-         "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
+         "doc": "Steps each GpuEmitter2D's emission for renderers to run.", "priority": 1110,
          "threaded": true, "stage": 38,
-         "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
+         "reads": ["Transform2D", "Occluder2D", "TileLayer2D", "ScreenLayer", "Widget",
                    "Camera2D"],
-         "writes": ["GPUParticles2D", "assets"]},
+         "writes": ["GpuEmitter2D", "assets"]},
         {"name": "gpu_particles_3d",
-         "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
+         "doc": "Steps each GpuEmitter3D's emission for renderers to run.", "priority": 1110,
          "threaded": true, "stage": 39,
-         "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
-                   "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
-                   "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
-                   "GPUParticlesCollisionHeightField3D", "Camera3D", "MeshInstance3D", "GridMap",
-                   "HTerrain", "WindSource3D", "csg"],
-         "writes": ["GPUParticles3D", "Transform3D", "assets"]},
+         "reads": ["ParticleAttractorSphere3D", "ParticleAttractorBox3D",
+                   "ParticleFlowField3D", "ParticleColliderSphere3D",
+                   "ParticleColliderBox3D", "ParticleColliderSdf3D",
+                   "ParticleColliderHeight3D", "Camera3D", "Model3D", "BlockMap3D",
+                   "Terrain3D", "WindSource3D", "csg"],
+         "writes": ["GpuEmitter3D", "Transform3D", "assets"]},
         {"name": "video",
-         "doc": "Plays each VideoStreamPlayer and decodes the frame it shows.",
+         "doc": "Plays each Video and decodes the frame it shows.",
          "priority": 1140},
         {"name": "ai",
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},
         {"name": "audio",
-         "doc": "Plays each AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and each VideoStreamPlayer's sound, and mixes the tick's sound through the bus layout.",
+         "doc": "Plays each SoundPlayer, SoundPlayer2D and SoundPlayer3D and each Video's sound, and mixes the tick's sound through the bus layout.",
          "priority": 1200}
     ])"));
 }
@@ -1574,9 +1574,9 @@ TEST_CASE("a running game path traces its frames while display.set's path_trace 
         {"command": "entity.create", "params": {"id": "camera", "components": {
             "Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}}}},
         {"command": "entity.create", "params": {"id": "box", "components": {
-            "Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}, "StandardMaterial3D": {}}}},
+            "Transform3D": {}, "Model3D": {}, "BoxGeometry": {}, "Surface3D": {}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
-            "Transform3D": {"rotation": [-0.8, 0.3, 0]}, "DirectionalLight3D": {}}}}]})");
+            "Transform3D": {"rotation": [-0.8, 0.3, 0]}, "SunLight3D": {}}}}]})");
     const render::TextureId target =
         device->create_texture({.width = 16, .height = 16, .render_target = true}).value();
     const auto draw = [&] {
@@ -1680,9 +1680,9 @@ TEST_CASE("perf.stats reports what each part of the engine holds in memory") {
     auto tuning = engine.session->assets().load<json::Value>("data/tuning.json");
     REQUIRE(tuning.ok());
     engine.ok("entity.create", R"({"id": "box", "components": {
-        "Transform2D": {}, "RigidBody2D": {}, "CollisionShape2D": {}}})");
+        "Transform2D": {}, "RigidBody2D": {}, "Collider2D": {}}})");
     engine.ok("entity.create", R"({"id": "sparkler", "components": {
-        "Transform2D": {}, "CPUParticles2D": {"amount": 10}}})");
+        "Transform2D": {}, "Emitter2D": {"amount": 10}}})");
     engine.ok("step", R"({"ticks": 10})");
 
     const json::Value stats = engine.ok("perf.stats", R"({"memory": true})");
@@ -1884,7 +1884,7 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
     options.project_root = root;
     Engine engine(options);
 
-    // Only the material's fields that differ from StandardMaterial3D's defaults.
+    // Only the material's fields that differ from Surface3D's defaults.
     const json::Value expected = parse(R"({
         "bounds": {"max": [1, 1, 0], "min": [-1, -1, 0]},
         "images": [{"path": "models/paint.png"}],
@@ -1894,7 +1894,7 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
         "parts": [{"mesh": 0, "node": "Quad"}]})");
     CHECK(engine.ok("model.inspect", R"({"path": "models/sign.gltf"})") == expected);
     engine.ok("entity.create", R"({"id": "sign", "components": {"Transform3D": {},
-        "MeshInstance3D": {"mesh": "models/sign.gltf"}}})");
+        "Model3D": {"mesh": "models/sign.gltf"}}})");
     CHECK(engine.ok("model.inspect", R"({"id": "sign"})") == expected);
     // The same sign as an OBJ file, its material in a library beside it.
     REQUIRE(slash::platform::write_file(root + "/models/sign.mtl",
@@ -1954,7 +1954,7 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
                          command::code::kInvalidParams);
     CHECK(contains(reply.message, "isn't a model"));
     engine.ok("entity.create", R"({"id": "box", "components": {"Transform3D": {},
-        "MeshInstance3D": {}, "BoxMesh": {}}})");
+        "Model3D": {}, "BoxGeometry": {}}})");
     reply = engine.fails("model.inspect", R"({"id": "box"})", command::code::kInvalidParams);
     CHECK(contains(reply.message, "draws no model"));
     reply = engine.call("model.inspect", R"({"path": "models/gone.glb"})");
@@ -1984,7 +1984,7 @@ TEST_CASE("a recipe made of other model files reloads when one of them changes")
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "shed", "components": {"Transform3D": {},
-        "MeshInstance3D": {"mesh": "props/shed.model.json"}}})");
+        "Model3D": {"mesh": "props/shed.model.json"}}})");
     const auto size = [&] {
         return json::write(
             *engine.ok("model.inspect", R"({"id": "shed", "brief": true})").find("size"));
@@ -2000,11 +2000,11 @@ TEST_CASE("csg.get returns the mesh a CSG root makes") {
     Engine engine;
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "door", "components": {
-            "Transform3D": {}, "CSGBox3D": {"size": [1, 1, 4], "operation": "subtraction"}}}},
+            "Transform3D": {}, "SolidBox3D": {"size": [1, 1, 4], "operation": "subtraction"}}}},
         {"command": "entity.create", "params": {"id": "wall", "components": {
             "Transform3D": {"position": [5, 0, 0], "children": ["door"]},
-            "CSGBox3D": {"size": [2, 2, 2]},
-            "StandardMaterial3D": {"albedo_color": [1, 0, 0, 1]}}}}]})");
+            "SolidBox3D": {"size": [2, 2, 2]},
+            "Surface3D": {"albedo_color": [1, 0, 0, 1]}}}}]})");
     const json::Value wall = engine.ok("csg.get", R"({"id": "wall"})");
     // In the root's space, with the hole cut through it.
     CHECK(*wall.find("aabb") == parse(R"({"max": [1, 1, 1], "min": [-1, -1, -1]})"));
@@ -2027,22 +2027,22 @@ TEST_CASE("csg.get returns the mesh a CSG root makes") {
 
     // A shape that leaves nothing says so.
     engine.ok("component.set",
-              R"({"id": "door", "components": {"CSGBox3D": {"size": [3, 3, 3]}}})");
+              R"({"id": "door", "components": {"SolidBox3D": {"size": [3, 3, 3]}}})");
     const json::Value empty = engine.ok("csg.get", R"({"id": "wall"})");
     CHECK(*empty.find("triangles") == parse("0"));
     REQUIRE(empty.find("problems") != nullptr);
     CHECK(contains(json::write(*empty.find("problems")), "makes an empty shape"));
 }
 
-TEST_CASE("path.get samples a Path2D's or Path3D's curve and finds its nearest point") {
+TEST_CASE("path.get samples a Spline2D's or Spline3D's curve and finds its nearest point") {
     Engine engine;
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "road", "components": {
             "Transform2D": {"position": [100, 0]},
-            "Path2D": {"points": [{"position": [0, 0]}, {"position": [0, 50]}]}}}},
+            "Spline2D": {"points": [{"position": [0, 0]}, {"position": [0, 50]}]}}}},
         {"command": "entity.create", "params": {"id": "rail", "components": {
             "Transform3D": {"position": [0, 1, 0]},
-            "Path3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10], "tilt": 1}]}}}}
+            "Spline3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10], "tilt": 1}]}}}}
     ]})");
     CHECK(engine.ok("path.get", R"({"id": "road", "ratios": [0.5], "closest_to": [130, 20]})") ==
           parse(R"({"points": 2, "baked_points": 15, "length": 50,
@@ -2065,10 +2065,10 @@ TEST_CASE("path.get samples a Path2D's or Path3D's curve and finds its nearest p
 
     auto reply = engine.fails("path.get", R"({"id": "rail", "closest_to": [1, 2]})",
                               command::code::kInvalidParams);
-    CHECK(reply.message == "/closest_to: a Path3D's points are [x, y, z]");
+    CHECK(reply.message == "/closest_to: a Spline3D's points are [x, y, z]");
     engine.ok("entity.create", R"({"id": "post", "components": {"Transform3D": {}}})");
     reply = engine.fails("path.get", R"({"id": "post"})", command::code::kInvalidParams);
-    CHECK(contains(reply.message, "has no Path2D or Path3D"));
+    CHECK(contains(reply.message, "has no Spline2D or Spline3D"));
 }
 
 TEST_CASE("entity.place stands entities on what is below, apart and along a path") {
@@ -2076,14 +2076,14 @@ TEST_CASE("entity.place stands entities on what is below, apart and along a path
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
             "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-            "CollisionShape3D": {"shape": "box", "size": [10, 1, 10]}}}},
+            "Collider3D": {"shape": "box", "size": [10, 1, 10]}}}},
         {"command": "entity.create", "params": {"id": "step", "components": {
-            "Transform3D": {"position": [-3, 0.5, 0]}, "MeshInstance3D": {},
-            "BoxMesh": {"size": [2, 1, 2]}}}},
+            "Transform3D": {"position": [-3, 0.5, 0]}, "Model3D": {},
+            "BoxGeometry": {"size": [2, 1, 2]}}}},
         {"command": "entity.create", "params": {"id": "crate", "components": {
-            "Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}}}},
+            "Transform3D": {}, "Model3D": {}, "BoxGeometry": {}}}},
         {"command": "entity.create", "params": {"id": "barrel", "components": {
-            "Transform3D": {"position": [0, -9, 0]}, "MeshInstance3D": {}, "BoxMesh": {}}}},
+            "Transform3D": {"position": [0, -9, 0]}, "Model3D": {}, "BoxGeometry": {}}}},
         {"command": "entity.create", "params": {"id": "cart", "components": {
             "Transform3D": {"position": [0, 0, 3], "rotation": [0, 1.5708, 0],
                             "children": ["crate"]}}}}]})");
@@ -2124,7 +2124,7 @@ TEST_CASE("entity.place stands entities on what is below, apart and along a path
 
     // Along a path, spread from end to end, turned to face along it.
     engine.ok("entity.create", R"({"id": "fence", "components": {"Transform3D": {},
-        "Path3D": {"points": [{"position": [4, 0, 4]}, {"position": [-4, 0, 4]}]}}})");
+        "Spline3D": {"points": [{"position": [4, 0, 4]}, {"position": [-4, 0, 4]}]}}})");
     CHECK(engine.ok("entity.place", R"({"entities": ["barrel", "crate"],
                                        "along": {"path": "fence", "rotate": true}})") ==
           parse(R"({"placed": [
@@ -2153,7 +2153,7 @@ TEST_CASE("entity.place stands entities on what is below, apart and along a path
     CHECK(contains(reply.message, "listed twice"));
     reply = engine.fails("entity.place", R"({"entities": ["crate"], "along": {"path": "floor"}})",
                          command::code::kInvalidParams);
-    CHECK(reply.message == "/along/path: \"floor\" has no Path3D");
+    CHECK(reply.message == "/along/path: \"floor\" has no Spline3D");
     reply = engine.fails(
         "entity.place",
         R"({"entities": [{"id": "crate", "at": [0, 0, 0]}], "along": {"path": "fence"}})",
@@ -2165,21 +2165,21 @@ TEST_CASE("entity.place stands entities on what is below, apart and along a path
     CHECK(contains(reply.message, "has no Transform3D"));
 }
 
-TEST_CASE("gridmap commands set and read a GridMap's cells, and rays name the cell they hit") {
+TEST_CASE("gridmap commands set and read a BlockMap3D's cells, and rays name the cell they hit") {
     const std::string root = "gridmap_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
     REQUIRE(slash::platform::write_file(root + "/blocks.meshlib.json", R"({"format": 1,
         "items": {
-          "block": {"primitive": {"BoxMesh": {"size": [2, 2, 2]}},
+          "block": {"primitive": {"BoxGeometry": {"size": [2, 2, 2]}},
                     "shapes": [{"shape": "box", "size": [2, 2, 2]}]},
-          "ramp": {"primitive": {"PrismMesh": {"size": [2, 2, 2]}}}}})")
+          "ramp": {"primitive": {"PrismGeometry": {"size": [2, 2, 2]}}}}})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "grid", "components": {"Transform3D": {
-        "position": [0, -2, 0]}, "GridMap": {"mesh_library": "blocks.meshlib.json"}}})");
+        "position": [0, -2, 0]}, "BlockMap3D": {"mesh_library": "blocks.meshlib.json"}}})");
     engine.ok("entity.create", R"({"id": "empty", "components": {"Transform3D": {}}})");
 
     // gridmap.set fills cells or a box with one item, turned or not, or erases them.
@@ -2223,7 +2223,7 @@ TEST_CASE("gridmap commands set and read a GridMap's cells, and rays name the ce
     auto reply = engine.fails("gridmap.set", R"({"id": "empty", "cells": [[0, 0, 0]],
                                                  "item": null})",
                               command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"empty\" has no GridMap");
+    CHECK(reply.message == "/id: \"empty\" has no BlockMap3D");
     reply = engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "blok"})",
                          command::code::kNotFound);
     CHECK(reply.message == "/item: the mesh library has no item \"blok\"; did you mean \"block\"?");
@@ -2237,20 +2237,20 @@ TEST_CASE("gridmap commands set and read a GridMap's cells, and rays name the ce
     engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block",
                                     "orientation": 24})",
                  command::code::kInvalidParams);
-    engine.ok("component.set", R"({"id": "grid", "components": {"GridMap": {
+    engine.ok("component.set", R"({"id": "grid", "components": {"BlockMap3D": {
         "mesh_library": "", "floors": [{"rows": ["q"]}]}}})");
     reply = engine.fails("gridmap.get", R"({"id": "grid"})", command::code::kInvalidArgument);
     CHECK(reply.message ==
-          "/id: \"grid\"'s GridMap/floors/0/rows/0: column 0: \"q\" is not in the legend");
+          "/id: \"grid\"'s BlockMap3D/floors/0/rows/0: column 0: \"q\" is not in the legend");
     engine.ok("component.set",
-              R"({"id": "grid", "components": {"GridMap": {"legend": {}, "floors": []}}})");
+              R"({"id": "grid", "components": {"BlockMap3D": {"legend": {}, "floors": []}}})");
     reply = engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block"})",
                          command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"grid\"'s GridMap has no mesh_library to place items from");
+    CHECK(reply.message == "/id: \"grid\"'s BlockMap3D has no mesh_library to place items from");
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("terrain commands make, paint and read an HTerrain's maps") {
+TEST_CASE("terrain commands make, paint and read an Terrain3D's maps") {
     const std::string root = "terrain_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -2259,7 +2259,7 @@ TEST_CASE("terrain commands make, paint and read an HTerrain's maps") {
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "land", "components": {
         "Transform3D": {"position": [100, 0, 0]},
-        "HTerrain": {"heightmap": "terrain/land.height.png", "resolution": 65,
+        "Terrain3D": {"heightmap": "terrain/land.height.png", "resolution": 65,
                      "height_range": [0, 10], "splatmap": "terrain/land.splat.png",
                      "colormap": "terrain/land.color.png", "map_scale": [2, 1, 2],
                      "textures": [{}, {}]}}})");
@@ -2274,9 +2274,9 @@ TEST_CASE("terrain commands make, paint and read an HTerrain's maps") {
         return got.find("points")->as_array()[0].find("position")->as_array()[1].as_double();
     };
     const auto height_range = [&] {
-        return *engine.ok("entity.get", R"({"id": "land", "components": ["HTerrain"]})")
+        return *engine.ok("entity.get", R"({"id": "land", "components": ["Terrain3D"]})")
                     .find("components")
-                    ->find("HTerrain")
+                    ->find("Terrain3D")
                     ->find("height_range");
     };
 
@@ -2394,42 +2394,44 @@ TEST_CASE("terrain commands make, paint and read an HTerrain's maps") {
                     "global": true}}]})");
     CHECK(height_at("[64, 64]") == doctest::Approx(18.272).epsilon(1.0e-4));
 
-    // Settings HTerrain refuses come back as problems.
-    engine.ok("component.set", R"({"id": "land", "components": {"HTerrain": {"chunk_size": 20}}})");
+    // Settings Terrain3D refuses come back as problems.
+    engine.ok("component.set",
+              R"({"id": "land", "components": {"Terrain3D": {"chunk_size": 20}}})");
     CHECK(*engine.ok("terrain.get", R"({"id": "land"})").find("problems") ==
-          parse(R"([{"path": "/components/HTerrain/chunk_size",
+          parse(R"([{"path": "/components/Terrain3D/chunk_size",
                      "message": "is 16, 32 or 64, not 20"}])"));
 
     auto reply = engine.fails("terrain.get", R"({"id": "lnd"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"lnd\"; did you mean \"land\"?");
     reply = engine.fails("terrain.get", R"({"id": "rock"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"rock\" has no HTerrain");
+    CHECK(reply.message == "/id: \"rock\" has no Terrain3D");
     engine.fails("terrain.brush", R"({"id": "land", "mode": "dig", "points": [[0, 0]]})",
                  command::code::kInvalidParams);
     // The maps a command writes must be named, and be files of their kind.
-    engine.ok("entity.create", R"({"id": "bare", "components": {"HTerrain": {"resolution": 65}}})");
+    engine.ok("entity.create",
+              R"({"id": "bare", "components": {"Terrain3D": {"resolution": 65}}})");
     reply = engine.fails("terrain.generate", R"({"id": "bare"})", command::code::kInvalidArgument);
-    CHECK(reply.message == "/id: \"bare\"'s HTerrain names no heightmap to write: set heightmap "
+    CHECK(reply.message == "/id: \"bare\"'s Terrain3D names no heightmap to write: set heightmap "
                            "to a path such as \"terrain/land.height.png\"");
     reply = engine.fails("terrain.brush", R"({"id": "bare", "mode": "hole", "points": [[0, 0]]})",
                          command::code::kInvalidArgument);
-    CHECK(reply.message == "/id: \"bare\"'s HTerrain names no colormap to write: set colormap to "
+    CHECK(reply.message == "/id: \"bare\"'s Terrain3D names no colormap to write: set colormap to "
                            "a path such as \"terrain/land.color.png\"");
     engine.ok("component.set",
-              R"({"id": "bare", "components": {"HTerrain": {"heightmap": "terrain/bare.png"}}})");
+              R"({"id": "bare", "components": {"Terrain3D": {"heightmap": "terrain/bare.png"}}})");
     reply = engine.fails("terrain.generate", R"({"id": "bare"})", command::code::kInvalidArgument);
     CHECK(reply.message ==
           "/id: \"bare\"'s heightmap \"terrain/bare.png\" is not a .height.png file");
-    // Maps of another size than the resolution, and resolutions HTerrain refuses.
-    engine.ok("component.set", R"({"id": "bare", "components": {"HTerrain": {
+    // Maps of another size than the resolution, and resolutions Terrain3D refuses.
+    engine.ok("component.set", R"({"id": "bare", "components": {"Terrain3D": {
         "heightmap": "terrain/land.height.png", "resolution": 129}}})");
     reply = engine.fails("terrain.get", R"({"id": "bare"})", command::code::kInvalidArgument);
     CHECK(reply.message == "/id: \"bare\"'s heightmap \"terrain/land.height.png\" is 65x65 "
                            "pixels, but its resolution makes the maps 129x129");
     engine.ok("component.set",
-              R"({"id": "bare", "components": {"HTerrain": {"resolution": 100}}})");
+              R"({"id": "bare", "components": {"Terrain3D": {"resolution": 100}}})");
     reply = engine.fails("terrain.get", R"({"id": "bare"})", command::code::kInvalidArgument);
-    CHECK(reply.message == "/id: \"bare\"'s HTerrain resolution is a power of two plus one from "
+    CHECK(reply.message == "/id: \"bare\"'s Terrain3D resolution is a power of two plus one from "
                            "65 to 4097, such as 513, not 100");
     std::filesystem::remove_all(root);
 }
@@ -2451,8 +2453,8 @@ TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them"
                     {"length": 1, "loop": true, "name": "Idle-loop", "tracks": 1}])"));
 
     engine.ok("entity.create", R"({"id": "arm", "components": {
-        "Transform3D": {"position": [2, 0, 0]}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
-        "AnimationPlayer": {"library": "models/arm.gltf", "animation": "Bend", "time": 1}}})");
+        "Transform3D": {"position": [2, 0, 0]}, "Model3D": {"mesh": "models/arm.gltf"},
+        "Animator": {"library": "models/arm.gltf", "animation": "Bend", "time": 1}}})");
     CHECK(engine.ok("skeleton.get", R"({"id": "arm"})") == parse(R"({
         "model": "models/arm.gltf",
         "clips": [{"animation": "Bend", "time": 1}],
@@ -2478,9 +2480,9 @@ TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them"
     CHECK(reply.message ==
           "/bones/0: \"models/arm.gltf\" has no bone \"Lowr\"; did you mean \"Lower\"?");
     engine.ok("entity.create", R"({"id": "box", "components": {"Transform3D": {},
-        "MeshInstance3D": {}, "BoxMesh": {}}})");
+        "Model3D": {}, "BoxGeometry": {}}})");
     reply = engine.fails("skeleton.get", R"({"id": "box"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"box\"'s MeshInstance3D draws no model");
+    CHECK(reply.message == "/id: \"box\"'s Model3D draws no model");
     std::filesystem::remove_all(root);
 }
 
@@ -2501,13 +2503,13 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
-            "Transform3D": {}, "NavigationRegion3D": {"navigation_mesh": "nav/l.navmesh.json"}}}},
+            "Transform3D": {}, "NavArea3D": {"navigation_mesh": "nav/l.navmesh.json"}}}},
         {"command": "entity.create", "params": {"id": "room", "components": {
             "Transform2D": {"position": [100, 50]},
-            "NavigationRegion2D": {"navigation_polygon": "nav/room.navpoly.json"}}}},
+            "NavArea2D": {"navigation_polygon": "nav/room.navpoly.json"}}}},
         {"command": "entity.create", "params": {"id": "walker", "components": {
             "Transform3D": {"position": [1, 0, 1]},
-            "NavigationAgent3D": {"target_position": [6, 0, 7]}}}}]})");
+            "NavAgent3D": {"target_position": [6, 0, 7]}}}}]})");
 
     CHECK(engine.ok("navigation.path", R"({"from": [1, 0, 1], "to": [6, 0, 7]})") ==
           parse(R"({"points": [[1, 0, 1], [4, 0, 4], [6, 0, 7]], "length": 7.8482})"));
@@ -2536,7 +2538,7 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
     // An agent that avoids others also gets the safe velocity avoidance gave it last tick.
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "runner", "components": {
-            "Transform2D": {"position": [110, 60]}, "NavigationAgent2D": {
+            "Transform2D": {"position": [110, 60]}, "NavAgent2D": {
             "target_position": [150, 100], "avoidance_enabled": true, "velocity": [30, 40]}}}},
         {"command": "step", "params": {"ticks": 1}}]})");
     CHECK(engine.ok("navigation.agent", R"({"id": "runner"})") == parse(R"({
@@ -2553,11 +2555,11 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
     CHECK(reply.message ==
           "/excluded_regions/0: no entity has the id \"flor\"; did you mean \"floor\"?");
     reply = engine.fails("navigation.agent", R"({"id": "floor"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"floor\" has no NavigationAgent2D or NavigationAgent3D");
+    CHECK(reply.message == "/id: \"floor\" has no NavAgent2D or NavAgent3D");
 
     // A region whose file is missing is left out, and navigation.map says why.
     engine.ok("entity.create", R"({"id": "lost", "components": {"Transform3D": {},
-        "NavigationRegion3D": {"navigation_mesh": "nav/gone.navmesh.json"}}})");
+        "NavArea3D": {"navigation_mesh": "nav/gone.navmesh.json"}}})");
     const json::Value map = engine.ok("navigation.map", R"({"map": "3d"})");
     const json::Value& errors = *map.find("3d")->find("errors");
     REQUIRE(errors.size() == 1);
@@ -2630,16 +2632,16 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
             "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-            "CollisionShape3D": {"size": [10, 1, 10]}}}},
+            "Collider3D": {"size": [10, 1, 10]}}}},
         {"command": "entity.create", "params": {"id": "level", "components": {
             "Transform3D": {"children": ["floor"]},
-            "NavigationRegion3D": {"navigation_mesh": "nav/level.navmesh.json"}}}},
+            "NavArea3D": {"navigation_mesh": "nav/level.navmesh.json"}}}},
         {"command": "entity.create", "params": {"id": "rock", "components": {
             "Transform2D": {"position": [50, 50]}, "StaticBody2D": {},
-            "CollisionShape2D": {"shape": "rectangle", "size": [20, 20]}}}},
+            "Collider2D": {"shape": "rectangle", "size": [20, 20]}}}},
         {"command": "entity.create", "params": {"id": "yard", "components": {
             "Transform2D": {"children": ["rock"]},
-            "NavigationRegion2D": {"navigation_polygon": "nav/yard.navpoly.json"}}}}]})");
+            "NavArea2D": {"navigation_polygon": "nav/yard.navpoly.json"}}}}]})");
     const auto read = [&](const std::string& path) -> std::optional<std::string> {
         if (!std::filesystem::exists(root + "/" + path)) {
             return std::nullopt;
@@ -2694,7 +2696,7 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     // Obstacles that affect the navigation mesh are cut out too, and counted apart.
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "cart", "components": {
-            "Transform2D": {"position": [20, 80]}, "NavigationObstacle2D": {"radius": 5,
+            "Transform2D": {"position": [20, 80]}, "NavObstacle2D": {"radius": 5,
             "affect_navigation_mesh": true}}}},
         {"command": "component.set", "params": {"id": "yard", "components": {
             "Transform2D": {"children": ["rock", "cart"]}}}}]})");
@@ -2705,23 +2707,24 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     reply = engine.fails("navigation.bake", R"({"id": "levle"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"levle\"; did you mean \"level\"?");
     reply = engine.fails("navigation.bake", R"({"id": "floor"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"floor\" has no NavigationRegion2D or NavigationRegion3D");
+    CHECK(reply.message == "/id: \"floor\" has no NavArea2D or NavArea3D");
     reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
     CHECK(reply.message == "nav/level.navmesh.json: missing required property \"format\"");
     engine.ok("component.set", R"({"id": "level", "components": {
-        "NavigationRegion3D": {"navigation_mesh": ""}}})");
+        "NavArea3D": {"navigation_mesh": ""}}})");
     reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
     CHECK(reply.message == "/id: \"level\" names no navigation_mesh file to bake into, such as "
                            "\"navigation/level.navmesh.json\"");
     engine.ok("component.set", R"({"id": "level", "components": {
-        "NavigationRegion3D": {"navigation_mesh": "nav/yard.navpoly.json"}}})");
+        "NavArea3D": {"navigation_mesh": "nav/yard.navpoly.json"}}})");
     reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
     CHECK(reply.message == "/id: its navigation_mesh \"nav/yard.navpoly.json\" is not a "
                            ".navmesh.json file");
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo takes them back") {
+TEST_CASE(
+    "lightmap.bake writes a BakedLighting3D's lightmap and texels, and undo takes them back") {
     const std::string root = "lightmap_bake_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -2730,12 +2733,12 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
-            "Transform3D": {}, "MeshInstance3D": {}, "PlaneMesh": {"size": [4, 4]}}}},
+            "Transform3D": {}, "Model3D": {}, "PlaneGeometry": {"size": [4, 4]}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
             "Transform3D": {"rotation": [-1, 0.6, 0]},
-            "DirectionalLight3D": {"light_bake_mode": "static"}}}},
+            "SunLight3D": {"light_bake_mode": "static"}}}},
         {"command": "entity.create", "params": {"id": "gi", "components": {
-            "LightmapGI": {"quality": "low", "bounces": 1, "environment_mode": "disabled"}}}}]})");
+            "BakedLighting3D": {"quality": "low", "bounces": 1, "environment_mode": "disabled"}}}}]})");
     const auto read = [&](const std::string& path) -> std::optional<std::string> {
         if (!std::filesystem::exists(root + "/" + path)) {
             return std::nullopt;
@@ -2749,10 +2752,10 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
     const json::Value dry = engine.ok("lightmap.bake", R"({"id": "gi", "dry_run": true})");
     CHECK(*dry.find("result") == baked);
     CHECK(*dry.find("changes") ==
-          parse(R"({"changed": {"gi": {"LightmapGI": {"light_data": "gi.lightmap.json"}}}})"));
+          parse(R"({"changed": {"gi": {"BakedLighting3D": {"light_data": "gi.lightmap.json"}}}})"));
     CHECK_FALSE(read("gi.lightmap.json"));
 
-    // An unsaved scene's LightmapGI bakes beside the project's root, named after itself, and
+    // An unsaved scene's BakedLighting3D bakes beside the project's root, named after itself, and
     // keeps the file in light_data; the files load as a lightmap and its texels.
     CHECK(engine.ok("lightmap.bake", R"({"id": "gi"})") == baked);
     const std::optional<std::string> data = read("gi.lightmap.json");
@@ -2765,7 +2768,7 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
     CHECK(texels.width == lightmap.width);
     const auto light_data = [&] {
         world::World& world = engine.session->world();
-        return world.ecs().get<world::LightmapGI>(world.find("gi")).light_data;
+        return world.ecs().get<world::BakedLighting3D>(world.find("gi")).light_data;
     };
     CHECK(light_data() == "gi.lightmap.json");
     // Baking again changes nothing.
@@ -2785,7 +2788,7 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
                               command::code::kInvalidArgument);
     CHECK(reply.message == "/file: \"yard.json\" is not a .lightmap.json file");
     reply = engine.fails("lightmap.bake", R"({"id": "floor"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"floor\" has no LightmapGI");
+    CHECK(reply.message == "/id: \"floor\" has no BakedLighting3D");
     reply = engine.fails("lightmap.bake", R"({"id": "g"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
 
@@ -2804,7 +2807,7 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
+TEST_CASE("voxel_gi.bake writes a VoxelLighting3D's cells, and undo takes them back") {
     const std::string root = "voxel_gi_bake_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -2813,12 +2816,12 @@ TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
-            "Transform3D": {"position": [0, -0.5, 0]}, "MeshInstance3D": {},
-            "PlaneMesh": {"size": [3, 3]}}}},
+            "Transform3D": {"position": [0, -0.5, 0]}, "Model3D": {},
+            "PlaneGeometry": {"size": [3, 3]}}}},
         {"command": "entity.create", "params": {"id": "ball", "components": {
-            "Transform3D": {}, "MeshInstance3D": {"gi_mode": "dynamic"}, "SphereMesh": {}}}},
+            "Transform3D": {}, "Model3D": {"gi_mode": "dynamic"}, "SphereGeometry": {}}}},
         {"command": "entity.create", "params": {"id": "gi", "components": {
-            "Transform3D": {}, "VoxelGI": {"size": [4, 2, 4], "subdiv": "64"}}}}]})");
+            "Transform3D": {}, "VoxelLighting3D": {"size": [4, 2, 4], "subdiv": "64"}}}}]})");
     const auto read = [&](const std::string& path) -> std::optional<std::string> {
         if (!std::filesystem::exists(root + "/" + path)) {
             return std::nullopt;
@@ -2834,11 +2837,11 @@ TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
     CHECK(*baked.find("size") == parse("[64, 32, 64]"));
     CHECK(*baked.find("levels") == 7);
     CHECK(*dry.find("changes") ==
-          parse(R"({"changed": {"gi": {"VoxelGI": {"data": "gi.voxelgi.json"}}}})"));
+          parse(R"({"changed": {"gi": {"VoxelLighting3D": {"data": "gi.voxelgi.json"}}}})"));
     CHECK_FALSE(read("gi.voxelgi.json"));
 
-    // An unsaved scene's VoxelGI bakes beside the project's root, named after itself, and keeps
-    // the file in data; the file loads as the cells.
+    // An unsaved scene's VoxelLighting3D bakes beside the project's root, named after itself, and
+    // keeps the file in data; the file loads as the cells.
     CHECK(engine.ok("voxel_gi.bake", R"({"id": "gi"})") == baked);
     const std::optional<std::string> data = read("gi.voxelgi.json");
     REQUIRE(data);
@@ -2847,7 +2850,7 @@ TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
     CHECK(cells.cells.size() > 64 * 64);
     const auto data_path = [&] {
         world::World& world = engine.session->world();
-        return world.ecs().get<world::VoxelGI>(world.find("gi")).data;
+        return world.ecs().get<world::VoxelLighting3D>(world.find("gi")).data;
     };
     CHECK(data_path() == "gi.voxelgi.json");
     // Baking again changes nothing.
@@ -2858,7 +2861,7 @@ TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
     CHECK_FALSE(read("gi.voxelgi.json"));
     CHECK(data_path().empty());
 
-    // A saved scene's VoxelGI bakes beside it, named after it and the entity; file names
+    // A saved scene's VoxelLighting3D bakes beside it, named after it and the entity; file names
     // another, which must be a .voxelgi.json file.
     engine.ok("scene.save", R"({"path": "levels/yard.scene.json"})");
     CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi"})").find("file") ==
@@ -2870,7 +2873,7 @@ TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
                               command::code::kInvalidArgument);
     CHECK(reply.message == "/file: \"yard.json\" is not a .voxelgi.json file");
     reply = engine.fails("voxel_gi.bake", R"({"id": "floor"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"floor\" has no VoxelGI");
+    CHECK(reply.message == "/id: \"floor\" has no VoxelLighting3D");
     reply = engine.fails("voxel_gi.bake", R"({"id": "g"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
     std::filesystem::remove_all(root);
@@ -2881,17 +2884,17 @@ TEST_CASE("occluder.bake sets an occluder's shape from the meshes around it, and
     Engine engine;
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "wall", "components": {
-            "Transform3D": {"position": [0, 1, -4]}, "MeshInstance3D": {},
-            "BoxMesh": {"size": [4, 2, 0.2]}}}},
+            "Transform3D": {"position": [0, 1, -4]}, "Model3D": {},
+            "BoxGeometry": {"size": [4, 2, 0.2]}}}},
         {"command": "entity.create", "params": {"id": "occluder", "components": {
             "Transform3D": {"position": [0, 1, 0]},
-            "OccluderInstance3D": {"bake_simplification_distance": 0}}}}]})");
+            "Occluder3D": {"bake_simplification_distance": 0}}}}]})");
     // A dry run says what it would bake and changes nothing.
     const json::Value dry = engine.ok("occluder.bake", R"({"id": "occluder", "dry_run": true})");
     CHECK(*dry.find("result") == parse(R"({"vertices": 8, "triangles": 12})"));
     const auto shape = [&] {
         world::World& world = engine.session->world();
-        return world.ecs().get<world::OccluderInstance3D>(world.find("occluder"));
+        return world.ecs().get<world::Occluder3D>(world.find("occluder"));
     };
     CHECK(shape().shape == "quad");
     CHECK(engine.ok("occluder.bake", R"({"id": "occluder"})") ==
@@ -2904,12 +2907,12 @@ TEST_CASE("occluder.bake sets an occluder's shape from the meshes around it, and
     CHECK(shape().vertices.empty());
     // With nothing to bake, it fails, as Godot's bake does.
     engine.ok("component.set", R"({"id": "occluder", "components": {
-        "OccluderInstance3D": {"bake_mask": 2}}})");
+        "Occluder3D": {"bake_mask": 2}}})");
     auto reply =
         engine.fails("occluder.bake", R"({"id": "occluder"})", command::code::kInvalidArgument);
     CHECK(contains(reply.message, "no meshes to bake"));
     reply = engine.fails("occluder.bake", R"({"id": "wall"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"wall\" has no OccluderInstance3D");
+    CHECK(reply.message == "/id: \"wall\" has no Occluder3D");
 }
 
 TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them back") {
@@ -2921,9 +2924,9 @@ TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "rock", "components": {
-            "Transform3D": {}, "MeshInstance3D": {}, "SphereMesh": {}}}},
+            "Transform3D": {}, "Model3D": {}, "SphereGeometry": {}}}},
         {"command": "entity.create", "params": {"id": "sdf", "components": {
-            "Transform3D": {}, "GPUParticlesCollisionSDF3D": {
+            "Transform3D": {}, "ParticleColliderSdf3D": {
                 "size": [2, 1, 2], "resolution": "16"}}}}]})");
     const auto read = [&](const std::string& path) -> std::optional<std::string> {
         if (!std::filesystem::exists(root + "/" + path)) {
@@ -2939,7 +2942,7 @@ TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them
     CHECK(*baked.find("meshes") == 1);
     CHECK(baked.find("triangles")->as_int() > 0);
     CHECK(*baked.find("cells") == parse("[16, 8, 16]"));
-    CHECK(*dry.find("changes") == parse(R"({"changed": {"sdf": {"GPUParticlesCollisionSDF3D": {
+    CHECK(*dry.find("changes") == parse(R"({"changed": {"sdf": {"ParticleColliderSdf3D": {
               "texture": "sdf.sdf.png", "slices_vertical": 16}}}})"));
     CHECK_FALSE(read("sdf.sdf.png"));
 
@@ -2961,7 +2964,7 @@ TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them
     CHECK((at(0, 0, 0) & 0x8000U) == 0);  // a corner, outside
     const auto collider = [&] {
         world::World& world = engine.session->world();
-        return world.ecs().get<world::GPUParticlesCollisionSDF3D>(world.find("sdf"));
+        return world.ecs().get<world::ParticleColliderSdf3D>(world.find("sdf"));
     };
     CHECK(collider().texture == "sdf.sdf.png");
     CHECK(collider().slices_vertical == 16);
@@ -2979,10 +2982,10 @@ TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them
                               command::code::kInvalidArgument);
     CHECK(reply.message == "/file: \"cave.png\" is not a .sdf.png file");
     reply = engine.fails("particles.bake_sdf", R"({"id": "rock"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"rock\" has no GPUParticlesCollisionSDF3D");
+    CHECK(reply.message == "/id: \"rock\" has no ParticleColliderSdf3D");
     // A box with nothing in it has nothing to bake.
     engine.ok("component.set", R"({"id": "sdf", "components": {
-        "GPUParticlesCollisionSDF3D": {"bake_mask": 2}}})");
+        "ParticleColliderSdf3D": {"bake_mask": 2}}})");
     reply = engine.fails("particles.bake_sdf", R"({"id": "sdf"})", command::code::kInvalidArgument);
     CHECK(contains(reply.message, "no triangles to bake"));
     std::filesystem::remove_all(root);
@@ -2993,13 +2996,13 @@ TEST_CASE("physics commands find bodies by ray, point and shape, and what touche
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
             "Transform2D": {"position": [160, 170]}, "StaticBody2D": {},
-            "CollisionShape2D": {"size": [320, 20]}}}},
+            "Collider2D": {"size": [320, 20]}}}},
         {"command": "entity.create", "params": {"id": "crate", "components": {
             "Transform2D": {"position": [100, 40]}, "RigidBody2D": {"contact_monitor": true},
-            "CollisionShape2D": {"size": [24, 24]}}}},
+            "Collider2D": {"size": [24, 24]}}}},
         {"command": "entity.create", "params": {"id": "coin", "components": {
-            "Transform2D": {"position": [100, 100]}, "Area2D": {},
-            "CollisionShape2D": {"shape": "circle", "radius": 8}}}}]})");
+            "Transform2D": {"position": [100, 100]}, "Zone2D": {},
+            "Collider2D": {"shape": "circle", "radius": 8}}}}]})");
     engine.ok("events.subscribe", R"({"kinds": ["body_entered", "body_exited"]})");
 
     // Before any step, queries see the bodies where the components put them.
@@ -3074,15 +3077,15 @@ TEST_CASE("physics.gravity reports the gravity and damping areas give bodies") {
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "low_gravity", "components": {
             "Transform2D": {"position": [100, 100]},
-            "Area2D": {"gravity_space_override": "replace", "gravity": 160,
+            "Zone2D": {"gravity_space_override": "replace", "gravity": 160,
                        "linear_damp_space_override": "combine", "linear_damp": 2},
-            "CollisionShape2D": {"size": [200, 200]}}}},
+            "Collider2D": {"size": [200, 200]}}}},
         {"command": "entity.create", "params": {"id": "crate", "components": {
             "Transform2D": {"position": [100, 100]}, "RigidBody2D": {"gravity_scale": 0.5},
-            "CollisionShape2D": {"size": [24, 24]}}}},
+            "Collider2D": {"size": [24, 24]}}}},
         {"command": "entity.create", "params": {"id": "rock", "components": {
             "Transform2D": {"position": [400, 100]}, "RigidBody2D": {},
-            "CollisionShape2D": {"size": [24, 24]}}}}]})");
+            "Collider2D": {"size": [24, 24]}}}}]})");
     engine.ok("step");
     CHECK(engine.ok("physics.gravity", R"({"ids": ["crate", "rock"]})") == parse(R"({"bodies": {
         "crate": {"gravity": [0, 80], "linear_damp": 2.1, "angular_damp": 1,
@@ -3103,14 +3106,14 @@ TEST_CASE("physics commands ask 3D physics for 3D points, shapes and bodies") {
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
             "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-            "CollisionShape3D": {"size": [20, 1, 20]}}}},
+            "Collider3D": {"size": [20, 1, 20]}}}},
         {"command": "entity.create", "params": {"id": "crate", "components": {
             "Transform3D": {"position": [0, 2, 0]}, "RigidBody3D": {"contact_monitor": true},
-            "CollisionShape3D": {}}}},
+            "Collider3D": {}}}},
         {"command": "entity.create", "params": {"id": "zone", "components": {
             "Transform3D": {"position": [5, 1, 0]},
-            "Area3D": {"gravity_space_override": "replace", "gravity": 2},
-            "CollisionShape3D": {"shape": "sphere", "radius": 1}}}}]})");
+            "Zone3D": {"gravity_space_override": "replace", "gravity": 2},
+            "Collider3D": {"shape": "sphere", "radius": 1}}}}]})");
 
     // Before any step, queries see the bodies where the components put them.
     CHECK(engine.ok("physics.raycast", R"({"from": [0, 2, 5], "to": [0, 2, -5]})") ==
@@ -3154,10 +3157,10 @@ TEST_CASE("physics.soft_body reports where a soft body's points are") {
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "floor", "components": {
             "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
-            "CollisionShape3D": {"size": [20, 1, 20]}}}},
+            "Collider3D": {"size": [20, 1, 20]}}}},
         {"command": "entity.create", "params": {"id": "sheet", "components": {
-            "Transform3D": {"position": [0, 1, 0]}, "MeshInstance3D": {},
-            "PlaneMesh": {"size": [1, 1], "subdivide_width": 1, "subdivide_depth": 1},
+            "Transform3D": {"position": [0, 1, 0]}, "Model3D": {},
+            "PlaneGeometry": {"size": [1, 1], "subdivide_width": 1, "subdivide_depth": 1},
             "SoftBody3D": {}}}}]})");
     CHECK(engine.ok("physics.soft_body", R"({"id": "sheet", "at": [0, 8]})") == parse(R"({
         "points": 9, "sleeping": false, "bounds": [-0.5, 1, -0.5, 1, 0, 1],
@@ -3172,7 +3175,7 @@ TEST_CASE("physics.soft_body reports where a soft body's points are") {
               .message == "/at/0: point 9 is out of bounds: \"sheet\" has 9 points");
     CHECK(engine.fails("physics.soft_body", R"({"id": "floor"})", command::code::kInvalidParams)
               .message == "/id: \"floor\" has no soft body: it needs a SoftBody3D and a "
-                          "MeshInstance3D drawing a primitive mesh, a Cloth3D on a model or a "
+                          "Model3D drawing a primitive mesh, a Cloth3D on a model or a "
                           "Cloth2D");
     engine.fails("physics.soft_body", R"({"id": "nobody"})", command::code::kNotFound);
 }
@@ -3181,11 +3184,11 @@ TEST_CASE("physics.break breaks a Destructible3D into pieces, and undo puts it b
     Engine engine;
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "crate", "components": {
-            "Transform3D": {"position": [0, 1, 0]}, "MeshInstance3D": {}, "BoxMesh": {},
-            "StaticBody3D": {}, "CollisionShape3D": {},
+            "Transform3D": {"position": [0, 1, 0]}, "Model3D": {}, "BoxGeometry": {},
+            "StaticBody3D": {}, "Collider3D": {},
             "Destructible3D": {"pieces": 4, "seed": 3, "mass": 8}}}},
         {"command": "entity.create", "params": {"id": "floor", "components": {
-            "Transform3D": {}, "StaticBody3D": {}, "CollisionShape3D": {}}}}]})");
+            "Transform3D": {}, "StaticBody3D": {}, "Collider3D": {}}}}]})");
     const json::Value before = engine.scene();
     const json::Value dry = engine.ok("physics.break", R"({"id": "crate", "dry_run": true})");
     CHECK(dry.find("dry_run")->as_bool());
@@ -3301,8 +3304,8 @@ TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them as Godot's, 
         Engine engine;
         engine.ok("batch", R"({"commands": [
             {"command": "entity.create", "params": {"id": "sheet", "components": {
-                "Transform3D": {"position": [0, 2, 0]}, "MeshInstance3D": {},
-                "PlaneMesh": {"size": [1, 1], "subdivide_width": 1, "subdivide_depth": 1},
+                "Transform3D": {"position": [0, 2, 0]}, "Model3D": {},
+                "PlaneGeometry": {"size": [1, 1], "subdivide_width": 1, "subdivide_depth": 1},
                 "SoftBody3D": {"drag_coefficient": 0.5,
                                "pinned_points": [{"point": 0}, {"point": 2}, {"point": 6},
                                                  {"point": 8}]}}}}
@@ -3316,19 +3319,19 @@ TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them as Godot's, 
     const double blown = sag(R"(, {"command": "entity.create", "params": {"id": "gale",
         "components": {"Transform3D": {"rotation": [-1.5707964, 0, 0]},
                        "WindSource3D": {"strength": 30, "turbulence": 0}}}})");
-    // An Area3D's wind, as Godot's, from a source above it blowing down its -z.
+    // An Zone3D's wind, as Godot's, from a source above it blowing down its -z.
     const double area = sag(R"(, {"command": "entity.create", "params": {"id": "vent",
         "components": {"Transform3D": {"position": [0, 4, 0], "rotation": [-1.5707964, 0, 0]}}}},
         {"command": "entity.create", "params": {"id": "draft", "components": {
-            "Transform3D": {"position": [0, 2, 0]}, "Area3D": {"wind_force_magnitude": 40,
-            "wind_source_path": "vent"}, "CollisionShape3D": {"size": [4, 4, 4]}}}})");
+            "Transform3D": {"position": [0, 2, 0]}, "Zone3D": {"wind_force_magnitude": 40,
+            "wind_source_path": "vent"}, "Collider3D": {"size": [4, 4, 4]}}}})");
     CHECK(blown < still - 0.01);
     CHECK(area < still - 0.01);
 
     Engine engine;
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "seeds", "components": {
-            "Transform3D": {}, "CPUParticles3D": {"amount": 1, "lifetime": 10,
+            "Transform3D": {}, "Emitter3D": {"amount": 1, "lifetime": 10,
                 "explosiveness": 1, "gravity": [0, 0, 0], "initial_velocity_min": 0,
                 "initial_velocity_max": 0, "wind_influence": 1}}}},
         {"command": "entity.create", "params": {"id": "breeze", "components": {
@@ -3345,7 +3348,7 @@ TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them as Godot's, 
     // And 2D particles by WindSource2Ds.
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "petals", "components": {
-            "Transform2D": {}, "CPUParticles2D": {"amount": 1, "lifetime": 10,
+            "Transform2D": {}, "Emitter2D": {"amount": 1, "lifetime": 10,
                 "explosiveness": 1, "gravity": [0, 0], "initial_velocity_min": 0,
                 "initial_velocity_max": 0, "wind_influence": 0.5}}}},
         {"command": "entity.create", "params": {"id": "draft", "components": {
@@ -3364,7 +3367,7 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
     Engine engine;
     engine.ok("entity.create", R"({"id": "sparkler", "components": {
         "Transform2D": {"position": [100, 50]},
-        "CPUParticles2D": {"amount": 10, "spread": 0, "gravity": [0, 0],
+        "Emitter2D": {"amount": 10, "spread": 0, "gravity": [0, 0],
                            "initial_velocity_min": 100, "initial_velocity_max": 100}}})");
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler"})") ==
           parse(R"({"alive": 0, "bounds": null})"));
@@ -3390,7 +3393,7 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
           moved(R"({"alive": 8, "bounds": [105, 50, 70.0001, 0]})"));
     // A failed command and a dry run put back a copy of the world; the particles stay.
     engine.fails("component.set",
-                 R"({"id": "sparkler", "components": {"CPUParticles2D": {"amount": 0}}})",
+                 R"({"id": "sparkler", "components": {"Emitter2D": {"amount": 0}}})",
                  command::code::kInvalidParams);
     engine.ok("entity.destroy", R"({"id": "sparkler", "dry_run": true})");
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler"})") ==
@@ -3398,7 +3401,7 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
 
     // Particles in local coordinates are placed in the world by the entity's transform.
     engine.ok("component.set", R"({"id": "sparkler", "components": {
-        "Transform2D": {"rotation": 1.5707964}, "CPUParticles2D": {"local_coords": true}}})");
+        "Transform2D": {"rotation": 1.5707964}, "Emitter2D": {"local_coords": true}}})");
     CHECK(engine.ok("particles.eval", R"({"id": "sparkler", "time": 0.25, "list": true,
                                           "max_results": 1})") ==
           parse(R"({"alive": 3, "bounds": [100, 55, 0, 20], "particles": [
@@ -3411,12 +3414,12 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(engine.fails("particles.eval", R"({"id": "rock"})", command::code::kInvalidParams)
               .message ==
-          "/id: \"rock\" has no CPUParticles2D, GPUParticles2D, CPUParticles3D or GPUParticles3D");
+          "/id: \"rock\" has no Emitter2D, GpuEmitter2D, Emitter3D or GpuEmitter3D");
     engine.fails("particles.eval", R"({"id": "sparkler", "time": -1})",
                  command::code::kInvalidParams);
 }
 
-TEST_CASE("particles.eval runs a GPUParticles2D's steps on the CPU") {
+TEST_CASE("particles.eval runs a GpuEmitter2D's steps on the CPU") {
     const std::string root = "command_gpu_particles_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -3430,7 +3433,7 @@ TEST_CASE("particles.eval runs a GPUParticles2D's steps on the CPU") {
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "jet", "components": {
         "Transform2D": {"position": [100, 50]},
-        "GPUParticles2D": {"amount": 4, "explosiveness": 1, "fixed_fps": 0,
+        "GpuEmitter2D": {"amount": 4, "explosiveness": 1, "fixed_fps": 0,
                            "process_material": "up.process_material.json"}}})");
     CHECK(engine.ok("particles.eval", R"({"id": "jet"})") ==
           parse(R"({"alive": 0, "bounds": null})"));
@@ -3446,7 +3449,7 @@ TEST_CASE("particles.eval runs a GPUParticles2D's steps on the CPU") {
     CHECK(*engine.ok("schema.get", R"({"kind": "process_material"})").find("title") ==
           "SlashEngine particle process material");
     engine.ok("component.set", R"({"id": "jet", "components": {
-        "GPUParticles2D": {"process_material": "gone.process_material.json"}}})");
+        "GpuEmitter2D": {"process_material": "gone.process_material.json"}}})");
     CHECK(contains(
         engine.fails("particles.eval", R"({"id": "jet"})", command::code::kInvalidArgument).message,
         "gone.process_material.json"));
@@ -3468,16 +3471,16 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "title", "components": {
-            "Control": {"anchor_right": 1, "offset_top": 10},
+            "Widget": {"anchor_right": 1, "offset_top": 10},
             "Label": {"text": "Paused", "horizontal_alignment": "center"}}}},
         {"command": "entity.create", "params": {"id": "hint", "components": {
-            "Control": {"offset_left": 20, "offset_top": 60, "offset_right": 80,
+            "Widget": {"offset_left": 20, "offset_top": 60, "offset_right": 80,
                         "visible": false},
             "Label": {"text": "Press any key", "autowrap_mode": "word"}}}},
         {"command": "entity.create", "params": {"id": "panel", "components": {
-            "Control": {"offset_right": 100, "offset_bottom": 50, "children": ["title"],
+            "Widget": {"offset_right": 100, "offset_bottom": 50, "children": ["title"],
                         "rotation": 1.5707964},
-            "ColorRect": {}}}}]})");
+            "ColorFill": {}}}}]})");
     // The project's window is the viewport; the panel turns a quarter, so its bounds do too.
     CHECK(engine.ok("ui.layout") == parse(R"({"viewport": [400, 300], "controls": [
         {"id": "hint", "rect": [20, 60, 60, 47], "visible": false,
@@ -3491,7 +3494,7 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
 
     // Text that doesn't fit, a missing glyph and a font that doesn't load are reported.
     engine.ok("component.set", R"({"id": "hint", "components": {
-        "Control": {"visible": true, "theme_override_fonts": {"font": "missing.ttf"}},
+        "Widget": {"visible": true, "theme_override_fonts": {"font": "missing.ttf"}},
         "Label": {"text": "Press any key \u4e00", "clip_text": true, "autowrap_mode": "off"}}})");
     json::Value hint = engine.ok("ui.layout", R"({"ids": ["hint"]})");
     CHECK(hint["controls"].as_array().at(0) == parse(R"({"id": "hint", "rect": [20, 60, 60, 22],
@@ -3499,16 +3502,16 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
         "font_error": "asset \"missing.ttf\" could not be read: no such file"})"));
 
     // A child listed twice is a problem, with its JSON Pointer.
-    engine.ok("component.set", R"({"id": "hint", "components": {"Control": {
+    engine.ok("component.set", R"({"id": "hint", "components": {"Widget": {
         "children": ["title"]}}})");
     CHECK(engine.ok("ui.layout", R"({"ids": ["panel"]})")["problems"] == parse(R"([
-        {"id": "panel", "path": "/components/Control/children/0",
+        {"id": "panel", "path": "/components/Widget/children/0",
          "message": "\"title\" is already a child of \"hint\""}])"));
     // So is a theme override its type doesn't have.
-    engine.ok("component.set", R"({"id": "title", "components": {"Control": {
+    engine.ok("component.set", R"({"id": "title", "components": {"Widget": {
         "theme_override_colors": {"font_colour": [1, 0, 0, 1]}}}})");
     CHECK(engine.ok("ui.layout", R"({"ids": ["title"]})")["problems"] == parse(R"([
-        {"id": "title", "path": "/components/Control/theme_override_colors/font_colour",
+        {"id": "title", "path": "/components/Widget/theme_override_colors/font_colour",
          "message": "Label has no colors item \"font_colour\"; did you mean \"font_color\"?"}])"));
 
     CHECK(engine.fails("ui.layout", R"({"ids": ["titel"]})", command::code::kNotFound).message ==
@@ -3516,7 +3519,7 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(
         engine.fails("ui.layout", R"({"ids": ["rock"]})", command::code::kInvalidParams).message ==
-        "/ids/0: \"rock\" isn't a control: it has no Control or UI component");
+        "/ids/0: \"rock\" isn't a control: it has no Widget or UI component");
     std::filesystem::remove_all(root);
 }
 
@@ -3528,7 +3531,7 @@ TEST_CASE("a session applies project.json's settings again when the file changes
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "box", "components": {
-        "Transform2D": {}, "RigidBody2D": {}, "CollisionShape2D": {}}})");
+        "Transform2D": {}, "RigidBody2D": {}, "Collider2D": {}}})");
     engine.fails("input.actions", R"({"names": ["jump"]})", command::code::kInvalidParams);
 
     // A project.json written after the session started, as project.import writes one, takes
@@ -3567,16 +3570,16 @@ TEST_CASE("ui.theme returns the theme items a control uses and where each comes 
                 .ok());
     REQUIRE(slash::platform::write_file(
                 root + "/ui/game.theme.json",
-                R"({"format": 1, "types": {"BoxContainer": {"constants": {"separation": 8}}}})")
+                R"({"format": 1, "types": {"StackBox": {"constants": {"separation": 8}}}})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "box", "components": {
-            "BoxContainer": {"vertical": true}}}},
+            "StackBox": {"vertical": true}}}},
         {"command": "entity.create", "params": {"id": "panel", "components": {
-            "Control": {"theme_override_styles": {"panel": {"corner_radius": 4}}},
+            "Widget": {"theme_override_styles": {"panel": {"corner_radius": 4}}},
             "Panel": {}}}},
         {"command": "entity.create", "params": {"id": "label", "components": {
             "Label": {"text": "Hi"}}}}]})");
@@ -3596,7 +3599,7 @@ TEST_CASE("ui.theme returns the theme items a control uses and where each comes 
                           "mean \"constants/separation\"?");
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(engine.fails("ui.theme", R"({"id": "rock"})", command::code::kInvalidParams).message ==
-          "/id: \"rock\" isn't a control: it has no Control or UI component");
+          "/id: \"rock\" isn't a control: it has no Widget or UI component");
     std::filesystem::remove_all(root);
 }
 
@@ -3667,7 +3670,7 @@ TEST_CASE("light.sample returns how lit points are, and which lights reach them"
     options.project_root = root;
     Engine engine(options);
 
-    // No lights and no CanvasModulate: draws are unshaded.
+    // No lights and no AmbientTint2D: draws are unshaded.
     CHECK(engine.ok("light.sample", R"({"points": [[0, 0]]})") ==
           parse(R"({"lit": false, "ambient": [1, 1, 1],
                     "points": [{"color": [1, 1, 1], "lights": []}]})"));
@@ -3675,14 +3678,14 @@ TEST_CASE("light.sample returns how lit points are, and which lights reach them"
     // A 200-pixel square lamp with shadows, and a wall to its right.
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "dark", "components": {
-            "CanvasModulate": {"color": [0.2, 0.2, 0.2, 1]}}}},
+            "AmbientTint2D": {"color": [0.2, 0.2, 0.2, 1]}}}},
         {"command": "entity.create", "params": {"id": "lamp", "components": {
             "Transform2D": {},
             "PointLight2D": {"texture": "white.png", "texture_scale": 50,
                              "color": [1, 0.5, 0, 1], "energy": 2, "shadow_enabled": true}}}},
         {"command": "entity.create", "params": {"id": "wall", "components": {
             "Transform2D": {"position": [50, 0]},
-            "LightOccluder2D": {"polygon": [[0, -10], [10, -10], [10, 10], [0, 10]]}}}},
+            "Occluder2D": {"polygon": [[0, -10], [10, -10], [10, 10], [0, 10]]}}}},
         {"command": "entity.create", "params": {"id": "hero", "components": {
             "Transform2D": {"position": [0, 30]}, "Sprite2D": {"light_mask": 2}}}},
         {"command": "entity.create", "params": {"id": "empty"}}]})");
@@ -3753,14 +3756,14 @@ TEST_CASE("lighting.check measures a 3D frame's exposure and what each light lig
             "Camera3D": {"current": true},
             "Transform3D": {"position": [0, 2, 5], "rotation": [-0.35, 0, 0]}}}},
         {"command": "entity.create", "params": {"id": "ground", "components": {
-            "MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]},
-            "StandardMaterial3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
+            "Model3D": {}, "PlaneGeometry": {"size": [20, 20]},
+            "Surface3D": {"albedo_color": [0.6, 0.6, 0.6, 1]}, "Transform3D": {}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
-            "DirectionalLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}},
+            "SunLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}},
         {"command": "entity.create", "params": {"id": "far", "components": {
-            "OmniLight3D": {"omni_range": 1}, "Transform3D": {"position": [0, 1, -40]}}}},
+            "PointLight3D": {"omni_range": 1}, "Transform3D": {"position": [0, 1, -40]}}}},
         {"command": "entity.create", "params": {"id": "blaze", "components": {
-            "OmniLight3D": {"light_energy": 60, "omni_range": 4},
+            "PointLight3D": {"light_energy": 60, "omni_range": 4},
             "Transform3D": {"position": [0, 0.5, 1]}}}}]})");
     json::Value checked = engine.ok("lighting.check", R"({"scale": 1})");
     CHECK(checked["size"] == parse("[64, 36]"));
@@ -3783,10 +3786,10 @@ TEST_CASE("lighting.check measures a 3D frame's exposure and what each light lig
     CHECK(lights[2]["id"] == "sun");
     CHECK(lights[2]["lit"].as_double() > 0.3);
     // The check puts the lights back and changes nothing to undo.
-    CHECK(
-        engine.ok("entity.get",
-                  R"({"id": "blaze", "components": ["OmniLight3D"]})")["components"]["OmniLight3D"]
-                                                                      ["light_energy"] == 60);
+    CHECK(engine.ok(
+              "entity.get",
+              R"({"id": "blaze", "components": ["PointLight3D"]})")["components"]["PointLight3D"]
+                                                                   ["light_energy"] == 60);
     engine.ok("undo");
     CHECK(engine.fails("entity.get", R"({"id": "blaze"})", command::code::kNotFound)
               .message.starts_with("/id"));
@@ -3796,9 +3799,9 @@ TEST_CASE("lighting.check measures a 3D frame's exposure and what each light lig
             "Camera3D": {"current": true},
             "Transform3D": {"position": [0, 2, 5], "rotation": [-0.35, 0, 0]}}}},
         {"command": "entity.create", "params": {"id": "ground", "components": {
-            "MeshInstance3D": {}, "PlaneMesh": {"size": [20, 20]}, "Transform3D": {}}}},
+            "Model3D": {}, "PlaneGeometry": {"size": [20, 20]}, "Transform3D": {}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
-            "DirectionalLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}}]})");
+            "SunLight3D": {}, "Transform3D": {"rotation": [-0.9, 0.3, 0]}}}}]})");
     // Exposure alone draws once, and a misspelled light gets a "did you mean".
     json::Value alone = engine.ok("lighting.check", R"({"lights": false, "scale": 0.5})");
     CHECK(alone.find("lights") == nullptr);
@@ -3837,9 +3840,9 @@ TEST_CASE("frame.capture draws the window on the CPU and returns pixels, a PNG o
             "Transform2D": {"position": [40, 30], "scale": [10, 10]},
             "Sprite2D": {"texture": "white.png", "modulate": [1, 0, 0, 1]}}}},
         {"command": "entity.create", "params": {"id": "bar", "components": {
-            "Control": {"offset_left": 100, "offset_top": 60, "offset_right": 160,
+            "Widget": {"offset_left": 100, "offset_top": 60, "offset_right": 160,
                         "offset_bottom": 90},
-            "ColorRect": {"color": [0, 1, 0, 0.5]}}}}]})");
+            "ColorFill": {"color": [0, 1, 0, 0.5]}}}}]})");
     CHECK(engine.ok("frame.capture", R"({"points": [[40, 30], [20, 10], [59.5, 49.5], [60, 50],
                                                      [130, 80]]})") ==
           parse(R"({"width": 160, "height": 90, "drawn": {"sprites": 1, "controls": 1},
@@ -3915,7 +3918,7 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "hero", "components": {"Transform2D": {},
-        "AnimationPlayer": {"library": "hero.anim.json", "animation": "bob"}}})");
+        "Animator": {"library": "hero.anim.json", "animation": "bob"}}})");
     engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
 
     // An entity's player: its library and animation. Values are rounded to four decimals.
@@ -3974,7 +3977,7 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     CHECK(contains(reply.message, "give id"));
     reply = engine.fails("animation.eval", R"({"id": "empty", "times": [0]})",
                          command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"empty\" has no AnimationPlayer");
+    CHECK(reply.message == "/id: \"empty\" has no Animator");
     reply = engine.fails("animation.eval", R"({"id": "hero", "animation": "bop", "times": [0]})",
                          command::code::kNotFound);
     CHECK(reply.message == "/animation: hero.anim.json has no animation \"bop\"; did you mean "
@@ -4021,8 +4024,8 @@ TEST_CASE("animation.seek moves a cinematic to a time or marker and sets its sho
     engine.ok("entity.create", R"({"id": "wide", "components": {"Camera3D": {"current": true}}})");
     engine.ok("entity.create", R"({"id": "close", "components": {"Camera3D": {}}})");
     engine.ok("entity.create", R"({"id": "door", "components": {"Transform3D": {},
-        "AnimationPlayer": {"library": "door.anim.json", "playing": false}}})");
-    engine.ok("entity.create", R"({"id": "director", "components": {"AnimationPlayer": {
+        "Animator": {"library": "door.anim.json", "playing": false}}})");
+    engine.ok("entity.create", R"({"id": "director", "components": {"Animator": {
         "library": "intro.anim.json", "animation": "intro", "playing": false,
         "targets": {"wide": "wide", "close": "close", "door": "door"}}}})");
 
@@ -4036,7 +4039,7 @@ TEST_CASE("animation.seek moves a cinematic to a time or marker and sets its sho
     CHECK(field("close", "Camera3D", "current").as_bool());
     CHECK_FALSE(field("wide", "Camera3D", "current").as_bool());
     CHECK(field("wide", "Camera3D", "fov").as_double() == doctest::Approx(50.0));
-    CHECK(field("door", "AnimationPlayer", "time").as_double() == 1.0);
+    CHECK(field("door", "Animator", "time").as_double() == 1.0);
     CHECK(field("door", "Transform3D", "rotation").as_array()[1].as_double() ==
           doctest::Approx(0.75));
     // Undo takes it all back.
@@ -4083,7 +4086,7 @@ TEST_CASE("animation.tree lists a tree's parameters and animation.set_parameters
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "hero", "components": {"Transform2D": {},
-        "AnimationTree": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}}})");
+        "AnimationGraph": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}}})");
     engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
 
     // A file's parameters: what callers set, with defaults and docs.
@@ -4149,7 +4152,7 @@ TEST_CASE("animation.tree lists a tree's parameters and animation.set_parameters
           "/parameters/shot~1active: \"shot/active\" is set by the tree as it plays, not by "
           "callers");
     reply = engine.fails("animation.tree", R"({"id": "empty"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"empty\" has no AnimationTree");
+    CHECK(reply.message == "/id: \"empty\" has no AnimationGraph");
     reply = engine.fails("animation.tree", "{}", command::code::kInvalidParams);
     CHECK(contains(reply.message, "give id"));
     engine.fails("animation.set_parameters", R"({"id": "hero", "parameters": {}})",
@@ -4184,7 +4187,7 @@ std::string sides_tileset() {
 
 } // namespace
 
-TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
+TEST_CASE("tilemap commands set, paint and read a TileLayer2D's cells") {
     const std::string root = "tilemap_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -4193,7 +4196,7 @@ TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "map", "components": {
-        "TileMapLayer": {"tile_set": "ground.tileset.json"}}})");
+        "TileLayer2D": {"tile_set": "ground.tileset.json"}}})");
     engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
 
     // Painting grass in empty space draws its edges, as if water were all around.
@@ -4243,7 +4246,7 @@ TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
                               command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"nobody\"");
     reply = engine.fails("tilemap.get", R"({"id": "empty"})", command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"empty\" has no TileMapLayer");
+    CHECK(reply.message == "/id: \"empty\" has no TileLayer2D");
     reply = engine.fails("tilemap.set", R"({"id": "map", "cells": [[0, 0]], "tile": "gras"})",
                          command::code::kNotFound);
     CHECK(reply.message ==
@@ -4260,14 +4263,14 @@ TEST_CASE("tilemap commands set, paint and read a TileMapLayer's cells") {
     CHECK(reply.message == "/rect: covers 90000 cells; the most is 65536");
     engine.fails("tilemap.set", R"({"id": "map", "cells": [[0, 40000]], "tile": null})",
                  command::code::kInvalidParams);
-    engine.ok("component.set", R"({"id": "map", "components": {"TileMapLayer": {"rows": ["q"]}}})");
+    engine.ok("component.set", R"({"id": "map", "components": {"TileLayer2D": {"rows": ["q"]}}})");
     reply = engine.fails("tilemap.get", R"({"id": "map"})", command::code::kInvalidArgument);
-    CHECK(reply.message == "/id: \"map\"'s TileMapLayer/rows/0: column 0: \"q\" is not in the "
+    CHECK(reply.message == "/id: \"map\"'s TileLayer2D/rows/0: column 0: \"q\" is not in the "
                            "legend");
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("tilemap.generate fills a TileMapLayer from noise by bands") {
+TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
     const std::string root = "tilemap_generate_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -4282,7 +4285,7 @@ TEST_CASE("tilemap.generate fills a TileMapLayer from noise by bands") {
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "map", "components": {
-        "TileMapLayer": {"tile_set": "ground.tileset.json"}}})");
+        "TileLayer2D": {"tile_set": "ground.tileset.json"}}})");
     const auto water_cells = [&] {
         std::string cells;
         for (int row = 0; row < 8; ++row) {
@@ -4387,7 +4390,7 @@ TEST_CASE("terrain.generate makes heights from a FastNoiseLite of one's own") {
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "land", "components": {"Transform3D": {},
-        "HTerrain": {"heightmap": "land.height.png", "resolution": 65,
+        "Terrain3D": {"heightmap": "land.height.png", "resolution": 65,
                      "height_range": [0, 10]}}})");
     const auto height_at = [&](std::string_view point) {
         const json::Value got =
@@ -4404,7 +4407,7 @@ TEST_CASE("terrain.generate makes heights from a FastNoiseLite of one's own") {
     engine.ok("terrain.generate", R"({"id": "land", "base_height": 0, "height_range": 10,
                                       "noise": "hills.texture.json"})");
     CHECK(height_at("[5, 7]") == doctest::Approx(10.0 - at).epsilon(2.0e-3));
-    // seed replaces the noise's seed; the island and curve shape it as they shape HTerrain's.
+    // seed replaces the noise's seed; the island and curve shape it as they shape Terrain3D's.
     engine.ok("terrain.generate", R"({"id": "land", "base_height": 0, "height_range": 10,
                                       "noise": {"frequency": 0.05}, "seed": 3})");
     CHECK(height_at("[5, 7]") != doctest::Approx(at).epsilon(1.0e-3));
@@ -4448,7 +4451,7 @@ TEST_CASE("terrain.import reads heightmaps and maps other tools export") {
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "land", "components": {"Transform3D": {},
-        "HTerrain": {"heightmap": "land.height.png", "splatmap": "land.splat.png",
+        "Terrain3D": {"heightmap": "land.height.png", "splatmap": "land.splat.png",
                      "colormap": "land.color.png", "resolution": 65}}})");
     const auto height_at = [&](std::string_view point) {
         const json::Value got =
@@ -4555,7 +4558,7 @@ TEST_CASE("tilemap.convert finds where cells are and which cell a point is in") 
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "map", "components": {"Transform2D":
-        {"position": [100, 50]}, "TileMapLayer": {"tile_set": "iso.tileset.json"}}})");
+        {"position": [100, 50]}, "TileLayer2D": {"tile_set": "iso.tileset.json"}}})");
     // Odd rows of diamonds sit half a cell over and half a cell down.
     CHECK(engine.ok("tilemap.convert", R"({"id": "map", "cells": [[0, 0], [0, 1]]})") ==
           parse(R"({"points": [[132, 66], [164, 82]]})"));
@@ -4592,7 +4595,7 @@ TEST_CASE("tilemap.get reads cells' custom data, and light.sample sees tiles' sh
     Engine engine(options);
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "map", "components": {
-            "TileMapLayer": {"tile_set": "dungeon.tileset.json",
+            "TileLayer2D": {"tile_set": "dungeon.tileset.json",
                              "legend": {"l": "lava", "w": "wall"}, "rows": ["l..w"]}}}},
         {"command": "entity.create", "params": {"id": "lamp", "components": {
             "Transform2D": {"position": [8, 8]},
@@ -4620,7 +4623,7 @@ TEST_CASE("tilemap.get reads cells' custom data, and light.sample sees tiles' sh
           parse(R"([{"id": "lamp", "color": [0, 0, 0], "shadow": 1}])"));
     // With the layer's occlusion off, nothing shadows the lamp.
     engine.ok("component.set",
-              R"({"id": "map", "components": {"TileMapLayer": {"occlusion_enabled": false}}})");
+              R"({"id": "map", "components": {"TileLayer2D": {"occlusion_enabled": false}}})");
     CHECK(*engine.ok("light.sample", R"({"points": [[80, 8]]})")
                .find("points")
                ->as_array()[0]
@@ -4643,10 +4646,9 @@ TEST_CASE("audio.play plays streams on a polyphonic player, and audio.state repo
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
-    engine.ok(
-        "entity.create",
-        R"({"id": "sfx", "components": {"AudioStreamPlayer": {"stream": "sfx.audio.json"}}})");
-    engine.ok("entity.create", R"({"id": "synth", "components": {"AudioStreamPlayer":
+    engine.ok("entity.create",
+              R"({"id": "sfx", "components": {"SoundPlayer": {"stream": "sfx.audio.json"}}})");
+    engine.ok("entity.create", R"({"id": "synth", "components": {"SoundPlayer":
         {"stream": "synth.audio.json", "autoplay": true}}})");
 
     CHECK(engine.ok("audio.play", R"({"id": "sfx", "stream": "hit.wav", "volume_db": -6})") ==
@@ -4710,7 +4712,7 @@ TEST_CASE("step, run.until and playtest.run report the music's clips: a music ti
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
-    engine.ok("entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+    engine.ok("entity.create", R"({"id": "music", "components": {"SoundPlayer":
         {"stream": "score.audio.json", "autoplay": true}}})");
 
     // The intro starts with the music, and the loop follows at its end by itself.
@@ -4765,11 +4767,10 @@ TEST_CASE("audio.input plays a sound into the microphone input, and audio.state 
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
-    engine.ok("entity.create", R"({"id": "voice", "components": {"AudioStreamPlayer":
+    engine.ok("entity.create", R"({"id": "voice", "components": {"SoundPlayer":
         {"stream": "mic.audio.json", "autoplay": true}}})");
-    engine.ok(
-        "entity.create",
-        R"({"id": "sfx", "components": {"AudioStreamPlayer": {"stream": "sfx.audio.json"}}})");
+    engine.ok("entity.create",
+              R"({"id": "sfx", "components": {"SoundPlayer": {"stream": "sfx.audio.json"}}})");
     engine.ok("step");
     CHECK(*engine.ok("audio.state", R"({"ids": []})").find("input") ==
           parse(R"({"active": true, "source": "", "peak_db": null})"));
@@ -4824,7 +4825,7 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create",
-              R"({"id": "music", "components": {"AudioStreamPlayer": {"stream": "hum.wav"}}})");
+              R"({"id": "music", "components": {"SoundPlayer": {"stream": "hum.wav"}}})");
     engine.ok("entity.create", R"({"id": "rock"})");
 
     CHECK(engine.ok("audio.state") == parse(R"({"mix_rate": 44100,
@@ -4835,7 +4836,7 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     CHECK(*state.find("buses") == parse(R"([{"name": "Master", "volume_db": 0, "peak_db": -6}])"));
     const json::Value& player = state.find("players")->as_array().at(0);
     CHECK(player.find("id")->as_string() == "music");
-    CHECK(player.find("kind")->as_string() == "AudioStreamPlayer");
+    CHECK(player.find("kind")->as_string() == "SoundPlayer");
     CHECK(player.find("voices")->as_int() == 1);
     CHECK(player.find("length")->as_double() == 1.0);
     CHECK(player.find("position")->as_double() > 0.04);
@@ -4877,20 +4878,19 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     CHECK(engine.ok("audio.state").find("players")->as_array().at(0).find("voices")->as_int() == 0);
     const auto rock =
         engine.fails("audio.play", R"({"id": "rock"})", command::code::kInvalidParams);
-    CHECK(contains(rock.message,
-                   "has no AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D"));
+    CHECK(contains(rock.message, "has no SoundPlayer, SoundPlayer2D or SoundPlayer3D"));
     engine.fails("audio.play", R"({"id": "musik"})", command::code::kNotFound);
 
     // A 3D player says how high it plays and how much its highs are cut.
-    engine.ok("entity.create", R"({"id": "ears", "components": {"AudioListener3D": {},
+    engine.ok("entity.create", R"({"id": "ears", "components": {"Listener3D": {},
         "Transform3D": {}}})");
-    engine.ok("entity.create", R"({"id": "buzz", "components": {"AudioStreamPlayer3D":
+    engine.ok("entity.create", R"({"id": "buzz", "components": {"SoundPlayer3D":
         {"stream": "hum.wav", "max_distance": 40}, "Transform3D": {"position": [0, 0, -20]}}})");
     CHECK(engine.ok("audio.play", R"({"id": "buzz"})").find("tick") != nullptr);
     engine.ok("step");
     const json::Value buzz =
         engine.ok("audio.state", R"({"ids": ["buzz"]})").find("players")->as_array().at(0);
-    CHECK(buzz.find("kind")->as_string() == "AudioStreamPlayer3D");
+    CHECK(buzz.find("kind")->as_string() == "SoundPlayer3D");
     CHECK(buzz.find("voices")->as_int() == 1);
     CHECK(buzz.find("pitch_scale")->as_double() == 1.0);
     // Half way to max_distance and at twice unit_size: a quarter as loud, so three quarters of
@@ -4925,11 +4925,11 @@ TEST_CASE("in surround, audio.state and audio.capture report each speaker") {
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
-    engine.ok("entity.create", R"({"id": "voice", "components": {"AudioStreamPlayer":
+    engine.ok("entity.create", R"({"id": "voice", "components": {"SoundPlayer":
         {"stream": "hum.wav", "autoplay": true, "mix_target": "center"}}})");
-    engine.ok("entity.create", R"({"id": "ears", "components": {"AudioListener3D": {},
+    engine.ok("entity.create", R"({"id": "ears", "components": {"Listener3D": {},
         "Transform3D": {}}})");
-    engine.ok("entity.create", R"({"id": "buzz", "components": {"AudioStreamPlayer3D":
+    engine.ok("entity.create", R"({"id": "buzz", "components": {"SoundPlayer3D":
         {"stream": "hum.wav", "autoplay": true}, "Transform3D": {"position": [0, 0, -10]}}})");
     engine.ok("step", R"({"ticks": 10})");
 
@@ -4989,7 +4989,7 @@ TEST_CASE("audio.spectrum reads a bus's analyzer and audio.record drives its rec
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
-    engine.ok("entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+    engine.ok("entity.create", R"({"id": "music", "components": {"SoundPlayer":
         {"stream": "hum.wav", "autoplay": true}}})");
     engine.ok("step", R"({"ticks": 6})");
 

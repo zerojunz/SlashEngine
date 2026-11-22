@@ -14,7 +14,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "background_color": [0.05, 0.05, 0.1, 1.0],
           "background_mode": "color"
         }
@@ -22,10 +22,10 @@
     },
     "ground": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [8.0, 0.2, 8.0]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "Transform3D": {
           "position": [0.0, -0.1, 0.0]
         }
@@ -33,8 +33,8 @@
     },
     "mound": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {
+        "Model3D": {},
+        "SphereGeometry": {
           "height": 2.0,
           "radius": 1.0
         },
@@ -45,17 +45,17 @@
     },
     "snow": {
       "components": {
-        "GPUParticles3D": {
+        "GpuEmitter3D": {
           "amount": 128,
           "collision_base_size": 0.03,
           "fixed_fps": 60,
           "lifetime": 4.0,
           "process_material": "snow.process_material.json"
         },
-        "QuadMesh": {
+        "QuadGeometry": {
           "size": [0.06, 0.06]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "billboard_mode": "particles",
           "shading_mode": "unshaded",
           "vertex_color_use_as_albedo": true
@@ -67,7 +67,7 @@
     },
     "snowfield": {
       "components": {
-        "GPUParticlesCollisionHeightField3D": {
+        "ParticleColliderHeight3D": {
           "heightfield_mask": 1,
           "resolution": "256",
           "size": [8.0, 4.0, 8.0]
@@ -79,17 +79,17 @@
     },
     "sparks": {
       "components": {
-        "GPUParticles3D": {
+        "GpuEmitter3D": {
           "amount": 48,
           "collision_base_size": 0.05,
           "fixed_fps": 60,
           "lifetime": 2.0,
           "process_material": "sparks.process_material.json"
         },
-        "QuadMesh": {
+        "QuadGeometry": {
           "size": [0.1, 0.1]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "billboard_mode": "particles",
           "shading_mode": "unshaded",
           "vertex_color_use_as_albedo": true
@@ -101,10 +101,10 @@
     },
     "statue": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "layers": 2
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 1.5,
           "radius": 0.75
         },
@@ -115,7 +115,7 @@
     },
     "statue_sdf": {
       "components": {
-        "GPUParticlesCollisionSDF3D": {
+        "ParticleColliderSdf3D": {
           "bake_mask": 2,
           "resolution": "16",
           "thickness": 2.0

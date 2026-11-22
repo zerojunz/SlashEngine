@@ -372,14 +372,14 @@ TEST_CASE("frame.summary shows the world through the camera, with controls where
             "Transform2D": {"position": [1000, 500], "scale": [4, 4]},
             "Sprite2D": {"texture": "white.png"}}}},
         {"command": "entity.create", "params": {"id": "bar", "components": {
-            "Control": {"offset_right": 40, "offset_bottom": 10},
-            "ColorRect": {"color": [0, 0, 1, 1]}}}},
+            "Widget": {"offset_right": 40, "offset_bottom": 10},
+            "ColorFill": {"color": [0, 0, 1, 1]}}}},
         {"command": "entity.create", "params": {"id": "cam", "components": {
             "Transform2D": {"position": [1000, 500]}, "Camera2D": {}}}}]})");
     CHECK(compact(project.ok("frame.summary")) == compact(parse(R"({"viewport": [160, 90],
         "camera": {"id": "cam", "rect": [920, 455, 160, 90]},
         "drawn": [{"id": "rock", "kind": "Sprite2D", "rect": [72, 37, 16, 16]},
-                  {"id": "bar", "kind": "ColorRect", "rect": [0, 0, 40, 10]}]})")));
+                  {"id": "bar", "kind": "ColorFill", "rect": [0, 0, 40, 10]}]})")));
 
     // Zoomed in twice and moved, as an agent's edit shows at once.
     project.ok("component.set", R"({"id": "cam", "components": {
@@ -387,12 +387,12 @@ TEST_CASE("frame.summary shows the world through the camera, with controls where
     CHECK(compact(project.ok("frame.summary")) == compact(parse(R"({"viewport": [160, 90],
         "camera": {"id": "cam", "rect": [964, 477.5, 80, 45]},
         "drawn": [{"id": "rock", "kind": "Sprite2D", "rect": [56, 29, 32, 32]},
-                  {"id": "bar", "kind": "ColorRect", "rect": [0, 0, 40, 10]}]})")));
+                  {"id": "bar", "kind": "ColorFill", "rect": [0, 0, 40, 10]}]})")));
 
     // With no camera, the window shows the world from [0, 0].
     project.ok("component.set", R"({"id": "cam", "components": {"Camera2D": {"enabled": false}}})");
     CHECK(compact(project.ok("frame.summary")) == compact(parse(R"({"viewport": [160, 90],
-        "drawn": [{"id": "bar", "kind": "ColorRect", "rect": [0, 0, 40, 10]}],
+        "drawn": [{"id": "bar", "kind": "ColorFill", "rect": [0, 0, 40, 10]}],
         "offscreen": ["rock"]})")));
 
     // A smoothed camera glides after its entity over the ticks.
@@ -424,7 +424,7 @@ TEST_CASE("capture draws the world through the camera, lit where its lights are"
                              "Sprite2D": {"texture": "red.png"}})");
     scene.create("lamp", R"({"Transform2D": {"position": [1000, 1000]},
                              "PointLight2D": {"texture": "light.png"}})");
-    scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    scene.create("night", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
     scene.create("cam", R"({"Transform2D": {"position": [1000, 1000]}, "Camera2D": {}})");
     auto captured = canvas::capture(scene.world, scene.assets);
     REQUIRE(captured.ok());
@@ -435,7 +435,7 @@ TEST_CASE("capture draws the world through the camera, lit where its lights are"
 
     // Collision shapes draw through the camera too.
     scene.create("box", R"({"Transform2D": {"position": [960, 990]},
-                            "StaticBody2D": {}, "CollisionShape2D": {"size": [8, 8]}})");
+                            "StaticBody2D": {}, "Collider2D": {"size": [8, 8]}})");
     auto shapes = canvas::capture(scene.world, scene.assets, {.collisions = true});
     REQUIRE(shapes.ok());
     CHECK(shapes.value().shapes == 1);

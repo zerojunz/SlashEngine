@@ -131,14 +131,14 @@ int main() {
     call(session, "step", R"({"ticks": 30})");
     call(session, "events.read", R"({"subscription": "events_1"})");
     call(session, "entity.get",
-         R"({"id": "sparks", "components": ["GPUParticles2D"], "omit_defaults": true})");
+         R"({"id": "sparks", "components": ["GpuEmitter2D"], "omit_defaults": true})");
     call(session, "component.set",
-         R"({"id": "sparks", "components": {"GPUParticles2D": {"emitting": true}}})");
+         R"({"id": "sparks", "components": {"GpuEmitter2D": {"emitting": true}}})");
     call(session, "step", R"({"ticks": 30})");
     call(session, "particles.eval", R"({"id": "sparks", "list": true, "max_results": 2})");
 
-    // The rain has landed on the ledge, a LightOccluder2D 40 pixels wide whose top is at y 100:
-    // its process material's collision_mode "rigid" stops particles at LightOccluder2D outlines,
+    // The rain has landed on the ledge, a Occluder2D 40 pixels wide whose top is at y 100:
+    // its process material's collision_mode "rigid" stops particles at Occluder2D outlines,
     // as Godot's, so the oldest rest on it, half the dot's average side (4 pixels) above it.
     call(session, "particles.eval", R"({"id": "rain", "list": true, "max_results": 3})");
 
@@ -168,7 +168,7 @@ int main() {
     check(slash::platform::write_file("broken.process_material.json",
                                       R"({"format": 1, "emission_shape": "sphear"})"));
     call(session, "component.set",
-         R"({"id": "fire", "components": {"GPUParticles2D": {"process_material":
+         R"({"id": "fire", "components": {"GpuEmitter2D": {"process_material":
              "broken.process_material.json"}}})");
     call(session, "particles.eval", R"({"id": "fire"})");
     call(session, "undo", "{}");

@@ -84,7 +84,7 @@ void fight(world::World& w, double /*tick_seconds*/) {
 // beat. The victory sting goes back to explore by itself.
 void direct_music(world::World& w, double /*tick_seconds*/) {
     const entt::entity music = w.find("music");
-    auto* player = music != entt::null ? w.ecs().try_get<world::AudioStreamPlayer>(music) : nullptr;
+    auto* player = music != entt::null ? w.ecs().try_get<world::SoundPlayer>(music) : nullptr;
     for (const entt::entity entity : w.ecs().view<game::Arena>()) {
         auto& arena = w.ecs().get<game::Arena>(entity);
         const std::string clip = arena.phase == "won" ? "victory" : arena.phase;

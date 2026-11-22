@@ -228,7 +228,7 @@ struct CreatureTurn {
 // wing behind the body).
 [[nodiscard]] std::vector<CutoutBone> creature_cutout(const CreatureRecipe& recipe);
 
-// The recipe a Creature3D's MeshInstance3D or a Creature2D names, read through the world's
+// The recipe a Creature3D's Model3D or a Creature2D names, read through the world's
 // assets (kept until a file it was made from changes).
 [[nodiscard]] Result<std::shared_ptr<const CreatureRecipe>> load_creature(const World& world,
                                                                           std::string_view path);

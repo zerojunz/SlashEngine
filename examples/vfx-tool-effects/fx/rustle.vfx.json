@@ -5,7 +5,7 @@
   "layers": [
     {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 4,
           "explosiveness": 1,
           "lifetime": 0.4

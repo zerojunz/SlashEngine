@@ -17,7 +17,7 @@
 // shadowed light. shade runs the same lighting on the CPU, for checks and light.sample.
 //
 // A lit pixel starts from the color its program made (Godot's base color). Normal draws multiply
-// it by the ambient color (their canvas's CanvasModulate); then each light whose cull mask, z
+// it by the ambient color (their canvas's AmbientTint2D); then each light whose cull mask, z
 // range and layer range take the draw adds, subtracts or mixes in its color times the base color,
 // darkened where the pixel's normal faces away from it and blended toward its shadow color where
 // an occluder hides it.
@@ -37,7 +37,7 @@ enum class LightMode : std::uint8_t {
 
 enum class LightKind : std::uint8_t {
     Point,       // shines from a position through its texture, as PointLight2D
-    Directional, // shines everywhere from one direction, as DirectionalLight2D
+    Directional, // shines everywhere from one direction, as SunLight2D
 };
 
 // How soft shadow edges are, as Godot's shadow filters: one shadow map texel, or the average of
@@ -177,7 +177,7 @@ struct LightHit {
 [[nodiscard]] float directional_light_units(float lux);
 [[nodiscard]] float omni_light_units(float lumens);
 [[nodiscard]] float spot_light_units(float lumens);
-// Godot's exposure normalization for a CameraAttributesPractical with physical light units:
+// Godot's exposure normalization for a CameraLens with physical light units:
 // exposure_sensitivity over 3072007, a CameraAttributesPhysical's default at ISO 100.
 [[nodiscard]] float exposure_normalization(float sensitivity);
 

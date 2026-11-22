@@ -13,7 +13,7 @@ body names one in `physics_material_override`, as Godot's do:
 ```json
 "crate_low": {"components": {
   "RigidBody3D": {"physics_material_override": "materials/oak.physics_material.json"},
-  "CollisionShape3D": {"shape": "box", "size": [0.6, 0.6, 0.6]}
+  "Collider3D": {"shape": "box", "size": [0.6, 0.6, 0.6]}
 }}
 ```
 

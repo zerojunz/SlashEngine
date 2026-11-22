@@ -6,11 +6,11 @@ the software device draws it yet; see [gaussian-splats.md](../../docs/reference/
 A capture made with Postshot, Polycam, Luma or nerfstudio's splatfacto is a `.ply` file of
 splats: small, see-through 3D Gaussians, each with a place, a size along three axes, a turn, an
 opacity and a color that changes with the side it is seen from (spherical harmonics). A
-`GaussianSplat3D` names the file and its entity's `Transform3D` places it:
+`Splat3D` names the file and its entity's `Transform3D` places it:
 
 ```json
 "boulder": {"components": {
-  "GaussianSplat3D": {"splats": "boulder.ply"},
+  "Splat3D": {"splats": "boulder.ply"},
   "Transform3D": {"position": [0, 0.5, 0]}}}
 ```
 

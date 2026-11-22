@@ -59,7 +59,7 @@ Vec3 position_of(const render::Vertex3D& vertex) {
     return {vertex.position[0], vertex.position[1], vertex.position[2]};
 }
 
-bool opaque(const world::StandardMaterial3D* material) {
+bool opaque(const world::Surface3D* material) {
     return material == nullptr || material->transparency == "disabled";
 }
 
@@ -98,13 +98,13 @@ std::size_t gather_triangles(const world::World& world, const world::Tree3D& tre
                              std::vector<Problem>& problems) {
     const auto& ecs = world.ecs();
     std::size_t meshes = 0;
-    for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
-        const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+    for (const entt::entity entity : made<world::Model3D>(world)) {
+        const auto& instance = ecs.get<const world::Model3D>(entity);
         if (!tree.visible(entity) || (instance.layers & gather.mask) == 0 ||
             !at_or_under(tree, entity, gather.scope)) {
             continue;
         }
-        const auto* override_material = ecs.try_get<const world::StandardMaterial3D>(entity);
+        const auto* override_material = ecs.try_get<const world::Surface3D>(entity);
         const Affine3D place = to_space * tree.global(entity);
         const std::size_t before = out.size();
         if (instance.mesh.empty()) {
@@ -122,14 +122,12 @@ std::size_t gather_triangles(const world::World& world, const world::Tree3D& tre
             add_mesh(data.value().vertices, data.value().indices, place, out);
         } else {
             if (!models) {
-                problems.push_back(
-                    {entity, "/components/MeshInstance3D/mesh", "models can't load here"});
+                problems.push_back({entity, "/components/Model3D/mesh", "models can't load here"});
                 continue;
             }
             auto loaded = models(instance.mesh);
             if (!loaded) {
-                problems.push_back(
-                    {entity, "/components/MeshInstance3D/mesh", loaded.error().message});
+                problems.push_back({entity, "/components/Model3D/mesh", loaded.error().message});
                 continue;
             }
             const Model& model = *loaded.value();
@@ -138,7 +136,7 @@ std::size_t gather_triangles(const world::World& world, const world::Tree3D& tre
                     continue;
                 }
                 for (const ModelSurface& surface : model.meshes[part.mesh].surfaces) {
-                    const world::StandardMaterial3D* material = override_material;
+                    const world::Surface3D* material = override_material;
                     if (material == nullptr && surface.material >= 0 &&
                         static_cast<std::size_t>(surface.material) < model.materials.size()) {
                         material =
@@ -180,8 +178,8 @@ std::size_t gather_triangles(const world::World& world, const world::Tree3D& tre
             ++meshes;
         }
     }
-    for (const entt::entity entity : made<world::GridMap>(world)) {
-        // A GridMap's octants are on the first render layer.
+    for (const entt::entity entity : made<world::BlockMap3D>(world)) {
+        // A BlockMap3D's octants are on the first render layer.
         if (!tree.visible(entity) || !at_or_under(tree, entity, gather.scope) ||
             (gather.built_by_layer && (gather.mask & 1U) == 0)) {
             continue;
@@ -206,8 +204,8 @@ std::size_t gather_triangles(const world::World& world, const world::Tree3D& tre
         }
     }
     if (gather.terrains) {
-        for (const entt::entity entity : made<world::HTerrain>(world)) {
-            const auto& terrain = ecs.get<const world::HTerrain>(entity);
+        for (const entt::entity entity : made<world::Terrain3D>(world)) {
+            const auto& terrain = ecs.get<const world::Terrain3D>(entity);
             if (!tree.visible(entity) || (terrain.render_layers & gather.mask) == 0 ||
                 !at_or_under(tree, entity, gather.scope)) {
                 continue;
@@ -481,11 +479,10 @@ std::array<std::uint32_t, 2> particle_height_field_size(Vec3 size, std::string_v
 
 Result<ParticleSdfBake> bake_particle_sdf(const world::World& world, entt::entity entity,
                                           const ModelLoader& models, jobs::Pool* pool) {
-    if (!world.valid(entity) || !world.ecs().all_of<world::GPUParticlesCollisionSDF3D>(entity)) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "the entity has no GPUParticlesCollisionSDF3D");
+    if (!world.valid(entity) || !world.ecs().all_of<world::ParticleColliderSdf3D>(entity)) {
+        return make_error(ErrorCode::InvalidArgument, "the entity has no ParticleColliderSdf3D");
     }
-    const auto& component = world.ecs().get<const world::GPUParticlesCollisionSDF3D>(entity);
+    const auto& component = world.ecs().get<const world::ParticleColliderSdf3D>(entity);
     const std::array<std::uint32_t, 3> cells =
         particle_sdf_cells(component.size, component.resolution);
     if (cells[0] == 0) {
@@ -618,8 +615,7 @@ render::ParticleHeightField3D particle_height_field(const world::World& world,
                                                     const ModelLoader& models,
                                                     std::vector<Problem>& problems) {
     render::ParticleHeightField3D out;
-    const auto* component =
-        world.ecs().try_get<const world::GPUParticlesCollisionHeightField3D>(entity);
+    const auto* component = world.ecs().try_get<const world::ParticleColliderHeight3D>(entity);
     if (component == nullptr) {
         return out;
     }
@@ -908,9 +904,9 @@ std::vector<Problem> check_particle_colliders(const world::World& world) {
         return size.x > 0.0F && size.y > 0.0F && size.z > 0.0F &&
                std::isfinite(size.x + size.y + size.z);
     };
-    for (const entt::entity entity : made<world::GPUParticlesCollisionSDF3D>(world)) {
-        const auto& sdf = world.ecs().get<const world::GPUParticlesCollisionSDF3D>(entity);
-        const std::string base = "/components/GPUParticlesCollisionSDF3D/";
+    for (const entt::entity entity : made<world::ParticleColliderSdf3D>(world)) {
+        const auto& sdf = world.ecs().get<const world::ParticleColliderSdf3D>(entity);
+        const std::string base = "/components/ParticleColliderSdf3D/";
         if (sdf_subdiv(sdf.resolution) == 0) {
             problems.push_back(
                 {entity, base + "resolution",
@@ -954,10 +950,9 @@ std::vector<Problem> check_particle_colliders(const world::World& world) {
             problems.push_back({entity, field, "\"" + sdf.texture + "\": " + cut.error().message});
         }
     }
-    for (const entt::entity entity : made<world::GPUParticlesCollisionHeightField3D>(world)) {
-        const auto& field =
-            world.ecs().get<const world::GPUParticlesCollisionHeightField3D>(entity);
-        const std::string base = "/components/GPUParticlesCollisionHeightField3D/";
+    for (const entt::entity entity : made<world::ParticleColliderHeight3D>(world)) {
+        const auto& field = world.ecs().get<const world::ParticleColliderHeight3D>(entity);
+        const std::string base = "/components/ParticleColliderHeight3D/";
         if (height_field_resolution(field.resolution) == 0) {
             problems.push_back({entity, base + "resolution",
                                 "\"" + field.resolution + R"(" isn't "256", "512" or "1024")"});

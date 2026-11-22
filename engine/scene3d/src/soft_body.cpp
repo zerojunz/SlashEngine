@@ -32,16 +32,16 @@ std::vector<Problem> check_soft_bodies(const world::World& world) {
     std::vector<Problem> problems;
     const auto& ecs = world.ecs();
     for (const entt::entity entity : ecs.view<const world::SoftBody3D>()) {
-        const auto* instance = ecs.try_get<const world::MeshInstance3D>(entity);
+        const auto* instance = ecs.try_get<const world::Model3D>(entity);
         if (instance == nullptr) {
             // As Godot's warning: "This body will be ignored until you set a mesh."
             problems.push_back({entity, "/components/SoftBody3D",
-                                "a soft body needs a MeshInstance3D drawing its mesh; it is "
+                                "a soft body needs a Model3D drawing its mesh; it is "
                                 "ignored until it has one"});
             continue;
         }
         if (!instance->mesh.empty()) {
-            problems.push_back({entity, "/components/MeshInstance3D/mesh",
+            problems.push_back({entity, "/components/Model3D/mesh",
                                 "a soft body simulates a primitive mesh component, not a model "
                                 "file, yet"});
             continue;

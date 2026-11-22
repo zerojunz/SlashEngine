@@ -2,7 +2,7 @@
   "entities": {
     "hero": {
       "components": {
-        "AnimationTree": {
+        "AnimationGraph": {
           "libraries": {
             "": "hero.anim.json"
           },

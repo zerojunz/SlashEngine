@@ -207,7 +207,7 @@ rendering on top.
       with glslang and SPIRV-Cross for every backend and the CPU (`material.eval`, frame
       captures), hot reloaded, and compiled into the material files at export
 - [x] Sprites, sprite sheets and flipbooks, as in Godot: `Sprite2D` (frames, regions, flips,
-      tint, `z_index`) and `AnimatedSprite2D` playing `.frames.json` files (Godot's
+      tint, `z_index`) and `Flipbook2D` playing `.frames.json` files (Godot's
       SpriteFrames), drawn in order and interpolated between fixed ticks so high refresh rates
       look smooth. Textures are PNG or BMP assets that hot reload, and exports ship and check
       them with the frames files
@@ -224,17 +224,17 @@ rendering on top.
       `parallax_2d` system scrolls each `Parallax2D` as Godot's `_update_scroll`, with limits,
       autoscroll and repeats drawn to fill the window; `canvas.convert` and
       `canvas::to_world` turn points through the camera or a layer; `frame.summary` and
-      `ui.layout` name each thing's layer; and the Godot importer converts `CanvasLayer`,
+      `ui.layout` name each thing's layer; and the Godot importer converts `ScreenLayer`,
       `Parallax2D`, `ParallaxBackground` and `ParallaxLayer`
 - [x] Keyframe animation tracks on any reflected property, like Godot's AnimationPlayer:
       `.anim.json` libraries of animations with value tracks on any component field or part of
       one, Godot's interpolation, easing, update and loop modes, and event tracks that emit world
-      events. `AnimationPlayer` plays them on its own entity or, through track targets, on the
+      events. `Animator` plays them on its own entity or, through track targets, on the
       entities it names, `animation.eval` returns the values at any times, and exports check and
       ship the files
-- [x] Tilemap layers with terrain autotiling, as Godot's TileSet and TileMapLayer:
+- [x] Tilemap layers with terrain autotiling, as Godot's TileSet and TileLayer2D:
       `.tileset.json` files cut atlas textures into tiles with terrain peering bits (corners and
-      sides, corners or sides), and `TileMapLayer` keeps its cells as text, rows of legend keys.
+      sides, corners or sides), and `TileLayer2D` keeps its cells as text, rows of legend keys.
       `tilemap.paint` paints terrain and picks the tiles that connect, `tilemap.set` places
       tiles and `tilemap.get` reads them; layers draw in runs of one texture, and validation and
       exports check every layer against its tile set
@@ -256,25 +256,25 @@ rendering on top.
       shadows, turn with their cells and switch off with `occlusion_enabled`, both imported from
       Godot; tile navigation polygons came with navigation in milestone 7
 - [x] 2D lights, occluders and normal-mapped sprites, as Godot's: `PointLight2D` (textured,
-      with a height for normal maps), `DirectionalLight2D` and `CanvasModulate`, with light masks,
-      z ranges and add, sub and mix blending; `LightOccluder2D` shadows with cull modes and PCF
+      with a height for normal maps), `SunLight2D` and `AmbientTint2D`, with light masks,
+      z ranges and add, sub and mix blending; `Occluder2D` shadows with cull modes and PCF
       filters; `Sprite2D` normal and specular maps; and materials' `light_mode`. The material
       shader lights every lit draw, the CPU casts shadows into a shadow map, and `light.sample`
       returns how lit points are without a screenshot
 - [x] Normal and specular maps on tile set atlases, as a Godot `CanvasTexture`'s, and lights'
       `range_layer_min`/`range_layer_max` over canvas layers, each canvas with its own
-      `CanvasModulate`
-- [x] 2D physics on Box2D v3, as Godot's: `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`
-      and `CharacterBody2D` (`move_and_slide` with floors, walls, slopes, snapping, moving
-      platforms and one-way platforms), `Area2D` with enter and exit events, rectangle, circle,
-      capsule, segment and convex shapes, concave `CollisionPolygon2D`, collision layers and
+      `AmbientTint2D`
+- [x] 2D physics on Box2D v3, as Godot's: `StaticBody2D`, `MovingBody2D`, `RigidBody2D`
+      and `CharacterMover2D` (`move_and_slide` with floors, walls, slopes, snapping, moving
+      platforms and one-way platforms), `Zone2D` with enter and exit events, rectangle, circle,
+      capsule, segment and convex shapes, concave `PolygonCollider2D`, collision layers and
       masks, pin, spring and groove joints, and `physics.raycast`, `physics.overlap` and
       `physics.contacts`. Results are the same on every platform
 - [x] Tile collision, as Godot's TileSet physics layers: collision polygons on tiles (one-way
       too), physics layers with a collision layer, mask, friction and bounce, each
-      `TileMapLayer` a static body rebuilt when it changes, and `physics.raycast` reporting the
+      `TileLayer2D` a static body rebuilt when it changes, and `physics.raycast` reporting the
       cell it hit
-- [x] More of Godot's 2D physics: `Area2D` gravity and damping overrides, `StaticBody2D` constant velocities, and `CharacterBody2D`'s
+- [x] More of Godot's 2D physics: `Zone2D` gravity and damping overrides, `StaticBody2D` constant velocities, and `CharacterMover2D`'s
       `floor_block_on_wall`, `floor_constant_speed`, `wall_min_slide_angle` and `safe_margin`
 - [x] CPU particles, as Godot's `CPUParticles2D`: emission shapes, directions and spread,
       gravity, linear, radial and tangential acceleration, orbits, damping, angles and spin,
@@ -292,12 +292,12 @@ rendering on top.
       `ParticleProcessMaterial` resources import
 - [x] Particle graphs in text (Godot's particle shaders, as `start` and `process` node graphs in
       process materials, run on the GPU and the CPU alike), turbulence, collision with
-      `LightOccluder2D`s and tile occluders, sub-emitters (chains of up to 8 emitters stepping
+      `Occluder2D`s and tile occluders, sub-emitters (chains of up to 8 emitters stepping
       together) and trails (Godot's ribbons through copies that follow each particle's path).
       Attractors come with the 3D particles in milestone 7, as Godot has them only in 3D
-      (`CPUParticles3D` is done)
+      (`Emitter3D` is done)
 - [x] Text with FreeType, HarfBuzz and MSDF fonts, and Godot's `Control`, `Label` and
-      `ColorRect`: anchors, offsets and grow directions, rotation, scale and modulate, labels
+      `ColorFill`: anchors, offsets and grow directions, rotation, scale and modulate, labels
       that wrap, align, trim with an ellipsis and draw outlines and shadows, theme overrides and
       `.font.json` font settings, drawn above the world. `ui.layout` and `text.measure` check a
       screen without a screenshot, and `scene validate` and exports catch controls that don't
@@ -305,25 +305,25 @@ rendering on top.
 - [x] UI layout and themes: Godot's containers (box, grid, margin, center, flow and panel),
       `.theme.json` themes with type variations and a project theme, `StyleBoxFlat` (rounded
       corners, borders, shadows, skew and anti-aliasing) and `StyleBoxTexture`, and `Panel`,
-      `TextureRect`, `NinePatchRect` and `ProgressBar`. `ui.theme` says where each of a control's
+      `Picture`, `NineSlice` and `ProgressBar`. `ui.theme` says where each of a control's
       theme items comes from
 - [x] Input, as Godot's: keyboard, mouse, touch and gamepad events from SDL, rebindable action
       maps in `project.json` over Godot's `ui_*` actions, deadzones and strengths, touch that
       clicks the mouse, and `input.inject`, `input.state` and `input.actions` so agents press
       keys and actions and see what the game saw
-- [x] Buttons, focus and hover, as Godot's: `Button` and `TextureButton` pressed by clicks,
+- [x] Buttons, focus and hover, as Godot's: `Button` and `ImageButton` pressed by clicks,
       taps, `ui_accept` and shortcuts, toggle buttons and button groups, mouse filters, focus
       moved by the arrow keys, Tab and gamepads, and UI events (`pressed`, `toggled`,
       `mouse_entered`, `focus_entered` and the rest). `ui.press` and `ui.focus` drive them, and
       `ui.layout` reports each button's draw mode and which control has focus and is hovered
 - [x] Check boxes and sliders, as Godot's: `CheckBox` (radio buttons in a group) and
-      `CheckButton`, `HSlider` and `VSlider` dragged, clicked, scrolled and stepped by keys and
+      `ToggleSwitch`, `HSlider` and `VSlider` dragged, clicked, scrolled and stepped by keys and
       gamepads with `value_changed`, `drag_started` and `drag_ended`, and theme icons with
       Godot's default ones drawn by the engine (`builtin:` names)
-- [x] Scrolling, as Godot's: `HScrollBar`, `VScrollBar` and `ScrollContainer` dragged, clicked
+- [x] Scrolling, as Godot's: `HScrollBar`, `VScrollBar` and `ScrollBox` dragged, clicked
       and scrolled by the wheel, touch and focus, with `clip_contents`; `ui.layout` and
       `frame.summary` report scrolls and what a clip cuts off
-- [x] Drop-down lists and menus, as Godot's: `OptionButton`, `MenuButton` and `PopupMenu`
+- [x] Drop-down lists and menus, as Godot's: `Dropdown`, `MenuButton` and `PopupList`
       picked by clicks, held clicks, taps, the arrow keys and typing, menu bars that switch on
       hover, check and radio items and separators; `ui.popup` and `ui.select` drive them, and
       `ui.layout` and `frame.summary` report the lists open and their items
@@ -343,30 +343,30 @@ rendering on top.
       caret; on-screen keyboards on phones by `virtual_keyboard_type`; Godot's text editing
       actions with Mac and PC shortcuts; and `input.inject` `text` and `ime` events,
       `ui.clipboard` and the text field's caret and selection in `ui.layout`
-- [x] `TextEdit`: text fields of several lines, as Godot's: typing and new lines, word
+- [x] `TextArea`: text fields of several lines, as Godot's: typing and new lines, word
       wrapping, scrolling by wheel, finger and keys with the view following the caret and scroll
       bars drawn, Godot's undo history, the caret by character, word, row and page, selection by
       keys, clicks, double and triple clicks and drags, copying and pasting whole lines, tabs,
       typing over, IME composition, and the caret, selection and lines in view in `ui.layout`
-- [x] Syntax highlighting, search and scroll bars that can be dragged in a `TextEdit`, as
+- [x] Syntax highlighting, search and scroll bars that can be dragged in a `TextArea`, as
       Godot's `CodeHighlighter`, `TextEdit::search` and `ScrollBar`: `search_text` and
       `highlight_all_occurrences` marked, `ui.search`, and grabbers in `ui.layout`
 - [x] Line numbers and other gutters, as Godot's `CodeEdit`: breakpoints, bookmarks and
       executing lines that move with their lines, clicks in gutters, line length guidelines
-      and a `TextEdit`'s own gutters of text or icons, with their rects in `ui.layout`
+      and a `TextArea`'s own gutters of text or icons, with their rects in `ui.layout`
 - [x] Audio, as Godot's AudioServer, on miniaudio's decoders: `.wav`, `.ogg` and `.mp3`
-      sounds, `.audio.json` loops and randomizers, `AudioStreamPlayer` and
-      `AudioStreamPlayer2D` with polyphony, pitch, pausing, distance and panning from an
-      `AudioListener2D`, `.bus_layout.json` buses with volume, mute, solo, sends and 20 of
+      sounds, `.audio.json` loops and randomizers, `SoundPlayer` and
+      `SoundPlayer2D` with polyphony, pitch, pausing, distance and panning from an
+      `Listener2D`, `.bus_layout.json` buses with volume, mute, solo, sends and 20 of
       Godot's effects (filters, EQs, delay, reverb, chorus, phaser, distortion, compressor,
       limiter, panner and stereo enhance), mixed by the fixed ticks so runs sound the same.
       `audio.state`, `audio.play`, `audio.stop`, `audio.set_bus` and `audio.capture` (levels in
       dB, or a `.wav` file) let agents hear a game without speakers
-- [x] `Area2D` audio bus overrides, as Godot's: 2D players inside an area whose mask they
+- [x] `Zone2D` audio bus overrides, as Godot's: 2D players inside an area whose mask they
       match play on its bus. Godot's pitch shift, spectrum analyzer, capture and record
       effects (24 of its effects now), read and driven with `audio.spectrum` and
       `audio.record`; Godot's and Unity's pitch shifters import. (Reverb overrides are
-      `Area3D`'s in Godot, and come with 3D audio.)
+      `Zone3D`'s in Godot, and come with 3D audio.)
 - [x] Interactive music, as Godot's: `.audio.json` playlists (in turn, with fades and
       shuffle), synchronized layers and interactive clips with Godot's transitions (on the
       beat or bar, fades, filler clips, auto advance and hold and return), steered by a
@@ -413,7 +413,7 @@ rendering on top.
         C++, and a report keeps what the port needs: the values each node gave its exported
         variables, signal connections, groups, autoloads and the entity of every node path
   - [x] Godot scenes that instance other scenes stay instances, holding only their overrides
-  - [x] Godot's `TileSet` resources, `TileMapLayer` nodes and the old `TileMap`'s layers,
+  - [x] Godot's `TileSet` resources, `TileLayer2D` nodes and the old `TileMap`'s layers,
         themes, `LabelSettings` resources and audio bus layouts, with the project's theme and
         buses
   - [x] Godot's tile physics layers, collision polygons, alternative tiles and flipped or
@@ -439,7 +439,7 @@ rendering on top.
         offsets, images, text, buttons, toggles, sliders, scroll bars, input fields, scroll
         views, masks and layout groups as Godot's controls and containers, with UI events'
         calls in their scripts' tasks
-  - [x] Unity's 2D lights: the global light as a `CanvasModulate`, spot, freeform and sprite
+  - [x] Unity's 2D lights: the global light as a `AmbientTint2D`, spot, freeform and sprite
         lights as `PointLight2D`s through textures of their shapes and falloff, sorting layers as
         z ranges, shadow casters as occluders and sprites' normal maps
   - [x] Unity's isometric and hexagonal tile maps: each Grid's cell layout and swizzle as a tile
@@ -591,7 +591,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 ### Milestone 7: 3D feature set (Done)
 
 - [x] Clustered forward+ renderer with PBR materials, plus a low-end path for web and mobile
-  - [x] Meshes, a depth buffer and `StandardMaterial3D`'s PBR inputs lit by up to 64
+  - [x] Meshes, a depth buffer and `Surface3D`'s PBR inputs lit by up to 64
         directional, omni and spot lights in every render device, as Godot's Compatibility
         renderer (the low-end path), with the software device's CPU twin
   - [x] Forward+'s clustered lights, as Godot's: 8 directional and 512 omni and spot lights
@@ -599,9 +599,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         Vulkan, Metal, Direct3D 12 and WebGPU and by the software device's twin;
         `rendering.rendering_method` picks `forward_plus` or `gl_compatibility`, which the
         OpenGL drivers always draw
-  - [x] 3D nodes in scenes, as Godot's: `Transform3D` trees, `MeshInstance3D` with Godot's
-        eight primitive meshes, `StandardMaterial3D`, `Camera3D`, `DirectionalLight3D`,
-        `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
+  - [x] 3D nodes in scenes, as Godot's: `Transform3D` trees, `Model3D` with Godot's
+        eight primitive meshes, `Surface3D`, `Camera3D`, `SunLight3D`,
+        `PointLight3D`, `SpotLight3D` and `Environment3D`, drawn under the canvas by every
         game and by `frame.capture`
 - [x] A game's own 3D shaders, as Godot's `shader_type spatial`
   - [x] `fragment()` gives a mesh's surface (`ALBEDO`, `ROUGHNESS`, `NORMAL_MAP`, `EMISSION`,
@@ -609,7 +609,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         lighting: compiled into the mesh shader's Compatibility, Forward+ and prepass stages for
         Vulkan, Metal, Direct3D 12, WebGPU and OpenGL and run by the software device on 2x2
         quads; `.material.json` files with `"shader_type": "spatial"` and Godot's render
-        modes, drawn through `MeshInstance3D.material_override`
+        modes, drawn through `Model3D.material_override`
   - [x] `vertex()` moves a mesh's corners (Godot's built-ins in the mesh's space, or the
         world's with `world_vertex_coords`), in the motion prepass with the frame before's
         place and time, and the shadow pass reads the shader: its `vertex()`, and its
@@ -622,36 +622,36 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
   - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),
         exposure, glow, brightness, contrast, saturation and 1D or 3D color correction LUTs in
-        every render device, set by `WorldEnvironment`
+        every render device, set by `Environment3D`
   - [x] Forward+'s HDR world, as Godot 4.6's: sky and meshes drawn linear in half floats, glow
         through up to seven levels with Godot's weights, strength, normalization and five blend
         modes, Godot 4.6's tonemappers and whites (AgX's own white and contrast), on Vulkan,
         Metal, Direct3D 12, WebGPU and the software device
-  - [x] Auto exposure and the exposure multiplier, as Godot 4.6's `CameraAttributesPractical`
-        on a camera or `WorldEnvironment`: Forward+ frames measured in blocks of 8 down to one
+  - [x] Auto exposure and the exposure multiplier, as Godot 4.6's `CameraLens`
+        on a camera or `Environment3D`: Forward+ frames measured in blocks of 8 down to one
         brightness, adapting over game time, on every Forward+ device
-  - [x] Depth of field, as Godot 4.6's: `CameraAttributesPractical`'s far and near blur by
+  - [x] Depth of field, as Godot 4.6's: `CameraLens`'s far and near blur by
         depth, with the box, hexagon and circle bokeh shapes at every quality, on every Forward+
         device
   - [x] SSAO, as Godot 4.6's Forward+: a normal prepass and Intel's ASSAO passes at every
         quality (deinterleaved depth, adaptive samples at ultra, edge-aware blur), set by
-        `WorldEnvironment` and `rendering.environment.ssao`, on every Forward+ device
+        `Environment3D` and `rendering.environment.ssao`, on every Forward+ device
   - [x] SSR, as Godot 4.6's Forward+: a Hi-Z trace reading the frame before, blurred levels
-        by roughness and a resolve at half size, set by `WorldEnvironment` and
+        by roughness and a resolve at half size, set by `Environment3D` and
         `rendering.environment.screen_space_reflection`, on every Forward+ device
 - [x] Baked lightmaps and probe-based global illumination
   - [x] Reflection probes, as Godot 4.6's Forward+ `ReflectionProbe`: cubes captured into one
         atlas, box projection, blending where probes overlap and their ambient modes, on every
         Forward+ device, imported from Godot and Unity scenes
-  - [x] Baked lightmaps, as Godot 4.6's `LightmapGI`: meshes unwrapped with xatlas, direct
+  - [x] Baked lightmaps, as Godot 4.6's `BakedLighting3D`: meshes unwrapped with xatlas, direct
         light, soft shadows, bounces and the environment traced on the CPU as Godot's
         `LightmapperRD` traces them, denoised, and drawn on every device; `lightmap.bake`,
         imported from Godot scenes
-  - [x] Light probes for meshes that move, as Godot 4.6's `LightmapGI`: placed on an octree
-        over the static meshes and at `LightmapProbe`s, traced with the lightmap, joined into
+  - [x] Light probes for meshes that move, as Godot 4.6's `BakedLighting3D`: placed on an octree
+        over the static meshes and at `LightProbe3D`s, traced with the lightmap, joined into
         Delaunay tetrahedra with a BSP tree, and drawn on every device as moving meshes'
         ambient light
-  - [x] VoxelGI, as Godot 4.6's: static meshes voxelized into an octree by `voxel_gi.bake`,
+  - [x] VoxelLighting3D, as Godot 4.6's: static meshes voxelized into an octree by `voxel_gi.bake`,
         lights injected into its cells on the CPU as they change (shadows, two bounces,
         propagation up the octree), and cones traced for ambient light and reflections on
         every Forward+ device
@@ -738,22 +738,22 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Godot 4.6's Forward+ volumetric fog: froxels lit by every light through its shadows, the
         ambient light and the sky, reprojected from frame to frame, blurred and gathered, over
         the meshes and the sky, on every Forward+ device and its CPU twin, imported from Godot
-  - [x] `FogVolume` and `FogMaterial`: box, ellipsoid, cone, cylinder and world volumes added in
+  - [x] `FogVolume` and `FogVolumeLook`: box, ellipsoid, cone, cylinder and world volumes added in
         Godot's fixed point, with density, height falloff, edge fade, albedo and emission,
         imported from Godot
-  - [x] VoxelGI's light in the fog (`gi_inject`), as Godot's density pass takes it
+  - [x] VoxelLighting3D's light in the fog (`gi_inject`), as Godot's density pass takes it
 - [x] Clustered decals, as Godot 4.6's Forward+ `Decal`: albedo, normal, ORM and emission
       textures in one atlas, fades, cull masks and the project's decal filter, imported from Godot
 - [x] 3D particles, as Godot 4.6's
-  - [x] `CPUParticles3D`: Godot's emission shapes (ball, box, points, ring with its cone), cone
+  - [x] `Emitter3D`: Godot's emission shapes (ball, box, points, ring with its cone), cone
         spread with flatness, forces, damping, curves, color ramps and the align, rotate and
-        disable-z flags, drawn as the entity's mesh at each particle with `StandardMaterial3D`'s
+        disable-z flags, drawn as the entity's mesh at each particle with `Surface3D`'s
         billboard modes and particle frames, sorted by view depth; the same particles on every
         platform and thread count, `particles.eval` in 3D, and Godot's `CPUParticles3D` nodes
         imported
-  - [x] `GPUParticles3D` with process materials, attractors and collision shapes, and Godot's
+  - [x] `GpuEmitter3D` with process materials, attractors and collision shapes, and Godot's
         imported
-    - [x] `GPUParticles3D` stepped as Godot's (emission cycles, `fixed_fps`, preprocess,
+    - [x] `GpuEmitter3D` stepped as Godot's (emission cycles, `fixed_fps`, preprocess,
           one-shots), process materials read with Godot's 3D fields (ring emission, flatness,
           directional velocity, scale over velocity, per-axis curves), up to four draw passes
           with draw orders, transform alignment and visibility boxes, and `particles.eval`
@@ -779,23 +779,23 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Static, animatable, rigid and character bodies, areas with gravity and damping
         overrides, every Godot shape, `move_and_slide` and the queries, as Godot 4.4's Jolt
         module
-  - [x] Pin, hinge, slider, cone twist and 6DOF joints, and `VehicleBody3D` with
-        `VehicleWheel3D`, as Godot 4.4's
-  - [x] Ragdolls: `PhysicalBone3D` bodies and joints that follow a model's bones or move them,
-        as Godot 4.6's `PhysicalBoneSimulator3D`
+  - [x] Pin, hinge, slider, cone twist and 6DOF joints, and `WheeledBody3D` with
+        `Wheel3D`, as Godot 4.4's
+  - [x] Ragdolls: `SimulatedBone3D` bodies and joints that follow a model's bones or move them,
+        as Godot 4.6's `BoneSimulation3D`
 - [x] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
-  - [x] glTF skins skinning meshes, model animations played by `AnimationPlayer` (alone or
+  - [x] glTF skins skinning meshes, model animations played by `Animator` (alone or
         `from` a `.anim.json` animation) and `Skeleton3D` bone poses, as Godot's importer,
         skeleton and `AnimationMixer`; `skeleton.get`
   - [x] FBX skins and animation stacks, as Godot's FBX importer
-  - [x] Blend trees, one-shots, transitions and blend spaces with root motion (`AnimationTree`
+  - [x] Blend trees, one-shots, transitions and blend spaces with root motion (`AnimationGraph`
         and `.animtree.json`), as Godot's `AnimationTree` and `AnimationMixer`;
         `animation.tree` and `animation.set_parameters`
   - [x] State machines with travel, conditions and grouped and nested machines, as Godot's
         `AnimationNodeStateMachine`
   - [x] Advance expressions, as Godot's `Expression`, over a tree's variables and triggers
   - [x] Two-bone, FABRIK, CCD and Jacobian IK with joint limits, as Godot 4.6's `TwoBoneIK3D`,
-        `FABRIK3D`, `CCDIK3D` and `JacobianIK3D`
+        `FabrikIK3D`, `CcdIK3D` and `JacobianIK3D`
   - [x] Bone attachments, as Godot's `BoneAttachment3D`: entities that follow a bone after the
         animations and IK, carrying what hangs under them
 - [x] Navigation in 2D and 3D, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`
@@ -809,9 +809,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Navigation layers on tile sets: each cell a region of its tile's navigation polygons,
         and tiles' outlines and collision polygons in 2D bakes, as Godot's `TileMapLayer`;
         imported from Godot
-- [x] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`
+- [x] 3D audio, as Godot's `AudioStreamPlayer3D` and `Listener3D`
   - [x] Attenuation models, panning, the high shelf that muffles distant sounds, emission
-        angles, Doppler and `Area3D` bus and reverb overrides, as Godot 4.6's, in stereo
+        angles, Doppler and `Zone3D` bus and reverb overrides, as Godot 4.6's, in stereo
   - [x] Up to 7.1 speakers, as Godot's speaker modes: a buffer and effects per speaker pair,
         Spcap panning for 3D sounds, mix targets, and `audio.state` and `audio.capture` per
         speaker
@@ -819,21 +819,21 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] CSG shapes on Manifold, as Godot 4.6's: boxes, spheres, cylinders and cones, tori,
         polygons pushed or spun, meshes and combiners; drawn, colliding and baked into
         navigation meshes, with `csg.get`
-  - [x] `Path2D`, `Path3D`, `PathFollow2D`, `PathFollow3D` and `CSGPolygon3D`'s path mode, as
+  - [x] `Spline2D`, `Spline3D`, `SplineFollower2D`, `SplineFollower3D` and `SolidExtrusion3D`'s path mode, as
         Godot's: curves baked with up vectors and tilt, followers placed each tick, and
         `path.get`
-  - [x] `GridMap` and `MeshLibrary` for grid-based tile placement, as Godot 4.6's: items of a
+  - [x] `BlockMap3D` and `MeshLibrary` for grid-based tile placement, as Godot 4.6's: items of a
         `.meshlib.json` library in cells written as rows of legend keys, turned Godot's 24
         ways, drawn and colliding by octant, navigation regions per cell, with `gridmap.set`,
         `gridmap.get` and the cell a ray hits
-  - [x] Heightmap terrain with splat materials and LOD, as the HTerrain plugin for Godot:
-        `HTerrain` heights from 16-bit `.height.png` files, drawn in chunks by its quad tree
+  - [x] Heightmap terrain with splat materials and LOD, as the Terrain3D plugin for Godot:
+        `Terrain3D` heights from 16-bit `.height.png` files, drawn in chunks by its quad tree
         with seams stitched, four textures by splat map, a color map with holes, colliding as a
         height field and walked by navigation bakes, with `terrain.generate`, `terrain.brush`
         and `terrain.get`
-- [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
+- [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `Model3D`,
       and JPEG textures, as Godot's importer reads them
-- [x] OBJ models (`.obj` with their `.mtl` libraries) on `MeshInstance3D`, as Godot's OBJ importer
+- [x] OBJ models (`.obj` with their `.mtl` libraries) on `Model3D`, as Godot's OBJ importer
       reads them
 - [x] FBX models through ufbx, as Godot 4.3's importer reads them
 - [x] Blender `.blend` files the way Godot does it: the engine runs the artist's own Blender in
@@ -843,9 +843,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       format, so the editor exports the levels and assets and the importer converts what it
       writes. GameMaker and RPG Maker projects come after
   - [x] Godot's 3D nodes: transforms, primitive meshes and materials, instanced and mesh model
-        files, cameras, lights, `WorldEnvironment` and skies, 3D bodies and collision shapes, 3D
+        files, cameras, lights, `Environment3D` and skies, 3D bodies and collision shapes, 3D
         sound and the 3D project settings
-  - [x] Godot's CSG shapes, paths, `GridMap` and mesh libraries (text and binary), joints,
+  - [x] Godot's CSG shapes, paths, `BlockMap3D` and mesh libraries (text and binary), joints,
         vehicles and navigation nodes, meshes and polygons
   - [x] Godot's `AnimationTree`: blend trees, blend spaces, transitions, state machines and
         their parameters and advance expressions, on a model's own animations or a player's
@@ -859,20 +859,20 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         character controllers, 3D sound, LOD groups, skyboxes, ambient light and fog
   - [x] Unity's meshes picked out of models, as glTF files of their own, and mesh colliders of
         models
-  - [x] Unity's Animator state machines as `AnimationTree` state machines: sub-state
+  - [x] Unity's Animator state machines as `AnimationGraph` state machines: sub-state
         machines, Any State, entry and exit, muted and solo transitions, exit times and
         durations, with conditions as advance expressions and parameters as the tree's
         variables and triggers
   - [x] Unity's blend trees as blend spaces: 1D and 2D, nested, their positions set from the
         controller's parameters
-  - [x] Unity's terrains as `HTerrain`s: heights, alpha maps, layers, holes and the collider
+  - [x] Unity's terrains as `Terrain3D`s: heights, alpha maps, layers, holes and the collider
   - [x] Unity's 3D animation: Animators on 3D objects and on models' instances, clips moving
         `Transform3D` and the models' nodes, and model clips played from the converted models
   - [x] Unity's humanoid animation, retargeted from one model's Avatar to another's, and root
-        motion taken out of the pose by the `AnimationTree`
+        motion taken out of the pose by the `AnimationGraph`
   - [x] Unity's skinned meshes: nodes posed in a scene as the model's `Skeleton3D`, objects on
-        nodes as `BoneAttachment3D`s, and models unpacked into objects folded back into one
-  - [x] Unity's particle systems in 3D scenes as `CPUParticles3D`: shapes, emission and bursts,
+        nodes as `BoneSocket3D`s, and models unpacked into objects folded back into one
+  - [x] Unity's particle systems in 3D scenes as `Emitter3D`: shapes, emission and bursts,
         start values, gravity and force, color, size and rotation over each life, texture
         sheets, billboards and mesh particles, with Unity's default particle material
   - [x] Unreal Engine levels and assets through the user's own Unreal Editor: a Python script
@@ -886,9 +886,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Unreal's C++ classes as skeletons, as Unity's scripts are: properties as a component the
         level's actors fill in, delegates as events and functions as stubs the system calls
   - [x] Unreal's landscapes as HTerrains, their heights exactly as Unreal keeps them
-  - [x] Unreal's Animation Blueprints' sequences as an `AnimationTree` state machine for their
+  - [x] Unreal's Animation Blueprints' sequences as an `AnimationGraph` state machine for their
         task to join
-  - [x] Unreal's Niagara particles as `CPUParticles3D` and `GPUParticles3D`, read from the text
+  - [x] Unreal's Niagara particles as `Emitter3D` and `GpuEmitter3D`, read from the text
         Unreal writes of a system
 - [x] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
@@ -958,7 +958,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] Remote procedure calls on entities, with Godot's modes (authority or any peer, call
         local, transfer mode and channel)
   - [x] Replication driven by reflection: spawners and synchronizers of component fields, as
-        Godot's `MultiplayerSpawner` and `MultiplayerSynchronizer`
+        Godot's `MultiplayerSpawner` and `NetSync`
   - [x] WebSocket for the web, as Godot's `WebSocketMultiplayerPeer`: servers and clients
         natively, clients on the web through the browser's WebSocket
   - [x] `wss://` natively, as Godot's `StreamPeerTLS`
@@ -995,7 +995,7 @@ Exit: an agent builds a small 3D sample end to end.
         and CI
   - [x] Pseudo-localization: a fake language with longer, accented text that shows untranslated
         or clipped strings before any real translation exists
-- [x] Video playback with dav1d (AV1): `VideoStreamPlayer` in controls, `video:<id>` textures
+- [x] Video playback with dav1d (AV1): `Video` in controls, `video:<id>` textures
       on sprites and materials, and the engine's own palette AV1 encoder for tests
   - [x] Sound in videos: WebM and Matroska files, their PCM audio played on a bus with the picture
   - [x] Opus audio in videos, decoded by libopus as fixed point, the same samples everywhere
@@ -1023,7 +1023,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] Scatter rules agents write: prefabs or meshes placed over terrains, meshes, tile maps and
         areas by noise, density, slope and spacing, seeded so they repeat, as entities or as one
         multi-mesh
-  - [x] Tile maps and terrains from noise: terrains painted by noise thresholds, and HTerrain's
+  - [x] Tile maps and terrains from noise: terrains painted by noise thresholds, and Terrain3D's
         generator taking a noise file
   - [x] Procedural content from other tools: Godot's noise and gradient resources, glTF instances
         (`EXT_mesh_gpu_instancing`) from Blender's geometry nodes and Houdini, and heightmaps
@@ -1113,13 +1113,13 @@ launch rows and the after-launch features above.
 
 - Virtualized geometry in the style of Nanite (meshlet rendering). Spike: cluster hierarchies
   built with meshoptimizer's cluster LOD builder and cut per camera on the CPU, crack-free,
-  behind `MeshInstance3D.virtualized`, with clusters out of view, facing away or occluded culled
+  behind `Model3D.virtualized`, with clusters out of view, facing away or occluded culled
   per cut, and its pages streamed within a pool as cuts need them
   ([virtualized-geometry.md](reference/virtualized-geometry.md)); GPU selection and culling and a
   software rasterizer remain
 - Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
-  probes with spherical harmonics history), behind `WorldEnvironment.sdfgi_enabled` on the
+  probes with spherical harmonics history), behind `Environment3D.sdfgi_enabled` on the
   software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
   occluded by walls, its cells, field, light and probes kept as GPU-ready words with every sum
   and rounding in whole numbers, and run in compute shaders on Vulkan, Metal, Direct3D 12 and
@@ -1252,12 +1252,12 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         and `traits`, `quest.start`, `quest.set`, `quest.state`, `quest.check` (run by
         `test.run`), `dialogue.start`, `dialogue.choose` and `dialogue.state`
         (`examples/npc-stories`)
-13. [x] Hair and fur: `HairInstance3D` groomed strands (`.groom.json` guides grown over a
+13. [x] Hair and fur: `Hair3D` groomed strands (`.groom.json` guides grown over a
         model's surface with length, density, clumping, curl and color maps) drawn as cards,
         strands or fur shells with the existing hair shading, and simulated as Unreal's
         Groom and Chaos hair: guide strands stepped with constraints, colliding with the
         body's capsules, blown by the wind and following the skeleton, for characters and
-        animals. Done in 3D and 2D: `.groom.json` grooms, `HairInstance3D` grown over a model's
+        animals. Done in 3D and 2D: `.groom.json` grooms, `Hair3D` grown over a model's
         section and carried by its skin, `Hair2D` grown along a root line, guides stepped by 3D
         and 2D physics with position-based dynamics (shape pull from root to tip, bending,
         follow-the-leader lengths, wind, fields and the body's spheres, capsules and boxes),
@@ -1269,7 +1269,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         character design rules, which `character.check` enforces. Done in 3D and 2D: recipes
         that `extends` others, built into a skinned model with Godot's humanoid bone names
         (so animations retarget onto it), clothing over the body with a cloth garment for
-        `Cloth3D`, a groom's scalp for `HairInstance3D` and props at attachment points, or into
+        `Cloth3D`, a groom's scalp for `Hair3D` and props at attachment points, or into
         a `Character2D` cut-out of `Polygon2D` bones; `character_rules` storyboard entries,
         `character.generate` (candidates kept by how unlike the cast they look),
         `character.check` (run by `test.run`) and `character.place`
@@ -1292,7 +1292,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         buoyancy and lift, which `vehicle.tune` changes while a game runs and `vehicle.check`
         holds to the design; characters get in, drive and get out through seats, and vehicles
         push, knock down and hurt characters and creatures by their contact impulses, in 3D
-        (`vehicles_3d` on `VehicleBody3D`) and 2D (`vehicles_2d`, sprung wheels on Box2D
+        (`vehicles_3d` on `WheeledBody3D`) and 2D (`vehicles_2d`, sprung wheels on Box2D
         joints) (`examples/vehicles`)
 17. [x] Damage and destruction design: a tool that authors how each model and piece of the
         environment takes damage, past today's Voronoi fracture: `.damage.json` profiles by
@@ -1320,7 +1320,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           `physics.break` (`examples/destruction-profiles`)
     - [x] Dents, holes and carving: profiles' `deform` settings; meshes dented, holed and
           carved by damage that doesn't break them (kept as `dents` and `carves`, carried into
-          the pieces' cuts, carved bodies colliding as what is left), `HTerrain` craters, 2D
+          the pieces' cuts, carved bodies colliding as what is left), `Terrain3D` craters, 2D
           outlines carved, holed and dented with Clipper2 (parts cut off falling as debris),
           tile map cells blasted away, and `Cloth2D` and `SoftBody3D` torn by cuts, shots,
           blasts and stretching (`tear_stretch`, `torn`) (`examples/damage-deform`)
@@ -1359,7 +1359,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
           collision, death and location events that spawn into other emitters and emit world
           events (`examples/particle-simulation`)
     - [x] The stages on every device's compute for GPU particles: a `ParticleSimulation3D`
-          beside a `GPUParticles3D` flocks, swirls, drags and limits its particles after each
+          beside a `GpuEmitter3D` flocks, swirls, drags and limits its particles after each
           step, with keys sorted by the bitonic sort the draw passes use and neighbors found by
           binary search, and `run_particle_stages_3d` the CPU twin the software and OpenGL
           devices run; particles were already lit, shadowed and sorted by view depth
@@ -1422,7 +1422,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         drafting faces from a brief, and side-on 2D faces and portraits for 2D worlds
         - [x] The full rig: all of Godot's humanoid profile with twist bones, turned as the
               profile's, smooth skin weights, hands and eyeballs, teeth and tongue, hand and jaw
-              poses, Godot's `LookAtModifier3D` and `CopyTransformModifier3D`, and a 2D jaw, eye
+              poses, Godot's `LookAtModifier3D` and `BoneCopy3D`, and a 2D jaw, eye
               and fingers posed by `Character2D`
         - [x] The anatomical layer: bones and muscles: 20 kinds of bone and 28 of muscle sized
               by the body's `muscle` and `fat`, XPBD flesh after Chaos Flesh that bulges and
@@ -1582,7 +1582,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Done |
-| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | Done: canvas material graphs, a game's own HLSL canvas shaders, `StandardMaterial3D`'s inputs and material files, and spatial shaders' `fragment()`, `vertex()` and `light()` |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | Done: canvas material graphs, a game's own HLSL canvas shaders, `Surface3D`'s inputs and material files, and spatial shaders' `fragment()`, `vertex()` and `light()` |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
@@ -1597,15 +1597,15 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | Done: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs), variants and quality tiers, model checks, automatic review and models made from concept images |
-| Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
+| Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelLighting3D with its dynamic objects, all imported from Godot |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Done: ray-traced shadows, ambient occlusion, reflections, GI, paths and lightmap bakes on the software device, Vulkan, Metal and Direct3D 12 (DXR 1.1's inline ray queries) |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Done: progressive reference stills and lightmap bakes on the CPU and on Vulkan's, Metal's and Direct3D 12's ray queries |
 | Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Done: FSR 1, FSR 2, FSR 3, MetalFX, FSR 3 frame generation, and a game's own temporal upscaler from an SDK package |
-| Sky and volumetrics | Physical sky, volumetric fog | 7 | Done: procedural, physical and panorama skies, their light on meshes, exponential, depth and height fog, and volumetric fog with fog volumes and VoxelGI's light |
+| Sky and volumetrics | Physical sky, volumetric fog | 7 | Done: procedural, physical and panorama skies, their light on meshes, exponential, depth and height fog, and volumetric fog with fog volumes and VoxelLighting3D's light |
 | Decals | Clustered decals | 7 | Done, imported from Godot |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Done: ENet and WebSocket peers (`wss://` too), RPCs, spawners and synchronizers, and the `net.*` commands |
-| Terrain | Heightmap terrain with splat materials and LOD | 7 | Done, as the HTerrain plugin's, imported from Godot, Unity and Unreal |
-| Level geometry | CSG and grid-based tile placement | 7 | Done: CSG shapes, paths, `GridMap` and heightmap terrain |
+| Terrain | Heightmap terrain with splat materials and LOD | 7 | Done, as the Terrain3D plugin's, imported from Godot, Unity and Unreal |
+| Level geometry | CSG and grid-based tile placement | 7 | Done: CSG shapes, paths, `BlockMap3D` and heightmap terrain |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
 | XR | OpenXR | 8 | Done: XR server, nodes, stereo views, OpenXR sessions and drawing on Vulkan, Direct3D 12, Metal, OpenGL and Android |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Done: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract`, `l10n.translate` and `l10n.check` |
@@ -1624,8 +1624,8 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |
-| Virtualized geometry | Meshlet rendering research | Research | Research: cluster hierarchies cut per camera on the CPU (`MeshInstance3D.virtualized`) |
-| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU, the GPU device and WebGPU (`WorldEnvironment.sdfgi_enabled`) |
+| Virtualized geometry | Meshlet rendering research | Research | Research: cluster hierarchies cut per camera on the CPU (`Model3D.virtualized`) |
+| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU, the GPU device and WebGPU (`Environment3D.sdfgi_enabled`) |
 | Digital humans | Research; out of scope for releases | Research | Research |
 
 ## Agent efficiency

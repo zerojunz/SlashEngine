@@ -8,7 +8,7 @@
   "layers": [
     {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 16,
           "color": [1, 0.5, 0.1, 1],
           "direction": [0, 1, 0],
@@ -18,7 +18,7 @@
           "lifetime": 0.6,
           "spread": 15
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.16,
           "radius": 0.08
         }
@@ -27,13 +27,13 @@
     },
     {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1, 0.6, 0.3, 1],
           "omni_range": 5
         }
       },
       "curves": {
-        "OmniLight3D/light_energy": [
+        "PointLight3D/light_energy": [
           [0, 1.6],
           [0.25, 2.1],
           [0.5, 1.4],

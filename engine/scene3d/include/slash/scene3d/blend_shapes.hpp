@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-// Blend shapes (morph targets), as Godot's ArrayMesh blend shapes, MeshInstance3D's
+// Blend shapes (morph targets), as Godot's ArrayMesh blend shapes, Model3D's
 // blend_shapes/<name> properties and its AnimationMixer's blend shape tracks:
 //
 //   std::map<std::string, float> weights =
@@ -26,7 +26,7 @@ namespace slash::scene3d {
                                        bool loop);
 
 // The weight of each of a model's blend shapes, by name, as an entity draws it: the weight its
-// mesh gives the shape, or the one set (MeshInstance3D's blend_shapes) gives that name, then
+// mesh gives the shape, or the one set (Model3D's blend_shapes) gives that name, then
 // moved by the clips' blend shape tracks as Godot's AnimationMixer blends them, each clip moving
 // its weight of the way from that value to its track's (a clip's node_weights, by the name of
 // the node a track's shape is on, take the place of its weight). A clip plays from its source or

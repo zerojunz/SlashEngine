@@ -15,7 +15,7 @@
 #include <vector>
 
 // Blending animations, as Godot's AnimationTree: a .animtree.json file holds a tree of animation
-// nodes, and the AnimationTree component plays it on its entity, with the animations of its
+// nodes, and the AnimationGraph component plays it on its entity, with the animations of its
 // libraries. A blend tree connects nodes that blend their inputs; blend spaces blend the points
 // nearest a position; a Transition cross-fades between its inputs and a OneShot plays one over
 // another. A state machine plays one state at a time and moves between them through transitions,
@@ -41,7 +41,7 @@
 //   }
 //
 // Node types are Godot's AnimationNode classes without the prefix, with their properties'
-// names. A node's parameters, which the AnimationTree component keeps, are named by the path of
+// names. A node's parameters, which the AnimationGraph component keeps, are named by the path of
 // node names to it, then the parameter, as Godot's without "parameters/": "speed/blend_amount",
 // "shot/request". A blend space's points are named by their index, a state machine's states by
 // their names: "move/travel", "move/run/blend_position".
@@ -236,8 +236,8 @@ struct TreeParameter {
     std::string name; // "blend_amount"
     int node = 0;
     json::Value default_value;
-    // Set by callers, in AnimationTree.parameters, rather than by the tree as it plays, in
-    // AnimationTree.state.
+    // Set by callers, in AnimationGraph.parameters, rather than by the tree as it plays, in
+    // AnimationGraph.state.
     bool input = false;
     std::string doc;
 };

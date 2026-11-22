@@ -196,13 +196,12 @@ Progress walk_to(world::World& world, Places& places, entt::entity entity,
     }
     const auto step = static_cast<real_t>((speed > 0.0F ? speed : agent.speed) * seconds);
     Vec3 next = there;
-    if (const auto* nav = world.ecs().try_get<world::NavigationAgent3D>(entity); nav != nullptr) {
+    if (const auto* nav = world.ecs().try_get<world::NavAgent3D>(entity); nav != nullptr) {
         if (distance(nav->target_position, there) > static_cast<real_t>(0.001)) {
             navigation::set_target_position(world, entity, there);
         }
         next = navigation::next_path_position_3d(world, entity);
-    } else if (const auto* nav2 = world.ecs().try_get<world::NavigationAgent2D>(entity);
-               nav2 != nullptr) {
+    } else if (const auto* nav2 = world.ecs().try_get<world::NavAgent2D>(entity); nav2 != nullptr) {
         const Vec2 target2{there.x, there.y};
         const Vec2 d = nav2->target_position - target2;
         if ((d.x * d.x) + (d.y * d.y) > static_cast<real_t>(1e-6)) {

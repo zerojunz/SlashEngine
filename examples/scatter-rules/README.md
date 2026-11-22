@@ -5,7 +5,7 @@ as Unreal's PCG graphs and Godot's MultiMesh *Populate Surface* place things.
 
 [forest.scatter.json](forest.scatter.json) has two layers:
 
-- `trees`: [models/tree.model.json](models/tree.model.json) drawn as one `MultiMeshInstance3D`
+- `trees`: [models/tree.model.json](models/tree.model.json) drawn as one `ModelInstances3D`
   (`"as": "multimesh"`), over the `ground` plane and the `hill` box, 0.15 a square meter, 1.2
   meters apart, only where the ground slopes 20 degrees or less (so the hill's top but not its
   sides) and only where the noise is above -0.1, turned any way and scaled by up to a quarter

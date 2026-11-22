@@ -38,7 +38,7 @@ enum class TrackKind : std::uint8_t { Value, Event, Node, Animation, Audio };
 struct TreeTrack {
     TrackKind kind = TrackKind::Value;
     std::string name;   // as filters name it
-    std::string target; // a name in the AnimationTree's targets; "" for its own entity
+    std::string target; // a name in the AnimationGraph's targets; "" for its own entity
     // A value track's field, or why it has none.
     std::optional<Target> resolved;
     std::string error;
@@ -73,7 +73,7 @@ struct TableKey {
     std::uint64_t tree_version = 0;
     std::vector<std::pair<std::string, std::uint64_t>> libraries; // path and build
     std::uint64_t types = 0;
-    std::string model; // the entity's MeshInstance3D's, whose rests node tracks start from
+    std::string model; // the entity's Model3D's, whose rests node tracks start from
     std::uint64_t model_version = 0;
 
     friend bool operator==(const TableKey&, const TableKey&) = default;
@@ -209,7 +209,7 @@ struct TreePlayer::State {
 
     void warn_once(std::string_view id, const std::string& message) {
         if (warned.insert(std::string(id) + "\n" + message).second) {
-            log::warn("an AnimationTree can't play", {{"id", id}, {"error", message}});
+            log::warn("an AnimationGraph can't play", {{"id", id}, {"error", message}});
         }
     }
 
@@ -254,7 +254,7 @@ struct TreePlayer::State {
 
     // The libraries of a tree, by name, loaded.
     std::vector<std::pair<const std::string*, LibraryCache::Entry*>>
-    load_libraries(const world::AnimationTree& tree, std::string_view id) {
+    load_libraries(const world::AnimationGraph& tree, std::string_view id) {
         std::vector<std::pair<const std::string*, LibraryCache::Entry*>> out;
         out.reserve(tree.libraries.size());
         for (const auto& [name, path] : tree.libraries) {
@@ -270,7 +270,7 @@ struct TreePlayer::State {
     // skeleton's bone rest, or else the clip model's.
     static void
     build(EntityCache& cache, const AnimationTreeResource& resource,
-          const world::AnimationTree& tree,
+          const world::AnimationGraph& tree,
           const std::vector<std::pair<const std::string*, LibraryCache::Entry*>>& loaded,
           const world::ComponentRegistry& components, const scene3d::Model* drawn) {
         TreeTable table;
@@ -419,10 +419,10 @@ struct TreePlayer::State {
             cache.used = false;
         }
         auto& ecs = world.ecs();
-        const auto view = ecs.view<world::AnimationTree>();
+        const auto view = ecs.view<world::AnimationGraph>();
         const std::vector<entt::entity> list(view.begin(), view.end());
         for (const entt::entity entity : list) {
-            if (ecs.valid(entity) && ecs.all_of<world::AnimationTree>(entity)) {
+            if (ecs.valid(entity) && ecs.all_of<world::AnimationGraph>(entity)) {
                 play(world, entity, tick_seconds);
             }
         }
@@ -431,9 +431,9 @@ struct TreePlayer::State {
         std::erase_if(entities, [](const auto& cache) { return !cache.second.used; });
     }
 
-    // Puts what an AnimationTree reports back to what it reports while it plays nothing.
-    static void clear_report(world::AnimationTree& tree, bool with_state) {
-        const world::AnimationTree defaults;
+    // Puts what an AnimationGraph reports back to what it reports while it plays nothing.
+    static void clear_report(world::AnimationGraph& tree, bool with_state) {
+        const world::AnimationGraph defaults;
         if (with_state) {
             tree.state.clear();
         }
@@ -449,12 +449,12 @@ struct TreePlayer::State {
     void play(world::World& world, entt::entity entity, double tick_seconds) {
         auto& ecs = world.ecs();
         // A copy, since a track may set the tree's own fields.
-        world::AnimationTree tree = ecs.get<world::AnimationTree>(entity);
+        world::AnimationGraph tree = ecs.get<world::AnimationGraph>(entity);
         const std::string id(world.id_of(entity));
         if (!tree.active || tree.tree_root.empty()) {
             // An inactive tree stops its audio tracks' sounds, as Godot's clears its caches.
             stop_audio(world, entity, Mixer::Tree);
-            auto& stored = ecs.get<world::AnimationTree>(entity);
+            auto& stored = ecs.get<world::AnimationGraph>(entity);
             clear_report(stored, true);
             stored.invalid.clear();
             return;
@@ -463,7 +463,7 @@ struct TreePlayer::State {
         if (!loaded_tree) {
             const std::string message = tree.tree_root + ": " + loaded_tree.error().message;
             warn_once(id, message);
-            auto& stored = ecs.get<world::AnimationTree>(entity);
+            auto& stored = ecs.get<world::AnimationGraph>(entity);
             clear_report(stored, false);
             stored.invalid = message;
             return;
@@ -483,10 +483,10 @@ struct TreePlayer::State {
                                        entry != nullptr ? entry->version : 0);
         }
         const scene3d::Model* drawn = nullptr;
-        if (const auto* instance = ecs.try_get<world::MeshInstance3D>(entity);
+        if (const auto* instance = ecs.try_get<world::Model3D>(entity);
             instance != nullptr && scene3d::is_model_path(instance->mesh)) {
             key.model = instance->mesh;
-            // The MeshInstance3D reports a model that doesn't load.
+            // The Model3D reports a model that doesn't load.
             drawn = libraries.model(
                 instance->mesh, [](const std::string& /*message*/) {}, &key.model_version);
         }
@@ -519,7 +519,7 @@ struct TreePlayer::State {
         const TreeTick tick = run_tree(context, parameters, tick_seconds, started);
 
         {
-            auto& stored = ecs.get<world::AnimationTree>(entity);
+            auto& stored = ecs.get<world::AnimationGraph>(entity);
             stored.parameters = tree.parameters;
             stored.state = tree.state;
             stored.invalid = tick.invalid;
@@ -546,7 +546,7 @@ struct TreePlayer::State {
     // stream of the key at or before the time from the middle, and playback the stream of the
     // last key it passed.
     void play_audio_track(world::World& world, entt::entity entity, std::string_view id,
-                          const world::AnimationTree& tree, const std::string& target,
+                          const world::AnimationGraph& tree, const std::string& target,
                           const std::string& animation_name, const Animation& animation,
                           std::size_t track_index, const PlaybackInfo& info, float weight) {
         const Track& track = animation.tracks[track_index];
@@ -596,7 +596,7 @@ struct TreePlayer::State {
             }
             // A seek within the tree's playback plays it from there, as does one from outside
             // while it plays.
-            auto* player = world.ecs().try_get<world::AnimationPlayer>(on);
+            auto* player = world.ecs().try_get<world::Animator>(on);
             if (sought.value() && player != nullptr && (player->playing || !info.external)) {
                 player->playing = true;
             }
@@ -616,7 +616,7 @@ struct TreePlayer::State {
     // The entity a track acts on: the tree's own, or the one its targets name; null, with a
     // warning, when there is none.
     entt::entity entity_of(const world::World& world, entt::entity own, std::string_view id,
-                           const world::AnimationTree& tree, const std::string& target) {
+                           const world::AnimationGraph& tree, const std::string& target) {
         if (target.empty()) {
             return own;
         }
@@ -628,7 +628,7 @@ struct TreePlayer::State {
                 names.emplace_back(name);
             }
             std::string message =
-                "no entity for target \"" + target + "\" in the AnimationTree's targets";
+                "no entity for target \"" + target + "\" in the AnimationGraph's targets";
             if (const std::string_view hint = closest_match(target, names); !hint.empty()) {
                 message += "; did you mean \"" + std::string(hint) + "\"?";
             }
@@ -646,7 +646,7 @@ struct TreePlayer::State {
     // AnimationMixer::_blend_calc_total_weight, _blend_process and _blend_apply, and reports
     // what it played and the root motion.
     void mix(world::World& world, entt::entity entity, std::string_view id,
-             const world::AnimationTree& tree, EntityCache& cache, const TreeTick& tick,
+             const world::AnimationGraph& tree, EntityCache& cache, const TreeTick& tick,
              std::vector<std::pair<std::string, json::Value>>& events) {
         const TreeTable& table = cache.table;
         const std::size_t count = table.tracks.size();
@@ -943,10 +943,10 @@ struct TreePlayer::State {
             }
         }
 
-        if (!world.valid(entity) || !world.ecs().all_of<world::AnimationTree>(entity)) {
+        if (!world.valid(entity) || !world.ecs().all_of<world::AnimationGraph>(entity)) {
             return;
         }
-        auto& stored = world.ecs().get<world::AnimationTree>(entity);
+        auto& stored = world.ecs().get<world::AnimationGraph>(entity);
         stored.playing = std::move(playing);
         if (root >= 0) {
             const scene3d::NodePose& pose = mixed[static_cast<std::size_t>(root)].pose;
@@ -1048,7 +1048,7 @@ struct TreePlayer::State {
 
     std::optional<std::vector<scene3d::ClipSample>> clips(const world::World& world,
                                                           entt::entity entity) {
-        const auto* tree = world.ecs().try_get<const world::AnimationTree>(entity);
+        const auto* tree = world.ecs().try_get<const world::AnimationGraph>(entity);
         if (tree == nullptr || !tree->active || tree->tree_root.empty()) {
             return std::nullopt;
         }

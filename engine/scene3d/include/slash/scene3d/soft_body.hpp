@@ -42,7 +42,7 @@ void set_soft_body_source(world::World& world, SoftBodySource source);
                                                                  entt::entity entity);
 
 // What keeps each SoftBody3D from being made, as Godot's SoftBody3D configuration warnings and
-// its errors for pinned points out of range: a MeshInstance3D drawing one primitive mesh is
+// its errors for pinned points out of range: a Model3D drawing one primitive mesh is
 // needed, as models aren't simulated yet.
 [[nodiscard]] std::vector<Problem> check_soft_bodies(const world::World& world);
 

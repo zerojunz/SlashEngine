@@ -29,11 +29,11 @@ namespace slash::world {
 class World;
 }
 
-// Grid maps, as Godot 4.6's GridMap (modules/gridmap/grid_map.cpp) and MeshLibrary
+// Grid maps, as Godot 4.6's BlockMap3D (modules/gridmap/grid_map.cpp) and MeshLibrary
 // (scene/resources/3d/mesh_library.cpp): items of a .meshlib.json file placed in cells, each
 // turned one of Godot's 24 ways. Cells are grouped into octants as Godot groups them; each
 // octant's items draw as one mesh per material, their shapes collide as one static body of the
-// GridMap's in physics3d, and with bake_navigation each cell with a navigation mesh is a
+// BlockMap3D's in physics3d, and with bake_navigation each cell with a navigation mesh is a
 // navigation region.
 namespace slash::scene3d {
 
@@ -46,11 +46,11 @@ struct MeshLibraryItem {
     std::optional<Primitive> primitive; // or a primitive mesh
     // Takes the place of the model's materials, or colors the primitive; Godot's default
     // material without one.
-    std::optional<world::StandardMaterial3D> material;
+    std::optional<world::Surface3D> material;
     world::Affine3D mesh_transform;
-    std::string mesh_cast_shadow = "on"; // as MeshInstance3D's cast_shadow
+    std::string mesh_cast_shadow = "on"; // as Model3D's cast_shadow
     // Each placed by its position and rotation in the cell's space; disabled ones are left out.
-    std::vector<world::CollisionShape3D> shapes;
+    std::vector<world::Collider3D> shapes;
     std::string navigation_mesh; // a .navmesh.json file, or ""
     world::Affine3D navigation_mesh_transform;
     std::uint32_t navigation_layers = 1;
@@ -66,10 +66,10 @@ struct MeshLibrary {
 
 // Every error in a document, each with its JSON Pointer: those of the schema, item names with a
 // ':' and navigation meshes that aren't .navmesh.json files.
-[[nodiscard]] std::vector<json::ValidationError> validate_mesh_library(const json::Value& doc);
+[[nodiscard]] std::vector<json::ValidationError> validate_mesh_library(const json::Value& given);
 
 // The library in a document, or its first error.
-[[nodiscard]] Result<MeshLibrary> parse_mesh_library(const json::Value& doc);
+[[nodiscard]] Result<MeshLibrary> parse_mesh_library(const json::Value& given);
 
 // Registers .meshlib.json files with assets as MeshLibrary. Called by add_asset_types.
 void add_mesh_library_type(asset::Assets& assets);
@@ -111,36 +111,36 @@ inline constexpr int kMaxGridCell = 32767;
 [[nodiscard]] std::string grid_item_text(const GridItem& item);
 [[nodiscard]] Result<GridItem> parse_grid_item(std::string_view text);
 
-// A GridMap's cells. Legend keys are as a TileMapLayer's (world/legend.hpp), floors are each at
+// A BlockMap3D's cells. Legend keys are as a TileLayer2D's (world/legend.hpp), floors are each at
 // a different y, and each row of a floor is a string of keys for the cells from its origin
 // toward +x, the rows going toward +z. The error message starts with the JSON Pointer of the
 // bad value within the component, as "/floors/1/rows/2: ...". Names aren't looked up in the
 // library: check_gridmaps reports those that aren't there.
-[[nodiscard]] Result<GridCells> decode_grid_cells(const world::GridMap& map);
+[[nodiscard]] Result<GridCells> decode_grid_cells(const world::BlockMap3D& map);
 
 // Every error decode_grid_cells would find, each with its JSON Pointer within the component.
-[[nodiscard]] std::vector<json::ValidationError> validate_grid_cells(const world::GridMap& map);
+[[nodiscard]] std::vector<json::ValidationError> validate_grid_cells(const world::BlockMap3D& map);
 
-// Writes cells into a GridMap's legend and floors in canonical form: a floor for each y in use,
+// Writes cells into a BlockMap3D's legend and floors in canonical form: a floor for each y in use,
 // lowest first, its origin the corner of its cells nearest -x and -z, rows ending at their last
 // item; keys keep standing for what they stood for, and new keys go to the most used items
 // first, each the first letter of the item's name where that is free.
-void encode_grid_cells(const GridCells& cells, world::GridMap& map);
+void encode_grid_cells(const GridCells& cells, world::BlockMap3D& map);
 
 // Godot's map_to_local: the center of a cell (or its corner along axes not centered) in the
-// GridMap's space; and local_to_map, the cell a point is in.
-[[nodiscard]] Vec3 map_to_local(const world::GridMap& map, Vec3i cell);
-[[nodiscard]] Vec3i local_to_map(const world::GridMap& map, Vec3 local);
+// BlockMap3D's space; and local_to_map, the cell a point is in.
+[[nodiscard]] Vec3 map_to_local(const world::BlockMap3D& map, Vec3i cell);
+[[nodiscard]] Vec3i local_to_map(const world::BlockMap3D& map, Vec3 local);
 
-// Where a cell's item goes in the GridMap's space, as _octant_update places it: turned by its
+// Where a cell's item goes in the BlockMap3D's space, as _octant_update places it: turned by its
 // orientation, scaled by cell_scale, at map_to_local.
-[[nodiscard]] world::Affine3D cell_transform(const world::GridMap& map, Vec3i cell,
+[[nodiscard]] world::Affine3D cell_transform(const world::BlockMap3D& map, Vec3i cell,
                                              int orientation);
 
 // The octant a cell is in, as Godot's get_octant_key_from_cell_coords.
-[[nodiscard]] Vec3i octant_of(const world::GridMap& map, Vec3i cell);
+[[nodiscard]] Vec3i octant_of(const world::BlockMap3D& map, Vec3i cell);
 
-// ---- What a GridMap makes
+// ---- What a BlockMap3D makes
 
 // A surface of an octant and which shadows it casts, its items' mesh_cast_shadow.
 struct GridSurface {
@@ -148,7 +148,7 @@ struct GridSurface {
     std::string cast_shadow = "on";
 };
 
-// One octant's items, placed in the GridMap's space and merged into one surface per material
+// One octant's items, placed in the BlockMap3D's space and merged into one surface per material
 // and shadow setting, as Godot draws an octant's MultiMesh of each item.
 struct GridOctant {
     Vec3i key;
@@ -161,8 +161,8 @@ struct GridOctant {
 // An item's shape in a cell.
 struct GridShape {
     Vec3i cell;
-    world::CollisionShape3D shape;
-    world::Affine3D local; // in the GridMap's space: the cell's transform times the shape's
+    world::Collider3D shape;
+    world::Affine3D local; // in the BlockMap3D's space: the cell's transform times the shape's
 };
 
 // An item's navigation mesh in a cell, as a NavigationCell of Godot's octants.
@@ -173,7 +173,7 @@ struct GridRegion {
     std::uint32_t navigation_layers = 1;
 };
 
-// What a GridMap's cells make.
+// What a BlockMap3D's cells make.
 struct GridMesh {
     std::vector<std::shared_ptr<const GridOctant>> octants; // in octant order
     // Every cell's shapes: a change in any is a new pointer.
@@ -186,7 +186,7 @@ struct GridMesh {
     std::vector<Problem> problems;
 };
 
-// What a GridMap's cells make. With install_gridmap it is kept until the GridMap, its library
+// What a BlockMap3D's cells make. With install_gridmap it is kept until the BlockMap3D, its library
 // or a model an item names changes, and octants whose cells are the same are kept; without, it
 // is made on each call, the library and models read with the world's file reader.
 [[nodiscard]] std::shared_ptr<const GridMesh> grid_mesh(const world::World& world,
@@ -196,11 +196,11 @@ struct GridMesh {
 using MeshLibraryLoader =
     std::function<Result<std::shared_ptr<const MeshLibrary>>(const std::string& path)>;
 
-// Keeps each GridMap's meshes in the world until they change, reading item models with models
+// Keeps each BlockMap3D's meshes in the world until they change, reading item models with models
 // and libraries with libraries. Sessions and games call it through canvas::install.
 void install_gridmap(world::World& world, ModelLoader models, MeshLibraryLoader libraries);
 
-// A GridMap with shapes, as the static bodies of its octants: its collision layer, mask and
+// A BlockMap3D with shapes, as the static bodies of its octants: its collision layer, mask and
 // physics material, and every cell's shapes.
 struct GridBody {
     entt::entity entity = entt::null;
@@ -212,7 +212,7 @@ struct GridBody {
 };
 [[nodiscard]] std::vector<GridBody> grid_bodies(const world::World& world);
 
-// Every GridMap whose cells can't be made, in the order entities were made: a cell_size Godot
+// Every BlockMap3D whose cells can't be made, in the order entities were made: a cell_size Godot
 // can't divide by, cells but no library, and grid_mesh's problems.
 [[nodiscard]] std::vector<Problem> check_gridmaps(const world::World& world);
 

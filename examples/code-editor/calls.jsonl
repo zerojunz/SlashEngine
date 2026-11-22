@@ -12,7 +12,7 @@
 {"jsonrpc":"2.0","id":12,"method":"input.inject","params":{"events":[{"type":"mouse_button","button":"left","position":[78,25],"pressed":true},{"type":"mouse_button","button":"left","position":[78,25],"pressed":false},{"type":"key","key":"Enter","pressed":true},{"type":"key","key":"Enter","pressed":false}]}}
 {"jsonrpc":"2.0","id":13,"method":"step","params":{}}
 {"jsonrpc":"2.0","id":14,"method":"events.read","params":{"subscription":"events_1"}}
-{"jsonrpc":"2.0","id":15,"method":"entity.get","params":{"id":"script","components":["CodeEdit"]}}
+{"jsonrpc":"2.0","id":15,"method":"entity.get","params":{"id":"script","components":["CodeEditor"]}}
 {"jsonrpc":"2.0","id":16,"method":"input.inject","params":{"events":[{"type":"mouse_button","button":"left","position":[388,150],"pressed":true},{"type":"mouse_button","button":"left","position":[388,150],"pressed":false}]}}
 {"jsonrpc":"2.0","id":17,"method":"step","params":{}}
 {"jsonrpc":"2.0","id":18,"method":"ui.layout","params":{"ids":["script"]}}

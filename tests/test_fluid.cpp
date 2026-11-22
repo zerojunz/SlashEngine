@@ -287,9 +287,9 @@ TEST_CASE("fluid: 2D water falls down the screen, stays at z 0 and fills its box
 TEST_CASE("fluid: water lands on 3D bodies and pushes a box in it") {
     Scene scene(true);
     scene.create("floor", R"({"Transform3D": {"position": [0, -0.25, 0]},
-        "StaticBody3D": {}, "CollisionShape3D": {"size": [4, 0.5, 4]}})");
+        "StaticBody3D": {}, "Collider3D": {"size": [4, 0.5, 4]}})");
     scene.create("crate", R"({"Transform3D": {"position": [0.3, 0.1, 0]},
-        "RigidBody3D": {"mass": 0.2}, "CollisionShape3D": {"size": [0.2, 0.2, 0.2]}})");
+        "RigidBody3D": {"mass": 0.2}, "Collider3D": {"size": [0.2, 0.2, 0.2]}})");
     scene.create("splash", R"({"Transform3D": {"position": [0, 0.6, 0]},
         "Fluid3D": {"recipe": "water.fluid.json", "fill_size": [0.4, 0.4, 0.4]}})");
     scene.step(90);
@@ -306,7 +306,7 @@ TEST_CASE("fluid: water lands on 3D bodies and pushes a box in it") {
 TEST_CASE("fluid: 2D water lands on a 2D body") {
     Scene scene(true);
     scene.create("ground", R"({"Transform2D": {"position": [0, 200]}, "StaticBody2D": {},
-        "CollisionShape2D": {"size": [2000, 20]}})");
+        "Collider2D": {"size": [2000, 20]}})");
     scene.create("splash", R"({"Transform2D": {"position": [0, 100]},
         "Fluid2D": {"recipe": "water2d.fluid.json", "fill_size": [64, 64]}})");
     scene.step(120);
@@ -551,8 +551,8 @@ TEST_CASE("fluid: water lands on a soft body's sheet and weighs it down") {
     const auto run = [](bool water) {
         Scene scene(true);
         const entt::entity sheet = scene.create("hammock", R"({"Transform3D": {},
-            "MeshInstance3D": {},
-            "PlaneMesh": {"size": [1, 1], "subdivide_width": 3, "subdivide_depth": 3},
+            "Model3D": {},
+            "PlaneGeometry": {"size": [1, 1], "subdivide_width": 3, "subdivide_depth": 3},
             "SoftBody3D": {"pinned_points": [{"point": 0}, {"point": 4}, {"point": 20},
                                              {"point": 24}]}})");
         if (water) {

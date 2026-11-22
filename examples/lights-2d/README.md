@@ -1,8 +1,8 @@
 # 2D lights
 
 Lights, shadows and normal maps, as Godot's 2D lighting. In [main.scene.json](main.scene.json),
-a `CanvasModulate` darkens everything to a night blue, a torch (`PointLight2D`) and the moon
-(`DirectionalLight2D`) light it, the crate's `LightOccluder2D` casts a shadow from the torch and
+a `AmbientTint2D` darkens everything to a night blue, a torch (`PointLight2D`) and the moon
+(`SunLight2D`) light it, the crate's `Occluder2D` casts a shadow from the torch and
 its `normal_texture` bevels its edges, and the neon sign's [material](neon.material.json) is
 `"light_mode": "unshaded"`, so it glows at full brightness. [main.cpp](main.cpp) makes the
 textures, asks `light.sample` how lit some points are, changes the torch's color and asks again,
@@ -18,12 +18,12 @@ light.sample {"points":[[96,60],[200,90],[300,170]]}
   {"color":[0.245,0.27,0.45],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"}]}]}
 ```
 
-- Draws are unshaded until the scene has an enabled light or a `CanvasModulate`. Then sprites
-  and tile layers start from the `CanvasModulate` color (the ambient light) and each light adds
+- Draws are unshaded until the scene has an enabled light or a `AmbientTint2D`. Then sprites
+  and tile layers start from the `AmbientTint2D` color (the ambient light) and each light adds
   its color on top, as `blend_mode` says: `add`, `sub` or `mix`.
 - A `PointLight2D` shines through its `texture`, centered on it and `texture_scale` times as
   big; with none it uses a round light 256 pixels across that fades to its edge. Its `color`
-  times its `energy` is what it adds where the texture is white. A `DirectionalLight2D` lights
+  times its `energy` is what it adds where the texture is white. A `SunLight2D` lights
   everything from its `Transform2D` rotation: straight down the screen at 0.
 - `light.sample` returns the color a white pixel gets at each point, as the GPU shades it, and
   each light that reaches it with its color there (times its alpha). A light with

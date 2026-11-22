@@ -12,16 +12,16 @@
     },
     "crate": {
       "components": {
-        "BoxMesh": {},
-        "CollisionShape3D": {},
+        "BoxGeometry": {},
+        "Collider3D": {},
         "Destructible3D": {
           "profile": "profiles/crate.damage.json"
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "StaticBody3D": {},
+        "Surface3D": {
           "albedo_color": [0.6, 0.45, 0.25, 1.0]
         },
-        "StaticBody3D": {},
         "Transform3D": {
           "position": [-3.0, 1.0, 0.0]
         }
@@ -29,7 +29,7 @@
     },
     "crate_2d": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [64.0, 64.0]
         },
         "Destructible2D": {
@@ -58,7 +58,7 @@
         "Destructible3D": {
           "profile": "profiles/flesh.damage.json"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "fauna/deer.creature.json"
         },
         "Transform3D": {
@@ -68,7 +68,7 @@
     },
     "ground": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [40.0, 1.0, 40.0]
         },
         "StaticBody3D": {},
@@ -77,7 +77,7 @@
     },
     "hunter": {
       "components": {
-        "CharacterBody3D": {},
+        "CharacterMover3D": {},
         "Transform3D": {
           "position": [0.0, 1.0, 8.0]
         }

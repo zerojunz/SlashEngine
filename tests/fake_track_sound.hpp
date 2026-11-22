@@ -30,7 +30,7 @@ struct FakeSound {
         world::AudioTrackSound sound;
         sound.play = [this](world::World& w, entt::entity entity, std::string_view stream,
                             double from, int polyphony) -> Result<world::AudioTrackPlay> {
-            if (!w.ecs().all_of<world::AudioStreamPlayer>(entity)) {
+            if (!w.ecs().all_of<world::SoundPlayer>(entity)) {
                 return make_error(ErrorCode::InvalidArgument, "no player");
             }
             const auto id = static_cast<std::int64_t>(streams.size()) + 1;

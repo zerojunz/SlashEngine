@@ -12,7 +12,7 @@
     },
     "boulder": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [64.0, 64.0]
         },
         "Destructible2D": {
@@ -38,7 +38,7 @@
         "Destructible2D": {
           "profile": "profiles/soil.damage.json"
         },
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "r": "rock"
           },

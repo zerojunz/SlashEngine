@@ -146,17 +146,17 @@ TEST_CASE("frame.summary reads controls and maps the frame, by region, IDs and a
                    sprite("sheet", "white.png", 80, 40, 8, R"(, "hframes": 2, "frame": 3)") +
                    R"(,
         {"command": "entity.create", "params": {"id": "panel", "components": {
-            "Control": {"offset_left": 100, "offset_right": 160, "offset_bottom": 45},
-            "ColorRect": {"color": [0, 0, 0, 0.9]}}}},
+            "Widget": {"offset_left": 100, "offset_right": 160, "offset_bottom": 45},
+            "ColorFill": {"color": [0, 0, 0, 0.9]}}}},
         {"command": "entity.create", "params": {"id": "glass", "components": {
-            "Control": {"offset_left": 100, "offset_top": 45, "offset_right": 160,
+            "Widget": {"offset_left": 100, "offset_top": 45, "offset_right": 160,
                         "offset_bottom": 90},
-            "ColorRect": {"color": [1, 1, 1, 0.6]}}}},
+            "ColorFill": {"color": [1, 1, 1, 0.6]}}}},
         {"command": "entity.create", "params": {"id": "title", "components": {
-            "Control": {"offset_left": 40, "offset_right": 100, "offset_bottom": 20},
+            "Widget": {"offset_left": 40, "offset_right": 100, "offset_bottom": 20},
             "Label": {"text": "Hello world", "visible_characters": 5}}}},
         {"command": "entity.create", "params": {"id": "go", "components": {
-            "Control": {"offset_left": 4, "offset_top": 70, "offset_right": 34,
+            "Widget": {"offset_left": 4, "offset_top": 70, "offset_right": 34,
                         "offset_bottom": 86},
             "Button": {"text": "Go", "disabled": true}}}}]})");
     project.ok("component.set",
@@ -172,8 +172,8 @@ TEST_CASE("frame.summary reads controls and maps the frame, by region, IDs and a
             {"id": "wall", "kind": "Sprite2D", "rect": [0, 25, 40, 40]},
             {"id": "seen", "kind": "Sprite2D", "rect": [122, 60, 16, 16]},
             {"id": "spin", "kind": "Sprite2D", "rect": [48.7, 58.7, 22.6, 22.6]},
-            {"id": "panel", "kind": "ColorRect", "rect": [100, 0, 60, 45]},
-            {"id": "glass", "kind": "ColorRect", "rect": [100, 45, 60, 45]},
+            {"id": "panel", "kind": "ColorFill", "rect": [100, 0, 60, 45]},
+            {"id": "glass", "kind": "ColorFill", "rect": [100, 45, 60, 45]},
             {"id": "title", "kind": "Label", "rect": [40, 0, 60, 22], "text": "Hello"},
             {"id": "go", "kind": "Button", "rect": [4, 70, 30, 30], "shown": 0.67,
              "text": "Go", "draw_mode": "disabled"}],

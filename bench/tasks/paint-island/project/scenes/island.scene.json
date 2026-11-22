@@ -2,7 +2,7 @@
   "entities": {
     "ground": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "ground.tileset.json"
         }
       }

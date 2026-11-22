@@ -15,7 +15,7 @@
 
 // What the gui system and the layout share about TextEdits: the state Godot's TextEdit keeps
 // between events (TextEditState), its text shaped into wrapped rows with the geometry Godot works
-// out from them (TextArea, text_edit.cpp: scene/gui/text_edit.cpp's Text class, the line
+// out from them (EditArea, text_edit.cpp: scene/gui/text_edit.cpp's Text class, the line
 // wrapping and viewport functions, get_line_column_at_pos, _get_column_x_offset_for_line,
 // _update_scrollbars, get_minimum_size and NOTIFICATION_DRAW), and the editing itself
 // (text_editor.cpp: gui_input, the caret and selection functions and the undo history).
@@ -26,7 +26,7 @@ enum class SelectionMode : std::uint8_t { None, Shift, Pointer, Word, Line };
 // Godot's TextEdit::EditAction: what the open undo step is gathering.
 enum class EditAction : std::uint8_t { None, Typing, Backspace, Delete };
 
-// What a TextEdit keeps between events, as Godot's TextEdit members, for its one caret.
+// What a TextArea keeps between events, as Godot's TextEdit members, for its one caret.
 struct TextEditState {
     struct Selection {
         bool active = false;
@@ -123,10 +123,10 @@ struct SelectionRange {
 };
 [[nodiscard]] SelectionRange selection_range(const TextEditState::Caret& caret);
 
-// The TextEditState the gui system keeps for a TextEdit, or nullptr (gui.cpp).
+// The TextEditState the gui system keeps for a TextArea, or nullptr (gui.cpp).
 [[nodiscard]] const TextEditState* text_edit_state(const world::World& world, entt::entity entity);
 
-// A TextEdit's lines split at "\n", without "\r", as Godot's TextEdit keeps them.
+// A TextArea's lines split at "\n", without "\r", as Godot's TextEdit keeps them.
 [[nodiscard]] std::vector<std::u32string> split_lines(std::string_view text);
 [[nodiscard]] std::string join_lines(const std::vector<std::u32string>& lines);
 
@@ -134,7 +134,7 @@ struct SelectionRange {
 inline constexpr std::uint32_t kSearchMatchCase = 1U;
 inline constexpr std::uint32_t kSearchWholeWords = 2U;
 inline constexpr std::uint32_t kSearchBackwards = 4U;
-// A TextEdit's search_flags as SearchFlags.
+// A TextArea's search_flags as SearchFlags.
 [[nodiscard]] std::uint32_t search_flags(const std::vector<std::string>& names);
 // _get_column_pos_of_word: where key first occurs in search from a column on, or -1.
 [[nodiscard]] int column_pos_of_word(std::u32string_view key, std::u32string_view search,
@@ -144,17 +144,17 @@ inline constexpr std::uint32_t kSearchBackwards = 4U;
                                                std::u32string_view key, std::uint32_t flags,
                                                int from_line, int from_column);
 
-// A TextEdit's lines shaped and wrapped for its rect, and where Godot's TextEdit puts things in
+// A TextArea's lines shaped and wrapped for its rect, and where Godot's TextEdit puts things in
 // them. Rows are a line's wrapped parts; scroll_vertical counts rows, scroll_horizontal pixels.
-class TextArea {
+class EditArea {
 public:
-    TextArea(text::Fonts& fonts, const TextEditView& view, Vec2 size, const world::TextEdit& edit,
+    EditArea(text::Fonts& fonts, const TextEditView& view, Vec2 size, const world::TextArea& edit,
              std::vector<std::u32string> lines);
-    ~TextArea();
-    TextArea(const TextArea&) = delete;
-    TextArea& operator=(const TextArea&) = delete;
-    TextArea(TextArea&&) noexcept;
-    TextArea& operator=(TextArea&&) = delete;
+    ~EditArea();
+    EditArea(const EditArea&) = delete;
+    EditArea& operator=(const EditArea&) = delete;
+    EditArea(EditArea&&) noexcept;
+    EditArea& operator=(EditArea&&) = delete;
 
     // ---- Text ----
 
@@ -241,7 +241,7 @@ public:
 
     // ---- Gutters ----
 
-    // A gutter's width (TextEditView::gutters), a CodeEdit's worked out as Godot's: the main
+    // A gutter's width (TextEditView::gutters), a CodeEditor's worked out as Godot's: the main
     // gutter is a line high (half as wide with only bookmarks), the line numbers' as wide as
     // their digits and one more '0'.
     [[nodiscard]] int gutter_width(std::size_t gutter) const;
@@ -277,17 +277,17 @@ public:
         LabelText text;
         std::vector<Box> over; // carets, the composition's underline, the scroll bars
     };
-    // What draws besides the TextEdit: a CodeHighlighter colors its text and a CodeEdit's lines
+    // What draws besides the TextArea: a SyntaxColors colors its text and a CodeEditor's lines
     // show in its gutters; a breakpoint, or with Shift a bookmark, shows dimmed where the
     // pointer is over the main gutter.
     struct Extras {
-        const world::CodeHighlighter* highlighter = nullptr;
-        const world::CodeEdit* code = nullptr;
+        const world::SyntaxColors* highlighter = nullptr;
+        const world::CodeEditor* code = nullptr;
         bool hovered = false; // the pointer is over it, at the state's mouse
         bool shift = false;   // Shift is held
     };
     // NOTIFICATION_DRAW, and what it shows for ui.layout.
-    void draw(const world::TextEdit& edit, const TextEditState& state, bool focused,
+    void draw(const world::TextArea& edit, const TextEditState& state, bool focused,
               const Extras& extras, Draw& out, TextEditView& view) const;
 
     // Where one of its scroll bars is in its rect and its range, which starts at 0 and has no
@@ -325,7 +325,7 @@ private:
     // _update_gutter_width.
     void update_gutter_width();
     // CodeEdit::_draw_guidelines and the gutters of a line's first row (NOTIFICATION_DRAW).
-    void draw_guidelines(const world::CodeEdit& code, const CodeEditView& look,
+    void draw_guidelines(const world::CodeEditor& code, const CodeEditView& look,
                          std::vector<Box>& out) const;
     struct GutterText {
         std::string utf8;
@@ -335,7 +335,7 @@ private:
     };
     // A gutter's text laid out in the font, as a TextLine, or nullopt.
     [[nodiscard]] std::optional<GutterText> gutter_text(std::string utf8, Vec4 color) const;
-    void draw_gutters(const world::TextEdit& edit, const TextEditState& state, const Extras& extras,
+    void draw_gutters(const world::TextArea& edit, const TextEditState& state, const Extras& extras,
                       int line, int ofs_y, int row_height, Draw& out,
                       std::vector<GutterText>& texts) const;
     void update_scrollbars();
@@ -385,18 +385,18 @@ private:
     mutable std::string error_;
 };
 
-// The TextArea a TextEdit shows: its text, with the input method's composition at the caret.
-[[nodiscard]] TextArea text_area_for(text::Fonts& fonts, const TextEditView& view, Vec2 size,
-                                     const world::TextEdit& edit, const TextEditState& state);
-// The state a TextEdit draws with: the gui system's, or, before it catches up with a text or
+// The EditArea a TextArea shows: its text, with the input method's composition at the caret.
+[[nodiscard]] EditArea text_area_for(text::Fonts& fonts, const TextEditView& view, Vec2 size,
+                                     const world::TextArea& edit, const TextEditState& state);
+// The state a TextArea draws with: the gui system's, or, before it catches up with a text or
 // caret changed from outside, the component's caret in fallback.
-[[nodiscard]] const TextEditState& shown_state(const world::TextEdit& edit,
-                                               const TextEditState* state, const TextArea& area,
+[[nodiscard]] const TextEditState& shown_state(const world::TextArea& edit,
+                                               const TextEditState* state, const EditArea& area,
                                                TextEditState& fallback);
 
 // ---- Editing (text_editor.cpp) ----
 
-// A signal a TextEdit emitted at once: "text_set", "lines_edited_from" (with its lines),
+// A signal a TextArea emitted at once: "text_set", "lines_edited_from" (with its lines),
 // "gutter_clicked" (with the line and the gutter's name) or "breakpoint_toggled" (with the line).
 struct TextEditSignal {
     std::string kind;
@@ -406,16 +406,16 @@ struct TextEditSignal {
     std::string gutter;
 };
 
-// What editing a TextEdit needs from the gui system.
+// What editing a TextArea needs from the gui system.
 struct TextEditContext {
     world::World* world = nullptr; // for the clipboard
     const input::Map* map = nullptr;
     double now = 0.0;      // seconds of world time, for triple clicks
     bool focused = false;  // it has focus
     bool dragging = false; // a drag with data is going on (Godot's drag_action)
-    bool can_drop = false; // and the TextEdit would take it at the event's point
+    bool can_drop = false; // and the TextArea would take it at the event's point
     std::vector<TextEditSignal>* signals = nullptr;
-    world::CodeEdit* code = nullptr; // the CodeEdit on its entity, whose lines move with edits
+    world::CodeEditor* code = nullptr; // the CodeEditor on its entity, whose lines move with edits
 };
 
 // Each call first brings the state up to the component: text changed from outside (a command
@@ -423,47 +423,47 @@ struct TextEditContext {
 // and a caret moved from outside drops the selection. Each writes the text, caret and scroll
 // back to the component, and queues text_changed and caret_changed on the state's deferred.
 
-void sync_text_edit(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-                    TextArea& area);
-// TextEdit::gui_input for one event, with its position and motion in the TextEdit's rect:
+void sync_text_edit(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+                    EditArea& area);
+// TextEdit::gui_input for one event, with its position and motion in the TextArea's rect:
 // whether it took the event (accept_event).
-bool text_edit_input(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-                     TextArea& area, const input::Event& event, Vec2 local, Vec2 relative);
+bool text_edit_input(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+                     EditArea& area, const input::Event& event, Vec2 local, Vec2 relative);
 // One of its scroll bars moved (by a drag, a click or the wheel on it): _scroll_moved shows the
 // lines and columns the bar's value puts in view.
-void text_edit_scroll_to(const TextEditContext& context, world::TextEdit& edit,
-                         TextEditState& state, TextArea& area, bool vertical, double value);
+void text_edit_scroll_to(const TextEditContext& context, world::TextArea& edit,
+                         TextEditState& state, EditArea& area, bool vertical, double value);
 // unhandled_key_input: a character typed with modifiers no shortcut took.
-bool text_edit_unhandled_key(const TextEditContext& context, world::TextEdit& edit,
-                             TextEditState& state, TextArea& area, const input::Event& event);
+bool text_edit_unhandled_key(const TextEditContext& context, world::TextArea& edit,
+                             TextEditState& state, EditArea& area, const input::Event& event);
 // NOTIFICATION_FOCUS_ENTER and NOTIFICATION_FOCUS_EXIT; leaving needs the area only to commit
 // a composition.
-void text_edit_focus_enter(const world::TextEdit& edit, TextEditState& state);
-void text_edit_focus_exit(const TextEditContext& context, world::TextEdit& edit,
-                          TextEditState& state, TextArea* area);
+void text_edit_focus_enter(const world::TextArea& edit, TextEditState& state);
+void text_edit_focus_exit(const TextEditContext& context, world::TextArea& edit,
+                          TextEditState& state, EditArea* area);
 // NOTIFICATION_OS_IME_UPDATE: the input method's composition changed.
-void text_edit_ime_update(const TextEditContext& context, world::TextEdit& edit,
-                          TextEditState& state, TextArea& area, std::u32string text,
+void text_edit_ime_update(const TextEditContext& context, world::TextArea& edit,
+                          TextEditState& state, EditArea& area, std::u32string text,
                           int selection_start, int selection_length);
-// _click_selection_held, with the pointer in the TextEdit's rect.
-void text_edit_click_held(const TextEditContext& context, world::TextEdit& edit,
-                          TextEditState& state, TextArea& area, Vec2 local);
+// _click_selection_held, with the pointer in the TextArea's rect.
+void text_edit_click_held(const TextEditContext& context, world::TextArea& edit,
+                          TextEditState& state, EditArea& area, Vec2 local);
 // What TextEditContext::dragging changes in gui_input: with a drag going on, the pointer moves
 // the drag caret where the drop would go (when can_drop) instead of selecting.
-// drop_data, with the drop's point in the TextEdit's rect: the text goes in there and is
+// drop_data, with the drop's point in the TextArea's rect: the text goes in there and is
 // selected; dragged from its own selection it moves there, or is copied with Command (Ctrl)
-// held. Whether it went in (not on its own selection), so the TextEdit takes focus.
-bool text_edit_drop_text(const TextEditContext& context, world::TextEdit& edit,
-                         TextEditState& state, TextArea& area, Vec2 local, std::u32string_view text,
+// held. Whether it went in (not on its own selection), so the TextArea takes focus.
+bool text_edit_drop_text(const TextEditContext& context, world::TextArea& edit,
+                         TextEditState& state, EditArea& area, Vec2 local, std::u32string_view text,
                          bool command);
 // NOTIFICATION_DRAG_END after its selection was dropped elsewhere: the selection goes, unless
 // it can't be edited or Command (Ctrl) was held to copy it.
-void text_edit_drag_end(const TextEditContext& context, world::TextEdit& edit, TextEditState& state,
-                        TextArea& area, bool command);
+void text_edit_drag_end(const TextEditContext& context, world::TextArea& edit, TextEditState& state,
+                        EditArea& area, bool command);
 // A tick's timers: the caret's blink, idle_detect closing an undo step, and click_select_held,
 // for which it returns true when a drag selection should follow the held pointer
 // (text_edit_click_held).
-bool text_edit_tick(const world::TextEdit& edit, TextEditState& state, bool focused,
+bool text_edit_tick(const world::TextArea& edit, TextEditState& state, bool focused,
                     double tick_seconds, bool left_held);
 
 } // namespace slash::ui

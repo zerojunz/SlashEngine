@@ -2,18 +2,18 @@
   "entities": {
     "count": {
       "components": {
-        "Control": {},
         "Label": {
           "text": "0 words"
-        }
+        },
+        "Widget": {}
       }
     },
     "desk": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "children": ["title", "letter", "count"],
           "custom_minimum_size": [288.0, 0.0],
           "offset_left": 16.0,
@@ -23,22 +23,22 @@
     },
     "letter": {
       "components": {
-        "Control": {
-          "custom_minimum_size": [0.0, 124.0]
-        },
-        "TextEdit": {
+        "TextArea": {
           "highlight_current_line": true,
           "placeholder_text": "Write to Mira",
           "wrap_mode": "boundary"
+        },
+        "Widget": {
+          "custom_minimum_size": [0.0, 124.0]
         }
       }
     },
     "title": {
       "components": {
-        "Control": {},
         "Label": {
           "text": "Letter to Mira"
-        }
+        },
+        "Widget": {}
       }
     }
   },

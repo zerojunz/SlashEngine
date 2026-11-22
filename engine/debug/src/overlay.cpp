@@ -23,26 +23,26 @@ constexpr std::string_view kPanel = R"({
   "format": 1,
   "entities": {
     "panel": {"components": {
-      "Control": {"children": ["rows"], "offset_left": 8, "offset_top": 8,
+      "Widget": {"children": ["rows"], "offset_left": 8, "offset_top": 8,
                   "theme_override_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
                                                       "content_margin": 8,
                                                       "corner_radius": 4}}},
-      "PanelContainer": {}}},
+      "PanelBox": {}}},
     "rows": {"components": {
-      "BoxContainer": {"vertical": true},
-      "Control": {"children": ["stats", "counts", "hover", "buttons"],
+      "StackBox": {"vertical": true},
+      "Widget": {"children": ["stats", "counts", "hover", "buttons"],
                   "theme_override_constants": {"separation": 4}}}},
     "stats": {"components": {"Label": {}}},
     "counts": {"components": {"Label": {}}},
-    "hover": {"components": {"Control": {"visible": false}, "Label": {}}},
+    "hover": {"components": {"Widget": {"visible": false}, "Label": {}}},
     "buttons": {"components": {
-      "BoxContainer": {},
-      "Control": {"children": ["play", "step", "shapes"]}}},
-    "play": {"components": {"Button": {"text": "Pause"}, "Control": {"focus_mode": "none"}}},
+      "StackBox": {},
+      "Widget": {"children": ["play", "step", "shapes"]}}},
+    "play": {"components": {"Button": {"text": "Pause"}, "Widget": {"focus_mode": "none"}}},
     "step": {"components": {"Button": {"text": "Step", "disabled": true},
-                            "Control": {"focus_mode": "none"}}},
+                            "Widget": {"focus_mode": "none"}}},
     "shapes": {"components": {"Button": {"text": "Shapes", "toggle_mode": true},
-                              "Control": {"focus_mode": "none"}}}
+                              "Widget": {"focus_mode": "none"}}}
   }
 })";
 
@@ -221,7 +221,7 @@ void Overlay::update(command::Session& session, const FrameStats& frames,
 
     // What is under the mouse: its position, and the bodies and areas whose shapes hold it.
     const entt::entity hover = world_.find("hover");
-    ecs.get<world::Control>(hover).visible = has_mouse_;
+    ecs.get<world::Widget>(hover).visible = has_mouse_;
     if (has_mouse_) {
         std::string text = "mouse " + std::to_string(static_cast<long long>(std::floor(mouse_.x))) +
                            ", " + std::to_string(static_cast<long long>(std::floor(mouse_.y)));
@@ -248,7 +248,7 @@ std::vector<std::string> Overlay::lines() const {
     const auto& ecs = world_.ecs();
     for (const std::string_view name : kLabels) {
         const entt::entity label = world_.find(name);
-        if (const auto* control = ecs.try_get<world::Control>(label);
+        if (const auto* control = ecs.try_get<world::Widget>(label);
             control == nullptr || control->visible) {
             lines.push_back(ecs.get<world::Label>(label).text);
         }

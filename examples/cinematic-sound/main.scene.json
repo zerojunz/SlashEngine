@@ -2,7 +2,7 @@
   "entities": {
     "director": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "intro",
           "library": "intro.anim.json",
           "targets": {
@@ -14,14 +14,14 @@
     },
     "door": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "volume_db": -6.0
         }
       }
     },
     "narrator": {
       "components": {
-        "AudioStreamPlayer": {}
+        "SoundPlayer": {}
       }
     }
   },

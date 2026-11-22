@@ -31,7 +31,7 @@ A believable close-up character is several systems working together:
 - Godot's IK modifiers, ragdolls and bone attachments.
 - Animation trees with blend spaces and state machines.
 - Mesh LODs and virtualized geometry ([virtualized-geometry.md](virtualized-geometry.md)).
-- `StandardMaterial3D`'s base lighting model with Godot's rim, clearcoat, anisotropy, and
+- `Surface3D`'s base lighting model with Godot's rim, clearcoat, anisotropy, and
   subsurface scattering and transmittance.
 
 ## What is missing, in the order Godot would suggest
@@ -40,7 +40,7 @@ Godot has no digital human system either, but it has the parts below, so they co
 follow Godot's design:
 
 1. **Blend shapes** (done: [scene-format.md](scene-format.md#blend-shapes)). glTF morph targets loaded as Godot's mesh blend shapes, a
-   `MeshInstance3D` field per shape (`blend_shapes/<name>`), animation tracks for them, and
+   `Model3D` field per shape (`blend_shapes/<name>`), animation tracks for them, and
    blending on the CPU before skinning, as Godot's skeleton shader does. This is useful well
    beyond humans, for faces, cloth, and any shape change an artist animates.
 2. **Subsurface scattering and transmittance** (done:
@@ -51,7 +51,7 @@ follow Godot's design:
    fields and alpha hash, which Godot uses for hair cards and eyes (done:
    [scene-format.md](scene-format.md#standardmaterial3d)). The fields' textures remain.
 4. **Face capture data** (done: [scene-format.md](scene-format.md#face-tracking)): Godot's
-   `XRFaceTracker` and `XRFaceModifier3D`, which drive a face's blend shapes named in ARKit's,
+   `XRFaceTracker` and `XRFace3D`, which drive a face's blend shapes named in ARKit's,
    Unified Expressions', SRanipal's or Meta's standard live, and
    [`animation.import_face_capture`](commands.md#animationimport_face_capture), which reads a
    Live Link Face recording into an animation, so a recorded performance drives a face.

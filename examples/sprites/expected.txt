@@ -5,12 +5,12 @@ events.subscribe {"kinds":["animation_finished"]}
 {"subscription":"events_1"}
 step {"tick_seconds":0.0625,"ticks":3}
 {"tick":3,"ticks":3}
-entity.get {"components":["AnimatedSprite2D","Sprite2D"],"id":"hero","omit_defaults":true}
-{"components":{"AnimatedSprite2D":{"animation":"walk","frame":1,"frame_progress":0.5,"sprite_frames":"hero.frames.json"},"Sprite2D":{"frame":1,"hframes":4,"texture":"hero.png"}},"id":"hero"}
-component.set {"components":{"AnimatedSprite2D":{"animation":"jump","frame":0,"frame_progress":0}},"id":"hero"}
-{"changed":{"AnimatedSprite2D":{"animation":"jump","frame":0,"frame_progress":0.0}},"id":"hero"}
-run.until {"include":["AnimatedSprite2D"],"tick_seconds":0.0625,"where":[{"component":"AnimatedSprite2D","field":"playing","op":"==","value":false}],"with":["AnimatedSprite2D"]}
-{"count":1,"entities":[{"components":{"AnimatedSprite2D":{"animation":"jump","frame":1,"frame_progress":1.0,"playing":false,"speed_scale":1.0,"sprite_frames":"hero.frames.json"}},"id":"hero"}],"matched":true,"tick":7,"ticks":4,"truncated":false}
+entity.get {"components":["Flipbook2D","Sprite2D"],"id":"hero","omit_defaults":true}
+{"components":{"Flipbook2D":{"animation":"walk","frame":1,"frame_progress":0.5,"sprite_frames":"hero.frames.json"},"Sprite2D":{"frame":1,"hframes":4,"texture":"hero.png"}},"id":"hero"}
+component.set {"components":{"Flipbook2D":{"animation":"jump","frame":0,"frame_progress":0}},"id":"hero"}
+{"changed":{"Flipbook2D":{"animation":"jump","frame":0,"frame_progress":0.0}},"id":"hero"}
+run.until {"include":["Flipbook2D"],"tick_seconds":0.0625,"where":[{"component":"Flipbook2D","field":"playing","op":"==","value":false}],"with":["Flipbook2D"]}
+{"count":1,"entities":[{"components":{"Flipbook2D":{"animation":"jump","frame":1,"frame_progress":1.0,"playing":false,"speed_scale":1.0,"sprite_frames":"hero.frames.json"}},"id":"hero"}],"matched":true,"tick":7,"ticks":4,"truncated":false}
 events.read {"subscription":"events_1"}
 {"dropped":0,"events":[{"data":{"animation":"jump"},"id":"hero","kind":"animation_finished","seq":1,"tick":6}],"more":false}
 sign corners (x, y, u, v):

@@ -336,7 +336,7 @@ json::Value schema() {
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine tile set";
     out["description"] = "Atlas textures cut into tiles, and the terrains that connect them, "
-                         "like Godot's TileSet. TileMapLayer draws them.";
+                         "like Godot's TileSet. TileLayer2D draws them.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format", "sources"};
@@ -1044,7 +1044,7 @@ private:
 };
 
 // Decodes a layer's cells into out, if given, collecting errors; stops at the first if asked.
-void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
+void decode(const world::TileLayer2D& layer, const TileSet& set, Cells* out,
             std::vector<json::ValidationError>& errors, bool first_only) {
     const auto stop = [&] { return first_only && !errors.empty(); };
     std::string_view first_key;
@@ -1260,8 +1260,8 @@ bool flag(const json::Value& object, std::string_view key) {
     return value != nullptr && value->as_bool();
 }
 
-world::TileMapLayer layer_from_json(const json::Value& component) {
-    world::TileMapLayer layer;
+world::TileLayer2D layer_from_json(const json::Value& component) {
+    world::TileLayer2D layer;
     if (const json::Value* value = component.find("tile_set"); value != nullptr) {
         layer.tile_set = value->as_string();
     }
@@ -2168,7 +2168,7 @@ double tile_animation_offset(std::string_view layer, Vec2i cell) {
     return unit_hash(h ^ cell_bits(cell));
 }
 
-Result<Cells> decode_cells(const world::TileMapLayer& layer, const TileSet& set) {
+Result<Cells> decode_cells(const world::TileLayer2D& layer, const TileSet& set) {
     Cells cells;
     std::vector<json::ValidationError> errors;
     decode(layer, set, &cells, errors, true);
@@ -2179,14 +2179,14 @@ Result<Cells> decode_cells(const world::TileMapLayer& layer, const TileSet& set)
     return cells;
 }
 
-std::vector<json::ValidationError> validate_cells(const world::TileMapLayer& layer,
+std::vector<json::ValidationError> validate_cells(const world::TileLayer2D& layer,
                                                   const TileSet& set) {
     std::vector<json::ValidationError> errors;
     decode(layer, set, nullptr, errors, false);
     return errors;
 }
 
-void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& layer) {
+void encode_cells(const Cells& cells, const TileSet& set, world::TileLayer2D& layer) {
     if (cells.empty()) {
         layer.origin = {};
         layer.legend.clear();
@@ -2433,7 +2433,7 @@ std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
         return loaded.emplace(path, parse()).first->second;
     };
     const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
-        const json::Value* component = components.find("TileMapLayer");
+        const json::Value* component = components.find("TileLayer2D");
         if (component == nullptr || !component->is_object()) {
             return;
         }
@@ -2443,7 +2443,7 @@ std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
              component->find("rows") == nullptr)) {
             return;
         }
-        const world::TileMapLayer layer = layer_from_json(*component);
+        const world::TileLayer2D layer = layer_from_json(*component);
         if (layer.tile_set.empty()) {
             if (!layer.legend.empty() || !layer.rows.empty()) {
                 errors.push_back({at + "/tile_set", "a layer with cells needs a tile set"});
@@ -2470,12 +2470,12 @@ std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
             // An entity an instanced scene brings ("hero/map") takes the rest from the scene.
             if (const json::Value* components = entity.find("components"); components != nullptr) {
                 check(*components,
-                      "/entities/" + json::pointer_escape(id) + "/components/TileMapLayer",
+                      "/entities/" + json::pointer_escape(id) + "/components/TileLayer2D",
                       entity.find("extends") != nullptr || id.find('/') != std::string::npos);
             }
         }
     } else if (const json::Value* components = doc.find("components"); components != nullptr) {
-        check(*components, "/components/TileMapLayer", doc.find("extends") != nullptr);
+        check(*components, "/components/TileLayer2D", doc.find("extends") != nullptr);
     }
     return errors;
 }

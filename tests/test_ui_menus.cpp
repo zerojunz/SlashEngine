@@ -23,7 +23,7 @@
 #include <vector>
 
 // Option buttons, menu buttons and popup menus, as Godot's OptionButton, MenuButton and
-// PopupMenu (scene/gui/option_button.cpp, menu_button.cpp and popup_menu.cpp) in a viewport
+// PopupList (scene/gui/option_button.cpp, menu_button.cpp and popup_menu.cpp) in a viewport
 // that embeds its popups (scene/main/viewport.cpp and popup.cpp). The sizes expected here follow
 // those files and Godot's default theme.
 
@@ -236,13 +236,13 @@ struct Gui {
     }
     [[nodiscard]] bool pressed(std::string_view id) const {
         const entt::entity entity = world.find(id);
-        if (const auto* option = world.ecs().try_get<world::OptionButton>(entity)) {
+        if (const auto* option = world.ecs().try_get<world::Dropdown>(entity)) {
             return option->button_pressed;
         }
         return world.ecs().get<world::MenuButton>(entity).button_pressed;
     }
     [[nodiscard]] int selected(std::string_view id = "size") const {
-        return world.ecs().get<world::OptionButton>(world.find(id)).selected;
+        return world.ecs().get<world::Dropdown>(world.find(id)).selected;
     }
 };
 
@@ -255,9 +255,9 @@ std::vector<std::string> problem_lines(const std::vector<ui::Problem>& problems)
     return lines;
 }
 
-// An OptionButton "size" at (20, 20) with three options, the second shown.
-constexpr std::string_view kSizes = R"({"Control": {"offset_left": 20, "offset_top": 20},
-    "OptionButton": {"selected": 1, "items": [
+// An Dropdown "size" at (20, 20) with three options, the second shown.
+constexpr std::string_view kSizes = R"({"Widget": {"offset_left": 20, "offset_top": 20},
+    "Dropdown": {"selected": 1, "items": [
         {"text": "Small"}, {"text": "Medium"}, {"text": "Large"}]}})";
 
 } // namespace
@@ -274,7 +274,7 @@ TEST_CASE("an option button lists its options below it, and a click picks one") 
     CHECK(gui.pressed("size"));
 
     // The list is below the button and at least as wide: the panel's margins, the scroll bar
-    // PopupMenu always leaves room for, a radio button and the widest text; each item is a line
+    // PopupList always leaves room for, a radio button and the widest text; each item is a line
     // of text with v_separation between them. Opened by the mouse, no item is focused.
     CHECK(gui.popup_rect() == "[20,50,98,86]");
     ui::PopupView view = gui.popup();
@@ -304,7 +304,7 @@ TEST_CASE("an option button lists its options below it, and a click picks one") 
     gui.tap(30, 30);
     CHECK(gui.tap(gui.item_point(2).first, gui.item_point(2).second) ==
           "mouse_exited size, toggled size off");
-    gui.set("size", R"({"OptionButton": {"allow_reselect": true}})");
+    gui.set("size", R"({"Dropdown": {"allow_reselect": true}})");
     gui.tap(30, 30);
     CHECK(gui.tap(gui.item_point(2).first, gui.item_point(2).second) ==
           "mouse_exited size, toggled size off, item_selected size 2");
@@ -327,7 +327,7 @@ TEST_CASE("a click held from the button picks the item it is let go over, after 
           "mouse_entered size, focus_entered size, button_down size, toggled size on, "
           "pressed size, button_up size");
     const auto [x, y] = gui.item_point(0);
-    // Let go too soon, the list stays open, as PopupMenu ignores a release within 0.4 seconds
+    // Let go too soon, the list stays open, as PopupList ignores a release within 0.4 seconds
     // of a held click opening it.
     gui.send(motion(x, y));
     CHECK(gui.send(click(x, y, false)).empty());
@@ -352,8 +352,8 @@ TEST_CASE("a click held from the button picks the item it is let go over, after 
 
 TEST_CASE("keys open the list on the option shown, skip separators and disabled items, and pick") {
     Gui gui;
-    gui.create("size", R"({"Control": {"offset_left": 20, "offset_top": 20},
-        "OptionButton": {"selected": 0, "items": [
+    gui.create("size", R"({"Widget": {"offset_left": 20, "offset_top": 20},
+        "Dropdown": {"selected": 0, "items": [
             {"text": "Small"}, {"separator": true}, {"text": "Medium", "disabled": true},
             {"text": "Large", "id": 30}]}})");
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("size")));
@@ -377,18 +377,18 @@ TEST_CASE("keys open the list on the option shown, skip separators and disabled 
     CHECK(gui.selected() == 3);
 
     // With the option shown disabled, the list starts on the first that isn't.
-    gui.set("size", R"({"OptionButton": {"selected": 2}})");
+    gui.set("size", R"({"Dropdown": {"selected": 2}})");
     gui.tap("Enter");
     CHECK(gui.popup().focused == 0);
 }
 
 TEST_CASE("a popup menu opens at its position, fits in the viewport and scrolls") {
     Gui gui;
-    gui.create("menu", R"({"PopupMenu": {"position": [380, 10], "items": [
+    gui.create("menu", R"({"PopupList": {"position": [380, 10], "items": [
         {"text": "Copy", "id": 7}, {"text": "Paste"}]}})");
     CHECK(gui.open().empty());
     // Made visible, it opens at the next tick, moved left to fit.
-    gui.set("menu", R"({"PopupMenu": {"visible": true}})");
+    gui.set("menu", R"({"PopupList": {"visible": true}})");
     CHECK(gui.step() == "about_to_popup menu");
     CHECK(gui.open() == "menu");
     const ui::PopupView view = gui.popup();
@@ -397,7 +397,7 @@ TEST_CASE("a popup menu opens at its position, fits in the viewport and scrolls"
     const auto [x, y] = gui.item_point(0);
     gui.send(motion(x, y));
     CHECK(gui.tap(x, y) == "popup_hide menu, id_pressed menu 0 #7, index_pressed menu 0");
-    CHECK_FALSE(gui.world.ecs().get<world::PopupMenu>(gui.world.find("menu")).visible);
+    CHECK_FALSE(gui.world.ecs().get<world::PopupList>(gui.world.find("menu")).visible);
 
     // Taller than the viewport, it is as tall as the viewport and scrolls.
     std::string items;
@@ -406,7 +406,7 @@ TEST_CASE("a popup menu opens at its position, fits in the viewport and scrolls"
                  std::to_string(i) + "\"}";
     }
     gui.set("menu",
-            R"({"PopupMenu": {"visible": true, "position": [0, 0], "items": [)" + items + "]}}");
+            R"({"PopupList": {"visible": true, "position": [0, 0], "items": [)" + items + "]}}");
     CHECK(gui.step() == "about_to_popup menu");
     ui::PopupView tall = gui.popup();
     CHECK(tall.size.y == 300.0F);
@@ -428,7 +428,7 @@ TEST_CASE("a popup menu opens at its position, fits in the viewport and scrolls"
 
 TEST_CASE("typing the start of an item's text moves to it") {
     Gui gui;
-    gui.create("menu", R"({"PopupMenu": {"items": [{"text": "Apple"}, {"text": "Banana"},
+    gui.create("menu", R"({"PopupList": {"items": [{"text": "Apple"}, {"text": "Banana"},
         {"text": "blueberry"}, {"text": "Cherry"}]}})");
     REQUIRE(ui::open_popup(gui.world, gui.world.find("menu")));
     CHECK(gui.step() == "about_to_popup menu");
@@ -450,15 +450,15 @@ TEST_CASE("typing the start of an item's text moves to it") {
     CHECK(gui.send(typed("B", 'b')) == "id_focused menu #1");
 
     // allow_search off, typing does nothing.
-    gui.set("menu", R"({"PopupMenu": {"allow_search": false}})");
+    gui.set("menu", R"({"PopupList": {"allow_search": false}})");
     CHECK(gui.send(typed("C", 'c')).empty());
 }
 
 TEST_CASE("a click outside a popup closes it and still reaches the control under it") {
     Gui gui;
-    gui.create("ok", R"({"Control": {"offset_left": 300, "offset_top": 250, "offset_right": 380,
+    gui.create("ok", R"({"Widget": {"offset_left": 300, "offset_top": 250, "offset_right": 380,
         "offset_bottom": 290}, "Button": {"text": "OK"}})");
-    gui.create("menu", R"({"PopupMenu": {"position": [10, 10], "visible": true,
+    gui.create("menu", R"({"PopupList": {"position": [10, 10], "visible": true,
         "hide_on_checkable_item_selection": false, "items": [
             {"text": "Grid", "checkable": "check", "checked": true}, {"text": "Quit"}]}})");
     gui.step();
@@ -478,12 +478,12 @@ TEST_CASE("a click outside a popup closes it and still reaches the control under
 
 TEST_CASE("menu buttons open their menus, and switch on hover as a menu bar") {
     Gui gui;
-    gui.create("file", R"({"Control": {"offset_left": 0, "offset_top": 0},
+    gui.create("file", R"({"Widget": {"offset_left": 0, "offset_top": 0},
         "MenuButton": {"text": "File", "switch_on_hover": true, "items": [
             {"text": "New"}, {"text": "Open", "id": 12}]}})");
-    gui.create("edit", R"({"Control": {"offset_left": 60, "offset_top": 0},
+    gui.create("edit", R"({"Widget": {"offset_left": 60, "offset_top": 0},
         "MenuButton": {"text": "Edit", "switch_on_hover": true, "items": [{"text": "Undo"}]}})");
-    gui.create("bar", R"({"Control": {"children": ["file", "edit"]}})");
+    gui.create("bar", R"({"Widget": {"children": ["file", "edit"]}})");
     // A MenuButton takes no focus, and is pressed while its menu is open.
     CHECK(gui.tap(10, 10) == "mouse_entered file, button_down file, toggled file on, "
                              "about_to_popup file, pressed file, button_up file");
@@ -505,7 +505,7 @@ TEST_CASE("menu buttons open their menus, and switch on hover as a menu bar") {
     CHECK(gui.tap(x, y) == "popup_hide edit, toggled edit off, id_pressed edit 0 #0, "
                            "index_pressed edit 0");
     // Opened by keys, the first item is focused.
-    gui.set("file", R"({"Control": {"focus_mode": "all"}})");
+    gui.set("file", R"({"Widget": {"focus_mode": "all"}})");
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("file")));
     gui.tap("Enter");
     CHECK(gui.popup().focused == 0);
@@ -530,10 +530,10 @@ TEST_CASE("a tap opens a list and picks from it, and ui::press opens one as a ke
     CHECK(gui.step() == "toggled size on, pressed size");
     CHECK(gui.popup().focused == 0);
     // Hidden, the button closes its list; destroyed, the list is gone too.
-    gui.set("size", R"({"Control": {"visible": false}})");
+    gui.set("size", R"({"Widget": {"visible": false}})");
     CHECK(gui.step() == "focus_exited size, toggled size off");
     CHECK(gui.open().empty());
-    gui.set("size", R"({"Control": {"visible": true}})");
+    gui.set("size", R"({"Widget": {"visible": true}})");
     REQUIRE(ui::open_popup(gui.world, gui.world.find("size")));
     gui.world.destroy(gui.world.find("size"));
     gui.step();
@@ -548,7 +548,7 @@ TEST_CASE("right to left, a popup menu puts its scroll bar on the left") {
         items += (items.empty() ? "" : ", ") + std::string(R"({"text": "Item )") +
                  std::to_string(i) + "\"}";
     }
-    gui.create("menu", R"({"PopupMenu": {"visible": true, "layout_direction": "rtl",
+    gui.create("menu", R"({"PopupList": {"visible": true, "layout_direction": "rtl",
         "items": [)" + items +
                            "]}}");
     gui.step();
@@ -565,19 +565,19 @@ TEST_CASE("right to left, a popup menu puts its scroll bar on the left") {
 
 TEST_CASE("check finds wrong popup items, popup menus on controls and options out of range") {
     Gui gui;
-    gui.create("menu", R"({"PopupMenu": {"items": [{"text": "A", "checkable": "radi"}]}})");
-    gui.create("bad", R"({"Control": {}, "PopupMenu": {}})");
-    gui.create("size", R"({"Control": {}, "OptionButton": {"selected": 3,
+    gui.create("menu", R"({"PopupList": {"items": [{"text": "A", "checkable": "radi"}]}})");
+    gui.create("bad", R"({"Widget": {}, "PopupList": {}})");
+    gui.create("size", R"({"Widget": {}, "Dropdown": {"selected": 3,
         "items": [{"text": "One"}]}})");
-    gui.create("both", R"({"Control": {}, "OptionButton": {}, "MenuButton": {}})");
+    gui.create("both", R"({"Widget": {}, "Dropdown": {}, "MenuButton": {}})");
     CHECK(problem_lines(ui::check(gui.world, gui.fonts())) ==
           std::vector<std::string>{
-              "bad/components/PopupMenu: a PopupMenu is a window of its own, not a control; give "
+              "bad/components/PopupList: a PopupList is a window of its own, not a control; give "
               "it an entity of its own",
-              "both/components/MenuButton: an entity is one button; it has an OptionButton too",
-              "menu/components/PopupMenu/items/0/checkable: \"radi\" isn't \"none\", \"check\" "
+              "both/components/MenuButton: an entity is one button; it has an Dropdown too",
+              "menu/components/PopupList/items/0/checkable: \"radi\" isn't \"none\", \"check\" "
               "or \"radio\"; did you mean \"radio\"?",
-              "size/components/OptionButton/selected: it has 1 option; -1 selects none"});
+              "size/components/Dropdown/selected: it has 1 option; -1 selects none"});
 }
 
 namespace {
@@ -617,14 +617,14 @@ TEST_CASE("ui.popup, ui.select and ui.layout open, pick from and report popup me
     Session s;
     s.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "size", "components": {
-            "Control": {"offset_left": 20, "offset_top": 20},
-            "OptionButton": {"selected": 0, "items": [
+            "Widget": {"offset_left": 20, "offset_top": 20},
+            "Dropdown": {"selected": 0, "items": [
                 {"text": "Small"}, {"separator": true}, {"text": "Large", "disabled": true},
                 {"text": "Huge", "id": 40}]}}}},
         {"command": "entity.create", "params": {"id": "menu", "components": {
-            "PopupMenu": {"position": [200, 100], "items": [{"text": "Copy", "id": 7}]}}}},
+            "PopupList": {"position": [200, 100], "items": [{"text": "Copy", "id": 7}]}}}},
         {"command": "entity.create", "params": {"id": "title", "components": {
-            "Control": {}, "Label": {"text": "Menu"}}}}]})");
+            "Widget": {}, "Label": {"text": "Menu"}}}}]})");
     CHECK(s.ok("ui.popup", R"({"id": "size"})") == parse(R"({"open": ["size"]})"));
     // Opened by a command, not a click, the button isn't pressed and the option shown is
     // focused. Item rects are in the viewport; a separator with no text is a line of no height.
@@ -639,8 +639,8 @@ TEST_CASE("ui.popup, ui.select and ui.layout open, pick from and report popup me
     // frame.summary shows the list over the button, with its items.
     const json::Value summary = s.ok("frame.summary", R"({"ids": ["size"]})");
     CHECK(*summary.find("drawn") == parse(R"([
-        {"id": "size", "kind": "OptionButton", "rect": [20, 20, 73, 30], "text": "Small"},
-        {"id": "size", "kind": "PopupMenu", "rect": [20, 50, 81, 90], "focused_item": 0,
+        {"id": "size", "kind": "Dropdown", "rect": [20, 20, 73, 30], "text": "Small"},
+        {"id": "size", "kind": "PopupList", "rect": [20, 50, 81, 90], "focused_item": 0,
          "items": ["Small", "", "Large", "Huge"]}])"));
     // Opening another closes it.
     CHECK(s.ok("ui.popup", R"({"id": "menu"})") == parse(R"({"open": ["menu"]})"));
@@ -653,9 +653,9 @@ TEST_CASE("ui.popup, ui.select and ui.layout open, pick from and report popup me
     CHECK(s.ok("ui.select", R"({"id": "size", "text": "Huge"})") ==
           parse(R"({"index": 3, "tick": 1})"));
     s.ok("step");
-    CHECK(s.ok("entity.get", R"({"id": "size", "components": ["OptionButton"]})")
+    CHECK(s.ok("entity.get", R"({"id": "size", "components": ["Dropdown"]})")
               .find("components")
-              ->find("OptionButton")
+              ->find("Dropdown")
               ->find("selected")
               ->as_int() == 3);
     CHECK(s.ok("ui.select", R"({"id": "menu", "item_id": 7})") ==
@@ -669,5 +669,5 @@ TEST_CASE("ui.popup, ui.select and ui.layout open, pick from and report popup me
     CHECK(s.fails("ui.select", R"({"id": "size", "index": 9})") == "/index: \"size\" has 4 items");
     CHECK(s.fails("ui.select", R"({"id": "size"})") == ": give one of index, item_id or text");
     CHECK(s.fails("ui.popup", R"({"id": "title"})") ==
-          "/id: \"title\" has no popup menu: it has no PopupMenu, OptionButton or MenuButton");
+          "/id: \"title\" has no popup menu: it has no PopupList, Dropdown or MenuButton");
 }

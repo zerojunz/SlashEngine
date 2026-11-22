@@ -282,9 +282,9 @@ TEST_CASE("water: a crate floats at the depth its weight displaces, and a stone 
         "Water3D": {"recipe": "calm.water.json", "size": [20, 20]}})");
     // 400 kg in a cubic meter floats 0.4 m deep; 3000 kg doesn't.
     scene.create("crate", R"({"Transform3D": {"position": [0, 1, 0]},
-        "RigidBody3D": {"mass": 400}, "CollisionShape3D": {"size": [1, 1, 1]}})");
+        "RigidBody3D": {"mass": 400}, "Collider3D": {"size": [1, 1, 1]}})");
     scene.create("stone", R"({"Transform3D": {"position": [4, 1, 0]},
-        "RigidBody3D": {"mass": 3000}, "CollisionShape3D": {"size": [1, 1, 1]}})");
+        "RigidBody3D": {"mass": 3000}, "Collider3D": {"size": [1, 1, 1]}})");
     scene.step(60);
     // Their splashes left rings.
     CHECK_FALSE(scene.body("pond").ripples.empty());
@@ -298,12 +298,12 @@ TEST_CASE("water: a crate floats at the depth its weight displaces, and a stone 
 
 TEST_CASE("water: a river carries what floats on it along its path, fastest midstream") {
     Scene scene;
-    scene.create("course", R"({"Transform3D": {}, "Path3D": {"points": [
+    scene.create("course", R"({"Transform3D": {}, "Spline3D": {"points": [
         {"position": [0, 0, 0]}, {"position": [30, 0, 0]}]}})");
     scene.create("brook", R"({"Transform3D": {},
         "Water3D": {"recipe": "river.water.json", "path": "course", "width": 6}})");
     scene.create("log", R"({"Transform3D": {"position": [3, 0.2, 0]},
-        "RigidBody3D": {"mass": 50}, "CollisionShape3D": {"size": [0.6, 0.4, 0.6]}})");
+        "RigidBody3D": {"mass": 50}, "Collider3D": {"size": [0.6, 0.4, 0.6]}})");
     const world::WaterBody brook = scene.body("brook");
     REQUIRE(brook.river.size() > 2);
     const world::WaterSample middle = world::sample_water(brook, {10.0F, 0.0F, 0.0F}, 0.0);
@@ -325,7 +325,7 @@ TEST_CASE("water: shores are measured under the water and foam where it is shall
     Scene scene;
     // A beach rising from 2 m under the surface at x -5 to the surface at x 5.
     scene.create("beach", R"({"Transform3D": {"position": [0, -1, 0], "rotation": [0, 0, 0.1974]},
-        "StaticBody3D": {}, "CollisionShape3D": {"size": [12, 0.1, 12]}})");
+        "StaticBody3D": {}, "Collider3D": {"size": [12, 0.1, 12]}})");
     scene.create("bay", R"({"Transform3D": {},
         "Water3D": {"recipe": "calm.water.json", "size": [8, 8]}})");
     scene.step(1);
@@ -366,7 +366,7 @@ TEST_CASE("water: a 2D crate floats and its wake rings as it is pushed along") {
         "Water2D": {"recipe": "calm2d.water.json", "width": 2000, "depth": 400}})");
     // 64 by 64 px at 1 kg: 0.001 kg/px^2 holds it with 1 kg / (0.001 * 64) = 15.6 px under.
     scene.create("crate", R"({"Transform2D": {"position": [0, 200]},
-        "RigidBody2D": {"mass": 1}, "CollisionShape2D": {"size": [64, 64]}})");
+        "RigidBody2D": {"mass": 1}, "Collider2D": {"size": [64, 64]}})");
     scene.step(600);
     const auto& crate = scene.world.ecs().get<world::Transform2D>(scene.world.find("crate"));
     CHECK(crate.position.y == doctest::Approx(300.0F - 32.0F + 15.6F).epsilon(0.03));
@@ -382,7 +382,7 @@ TEST_CASE("water: a 2D crate floats and its wake rings as it is pushed along") {
 TEST_CASE("water: drawing reads the water without changing it or measuring") {
     Scene scene;
     scene.create("beach", R"({"Transform3D": {"position": [0, -1, 0]},
-        "StaticBody3D": {}, "CollisionShape3D": {"size": [12, 0.1, 12]}})");
+        "StaticBody3D": {}, "Collider3D": {"size": [12, 0.1, 12]}})");
     scene.create("bay", R"({"Transform3D": {},
         "Water3D": {"recipe": "calm.water.json", "size": [8, 8]}})");
     const world::World& seen = scene.world;

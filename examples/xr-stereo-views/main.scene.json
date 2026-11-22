@@ -2,15 +2,25 @@
   "entities": {
     "environment": {
       "components": {
-        "WorldEnvironment": {"background_color": [0.1, 0.1, 0.2, 1.0], "background_mode": "color"}
+        "Environment3D": {
+          "background_color": [0.1, 0.1, 0.2, 1.0],
+          "background_mode": "color"
+        }
       }
     },
     "far_post": {
       "components": {
-        "BoxMesh": {"size": [0.6, 3.0, 0.6]},
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {"albedo_color": [0.2, 0.8, 0.2, 1.0], "shading_mode": "unshaded"},
-        "Transform3D": {"position": [0.0, 1.6, -8.0]}
+        "BoxGeometry": {
+          "size": [0.6, 3.0, 0.6]
+        },
+        "Model3D": {},
+        "Surface3D": {
+          "albedo_color": [0.2, 0.8, 0.2, 1.0],
+          "shading_mode": "unshaded"
+        },
+        "Transform3D": {
+          "position": [0.0, 1.6, -8.0]
+        }
       }
     },
     "head": {
@@ -22,15 +32,24 @@
     },
     "near_post": {
       "components": {
-        "BoxMesh": {"size": [0.02, 0.3, 0.02]},
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {"albedo_color": [0.9, 0.2, 0.1, 1.0], "shading_mode": "unshaded"},
-        "Transform3D": {"position": [0.0, 1.6, -0.4]}
+        "BoxGeometry": {
+          "size": [0.02, 0.3, 0.02]
+        },
+        "Model3D": {},
+        "Surface3D": {
+          "albedo_color": [0.9, 0.2, 0.1, 1.0],
+          "shading_mode": "unshaded"
+        },
+        "Transform3D": {
+          "position": [0.0, 1.6, -0.4]
+        }
       }
     },
     "player": {
       "components": {
-        "Transform3D": {"children": ["head"]},
+        "Transform3D": {
+          "children": ["head"]
+        },
         "XROrigin3D": {}
       }
     }

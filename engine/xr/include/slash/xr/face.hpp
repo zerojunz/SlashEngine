@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-// Face tracking, as Godot's XRFaceTracker and XRFaceModifier3D: a face tracker holds a weight for
+// Face tracking, as Godot's XRFaceTracker and XRFace3D: a face tracker holds a weight for
 // each of the 143 face shapes of the Unified Expressions standard (Tracker::blend_shapes), and a
 // mesh's blend shapes named in that standard, Apple ARKit's, SRanipal's or Meta's follow them.
 //

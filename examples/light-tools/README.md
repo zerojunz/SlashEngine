@@ -5,10 +5,10 @@ temperatures and a tool that brings a frame to a brightness.
 
 [project.json](project.json) turns on `rendering.lights_and_shadows.use_physical_light_units`,
 as Godot's. [street.scene.json](street.scene.json) is a street at dusk seen through a camera
-whose `CameraAttributesPractical` has an `exposure_sensitivity` of 6400 (ISO 6400):
+whose `CameraLens` has an `exposure_sensitivity` of 6400 (ISO 6400):
 
-- `dusk` is a `DirectionalLight3D` of 400 lux at 9000 K, the blue light after sunset.
-- `lamp_west` is a sodium street lamp: an `OmniLight3D` of 6000 lumens at 2000 K, orange.
+- `dusk` is a `SunLight3D` of 400 lux at 9000 K, the blue light after sunset.
+- `lamp_west` is a sodium street lamp: an `PointLight3D` of 6000 lumens at 2000 K, orange.
 - `lamp_east` is a white one, 3000 lumens at 4000 K.
 - The shop's `sign` glows at an `emission_intensity` of 200 nits, and the sky at a
   `background_intensity` of 200.
@@ -34,7 +34,7 @@ whose `CameraAttributesPractical` has an `exposure_sensitivity` of 6400 (ISO 640
 - With `"shares": {"dusk": 0.5}` it also scales `dusk` until it gives half the frame's
   brightness, measured by drawing the frame without it, and the lamps the rest.
 
-[alley.scene.json](alley.scene.json) is 2D: a wall under a dark blue `CanvasModulate`, a
+[alley.scene.json](alley.scene.json) is 2D: a wall under a dark blue `AmbientTint2D`, a
 `lantern` `PointLight2D` with a `temperature` of 1900 K and a `neon` sign at 12000 K.
 
 - `light.sample` shows the lantern's light orange and the sign's blue, though both are white.

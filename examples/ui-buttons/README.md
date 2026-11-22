@@ -2,7 +2,7 @@
 
 Buttons, focus and hover, as Godot's. [main.scene.json](main.scene.json) is a title menu: a
 column holds a Play button, three toggle buttons in one `button_group` (Easy, Normal and Hard; at
-most one is on), a `TextureButton` that mutes the sound, a disabled Online button and a Quit
+most one is on), a `ImageButton` that mutes the sound, a disabled Online button and a Quit
 button whose `shortcut` is `ui_cancel` (Escape). [main.cpp](main.cpp) adds a `menu` system that
 reads the buttons' UI events, writes the speaker's three textures, then works the menu the way an
 agent does over MCP (tools `input_inject`, `ui_press`, `ui_focus`, `ui_layout`, `events_read`) or
@@ -34,6 +34,6 @@ events.read {"subscription":"events_1"}
 - `ui.press` presses a button at the next tick, as a click would; `ui.focus` gives a control
   focus. A disabled button can't be pressed, and controls other than buttons take no focus
   unless their `focus_mode` says so.
-- Which control a pointer reaches is `Control.mouse_filter`: a `Label` lets it through to the
+- Which control a pointer reaches is `Widget.mouse_filter`: a `Label` lets it through to the
   button under it (`ignore`), containers pass it on to their parents (`pass`), and buttons and
   the rest stop it (`stop`).

@@ -130,7 +130,7 @@ struct Scene {
     }
 
     [[nodiscard]] std::vector<render::Particle3D> live(entt::entity entity) {
-        const auto& emitter = world.ecs().get<world::GPUParticles3D>(entity);
+        const auto& emitter = world.ecs().get<world::GpuEmitter3D>(entity);
         render::ParticleProcess3D process;
         if (!emitter.process_material.empty()) {
             auto loaded = assets.load<canvas::ProcessMaterial>(emitter.process_material);
@@ -388,14 +388,14 @@ TEST_CASE("3D particles draw in lifetime and view depth order, aligned as Godot'
     CHECK(turned[0].position[2] == doctest::Approx(0.5));
 }
 
-TEST_CASE("GPUParticles3D steps its emission each tick and a one_shot finishes as Godot's") {
+TEST_CASE("GpuEmitter3D steps its emission each tick and a one_shot finishes as Godot's") {
     Scene scene;
     scene.files["spark.process_material.json"] = R"({"format": 1, "gravity": [0, 0, 0],
         "direction": [0, 1, 0], "spread": 0, "initial_velocity_min": 1, "initial_velocity_max": 1})";
     const entt::entity fountain =
         scene.create("fountain", R"({"Transform3D": {"position": [1, 0, 0]},
-        "GPUParticles3D": {"amount": 6, "lifetime": 1, "process_material": "spark.process_material.json"},
-        "QuadMesh": {}})");
+        "GpuEmitter3D": {"amount": 6, "lifetime": 1, "process_material": "spark.process_material.json"},
+        "QuadGeometry": {}})");
     scene.step();
     REQUIRE(scene3d::particle_steps_3d(scene.world, fountain).has_value());
     scene.step(59);
@@ -407,7 +407,7 @@ TEST_CASE("GPUParticles3D steps its emission each tick and a one_shot finishes a
         CHECK(particle.velocity.y == doctest::Approx(1.0));
     }
     // simulate runs the same settings apart from the world.
-    const auto& settings = scene.world.ecs().get<world::GPUParticles3D>(fountain);
+    const auto& settings = scene.world.ecs().get<world::GpuEmitter3D>(fountain);
     auto loaded = scene.assets.load<canvas::ProcessMaterial>(settings.process_material);
     REQUIRE(loaded.ok());
     const auto simulated = scene3d::simulate_gpu(settings, {.origin = {1.0F, 0.0F, 0.0F}},
@@ -418,10 +418,10 @@ TEST_CASE("GPUParticles3D steps its emission each tick and a one_shot finishes a
     }
 
     const entt::entity burst_emitter = scene.create("burst", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 4, "lifetime": 0.5, "one_shot": true},
-        "QuadMesh": {}})");
+        "GpuEmitter3D": {"amount": 4, "lifetime": 0.5, "one_shot": true},
+        "QuadGeometry": {}})");
     scene.step(31);
-    CHECK_FALSE(scene.world.ecs().get<world::GPUParticles3D>(burst_emitter).emitting);
+    CHECK_FALSE(scene.world.ecs().get<world::GpuEmitter3D>(burst_emitter).emitting);
     CHECK(scene.count("finished") == 0);
     // lifetime times 2 - explosiveness after it started.
     scene.step(30);
@@ -429,17 +429,17 @@ TEST_CASE("GPUParticles3D steps its emission each tick and a one_shot finishes a
     CHECK(scene3d::check_meshes(scene.world).empty());
 }
 
-TEST_CASE("GPUParticles3D draws its draw passes at its particles, culled by its visibility box") {
+TEST_CASE("GpuEmitter3D draws its draw passes at its particles, culled by its visibility box") {
     Scene scene;
     scene.files["still.process_material.json"] =
         R"({"format": 1, "gravity": [0, 0], "emission_shape": "points",
             "emission_points": [[0, 0, 0]], "color": [1, 0, 0, 1]})";
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 4]}, "Camera3D": {}})");
     const entt::entity emitter = scene.create("dots", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "process_material": "still.process_material.json"},
-        "QuadMesh": {"size": [1, 1]},
-        "StandardMaterial3D": {"shading_mode": "unshaded", "vertex_color_use_as_albedo": true,
+        "QuadGeometry": {"size": [1, 1]},
+        "Surface3D": {"shading_mode": "unshaded", "vertex_color_use_as_albedo": true,
                                "billboard_mode": "particles"}})");
     scene.step();
     CHECK(scene3d::check_meshes(scene.world).empty());
@@ -466,7 +466,7 @@ TEST_CASE("GPUParticles3D draws its draw passes at its particles, culled by its 
     CHECK(middle[1] < 50);
 
     // A second pass with no mesh draws nothing more.
-    auto& settings = scene.world.ecs().get<world::GPUParticles3D>(emitter);
+    auto& settings = scene.world.ecs().get<world::GpuEmitter3D>(emitter);
     settings.draw_passes = 2;
     (void)draw();
     CHECK(renderer.meshes_drawn() == 1);
@@ -478,38 +478,36 @@ TEST_CASE("GPUParticles3D draws its draw passes at its particles, culled by its 
     CHECK(pixel(culled, 16, 16) != middle);
 }
 
-TEST_CASE("GPUParticles3D draw passes without a mesh are reported") {
+TEST_CASE("GpuEmitter3D draw passes without a mesh are reported") {
     Scene scene;
-    scene.create("empty", R"({"Transform3D": {}, "GPUParticles3D": {}})");
-    scene.create("model", R"({"Transform3D": {}, "GPUParticles3D": {"draw_passes": 2,
-        "draw_pass_2": "rock.png"}, "QuadMesh": {}})");
+    scene.create("empty", R"({"Transform3D": {}, "GpuEmitter3D": {}})");
+    scene.create("model", R"({"Transform3D": {}, "GpuEmitter3D": {"draw_passes": 2,
+        "draw_pass_2": "rock.png"}, "QuadGeometry": {}})");
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 2);
-    CHECK(problems[0].path == "/components/GPUParticles3D/draw_pass_1");
+    CHECK(problems[0].path == "/components/GpuEmitter3D/draw_pass_1");
     CHECK(problems[0].message.starts_with("has no mesh to draw at its particles"));
-    CHECK(problems[1].path == "/components/GPUParticles3D/draw_pass_2");
+    CHECK(problems[1].path == "/components/GpuEmitter3D/draw_pass_2");
 }
 
-TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's scene cull") {
+TEST_CASE("GpuEmitter3D pairs with the attractors its box touches, as Godot's scene cull") {
     Scene scene;
     scene.files["still.process_material.json"] =
         R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
             "emission_points": [[1, 0, 0]]})";
     const entt::entity emitter = scene.create("dust", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "process_material": "still.process_material.json"},
-        "QuadMesh": {}})");
-    scene.create("pull", R"({"Transform3D": {}, "GPUParticlesAttractorSphere3D": {"radius": 2}})");
+        "QuadGeometry": {}})");
+    scene.create("pull", R"({"Transform3D": {}, "ParticleAttractorSphere3D": {"radius": 2}})");
     // Another layer, too far and hidden: none of these act on it.
-    scene.create("masked",
-                 R"({"Transform3D": {}, "GPUParticlesAttractorBox3D": {"cull_mask": 2}})");
-    scene.create(
-        "far", R"({"Transform3D": {"position": [20, 0, 0]}, "GPUParticlesAttractorSphere3D": {}})");
-    scene.create("hidden",
-                 R"({"Transform3D": {"visible": false}, "GPUParticlesAttractorBox3D": {}})");
+    scene.create("masked", R"({"Transform3D": {}, "ParticleAttractorBox3D": {"cull_mask": 2}})");
+    scene.create("far",
+                 R"({"Transform3D": {"position": [20, 0, 0]}, "ParticleAttractorSphere3D": {}})");
+    scene.create("hidden", R"({"Transform3D": {"visible": false}, "ParticleAttractorBox3D": {}})");
     // Scaled twice, its radius is twice as large; its bounds just reach into the box.
     scene.create("scaled", R"({"Transform3D": {"position": [0, 5.5, 0], "scale": [2, 2, 2]},
-        "GPUParticlesAttractorSphere3D": {"strength": 0}})");
+        "ParticleAttractorSphere3D": {"strength": 0}})");
     scene.step();
     auto kept = scene3d::particle_steps_3d(scene.world, emitter);
     REQUIRE(kept.has_value());
@@ -534,7 +532,7 @@ TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's 
     CHECK(live[0].origin.y == doctest::Approx(0.0));
 
     // With local_coords the attractors are in the emitter's space.
-    auto& settings = scene.world.ecs().get<world::GPUParticles3D>(emitter);
+    auto& settings = scene.world.ecs().get<world::GpuEmitter3D>(emitter);
     settings.local_coords = true;
     scene.world.ecs().get<world::Transform3D>(emitter).position = {1.0F, 0.0F, 0.0F};
     scene.step();
@@ -550,9 +548,9 @@ TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's 
         R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
             "emission_points": [[1, 0, 0]], "attractor_interaction_enabled": false})";
     const entt::entity deaf = scene.create("deaf", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "process_material": "deaf.process_material.json"},
-        "QuadMesh": {}})");
+        "QuadGeometry": {}})");
     scene.step(30);
     live = scene.live(deaf);
     REQUIRE(live.size() == 1);
@@ -560,21 +558,21 @@ TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's 
     CHECK(live[0].origin.x == doctest::Approx(1.0));
 }
 
-TEST_CASE("GPUParticles3D drifts with the wind by its wind_influence") {
+TEST_CASE("GpuEmitter3D drifts with the wind by its wind_influence") {
     Scene scene;
     scene.files["still.process_material.json"] =
         R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
             "emission_points": [[0, 0, 0]]})";
     const char* emitter = R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "process_material": "still.process_material.json",
                            "wind_influence": 0.5},
-        "QuadMesh": {}})";
+        "QuadGeometry": {}})";
     const entt::entity blown = scene.create("leaf", emitter);
     const entt::entity calm =
-        scene.create("stone", R"({"Transform3D": {}, "GPUParticles3D": {"amount": 1, "lifetime": 10,
+        scene.create("stone", R"({"Transform3D": {}, "GpuEmitter3D": {"amount": 1, "lifetime": 10,
             "explosiveness": 1, "process_material": "still.process_material.json"},
-            "QuadMesh": {}})");
+            "QuadGeometry": {}})");
     // A steady breeze along +x: the source faces -z, turned a quarter turn about y.
     scene.create("breeze", R"({"Transform3D": {"rotation": [0, -1.5707964, 0]},
         "WindSource3D": {"strength": 4, "min_gust_amount": 0, "max_gust_amount": 0,
@@ -591,26 +589,24 @@ TEST_CASE("GPUParticles3D drifts with the wind by its wind_influence") {
     CHECK(stone[0].velocity.x == 0.0F);
 }
 
-TEST_CASE("GPUParticles3D falls onto a collision box and bounces off a sphere, as Godot's") {
+TEST_CASE("GpuEmitter3D falls onto a collision box and bounces off a sphere, as Godot's") {
     Scene scene;
     scene.files["drop.process_material.json"] =
         R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
             "emission_points": [[0, 2, 0]], "collision_mode": "rigid", "collision_bounce": 0.5})";
     const entt::entity emitter = scene.create("drops", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "collision_base_size": 0.1,
                            "process_material": "drop.process_material.json"},
-        "QuadMesh": {}})");
+        "QuadGeometry": {}})");
     scene.create("floor",
                  R"({"Transform3D": {"position": [0, -1, 0]},
-                     "GPUParticlesCollisionBox3D": {"size": [6, 2, 6]}})");
+                     "ParticleColliderBox3D": {"size": [6, 2, 6]}})");
     // Another layer, too far and hidden: none of these collide with it.
-    scene.create("masked",
-                 R"({"Transform3D": {}, "GPUParticlesCollisionSphere3D": {"cull_mask": 2}})");
-    scene.create(
-        "far", R"({"Transform3D": {"position": [20, 0, 0]}, "GPUParticlesCollisionSphere3D": {}})");
-    scene.create("hidden",
-                 R"({"Transform3D": {"visible": false}, "GPUParticlesCollisionBox3D": {}})");
+    scene.create("masked", R"({"Transform3D": {}, "ParticleColliderSphere3D": {"cull_mask": 2}})");
+    scene.create("far",
+                 R"({"Transform3D": {"position": [20, 0, 0]}, "ParticleColliderSphere3D": {}})");
+    scene.create("hidden", R"({"Transform3D": {"visible": false}, "ParticleColliderBox3D": {}})");
     scene.step();
     auto kept = scene3d::particle_steps_3d(scene.world, emitter);
     REQUIRE(kept.has_value());
@@ -648,35 +644,35 @@ TEST_CASE("GPUParticles3D falls onto a collision box and bounces off a sphere, a
         R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
             "emission_points": [[4, 2, 0]], "collision_mode": "hide_on_contact"})";
     const entt::entity hiding = scene.create("hiding", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "visibility_aabb_size": [12, 8, 8],
                            "process_material": "hide.process_material.json"},
-        "QuadMesh": {}})");
+        "QuadGeometry": {}})");
     scene.create("ball", R"({"Transform3D": {"position": [4, 0, 0]},
-        "GPUParticlesCollisionSphere3D": {"radius": 0.5}})");
+        "ParticleColliderSphere3D": {"radius": 0.5}})");
     scene.step(5);
     CHECK(scene.live(hiding).size() == 1);
     scene.step(60);
     CHECK(scene.live(hiding).empty());
 }
 
-TEST_CASE("GPUParticles3D rests on a baked SDF of the meshes around it, as Godot's") {
+TEST_CASE("GpuEmitter3D rests on a baked SDF of the meshes around it, as Godot's") {
     Scene scene;
     scene.files["drop.process_material.json"] =
         R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
             "emission_points": [[0, 1, 0]], "collision_mode": "rigid"})";
     const entt::entity emitter = scene.create("drops", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "collision_base_size": 0.1,
                            "process_material": "drop.process_material.json"},
-        "QuadMesh": {}})");
+        "QuadGeometry": {}})");
     // A slab whose top is at y 0, and a ball on another layer the bake leaves out.
-    scene.create("slab", R"({"Transform3D": {"position": [0, -0.25, 0]}, "MeshInstance3D": {},
-        "BoxMesh": {"size": [3, 0.5, 3]}})");
+    scene.create("slab", R"({"Transform3D": {"position": [0, -0.25, 0]}, "Model3D": {},
+        "BoxGeometry": {"size": [3, 0.5, 3]}})");
     scene.create("ball", R"({"Transform3D": {"position": [0, 1, 0]},
-        "MeshInstance3D": {"layers": 2}, "SphereMesh": {}})");
+        "Model3D": {"layers": 2}, "SphereGeometry": {}})");
     const entt::entity sdf = scene.create("sdf", R"({"Transform3D": {},
-        "GPUParticlesCollisionSDF3D": {"size": [4, 2, 4], "resolution": "32", "thickness": 2,
+        "ParticleColliderSdf3D": {"size": [4, 2, 4], "resolution": "32", "thickness": 2,
                                        "bake_mask": 1}})");
 
     // Godot's cells: 32 along the longest side, the others as many whole cells as fit.
@@ -710,7 +706,7 @@ TEST_CASE("GPUParticles3D rests on a baked SDF of the meshes around it, as Godot
     CHECK(kept->steps.back().colliders[0].sdf->distances == std::vector<std::uint16_t>{0x3C00});
 
     scene.files["level.sdf.png"] = encoded.value();
-    scene.world.ecs().patch<world::GPUParticlesCollisionSDF3D>(sdf, [](auto& collider) {
+    scene.world.ecs().patch<world::ParticleColliderSdf3D>(sdf, [](auto& collider) {
         collider.texture = "level.sdf.png";
         collider.slices_vertical = 32;
     });
@@ -728,38 +724,38 @@ TEST_CASE("GPUParticles3D rests on a baked SDF of the meshes around it, as Godot
         }
         return found->second;
     });
-    scene.create("wrong", R"({"Transform3D": {}, "GPUParticlesCollisionSDF3D": {
+    scene.create("wrong", R"({"Transform3D": {}, "ParticleColliderSdf3D": {
         "texture": "level.png"}})");
-    scene.create("uncut", R"({"Transform3D": {}, "GPUParticlesCollisionSDF3D": {
+    scene.create("uncut", R"({"Transform3D": {}, "ParticleColliderSdf3D": {
         "texture": "level.sdf.png", "slices_horizontal": 64}})");
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 2);
-    CHECK(problems[0].path == "/components/GPUParticlesCollisionSDF3D/texture");
+    CHECK(problems[0].path == "/components/ParticleColliderSdf3D/texture");
     CHECK(problems[0].message == "\"level.png\" isn't a .sdf.png file");
     CHECK(problems[1].message.find("level.sdf.png") != std::string::npos);
 }
 
-TEST_CASE("GPUParticles3D rests on a height field drawn from above, which follows the camera") {
+TEST_CASE("GpuEmitter3D rests on a height field drawn from above, which follows the camera") {
     Scene scene;
     scene.files["drop.process_material.json"] =
         R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
             "emission_points": [[1, 3, 0]], "collision_mode": "rigid"})";
     const entt::entity emitter = scene.create("drops", R"({"Transform3D": {},
-        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+        "GpuEmitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                            "collision_base_size": 0.1, "visibility_aabb_size": [8, 8, 8],
                            "process_material": "drop.process_material.json"},
-        "QuadMesh": {}})");
+        "QuadGeometry": {}})");
     // Ground at y 0.5, and a roof above it on a layer the height field leaves out.
-    scene.create("ground", R"({"Transform3D": {"position": [0, 0.5, 0]}, "MeshInstance3D": {},
-        "PlaneMesh": {"size": [4, 4]}})");
+    scene.create("ground", R"({"Transform3D": {"position": [0, 0.5, 0]}, "Model3D": {},
+        "PlaneGeometry": {"size": [4, 4]}})");
     scene.create("roof", R"({"Transform3D": {"position": [0, 1.5, 0]},
-        "MeshInstance3D": {"layers": 2}, "PlaneMesh": {"size": [4, 4]}})");
+        "Model3D": {"layers": 2}, "PlaneGeometry": {"size": [4, 4]}})");
     const entt::entity field = scene.create("field", R"({"Transform3D": {},
-        "GPUParticlesCollisionHeightField3D": {"size": [6, 4, 6], "resolution": "256",
+        "ParticleColliderHeight3D": {"size": [6, 4, 6], "resolution": "256",
                                                "heightfield_mask": 1}})");
     // A second height field: Godot's particles take only the first.
     scene.create("second", R"({"Transform3D": {},
-        "GPUParticlesCollisionHeightField3D": {"size": [6, 4, 6], "resolution": "256",
+        "ParticleColliderHeight3D": {"size": [6, 4, 6], "resolution": "256",
                                                "heightfield_mask": 1}})");
 
     CHECK(scene3d::particle_height_field_size({6.0F, 4.0F, 3.0F}, "256") ==
@@ -792,7 +788,7 @@ TEST_CASE("GPUParticles3D rests on a height field drawn from above, which follow
     // With follow_camera_enabled it steps after the current camera a meter at a time.
     scene.create("eye", R"({"Transform3D": {"position": [10.5, 2, -3.2]},
         "Camera3D": {"current": true}})");
-    scene.world.ecs().patch<world::GPUParticlesCollisionHeightField3D>(
+    scene.world.ecs().patch<world::ParticleColliderHeight3D>(
         field, [](auto& c) { c.follow_camera_enabled = true; });
     scene.step();
     const Vec3 moved = scene.world.ecs().get<world::Transform3D>(field).position;
@@ -836,11 +832,11 @@ TEST_CASE("a vector field attractor cuts its texture into slices, as Godot's Tex
         return found->second;
     });
     const entt::entity emitter =
-        scene.create("leaves", R"({"Transform3D": {}, "GPUParticles3D": {}, "QuadMesh": {}})");
-    scene.create("wind", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {
+        scene.create("leaves", R"({"Transform3D": {}, "GpuEmitter3D": {}, "QuadGeometry": {}})");
+    scene.create("wind", R"({"Transform3D": {}, "ParticleFlowField3D": {
         "texture": "wind.png", "slices_horizontal": 2, "slices_vertical": 2}})");
     // Without a texture, white.
-    scene.create("blank", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {}})");
+    scene.create("blank", R"({"Transform3D": {}, "ParticleFlowField3D": {}})");
     scene.step();
     auto kept = scene3d::particle_steps_3d(scene.world, emitter);
     REQUIRE(kept.has_value());
@@ -858,13 +854,13 @@ TEST_CASE("a vector field attractor cuts its texture into slices, as Godot's Tex
     CHECK(scene3d::check_meshes(scene.world).empty());
 
     // A texture that can't be read or cut is reported.
-    scene.create("missing", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {
+    scene.create("missing", R"({"Transform3D": {}, "ParticleFlowField3D": {
         "texture": "gone.png"}})");
-    scene.create("thin", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {
+    scene.create("thin", R"({"Transform3D": {}, "ParticleFlowField3D": {
         "texture": "wind.png", "slices_horizontal": 3}})");
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 2);
-    CHECK(problems[0].path == "/components/GPUParticlesAttractorVectorField3D/texture");
+    CHECK(problems[0].path == "/components/ParticleFlowField3D/texture");
     CHECK(problems[0].message.find("could not be read") != std::string::npos);
     CHECK(problems[1].message.find("can't be cut into 3x8 slices") != std::string::npos);
 }

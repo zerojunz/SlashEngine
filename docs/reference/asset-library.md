@@ -65,7 +65,7 @@ builds it again (`generate_scripted` and `refine_scripted` in `src/commands.cpp`
 `examples/blender-scripts` builds a bookshelf.
 
 Materials are `.standard_material.json` files (`$cli schema standard_material`;
-`slash/scene3d/material.hpp`), one `StandardMaterial3D` each as Godot's `.tres`, which a recipe's
+`slash/scene3d/material.hpp`), one `Surface3D` each as Godot's `.tres`, which a recipe's
 `materials` name by path or `extends` with fields over them (`resolve_materials` in
 `engine/scene3d/src/recipe.cpp`, reading through the same `ModelReader` as model parts).
 `asset.generate`'s `material` type (`generate_material` in `src/commands.cpp`) makes one that
@@ -77,7 +77,7 @@ maps, kept as images and the material as type `material` naming them by `asset:`
 steps.
 
 `entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
-each entity goes to a point (`at`) or along a `Path3D` (`along`, turned to face it with
+each entity goes to a point (`at`) or along a `Spline3D` (`along`, turned to face it with
 `rotate`), is dropped onto what is below as Godot's Snap Object to Floor drops a node (a ray from
 a meter above the bottom of its bounds; `on` limits what it may stand on), and is moved to the
 nearest free spot in rings around it when its bounds overlap anything but what it stands on.

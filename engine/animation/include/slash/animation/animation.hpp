@@ -18,7 +18,7 @@
 #include <vector>
 
 // Keyframe animation of any component field, as Godot's AnimationPlayer: .anim.json files hold
-// named animations, like an AnimationLibrary of Animation resources, and the AnimationPlayer
+// named animations, like an AnimationLibrary of Animation resources, and the Animator
 // component plays one of them on its entity.
 //
 //   {
@@ -41,20 +41,20 @@
 // A value track's path is a component and one of its fields, then optionally a part of the
 // field: "Transform2D/position", "Transform2D/position/y", "Sprite2D/modulate/a". Its keys are
 // values that field takes. An event track emits a world event when playback passes each key,
-// with the key's "data". A track with a "target" acts on the entity the AnimationPlayer's
+// with the key's "data". A track with a "target" acts on the entity the Animator's
 // targets map that name to, as a Godot track's node path does, rather than the player's own.
 //
 // An animation can come "from" a model file's, as Godot imports a glTF file's animations into an
-// AnimationLibrary: it moves the nodes of the model the entity's MeshInstance3D draws, takes the
+// AnimationLibrary: it moves the nodes of the model the entity's Model3D draws, takes the
 // model animation's length and loop unless it gives its own, and adds its tracks, here a footstep:
 //
 //   "walk": {"from": {"model": "models/hero.glb", "animation": "Walk"},
 //            "tracks": [{"event": "footstep", "keys": [{"time": 0.4}, {"time": 0.9}]}]}
 //
-// An AnimationPlayer's library can also be a model file itself, whose animations it plays as
+// An Animator's library can also be a model file itself, whose animations it plays as
 // they are.
 //
-// A node track moves a node of the model the entity's MeshInstance3D draws, by its name, as a
+// A node track moves a node of the model the entity's Model3D draws, by its name, as a
 // Godot position_3d, rotation_3d or scale_3d track moves a bone: its keys' values are positions,
 // rotations (Euler angles in radians, as Transform3D's) or scales, which turn the shorter way
 // round between keys, as Godot's rotation tracks do:
@@ -66,7 +66,7 @@
 //
 // Cinematics are animations too, as in Godot: a bezier track moves one number along a curve
 // whose keys have handles, as Godot's bezier tracks do, an animation track plays the animations
-// of another entity's AnimationPlayer, as Godot's animation playback tracks do, and a value track
+// of another entity's Animator, as Godot's animation playback tracks do, and a value track
 // that sets a Camera3D's current cuts to it. Markers name times in an animation, as Godot's:
 //
 //   "shot": {"length": 6,
@@ -96,7 +96,7 @@ enum class UpdateMode : std::uint8_t { Auto, Continuous, Discrete };
 
 // What a track does, as Godot's track types: a value track sets a field, a bezier track sets a
 // number along a curve, an event track emits world events, a node track moves a model's node, an
-// animation track plays another AnimationPlayer's animations and an audio track plays sounds on
+// animation track plays another Animator's animations and an audio track plays sounds on
 // an audio player.
 enum class TrackType : std::uint8_t { Value, Bezier, Event, Node, Animation, Audio };
 
@@ -211,7 +211,7 @@ validate_animation_library(const json::Value& doc,
 // The animations in a .anim.json document, or its first error.
 [[nodiscard]] Result<AnimationLibrary> parse_animation_library(const json::Value& doc);
 
-// Whether a library path names a model file, whose animations an AnimationPlayer plays as they are.
+// Whether a library path names a model file, whose animations an Animator plays as they are.
 [[nodiscard]] bool is_model_library(std::string_view path);
 
 // A model file's animations as a library: each from the model at path, with its length and its
@@ -264,7 +264,7 @@ struct Target {
 // current does: every other Camera3D's current turns off. apply does this for "Camera3D/current".
 void make_current_camera(world::World& world, entt::entity camera);
 
-// Moves an entity's AnimationPlayer to a time in its animation, or in another it switches to,
+// Moves an entity's Animator to a time in its animation, or in another it switches to,
 // and sets at once what its tracks set there, as Godot's AnimationPlayer::seek(time, true, true):
 // value and bezier tracks' values, and the animations its animation tracks play there, each
 // moved to where it would be and set in turn. Event tracks wait for playback. The error names
@@ -277,10 +277,10 @@ void make_current_camera(world::World& world, entt::entity camera);
 // (.animtree.json files as AnimationTreeResource, in tree.hpp).
 void add_asset_types(asset::Assets& assets);
 
-// The "animation_player" system, which plays each AnimationPlayer's animation, the
-// "animation_tree" system, which blends each AnimationTree's (tree.hpp), and the clips that pose
+// The "animation_player" system, which plays each Animator's animation, the
+// "animation_tree" system, which blends each AnimationGraph's (tree.hpp), and the clips that pose
 // models (scene3d::set_clip_source): a tree's animations from models, or else a player's, playing
-// or paused, pose its entity's MeshInstance3D model. They read .anim.json, .animtree.json and
+// or paused, pose its entity's Model3D model. They read .anim.json, .animtree.json and
 // model files through assets, which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 

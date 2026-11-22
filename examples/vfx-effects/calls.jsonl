@@ -7,12 +7,12 @@
 {"jsonrpc":"2.0","id":7,"method":"vfx.play","params":{"recipe":"fx/explosion.vfx.json","at":[0,0,-2],"parameters":{"size":0.5}}}
 {"jsonrpc":"2.0","id":8,"method":"step","params":{"ticks":15}}
 {"jsonrpc":"2.0","id":9,"method":"vfx.state","params":{}}
-{"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"explosion_flash","components":["OmniLight3D"]}}
+{"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"explosion_flash","components":["PointLight3D"]}}
 {"jsonrpc":"2.0","id":11,"method":"damage.apply","params":{"id":"barrel","amount":30,"at":[4,0.8,0.4]}}
 {"jsonrpc":"2.0","id":12,"method":"vfx.play","params":{"recipe":"fx/slash.vfx.json","parent":"knight","at":[8,0]}}
 {"jsonrpc":"2.0","id":13,"method":"step","params":{"ticks":4}}
 {"jsonrpc":"2.0","id":14,"method":"vfx.state","params":{"ids":["slash","barrel_vfx"]}}
-{"jsonrpc":"2.0","id":15,"method":"entity.get","params":{"id":"slash_flash","components":["ColorRect"]}}
+{"jsonrpc":"2.0","id":15,"method":"entity.get","params":{"id":"slash_flash","components":["ColorFill"]}}
 {"jsonrpc":"2.0","id":16,"method":"step","params":{"ticks":150}}
 {"jsonrpc":"2.0","id":17,"method":"vfx.state","params":{}}
 {"jsonrpc":"2.0","id":18,"method":"events.read","params":{"subscription":"events_1"}}

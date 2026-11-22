@@ -18,7 +18,7 @@
 #include <string_view>
 #include <vector>
 
-// Tile maps, as Godot's TileSet and TileMapLayer. A .tileset.json file cuts atlas textures into
+// Tile maps, as Godot's TileSet and TileLayer2D. A .tileset.json file cuts atlas textures into
 // tiles and names the terrains autotiling connects:
 //
 //   {
@@ -42,7 +42,7 @@
 //
 // A tile's "peering" says which terrain each neighbor must have for it to fit, as Godot's
 // terrain peering bits; a neighbor left out must have the tile's own terrain, and null means no
-// terrain. A TileMapLayer holds its cells as text, rows of legend keys (see decode_cells), and
+// terrain. A TileLayer2D holds its cells as text, rows of legend keys (see decode_cells), and
 // paint_terrain picks the tiles that connect, as Godot's terrain painting does.
 //
 // Cells are squares unless the tile set's "tile_shape" says otherwise, as Godot's TileSet: an
@@ -165,7 +165,7 @@ struct TileOccluder {
 // An outline of where agents can go in one of its tile set's navigation layers, as one of the
 // outlines of a Godot tile's navigation polygon. Each layer's outlines are baked into the tile's
 // polygons as Godot's tile set editor bakes them, with no agent radius, and each cell of a
-// TileMapLayer with navigation_enabled is a region of them on the 2D map.
+// TileLayer2D with navigation_enabled is a region of them on the 2D map.
 struct TileNavigation {
     int layer = 0;            // into TileSet::navigation_layers
     std::vector<Vec2> points; // in pixels from the tile's center
@@ -416,10 +416,10 @@ inline constexpr int kMaxCell = 32767;
 // kKeyCharacters; each row is a string of keys for the cells from the origin rightward, with "."
 // (or "..", "...") for an empty one. The error message starts with the JSON Pointer of the bad
 // value within the component, as "/rows/2: ...".
-[[nodiscard]] Result<Cells> decode_cells(const world::TileMapLayer& layer, const TileSet& set);
+[[nodiscard]] Result<Cells> decode_cells(const world::TileLayer2D& layer, const TileSet& set);
 
 // Every error decode_cells would find, each with its JSON Pointer within the component.
-[[nodiscard]] std::vector<json::ValidationError> validate_cells(const world::TileMapLayer& layer,
+[[nodiscard]] std::vector<json::ValidationError> validate_cells(const world::TileLayer2D& layer,
                                                                 const TileSet& set);
 
 // The characters legend keys are made of (world/legend.hpp).
@@ -430,7 +430,7 @@ inline constexpr std::string_view kKeyCharacters = world::kLegendKeyCharacters;
 // stood for, and new keys go to the most used tiles first, each the first letter of the tile's
 // name where that is free. Keys are one character while a layer uses up to 91 tiles, then two,
 // then three.
-void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& layer);
+void encode_cells(const Cells& cells, const TileSet& set, world::TileLayer2D& layer);
 
 // Paints a terrain on cells, then picks tiles for them and their neighbors so that edges
 // connect, as Godot's terrain painting does. Each cell gets the tile of its terrain whose
@@ -446,7 +446,7 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& l
 // order of the cells and then of the polygons.
 [[nodiscard]] std::vector<physics2d::TileShape> tile_shapes(const TileSet& set, const Cells& cells);
 
-// Every error in the TileMapLayer components of a scene or prefab document the schema accepted:
+// Every error in the TileLayer2D components of a scene or prefab document the schema accepted:
 // each layer's tile set must load through reader, and its legend and rows name tiles there.
 // Paths point into the document. A layer that takes part of itself from a prefab is checked in
 // the prefab.

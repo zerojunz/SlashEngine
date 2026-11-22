@@ -1,5 +1,5 @@
 // The muscles of physical bones, SlashEngine's own after Unreal's physical animation drives: each
-// simulating PhysicalBone3D with a drive turns toward where the animated pose puts it (relative to
+// simulating SimulatedBone3D with a drive turns toward where the animated pose puts it (relative to
 // its parent bone's body, or in the world) and, in the world, moves toward that place. Each is a
 // spring and damper taken as acceleration and stepped implicitly, so stiff muscles stay stable at
 // any tick rate and a body's mass doesn't change how it moves.
@@ -62,8 +62,8 @@ void Space::apply_drives(const world::World& world, float seconds) {
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
     const entt::registry& registry = world.ecs();
     // In the order components were made, the same in every session.
-    for (const entt::entity entity : registry.view<const world::PhysicalBone3D>()) {
-        const auto& bone = registry.get<const world::PhysicalBone3D>(entity);
+    for (const entt::entity entity : registry.view<const world::SimulatedBone3D>()) {
+        const auto& bone = registry.get<const world::SimulatedBone3D>(entity);
         const world::PhysicalBoneDrive& drive = bone.drive;
         if (drive.space == "off" || drive.space.empty()) {
             continue;

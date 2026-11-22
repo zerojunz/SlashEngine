@@ -2,14 +2,14 @@
   "entities": {
     "sfx": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "stream": "audio/sfx.audio.json"
         }
       }
     },
     "synth": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "stream": "audio/synth.audio.json"
         }

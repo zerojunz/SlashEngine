@@ -1,7 +1,7 @@
 // The geometry a bake works from, as Godot 4.6's source geometry parsers: the region entity and
 // those under it, each giving what Godot's node of the same kind gives
 // (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's, CSGShape3D's,
-// NavigationObstacle3D's and 2D's, TileMapLayer's), placed in the region's space as Godot's
+// NavObstacle3D's and 2D's, TileLayer2D's), placed in the region's space as Godot's
 // root_node_transform places it.
 
 #include "slash/canvas/tilemap.hpp"
@@ -83,7 +83,7 @@ void add_faces(SourceGeometry3D& out, const std::vector<Vec3>& faces, const Affi
     }
 }
 
-Affine3D shape_transform(const world::CollisionShape3D& shape) {
+Affine3D shape_transform(const world::Collider3D& shape) {
     world::Transform3D transform;
     transform.position = shape.position;
     transform.rotation = shape.rotation;
@@ -92,18 +92,17 @@ Affine3D shape_transform(const world::CollisionShape3D& shape) {
 
 // A shape as StaticBody3D's parser adds it: primitives as Godot's meshes of them (with the
 // meshes' default segments), polygons as their faces. World boundaries add nothing.
-void add_shape(SourceGeometry3D& out, const world::CollisionShape3D& shape,
-               const Affine3D& transform) {
+void add_shape(SourceGeometry3D& out, const world::Collider3D& shape, const Affine3D& transform) {
     std::optional<scene3d::Primitive> primitive;
     if (shape.shape == "box") {
-        primitive = world::BoxMesh{.size = shape.size};
+        primitive = world::BoxGeometry{.size = shape.size};
     } else if (shape.shape == "capsule") {
-        primitive = world::CapsuleMesh{.radius = shape.radius, .height = shape.height};
+        primitive = world::CapsuleGeometry{.radius = shape.radius, .height = shape.height};
     } else if (shape.shape == "cylinder") {
-        primitive = world::CylinderMesh{
+        primitive = world::CylinderGeometry{
             .top_radius = shape.radius, .bottom_radius = shape.radius, .height = shape.height};
     } else if (shape.shape == "sphere") {
-        primitive = world::SphereMesh{.radius = shape.radius, .height = shape.radius * 2.0F};
+        primitive = world::SphereGeometry{.radius = shape.radius, .height = shape.radius * 2.0F};
     } else if (shape.shape == "concave_polygon") {
         add_faces(out, shape.faces, transform);
     } else if (shape.shape == "convex_polygon") {
@@ -143,19 +142,19 @@ std::optional<std::uint32_t> static_layer(const entt::registry& registry, entt::
 
 // Whether a child's shapes belong to its parent's body: it has no body or area of its own.
 bool has_own_object_3d(const entt::registry& registry, entt::entity entity) {
-    return registry.any_of<world::StaticBody3D, world::AnimatableBody3D, world::RigidBody3D,
-                           world::CharacterBody3D, world::Area3D, world::PhysicalBone3D>(entity);
+    return registry.any_of<world::StaticBody3D, world::MovingBody3D, world::RigidBody3D,
+                           world::CharacterMover3D, world::Zone3D, world::SimulatedBone3D>(entity);
 }
 
 bool has_own_object_2d(const entt::registry& registry, entt::entity entity) {
-    return registry.any_of<world::StaticBody2D, world::AnimatableBody2D, world::RigidBody2D,
-                           world::CharacterBody2D, world::Area2D>(entity);
+    return registry.any_of<world::StaticBody2D, world::MovingBody2D, world::RigidBody2D,
+                           world::CharacterMover2D, world::Zone2D>(entity);
 }
 
 // NavigationObstacle3D::navmesh_parse_source_geometry: its circle, then its outline, on the
 // ground. Only its turn about y counts.
-void add_obstacle(SourceGeometry3D& out, const world::NavigationObstacle3D& obstacle,
-                  const Affine3D& root, const Affine3D& global) {
+void add_obstacle(SourceGeometry3D& out, const world::NavObstacle3D& obstacle, const Affine3D& root,
+                  const Affine3D& global) {
     if (!obstacle.affect_navigation_mesh) {
         return;
     }
@@ -209,7 +208,7 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
               const Affine3D& root, entt::entity entity, const NavigationMesh& settings,
               SourceGeometry3D& out, std::vector<std::string>* warnings, bool children = true) {
     const entt::registry& registry = world.ecs();
-    if (const auto* obstacle = registry.try_get<world::NavigationObstacle3D>(entity);
+    if (const auto* obstacle = registry.try_get<world::NavObstacle3D>(entity);
         obstacle != nullptr) {
         add_obstacle(out, *obstacle, root, tree.global(entity));
     }
@@ -219,8 +218,7 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
         }
     };
     if (parses_meshes(settings.geometry_parsed_geometry_type)) {
-        if (const auto* instance = registry.try_get<world::MeshInstance3D>(entity);
-            instance != nullptr) {
+        if (const auto* instance = registry.try_get<world::Model3D>(entity); instance != nullptr) {
             const Affine3D transform = root * tree.global(entity);
             if (!instance->mesh.empty()) {
                 auto model = assets.load<scene3d::Model>(instance->mesh);
@@ -265,7 +263,7 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
     }
     // GridMap::navmesh_parse_source_geometry: its cells' meshes with mesh_instances or both,
     // else, with static_colliders, their shapes when it is on a layer the mask takes.
-    if (const auto* map = registry.try_get<world::GridMap>(entity); map != nullptr) {
+    if (const auto* map = registry.try_get<world::BlockMap3D>(entity); map != nullptr) {
         const Affine3D transform = root * tree.global(entity);
         const std::shared_ptr<const scene3d::GridMesh> mesh = scene3d::grid_mesh(world, entity);
         if (parses_meshes(settings.geometry_parsed_geometry_type)) {
@@ -281,10 +279,10 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
             }
         }
     }
-    // An HTerrain's heights at full detail, holes left out, with mesh_instances or both, else,
+    // An Terrain3D's heights at full detail, holes left out, with mesh_instances or both, else,
     // with static_colliders, when it collides on a layer the mask takes: what Godot parses of
     // the HeightMapShape3D it collides as.
-    if (const auto* terrain = registry.try_get<world::HTerrain>(entity); terrain != nullptr) {
+    if (const auto* terrain = registry.try_get<world::Terrain3D>(entity); terrain != nullptr) {
         const bool collides = terrain->collision_enabled &&
                               (terrain->collision_layer & settings.geometry_collision_mask) != 0U;
         if (parses_meshes(settings.geometry_parsed_geometry_type) ||
@@ -304,11 +302,11 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
     }
     if (parses_colliders(settings.geometry_parsed_geometry_type)) {
         const auto layer =
-            static_layer<world::StaticBody3D, world::AnimatableBody3D, world::RigidBody3D,
-                         world::CharacterBody3D>(registry, entity);
+            static_layer<world::StaticBody3D, world::MovingBody3D, world::RigidBody3D,
+                         world::CharacterMover3D>(registry, entity);
         if (layer && (*layer & settings.geometry_collision_mask) != 0U) {
             const Affine3D body = root * tree.global(entity);
-            if (const auto* shape = registry.try_get<world::CollisionShape3D>(entity);
+            if (const auto* shape = registry.try_get<world::Collider3D>(entity);
                 shape != nullptr && !shape->disabled) {
                 add_shape(out, *shape, body * shape_transform(*shape));
             }
@@ -316,7 +314,7 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
                 transform != nullptr) {
                 for (const entt::entity child : transform->children) {
                     const auto* shape = registry.valid(child)
-                                            ? registry.try_get<world::CollisionShape3D>(child)
+                                            ? registry.try_get<world::Collider3D>(child)
                                             : nullptr;
                     if (shape == nullptr || shape->disabled || tree.parent(child) != entity ||
                         has_own_object_3d(registry, child)) {
@@ -388,7 +386,7 @@ std::vector<Vec2> placed(const std::vector<Vec2>& points, const Affine2D& transf
 
 // A shape's outline, as StaticBody2D::navmesh_parse_source_geometry makes it: a circle has 12
 // sides and a capsule 14 corners. Segments add nothing.
-std::vector<Vec2> outline_of(const world::CollisionShape2D& shape) {
+std::vector<Vec2> outline_of(const world::Collider2D& shape) {
     if (shape.shape == "rectangle") {
         const Vec2 half{shape.size.x * 0.5F, shape.size.y * 0.5F};
         return {{-half.x, -half.y},
@@ -429,8 +427,8 @@ std::vector<Vec2> outline_of(const world::CollisionShape2D& shape) {
 }
 
 // NavigationObstacle2D::navmesh_parse_source_geometry: its circle, then its outline.
-void add_obstacle(SourceGeometry2D& out, const world::NavigationObstacle2D& obstacle,
-                  const Affine2D& root, const world::Tree2D& tree, entt::entity entity) {
+void add_obstacle(SourceGeometry2D& out, const world::NavObstacle2D& obstacle, const Affine2D& root,
+                  const world::Tree2D& tree, entt::entity entity) {
     if (!obstacle.affect_navigation_mesh) {
         return;
     }
@@ -466,7 +464,7 @@ void add_obstacle(SourceGeometry2D& out, const world::NavigationObstacle2D& obst
 void add_tiles(SourceGeometry2D& out, const world::World& world, asset::Assets& assets,
                const Affine2D& root, const world::Tree2D& tree, entt::entity entity,
                const NavigationPolygon& settings, std::vector<std::string>* warnings) {
-    const auto& layer = world.ecs().get<const world::TileMapLayer>(entity);
+    const auto& layer = world.ecs().get<const world::TileLayer2D>(entity);
     if (layer.tile_set.empty()) {
         return;
     }
@@ -525,11 +523,11 @@ void parse_2d(const world::World& world, asset::Assets& assets, const world::Tre
               const Affine2D& root, entt::entity entity, const NavigationPolygon& settings,
               SourceGeometry2D& out, std::vector<std::string>* warnings) {
     const entt::registry& registry = world.ecs();
-    if (const auto* obstacle = registry.try_get<world::NavigationObstacle2D>(entity);
+    if (const auto* obstacle = registry.try_get<world::NavObstacle2D>(entity);
         obstacle != nullptr) {
         add_obstacle(out, *obstacle, root, tree, entity);
     }
-    if (registry.all_of<world::TileMapLayer>(entity)) {
+    if (registry.all_of<world::TileLayer2D>(entity)) {
         add_tiles(out, world, assets, root, tree, entity, settings, warnings);
     }
     const auto add = [&](std::vector<Vec2> outline) {
@@ -538,20 +536,20 @@ void parse_2d(const world::World& world, asset::Assets& assets, const world::Tre
         }
     };
     const auto add_shapes = [&](entt::entity owner, const Affine2D& transform) {
-        if (const auto* shape = registry.try_get<world::CollisionShape2D>(owner);
+        if (const auto* shape = registry.try_get<world::Collider2D>(owner);
             shape != nullptr && !shape->disabled) {
             add(placed(outline_of(*shape),
                        transform * shape_transform(shape->position, shape->rotation)));
         }
-        if (const auto* polygon = registry.try_get<world::CollisionPolygon2D>(owner);
+        if (const auto* polygon = registry.try_get<world::PolygonCollider2D>(owner);
             polygon != nullptr && !polygon->disabled) {
             add(placed(polygon->polygon, transform));
         }
     };
     if (parses_colliders(settings.parsed_geometry_type)) {
         const auto layer =
-            static_layer<world::StaticBody2D, world::AnimatableBody2D, world::RigidBody2D,
-                         world::CharacterBody2D>(registry, entity);
+            static_layer<world::StaticBody2D, world::MovingBody2D, world::RigidBody2D,
+                         world::CharacterMover2D>(registry, entity);
         if (layer && (*layer & settings.parsed_collision_mask) != 0U) {
             add_shapes(entity, root * tree.global_affine(entity));
             if (const auto* transform = registry.try_get<world::Transform2D>(entity);

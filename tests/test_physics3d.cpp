@@ -33,21 +33,21 @@ namespace {
 
 constexpr double kTick = 1.0 / 60.0;
 
-world::CollisionShape3D box_shape(Vec3 size) {
-    world::CollisionShape3D shape;
+world::Collider3D box_shape(Vec3 size) {
+    world::Collider3D shape;
     shape.size = size;
     return shape;
 }
 
-world::CollisionShape3D sphere_shape(float radius) {
-    world::CollisionShape3D shape;
+world::Collider3D sphere_shape(float radius) {
+    world::Collider3D shape;
     shape.shape = "sphere";
     shape.radius = radius;
     return shape;
 }
 
-world::CollisionShape3D capsule_shape(float radius, float height) {
-    world::CollisionShape3D shape;
+world::Collider3D capsule_shape(float radius, float height) {
+    world::Collider3D shape;
     shape.shape = "capsule";
     shape.radius = radius;
     shape.height = height;
@@ -93,7 +93,7 @@ struct Physics {
         const Vec3 size = high - low;
         const entt::entity entity = add(id, low + (size * 0.5F));
         world.ecs().emplace<world::StaticBody3D>(entity);
-        world.ecs().emplace<world::CollisionShape3D>(entity, box_shape(size));
+        world.ecs().emplace<world::Collider3D>(entity, box_shape(size));
         return entity;
     }
 
@@ -103,7 +103,7 @@ struct Physics {
     entt::entity crate(std::string_view id, Vec3 position, float size = 1.0F) {
         const entt::entity entity = add(id, position);
         world.ecs().emplace<world::RigidBody3D>(entity);
-        world.ecs().emplace<world::CollisionShape3D>(entity, box_shape({size, size, size}));
+        world.ecs().emplace<world::Collider3D>(entity, box_shape({size, size, size}));
         return entity;
     }
 
@@ -111,13 +111,13 @@ struct Physics {
     // Godot's template script does.
     entt::entity hero(std::string_view id, Vec3 position) {
         const entt::entity entity = add(id, position);
-        world.ecs().emplace<world::CharacterBody3D>(entity);
-        world.ecs().emplace<world::CollisionShape3D>(entity, capsule_shape(0.4F, 1.8F));
+        world.ecs().emplace<world::CharacterMover3D>(entity);
+        world.ecs().emplace<world::Collider3D>(entity, capsule_shape(0.4F, 1.8F));
         return entity;
     }
 
     void fall(std::string_view id) {
-        auto& character = get<world::CharacterBody3D>(id);
+        auto& character = get<world::CharacterMover3D>(id);
         if (!character.on_floor) {
             character.velocity.y -= 9.8F * static_cast<float>(kTick);
         }
@@ -311,11 +311,11 @@ TEST_CASE("bodies collide when either one's mask has the other's layer") {
 TEST_CASE("an area reports bodies and areas entering and leaving") {
     Physics physics;
     const entt::entity zone = physics.add("zone", {0.0F, -3.0F, 0.0F});
-    physics.world.ecs().emplace<world::Area3D>(zone);
-    physics.world.ecs().emplace<world::CollisionShape3D>(zone, box_shape({4.0F, 2.0F, 4.0F}));
+    physics.world.ecs().emplace<world::Zone3D>(zone);
+    physics.world.ecs().emplace<world::Collider3D>(zone, box_shape({4.0F, 2.0F, 4.0F}));
     const entt::entity sensor = physics.add("sensor", {1.5F, -3.0F, 0.0F});
-    physics.world.ecs().emplace<world::Area3D>(sensor);
-    physics.world.ecs().emplace<world::CollisionShape3D>(sensor, sphere_shape(0.25F));
+    physics.world.ecs().emplace<world::Zone3D>(sensor);
+    physics.world.ecs().emplace<world::Collider3D>(sensor, sphere_shape(0.25F));
     physics.crate("crate", {0.0F, 0.0F, 0.0F}, 0.5F);
 
     physics.step();
@@ -343,7 +343,7 @@ TEST_CASE("an area reports bodies and areas entering and leaving") {
 
     // An area that isn't monitorable is not seen by others.
     physics.events.clear();
-    physics.get<world::Area3D>("sensor").monitorable = false;
+    physics.get<world::Zone3D>("sensor").monitorable = false;
     physics.step();
     CHECK(physics.event_list() == Ids{R"(area_exited zone {"area":"sensor"})"});
 
@@ -383,7 +383,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     physics.block("wall", {3.0F, 0.0F, -10.0F}, {4.0F, 3.0F, 10.0F});
     physics.hero("hero", {0.0F, 2.0F, 0.0F});
     physics.step(60, [&] { physics.fall("hero"); });
-    const auto& hero = physics.get<world::CharacterBody3D>("hero");
+    const auto& hero = physics.get<world::CharacterMover3D>("hero");
     REQUIRE(hero.on_floor);
     // The capsule's bottom rests on the floor, within the safe margin.
     CHECK(physics.position("hero").y == doctest::Approx(0.9F).epsilon(0.01));
@@ -395,7 +395,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     // Walking right at 4 m/s for a second, it stops against the wall.
     physics.step(60, [&] {
         physics.fall("hero");
-        physics.get<world::CharacterBody3D>("hero").velocity.x = 4.0F;
+        physics.get<world::CharacterMover3D>("hero").velocity.x = 4.0F;
     });
     CHECK(hero.on_floor);
     CHECK(hero.on_wall);
@@ -409,17 +409,17 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     slope.get<world::Transform3D>("ramp").rotation = {0.0F, 0.0F, 0.5235988F};
     slope.hero("hero", {0.0F, 2.5F, 0.0F});
     const auto pull = [&] {
-        slope.get<world::CharacterBody3D>("hero").velocity.y -= 9.8F * static_cast<float>(kTick);
+        slope.get<world::CharacterMover3D>("hero").velocity.y -= 9.8F * static_cast<float>(kTick);
     };
     slope.step(90, pull);
-    REQUIRE(slope.get<world::CharacterBody3D>("hero").on_floor);
+    REQUIRE(slope.get<world::CharacterMover3D>("hero").on_floor);
     const Vec3 rest = slope.position("hero");
     slope.step(60, pull);
     CHECK(slope.position("hero").x == doctest::Approx(rest.x).epsilon(0.001));
     CHECK(slope.position("hero").y == doctest::Approx(rest.y).epsilon(0.001));
 
     // Without floor_stop_on_slope it slides down.
-    slope.get<world::CharacterBody3D>("hero").floor_stop_on_slope = false;
+    slope.get<world::CharacterMover3D>("hero").floor_stop_on_slope = false;
     slope.step(60, pull);
     CHECK(slope.position("hero").y < rest.y - 0.02F);
 }
@@ -428,12 +428,12 @@ TEST_CASE("a floating character slides along walls and has no floor") {
     Physics physics(weightless());
     physics.block("wall", {1.0F, -5.0F, -5.0F}, {2.0F, 5.0F, 5.0F});
     const entt::entity diver = physics.add("diver", {0.0F, 0.0F, 0.0F});
-    auto& character = physics.world.ecs().emplace<world::CharacterBody3D>(diver);
+    auto& character = physics.world.ecs().emplace<world::CharacterMover3D>(diver);
     character.motion_mode = "floating";
     character.velocity = {2.0F, 0.0F, 2.0F};
-    physics.world.ecs().emplace<world::CollisionShape3D>(diver, sphere_shape(0.5F));
+    physics.world.ecs().emplace<world::Collider3D>(diver, sphere_shape(0.5F));
     physics.step(60);
-    const auto& diver_body = physics.get<world::CharacterBody3D>("diver");
+    const auto& diver_body = physics.get<world::CharacterMover3D>("diver");
     CHECK_FALSE(diver_body.on_floor);
     CHECK(diver_body.on_wall);
     CHECK(physics.position("diver").x == doctest::Approx(0.5F).epsilon(0.01));
@@ -444,11 +444,11 @@ TEST_CASE("a floating character slides along walls and has no floor") {
 TEST_CASE("a character rides a moving platform and keeps its velocity when it leaves") {
     Physics physics;
     const entt::entity lift = physics.add("lift", {0.0F, 0.0F, 0.0F});
-    physics.world.ecs().emplace<world::AnimatableBody3D>(lift);
-    physics.world.ecs().emplace<world::CollisionShape3D>(lift, box_shape({20.0F, 0.5F, 20.0F}));
+    physics.world.ecs().emplace<world::MovingBody3D>(lift);
+    physics.world.ecs().emplace<world::Collider3D>(lift, box_shape({20.0F, 0.5F, 20.0F}));
     physics.hero("hero", {0.0F, 1.5F, 0.0F});
     physics.step(60, [&] { physics.fall("hero"); });
-    REQUIRE(physics.get<world::CharacterBody3D>("hero").on_floor);
+    REQUIRE(physics.get<world::CharacterMover3D>("hero").on_floor);
     const Vec3 start = physics.position("hero");
 
     // The lift moves along x 0.05 meters a tick, and the hero with it.
@@ -456,13 +456,13 @@ TEST_CASE("a character rides a moving platform and keeps its velocity when it le
         physics.fall("hero");
         physics.get<world::Transform3D>("lift").position.x += 0.05F;
     });
-    const auto& hero = physics.get<world::CharacterBody3D>("hero");
+    const auto& hero = physics.get<world::CharacterMover3D>("hero");
     CHECK(hero.on_floor);
     CHECK(physics.position("hero").x == doctest::Approx(start.x + 1.5F).epsilon(0.02));
     CHECK(hero.platform_velocity.x == doctest::Approx(3.0F).epsilon(0.01));
 
     // Jumping off keeps the lift's velocity, as Godot's platform_on_leave add_velocity.
-    physics.get<world::CharacterBody3D>("hero").velocity = {0.0F, 5.0F, 0.0F};
+    physics.get<world::CharacterMover3D>("hero").velocity = {0.0F, 5.0F, 0.0F};
     physics.step(1, [&] { physics.get<world::Transform3D>("lift").position.x += 0.05F; });
     CHECK_FALSE(hero.on_floor);
     CHECK(hero.velocity.x == doctest::Approx(3.0F).epsilon(0.01));
@@ -475,11 +475,11 @@ TEST_CASE("a character stops at a rigid body, as Godot's, until an impulse pushe
     physics.hero("hero", {0.0F, 0.95F, 0.0F});
     const auto walk = [&] {
         physics.fall("hero");
-        physics.get<world::CharacterBody3D>("hero").velocity.x = 2.0F;
+        physics.get<world::CharacterMover3D>("hero").velocity.x = 2.0F;
     };
     physics.step(60, walk);
     CHECK(physics.position("hero").x == doctest::Approx(0.6F).epsilon(0.01));
-    CHECK(physics.get<world::CharacterBody3D>("hero").on_wall);
+    CHECK(physics.get<world::CharacterMover3D>("hero").on_wall);
     CHECK(physics.ids(physics3d::contacts(physics.world, physics.world.find("hero")).bodies) ==
           Ids{"crate", "floor"});
 
@@ -493,7 +493,7 @@ TEST_CASE("a character stops at a rigid body, as Godot's, until an impulse pushe
 TEST_CASE("every shape kind collides") {
     Physics physics;
     physics.floor();
-    world::CollisionShape3D shapes[5];
+    world::Collider3D shapes[5];
     shapes[0] = sphere_shape(0.5F);
     shapes[1] = capsule_shape(0.3F, 1.2F);
     shapes[2].shape = "cylinder";
@@ -509,7 +509,7 @@ TEST_CASE("every shape kind collides") {
             physics.add(id, {(static_cast<float>(i) * 2.0F) - 4.0F, 2.0F, 0.0F});
         auto& rigid = physics.world.ecs().emplace<world::RigidBody3D>(entity);
         rigid.lock_rotation = true;
-        physics.world.ecs().emplace<world::CollisionShape3D>(entity, shapes[i]);
+        physics.world.ecs().emplace<world::Collider3D>(entity, shapes[i]);
     }
     physics.step(180);
     CHECK(physics.position("body0").y == doctest::Approx(0.5F).epsilon(0.02));
@@ -522,22 +522,22 @@ TEST_CASE("every shape kind collides") {
     Physics bowl;
     const entt::entity ground = bowl.add("ground", {});
     bowl.world.ecs().emplace<world::StaticBody3D>(ground);
-    world::CollisionShape3D mesh;
+    world::Collider3D mesh;
     mesh.shape = "concave_polygon";
     // Two triangles making a V-shaped valley along z, sloping down to x 0.
     mesh.faces = {{-4.0F, 2.0F, -4.0F}, {0.0F, 0.0F, -4.0F}, {0.0F, 0.0F, 4.0F},
                   {-4.0F, 2.0F, -4.0F}, {0.0F, 0.0F, 4.0F},  {-4.0F, 2.0F, 4.0F},
                   {0.0F, 0.0F, -4.0F},  {4.0F, 2.0F, -4.0F}, {4.0F, 2.0F, 4.0F},
                   {0.0F, 0.0F, -4.0F},  {4.0F, 2.0F, 4.0F},  {0.0F, 0.0F, 4.0F}};
-    bowl.world.ecs().emplace<world::CollisionShape3D>(ground, mesh);
+    bowl.world.ecs().emplace<world::Collider3D>(ground, mesh);
     const entt::entity ball = bowl.add("ball", {2.0F, 3.0F, 0.0F});
     bowl.world.ecs().emplace<world::RigidBody3D>(ball);
-    bowl.world.ecs().emplace<world::CollisionShape3D>(ball, sphere_shape(0.25F));
+    bowl.world.ecs().emplace<world::Collider3D>(ball, sphere_shape(0.25F));
     const entt::entity limit = bowl.add("limit", {0.0F, -20.0F, 0.0F});
     bowl.world.ecs().emplace<world::StaticBody3D>(limit);
-    world::CollisionShape3D boundary;
+    world::Collider3D boundary;
     boundary.shape = "world_boundary";
-    bowl.world.ecs().emplace<world::CollisionShape3D>(limit, boundary);
+    bowl.world.ecs().emplace<world::Collider3D>(limit, boundary);
     bowl.crate("stray", {8.0F, 0.0F, 0.0F});
     bowl.step(600);
     CHECK(std::abs(bowl.position("ball").x) < 0.3F);
@@ -545,12 +545,12 @@ TEST_CASE("every shape kind collides") {
     CHECK(bowl.position("stray").y == doctest::Approx(-19.5F).epsilon(0.01));
 
     // A shape that can't be made is left out with a warning; its body falls, touching nothing.
-    world::CollisionShape3D bad;
+    world::Collider3D bad;
     bad.shape = "convex_polygon";
     bad.points = {{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}};
     const entt::entity broken = bowl.add("broken", {0.0F, 5.0F, 0.0F});
     bowl.world.ecs().emplace<world::RigidBody3D>(broken);
-    bowl.world.ecs().emplace<world::CollisionShape3D>(broken, bad);
+    bowl.world.ecs().emplace<world::Collider3D>(broken, bad);
     bowl.step(10);
     CHECK(bowl.position("broken").y < 5.0F);
 }
@@ -562,8 +562,8 @@ TEST_CASE("raycast finds the first hit and follows masks, areas and exclusions")
     physics.get<world::RigidBody3D>("near").collision_layer = 2;
     physics.get<world::RigidBody3D>("near").freeze = true;
     const entt::entity zone = physics.add("zone", {0.0F, 0.5F, 4.0F});
-    physics.world.ecs().emplace<world::Area3D>(zone);
-    physics.world.ecs().emplace<world::CollisionShape3D>(zone, box_shape({1.0F, 1.0F, 1.0F}));
+    physics.world.ecs().emplace<world::Zone3D>(zone);
+    physics.world.ecs().emplace<world::Collider3D>(zone, box_shape({1.0F, 1.0F, 1.0F}));
 
     const auto hit = physics3d::raycast(physics.world, {0.0F, 0.5F, 10.0F}, {0.0F, 0.5F, 0.0F});
     REQUIRE(hit.has_value());
@@ -671,7 +671,7 @@ TEST_CASE("the same scene simulates the same every time") {
         physics.hero("hero", {-4.0F, 1.0F, 0.0F});
         physics.step(240, [&] {
             physics.fall("hero");
-            physics.get<world::CharacterBody3D>("hero").velocity.x = 2.0F;
+            physics.get<world::CharacterMover3D>("hero").velocity.x = 2.0F;
         });
         std::vector<std::uint64_t> bits;
         for (int i = 0; i < 12; ++i) {
@@ -697,7 +697,7 @@ TEST_CASE("a body takes the shapes of child entities with no body of their own, 
     for (const float side : {-1.0F, 1.0F}) {
         const std::string id = side < 0.0F ? "left" : "right";
         const entt::entity end = physics.add(id, {side, 0.0F, 0.0F});
-        physics.world.ecs().emplace<world::CollisionShape3D>(end, sphere_shape(0.3F));
+        physics.world.ecs().emplace<world::Collider3D>(end, sphere_shape(0.3F));
         physics.world.ecs().get<world::Transform3D>(bell).children.push_back(end);
     }
     physics.step(120);
@@ -709,20 +709,20 @@ TEST_CASE("a body takes the shapes of child entities with no body of their own, 
 TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     Physics physics;
     const entt::entity low = physics.add("low", {});
-    auto& low_area = physics.world.ecs().emplace<world::Area3D>(low);
+    auto& low_area = physics.world.ecs().emplace<world::Zone3D>(low);
     low_area.gravity_space_override = "replace";
     low_area.gravity_direction = {1.0F, 0.0F, 0.0F};
     low_area.gravity = 4.0F;
-    physics.world.ecs().emplace<world::CollisionShape3D>(low, box_shape({10.0F, 10.0F, 10.0F}));
+    physics.world.ecs().emplace<world::Collider3D>(low, box_shape({10.0F, 10.0F, 10.0F}));
     const entt::entity high = physics.add("high", {});
-    auto& high_area = physics.world.ecs().emplace<world::Area3D>(high);
+    auto& high_area = physics.world.ecs().emplace<world::Zone3D>(high);
     high_area.priority = 1;
     high_area.gravity_space_override = "combine";
     high_area.gravity_direction = {0.0F, 0.0F, 1.0F};
     high_area.gravity = 1.0F;
     high_area.linear_damp_space_override = "replace";
     high_area.linear_damp = 2.0F;
-    physics.world.ecs().emplace<world::CollisionShape3D>(high, box_shape({10.0F, 10.0F, 10.0F}));
+    physics.world.ecs().emplace<world::Collider3D>(high, box_shape({10.0F, 10.0F, 10.0F}));
     physics.crate("crate", {});
     physics.step(2);
     const auto gravity = physics3d::gravity(physics.world, physics.world.find("crate"));
@@ -749,7 +749,7 @@ TEST_CASE("constant velocities carry what touches a body without moving it") {
     physics.step(120, [&] { physics.fall("hero"); });
     CHECK(physics.position("floor").x == doctest::Approx(0.0F));
     CHECK(physics.position("crate").x > 1.0F);
-    CHECK(physics.get<world::CharacterBody3D>("hero").platform_velocity.x ==
+    CHECK(physics.get<world::CharacterMover3D>("hero").platform_velocity.x ==
           doctest::Approx(1.0F).epsilon(0.01));
     CHECK(physics.position("hero").x > 1.0F);
 }
@@ -819,7 +819,7 @@ TEST_CASE("a hinge turns about its z axis within its limits, and its motor drive
     const auto door = [](Physics& physics) {
         const entt::entity slab = physics.add("door", {0.5F, 0.0F, 0.0F});
         physics.world.ecs().emplace<world::RigidBody3D>(slab);
-        physics.world.ecs().emplace<world::CollisionShape3D>(slab, box_shape({1.0F, 2.0F, 0.1F}));
+        physics.world.ecs().emplace<world::Collider3D>(slab, box_shape({1.0F, 2.0F, 0.1F}));
         const entt::entity hinge = physics.add("hinge", {});
         physics.get<world::Transform3D>("hinge").rotation.x = -std::numbers::pi_v<float> / 2.0F;
         auto& joint = physics.world.ecs().emplace<world::HingeJoint3D>(hinge);
@@ -872,7 +872,7 @@ TEST_CASE("a hinge turns about its z axis within its limits, and its motor drive
 TEST_CASE("a slider moves a body along its x axis within its limits and keeps it from turning") {
     Physics physics(weightless(false));
     const entt::entity crate = physics.crate("crate", {});
-    auto& joint = physics.world.ecs().emplace<world::SliderJoint3D>(physics.add("slider", {}));
+    auto& joint = physics.world.ecs().emplace<world::SlideJoint3D>(physics.add("slider", {}));
     joint.node_a = crate;
     physics.step();
     physics3d::apply_impulse(physics.world, crate, {0.5F, 0.5F, 0.5F}, {0.0F, 0.5F, 0.0F});
@@ -893,7 +893,7 @@ TEST_CASE("a cone twist joint keeps a hanging body's swing within its span") {
     // Its twist axis, x, points down at the weight.
     const entt::entity cone = physics.add("cone", {});
     physics.get<world::Transform3D>("cone").rotation.z = -std::numbers::pi_v<float> / 2.0F;
-    auto& joint = physics.world.ecs().emplace<world::ConeTwistJoint3D>(cone);
+    auto& joint = physics.world.ecs().emplace<world::ConeJoint3D>(cone);
     joint.node_a = weight;
     joint.swing_span = 0.3F;
     physics.step();
@@ -914,8 +914,7 @@ TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives
         Physics physics(weightless(false));
         const entt::entity a = physics.crate("a", {0.0F, 0.0F, 0.0F}, 0.5F);
         const entt::entity b = physics.crate("b", {1.0F, 0.0F, 0.0F}, 0.5F);
-        auto& joint =
-            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("weld", {}));
+        auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("weld", {}));
         joint.node_a = a;
         joint.node_b = b;
         physics.step();
@@ -932,8 +931,7 @@ TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives
         // With y free, a crate held to the world falls straight down.
         Physics physics;
         const entt::entity crate = physics.crate("crate", {});
-        auto& joint =
-            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("rail", {}));
+        auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("rail", {}));
         joint.node_a = crate;
         joint.linear_y.limit_enabled = false;
         physics.step(30,
@@ -945,8 +943,7 @@ TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives
         // A motor on its free x axis drives it at its target velocity.
         Physics physics(weightless(false));
         const entt::entity crate = physics.crate("crate", {});
-        auto& joint =
-            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("drive", {}));
+        auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("drive", {}));
         joint.node_a = crate;
         joint.linear_x.limit_enabled = false;
         joint.linear_x.motor_enabled = true;
@@ -964,8 +961,7 @@ TEST_CASE("jointed bodies pass through each other unless the joint lets them col
         const entt::entity a = physics.crate("a", {0.0F, 0.0F, 0.0F});
         const entt::entity b = physics.crate("b", {0.5F, 0.0F, 0.0F});
         // A joint that only keeps them from turning.
-        auto& joint =
-            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("joint", {}));
+        auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("joint", {}));
         joint.node_a = a;
         joint.node_b = b;
         joint.exclude_nodes_from_collision = exclude;
@@ -1015,13 +1011,13 @@ struct Car {
         physics.block("ground", {-200.0F, -1.0F, -200.0F}, {200.0F, 0.0F, 200.0F});
         const entt::entity car = physics.add("car", {0.0F, 1.0F, 0.0F});
         physics.world.ecs().emplace<world::RigidBody3D>(car).mass = 40.0F;
-        physics.world.ecs().emplace<world::VehicleBody3D>(car);
-        physics.world.ecs().emplace<world::CollisionShape3D>(car, box_shape({2.0F, 0.5F, 4.0F}));
+        physics.world.ecs().emplace<world::WheeledBody3D>(car);
+        physics.world.ecs().emplace<world::Collider3D>(car, box_shape({2.0F, 0.5F, 4.0F}));
         for (const auto& [id, x, z] :
              {std::tuple{"front_left", 1.0F, 1.5F}, std::tuple{"front_right", -1.0F, 1.5F},
               std::tuple{"rear_left", 1.0F, -1.5F}, std::tuple{"rear_right", -1.0F, -1.5F}}) {
             const entt::entity wheel = physics.add(id, {x, -0.3F, z});
-            auto& component = physics.world.ecs().emplace<world::VehicleWheel3D>(wheel);
+            auto& component = physics.world.ecs().emplace<world::Wheel3D>(wheel);
             component.use_as_steering = z > 0.0F;
             component.use_as_traction = z < 0.0F;
             component.wheel_radius = 0.4F;
@@ -1032,10 +1028,8 @@ struct Car {
         }
     }
 
-    world::VehicleBody3D& controls() { return physics.get<world::VehicleBody3D>("car"); }
-    world::VehicleWheel3D& wheel(std::string_view id) {
-        return physics.get<world::VehicleWheel3D>(id);
-    }
+    world::WheeledBody3D& controls() { return physics.get<world::WheeledBody3D>("car"); }
+    world::Wheel3D& wheel(std::string_view id) { return physics.get<world::Wheel3D>(id); }
     Vec3 velocity() { return physics.get<world::RigidBody3D>("car").linear_velocity; }
 };
 
@@ -1046,7 +1040,7 @@ TEST_CASE("a vehicle settles on its suspension, drives, steers and brakes, as Go
     car.physics.step(120);
     // It rests on its springs, which hold its weight.
     for (const std::string_view id : {"front_left", "front_right", "rear_left", "rear_right"}) {
-        const world::VehicleWheel3D& wheel = car.wheel(id);
+        const world::Wheel3D& wheel = car.wheel(id);
         CHECK(wheel.in_contact);
         CHECK(car.physics.world.id_of(wheel.contact_body) == "ground");
         CHECK(wheel.contact_normal.y == doctest::Approx(1.0F));
@@ -1172,14 +1166,14 @@ f 2 7 6
         }
         return found->second;
     });
-    physics.world.ecs().emplace<world::MeshInstance3D>(physics.add("floor", {})).mesh = "floor.obj";
+    physics.world.ecs().emplace<world::Model3D>(physics.add("floor", {})).mesh = "floor.obj";
     const entt::entity ball = physics.add("ball", {0.0F, 2.0F, 0.0F});
     physics.world.ecs().emplace<world::RigidBody3D>(ball);
-    physics.world.ecs().emplace<world::CollisionShape3D>(ball, sphere_shape(0.25F));
-    // The crate's rigid body takes its model's hull as a CollisionShape3D of its own.
+    physics.world.ecs().emplace<world::Collider3D>(ball, sphere_shape(0.25F));
+    // The crate's rigid body takes its model's hull as a Collider3D of its own.
     const entt::entity crate = physics.add("crate", {1.25F, 3.0F, 0.0F});
     physics.world.ecs().emplace<world::RigidBody3D>(crate);
-    physics.world.ecs().emplace<world::MeshInstance3D>(crate).mesh = "crate.obj";
+    physics.world.ecs().emplace<world::Model3D>(crate).mesh = "crate.obj";
     physics.step(180);
     CHECK(physics.position("ball").y == doctest::Approx(0.25F).epsilon(0.02));
     CHECK(physics.position("crate").y == doctest::Approx(0.5F).epsilon(0.02));
@@ -1189,7 +1183,7 @@ f 2 7 6
     CHECK(hit->point.y == doctest::Approx(0.0F));
 
     // Off the floor's model, the ball falls through.
-    physics.get<world::MeshInstance3D>("floor").mesh = "";
+    physics.get<world::Model3D>("floor").mesh = "";
     physics.step(60);
     CHECK(physics.position("ball").y < 0.0F);
 }
@@ -1200,11 +1194,11 @@ namespace {
 entt::entity cloth(Physics& physics, std::string_view id, Vec3 position, float size = 2.0F,
                    int cells = 8) {
     const entt::entity entity = physics.add(id, position);
-    auto& plane = physics.world.ecs().emplace<world::PlaneMesh>(entity);
+    auto& plane = physics.world.ecs().emplace<world::PlaneGeometry>(entity);
     plane.size = {size, size};
     plane.subdivide_width = cells - 1;
     plane.subdivide_depth = cells - 1;
-    physics.world.ecs().emplace<world::MeshInstance3D>(entity);
+    physics.world.ecs().emplace<world::Model3D>(entity);
     physics.world.ecs().emplace<world::SoftBody3D>(entity);
     return entity;
 }
@@ -1277,9 +1271,9 @@ TEST_CASE("pinned points hold still, and those with an attachment follow it") {
     Physics physics;
     // A curtain facing z, its top corners pinned.
     const entt::entity curtain = cloth(physics, "curtain", {0.0F, 2.0F, 0.0F});
-    world::PlaneMesh plane = physics.get<world::PlaneMesh>("curtain");
+    world::PlaneGeometry plane = physics.get<world::PlaneGeometry>("curtain");
     plane.orientation = "z";
-    physics.world.ecs().replace<world::PlaneMesh>(curtain, plane);
+    physics.world.ecs().replace<world::PlaneGeometry>(curtain, plane);
     const int left = vertex_near(plane, {-1.0F, 1.0F, 0.0F});
     const int right = vertex_near(plane, {1.0F, 1.0F, 0.0F});
     const entt::entity hook = physics.add("hook", {1.0F, 3.0F, 0.0F});
@@ -1325,10 +1319,10 @@ TEST_CASE("pressure keeps a soft ball round where one without it flattens") {
         Physics physics;
         physics.floor();
         const entt::entity ball = physics.add("ball", {0.0F, 1.0F, 0.0F});
-        auto& sphere = physics.world.ecs().emplace<world::SphereMesh>(ball);
+        auto& sphere = physics.world.ecs().emplace<world::SphereGeometry>(ball);
         sphere.radial_segments = 16;
         sphere.rings = 8;
-        physics.world.ecs().emplace<world::MeshInstance3D>(ball);
+        physics.world.ecs().emplace<world::Model3D>(ball);
         auto& soft = physics.world.ecs().emplace<world::SoftBody3D>(ball);
         soft.pressure_coefficient = pressure;
         soft.linear_stiffness = 0.1F;
@@ -1399,8 +1393,8 @@ TEST_CASE("soft bodies are made again for a new mesh and dropped with their comp
     Physics physics;
     const entt::entity entity = cloth(physics, "cloth", {}, 2.0F, 2);
     CHECK(points_of(physics, "cloth").points.size() == 9);
-    physics.get<world::PlaneMesh>("cloth").subdivide_width = 2;
-    physics.world.ecs().patch<world::PlaneMesh>(entity);
+    physics.get<world::PlaneGeometry>("cloth").subdivide_width = 2;
+    physics.world.ecs().patch<world::PlaneGeometry>(entity);
     CHECK(points_of(physics, "cloth").points.size() == 12);
     physics.step();
     auto parts = physics.world.memory();
@@ -1413,7 +1407,7 @@ TEST_CASE("soft bodies are made again for a new mesh and dropped with their comp
     CHECK_FALSE(physics3d::soft_body_points(physics.world, entity).has_value());
     // Without a primitive mesh it has none either.
     physics.world.ecs().emplace<world::SoftBody3D>(entity);
-    physics.world.ecs().get<world::MeshInstance3D>(entity).mesh = "crate.glb";
+    physics.world.ecs().get<world::Model3D>(entity).mesh = "crate.glb";
     CHECK_FALSE(physics3d::soft_body_points(physics.world, entity).has_value());
 }
 
@@ -1422,7 +1416,7 @@ TEST_CASE("check_soft_bodies reports what keeps a soft body from being made") {
     const entt::entity bare = physics.add("bare", {});
     physics.world.ecs().emplace<world::SoftBody3D>(bare);
     const entt::entity model = cloth(physics, "model", {});
-    physics.world.ecs().get<world::MeshInstance3D>(model).mesh = "crate.glb";
+    physics.world.ecs().get<world::Model3D>(model).mesh = "crate.glb";
     cloth(physics, "pinned", {}, 2.0F, 2);
     const entt::entity loose = physics.world.create("loose").value();
     physics.get<world::SoftBody3D>("pinned").pinned_points = {
@@ -1437,9 +1431,9 @@ TEST_CASE("check_soft_bodies reports what keeps a soft body from being made") {
     }
     std::sort(found.begin(), found.end());
     CHECK(found == std::vector<std::string>{
-                       "bare /components/SoftBody3D: a soft body needs a MeshInstance3D drawing "
+                       "bare /components/SoftBody3D: a soft body needs a Model3D drawing "
                        "its mesh; it is ignored until it has one",
-                       "model /components/MeshInstance3D/mesh: a soft body simulates a primitive "
+                       "model /components/Model3D/mesh: a soft body simulates a primitive "
                        "mesh component, not a model file, yet",
                        "pinned /components/SoftBody3D/pinned_points/0/point: point 9 is out of "
                        "bounds: the mesh has 9 vertices",

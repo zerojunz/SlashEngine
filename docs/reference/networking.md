@@ -239,11 +239,11 @@ program.
 
 ## Replication
 
-Two components replicate a world, as Godot's `MultiplayerSpawner` and `MultiplayerSynchronizer`
+Two components replicate a world, as Godot's `MultiplayerSpawner` and `NetSync`
 do a scene tree. Every peer loads the same scene with them; only entities with IDs take part.
 
 ```json
-"spawner": {"components": {"MultiplayerSpawner": {
+"spawner": {"components": {"NetSpawner": {
   "spawnable_scenes": ["prefabs/bullet.prefab.json"], "spawn_path": "level"}}},
 ```
 
@@ -251,7 +251,7 @@ do a scene tree. Every peer loads the same scene with them; only entities with I
 {
   "components": {
     "Transform2D": {},
-    "MultiplayerSynchronizer": {"properties": [
+    "NetSync": {"properties": [
       {"path": "Transform2D/position"},
       {"path": "Sprite2D/modulate/a", "spawn": false, "replication_mode": "on_change"}
     ]}
@@ -284,7 +284,7 @@ The enter function runs on a peer that receives a spawn, once the entity is plac
 its synchronizers start, as a spawned scene's `_enter_tree`: the place to give it to the peer
 that controls it.
 
-**Synchronizing.** A `MultiplayerSynchronizer` sends the properties of its root (its own entity,
+**Synchronizing.** A `NetSync` sends the properties of its root (its own entity,
 or `root_path`) from its authority to the peers that can see it. A property's `path` is
 `"Component/field"`, or part of one (`"Transform2D/position/x"`, `"Sprite2D/modulate/a"`):
 
@@ -354,9 +354,9 @@ there is a callback), the server announces and relays, its signals are world eve
 `add_rpc` and `rpc` call procedures on entities by name with Godot's modes, an RPC's ID being its
 index among the entity's procedures (those whose `component` it has) by name. It replicates as
 `SceneReplicationInterface` does, comparing the world with what it tracked at each poll in place
-of Godot's tree signals: a `MultiplayerSpawner`'s authority spawns the entities extending its
+of Godot's tree signals: a `NetSpawner`'s authority spawns the entities extending its
 `spawnable_scenes` placed under its `spawn_path` on each peer that can see them (`spawned` and
-`despawned` events; custom spawns through `set_spawn_function`), and a `MultiplayerSynchronizer`
+`despawned` events; custom spawns through `set_spawn_function`), and a `NetSync`
 sends its root's properties, `"Component/field[/part]"` read and written through reflection, as
 syncs and reliable deltas whose intervals count world time. `src/websocket.cpp` ports
 Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`: natively `WSLPeer` (the handshake, with

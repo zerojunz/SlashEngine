@@ -3,8 +3,8 @@
 // A dungeon floor of stone tiles lies in the dark under a torch. The tile set's atlas source has
 // a normal map that bevels each block's edges and a specular map that makes its middle shine, as
 // a Godot CanvasTexture gives an atlas source, so the torch lights the side of a block that faces
-// it and leaves the far side dim. A HUD panel sits in a CanvasLayer of layer 1, with its own
-// CanvasModulate and a lantern whose layer range is 1 to 1: the lantern lights only the HUD, and
+// it and leaves the far side dim. A HUD panel sits in a ScreenLayer of layer 1, with its own
+// AmbientTint2D and a lantern whose layer range is 1 to 1: the lantern lights only the HUD, and
 // the torch, whose range is 0 to 0, only the world, until its range takes layer 1 too.
 //
 // This program draws the textures, asks light.sample how lit the panel is, asks frame.capture
@@ -124,7 +124,7 @@ int main() {
     const Agent agent;
     agent.call("scene.open", R"({"path": "main.scene.json"})");
 
-    std::puts("-- the panel is in the HUD: dimmed by the HUD's CanvasModulate, lit by the lantern "
+    std::puts("-- the panel is in the HUD: dimmed by the HUD's AmbientTint2D, lit by the lantern "
               "and not the torch");
     agent.call("light.sample", R"({"id": "panel"})");
 

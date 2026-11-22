@@ -1,8 +1,8 @@
 // Avoidance, as Godot's NavigationAgent2D avoidance: main.scene.json has a plaza with a fountain
-// and walkers (NavigationAgent2D with avoidance_enabled): two from the west and two from the east
+// and walkers (NavAgent2D with avoidance_enabled): two from the west and two from the east
 // meeting head on, and a courier crossing them from the north, round the fountain. The courier
 // has the highest avoidance_priority, so it makes way for no one and the others make way for it.
-// A cart (a NavigationObstacle2D with a velocity) rolls across the plaza on its own.
+// A cart (a NavObstacle2D with a velocity) rolls across the plaza on its own.
 //
 // As in a Godot game, gameplay code asks each agent to go toward its next path position by
 // setting its velocity, and moves it at the safe velocity avoidance gives back, which steers it
@@ -40,11 +40,11 @@ float length(Vec2 v) {
 }
 
 // Before the navigation system: each walker asks to head for its next path position, as a
-// Godot script setting NavigationAgent2D.velocity in _physics_process would; a walker that has
+// Godot script setting NavAgent2D.velocity in _physics_process would; a walker that has
 // arrived asks to stand still.
 void steer(world::World& world, double /*seconds*/) {
     for (const auto [entity, agent, transform] :
-         world.ecs().view<world::NavigationAgent2D, world::Transform2D>().each()) {
+         world.ecs().view<world::NavAgent2D, world::Transform2D>().each()) {
         if (navigation::is_navigation_finished(world, entity)) {
             agent.velocity = {};
             continue;
@@ -60,12 +60,12 @@ void steer(world::World& world, double /*seconds*/) {
 void move(world::World& world, double seconds) {
     const auto step = static_cast<float>(seconds);
     for (const auto [entity, agent, transform] :
-         world.ecs().view<world::NavigationAgent2D, world::Transform2D>().each()) {
+         world.ecs().view<world::NavAgent2D, world::Transform2D>().each()) {
         transform.position =
             transform.position + (navigation::safe_velocity_2d(world, entity) * step);
     }
     for (const auto [entity, obstacle, transform] :
-         world.ecs().view<world::NavigationObstacle2D, world::Transform2D>().each()) {
+         world.ecs().view<world::NavObstacle2D, world::Transform2D>().each()) {
         transform.position = transform.position + (obstacle.velocity * step);
     }
 }

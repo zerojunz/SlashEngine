@@ -2,7 +2,7 @@
   "entities": {
     "grass": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "_": "floor",
             "r": "rock"
@@ -16,7 +16,7 @@
     },
     "lawn": {
       "components": {
-        "NavigationRegion2D": {
+        "NavArea2D": {
           "navigation_polygon": "nav/lawn.navpoly.json"
         },
         "Transform2D": {
@@ -27,7 +27,7 @@
     },
     "maze": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "#": "wall",
             "_": "floor",

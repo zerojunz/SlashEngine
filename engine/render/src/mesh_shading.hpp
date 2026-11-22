@@ -39,8 +39,8 @@ template <typename To, typename From>
 }
 
 // The textures a mesh draw samples: albedo, metallic, roughness, emission and normal, then six
-// only terrain shading samples, the first of which holds a VoxelGI atlas and the last a lightmap
-// (mesh_texture_slots).
+// only terrain shading samples, the first of which holds a VoxelLighting3D atlas and the last a
+// lightmap (mesh_texture_slots).
 inline constexpr std::size_t kMeshTextures = 11;
 
 // mesh.hlsl's Surface flags.
@@ -79,7 +79,7 @@ struct MeshInstanceUniforms {
     Mat4 previous_model{}; // model in the frame before
 };
 
-// A VoxelGI a draw traces, as mesh.hlsl's Surface holds it.
+// A VoxelLighting3D a draw traces, as mesh.hlsl's Surface holds it.
 struct MeshVoxelGIUniforms {
     std::array<Float4, 3> rows{}; // the world to its cells' space, a row each
     Float4 size{};                // texels along x, y and z at level 0, then how many levels
@@ -110,7 +110,7 @@ struct MeshSurfaceUniforms {
     Float4 transmittance{};
 };
 
-// A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
+// A draw's textures in mesh.hlsl's slots. A Surface3D's albedo, metallic, roughness,
 // emission and normal textures (a game's shader's texture params in their place), the rest None
 // but the sixth, its VoxelGIs' atlas, and the last, its lightmap; with terrain shading,
 // the color map, splat map and normal map, then the four layers' albedo_bump and their
@@ -561,7 +561,7 @@ struct MeshPixel {
     std::array<Float4, kMeshTextures> texels{white_texels()};
     // The lightmap's light there, as lightmap_light gives it, when the draw has one.
     Float3 lightmap{};
-    // The draw's VoxelGI atlas, when it traces VoxelGIs.
+    // The draw's VoxelLighting3D atlas, when it traces VoxelGIs.
     const Image* voxel_gi = nullptr;
     // The surface its game's shader gives it, in place of the material's, when it has one.
     std::optional<GameSurface> game{}; // NOLINT(readability-redundant-member-init): left out
@@ -660,16 +660,16 @@ struct VoxelGILight {
 // Traces the surface's VoxelGIs through atlas from a point in the world with a shading normal,
 // the direction toward the camera and a roughness, as Godot's gi.glsl: cones for the ambient
 // light (four of 45 degrees, or six narrower ones for high quality) and one along the reflection,
-// each VoxelGI weighed by how far the point is inside its box.
+// each VoxelLighting3D weighed by how far the point is inside its box.
 [[nodiscard]] VoxelGILight trace_voxel_gis(const MeshSurfaceUniforms& surface, bool high_quality,
                                            const Image& atlas, const Float3& world,
                                            const Float3& normal, const Float3& view,
                                            float roughness);
 
-// A VoxelGI as mesh.hlsl's Surface and volumetric_fog.hlsl's Fog hold it.
+// A VoxelLighting3D as mesh.hlsl's Surface and volumetric_fog.hlsl's Fog hold it.
 [[nodiscard]] MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe);
 
-// The light a VoxelGI gives volumetric fog at a point of the world, as Godot's
+// The light a VoxelLighting3D gives volumetric fog at a point of the world, as Godot's
 // volumetric_fog_process.glsl gathers it: each level at the point, front to back by how solid the
 // ones before are, times its energy; nothing outside its box.
 [[nodiscard]] Float3 fog_voxel_gi_light(const MeshVoxelGIUniforms& gi, const Image& atlas,
@@ -842,15 +842,15 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
             if (!std::ranges::all_of(probe.to_cell, [](float v) { return std::isfinite(v); }) ||
                 !finite({probe.energy, probe.bias, probe.normal_bias}) || probe.bias < 0.0F) {
                 return make_error(ErrorCode::InvalidArgument,
-                                  "a VoxelGI's numbers are finite and its bias at least 0");
+                                  "a VoxelLighting3D's numbers are finite and its bias at least 0");
             }
             if (probe.levels == 0 || probe.levels > kMaxVoxelGILevels ||
                 std::ranges::any_of(
                     probe.size, [](std::uint32_t v) { return v == 0 || v > kMaxVoxelGICells; })) {
                 return make_error(ErrorCode::InvalidArgument,
-                                  "a VoxelGI has 1 to " + std::to_string(kMaxVoxelGILevels) +
-                                      " levels and 1 to " + std::to_string(kMaxVoxelGICells) +
-                                      " cells along each axis");
+                                  "a VoxelLighting3D has 1 to " +
+                                      std::to_string(kMaxVoxelGILevels) + " levels and 1 to " +
+                                      std::to_string(kMaxVoxelGICells) + " cells along each axis");
             }
         }
     }

@@ -2,7 +2,7 @@
   "entities": {
     "ball": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 8.0,
           "shape": "circle"
         },
@@ -14,7 +14,7 @@
     },
     "floor": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [640.0, 32.0]
         },
         "StaticBody2D": {},

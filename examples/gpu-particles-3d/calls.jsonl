@@ -5,8 +5,8 @@
 {"jsonrpc":"2.0","id":5,"method":"particles.eval","params":{"id":"streaks","time":2,"list":true,"max_results":1}}
 {"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[57,36],[73,42],[105,38],[80,10]]}}
 {"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"path":"shots/gpu-particles.png"}}
-{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"sparks","components":{"GPUParticles3D":{"emitting":false}}}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"sparks","components":{"GpuEmitter3D":{"emitting":false}}}}
 {"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":90}}
 {"jsonrpc":"2.0","id":10,"method":"particles.eval","params":{"id":"sparks"}}
-{"jsonrpc":"2.0","id":11,"method":"entity.create","params":{"id":"embers","components":{"Transform3D":{},"GPUParticles3D":{}}}}
+{"jsonrpc":"2.0","id":11,"method":"entity.create","params":{"id":"embers","components":{"Transform3D":{},"GpuEmitter3D":{}}}}
 {"jsonrpc":"2.0","id":12,"method":"frame.summary"}

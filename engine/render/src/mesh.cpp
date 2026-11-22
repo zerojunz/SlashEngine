@@ -172,7 +172,7 @@ float v_ggx_anisotropic(float alpha_x, float alpha_y, float t_dot_v, float t_dot
     return std::clamp(0.5F / (lambda_v + lambda_l), 0.0F, 1.0F);
 }
 
-// shaders/mesh.hlsl's Layers: StandardMaterial3D's rim, clearcoat and anisotropy (0 where they
+// shaders/mesh.hlsl's Layers: Surface3D's rim, clearcoat and anisotropy (0 where they
 // are off), with the albedo the rim is tinted toward, the geometry's normal the clearcoat takes
 // and the tangent and binormal the highlight stretches along.
 struct Layers {
@@ -490,7 +490,7 @@ float shadow_thickness(const detail::MeshMaps& maps, bool directional, std::size
     return at[3] - (b / (caster - a));
 }
 
-// What terrain shading gives a pixel, as the HTerrain plugin's Classic4 shader: the ground's
+// What terrain shading gives a pixel, as the Terrain3D plugin's Classic4 shader: the ground's
 // albedo (linear), roughness, and normal and the terrain's own normal, in the mesh's space.
 struct TerrainTexel {
     Float3 albedo{};
@@ -499,7 +499,7 @@ struct TerrainTexel {
     Float3 shape{0.0F, 1.0F, 0.0F};
 };
 
-// get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
+// get_depth_blended_weights in Terrain3D's shader: the splat map's weights, sharpened where one
 // layer's bump stands above the others.
 Float4 depth_blended_weights(const Float4& splat, const Float4& bumps) {
     constexpr float kDh = 0.2F;
@@ -967,7 +967,7 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     }
     std::uint32_t terrain = 0;
     if (material.terrain.enabled) {
-        // The color map's alpha cuts holes, in the mesh and its shadows, as HTerrain's shader
+        // The color map's alpha cuts holes, in the mesh and its shadows, as Terrain3D's shader
         // discards pixels under 0.5. The emission and normal textures' slots hold ground layers.
         flags |= kMeshAlphaScissor | kMeshHasAlpha;
         flags &= ~(kMeshEmissionTexture | kMeshNormalMap | kMeshAlphaHash);

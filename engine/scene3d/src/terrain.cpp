@@ -1,4 +1,4 @@
-// Heightmap terrains, as the HTerrain plugin for Godot (zylann.hterrain, MIT): its data and range
+// Heightmap terrains, as the Terrain3D plugin for Godot (zylann.hterrain, MIT): its data and range
 // map (hterrain_data.gd, hterrain_data_range_map.gd), quad tree (util/quad_tree_lod.gd), chunk
 // seams (hterrain.gd's _update_chunk) and mesher (hterrain_mesher.gd), its generator's
 // perlin_noise and erode shaders and its brushes' shaders, ported to the CPU.
@@ -39,7 +39,7 @@
 namespace slash::scene3d {
 namespace {
 
-constexpr std::string_view kField = "/components/HTerrain";
+constexpr std::string_view kField = "/components/Terrain3D";
 constexpr int kMinResolution = 65;
 constexpr int kMaxResolution = 4097;
 constexpr int kMaxTextures = 4;
@@ -86,7 +86,7 @@ std::string field(std::string_view name) {
 
 std::vector<entt::entity> terrains(const world::World& world) {
     std::vector<entt::entity> out;
-    for (const entt::entity entity : world.ecs().view<const world::HTerrain>()) {
+    for (const entt::entity entity : world.ecs().view<const world::Terrain3D>()) {
         out.push_back(entity);
     }
     std::ranges::sort(out, {}, [](entt::entity entity) { return entt::to_entity(entity); });
@@ -107,7 +107,7 @@ struct Sources {
     friend bool operator==(const Sources&, const Sources&) = default;
 };
 
-// The parts of an HTerrain its data is made from.
+// The parts of an Terrain3D its data is made from.
 struct Settings {
     std::string heightmap;
     int resolution = 0;
@@ -119,7 +119,7 @@ struct Settings {
     friend bool operator==(const Settings&, const Settings&) = default;
 };
 
-Settings settings_of(const world::HTerrain& terrain) {
+Settings settings_of(const world::Terrain3D& terrain) {
     return {.heightmap = terrain.heightmap,
             .resolution = terrain.resolution,
             .height_range = terrain.height_range,
@@ -144,7 +144,7 @@ void load(const std::string& path, const Loader& loader, std::shared_ptr<const T
     }
 }
 
-Sources sources_of(const world::HTerrain& terrain, const HeightmapLoader& heightmaps,
+Sources sources_of(const world::Terrain3D& terrain, const HeightmapLoader& heightmaps,
                    const ImageLoader& images) {
     Sources sources;
     load(terrain.heightmap, heightmaps, sources.heights, sources.heights_error);
@@ -193,7 +193,7 @@ void dig_crater(std::vector<float>& heights, int resolution, const world::Terrai
 
 namespace {
 
-std::shared_ptr<const TerrainData> make_data(const world::HTerrain& terrain, entt::entity entity,
+std::shared_ptr<const TerrainData> make_data(const world::Terrain3D& terrain, entt::entity entity,
                                              const Sources& sources) {
     auto data = std::make_shared<TerrainData>();
     data->version = next_version();
@@ -338,7 +338,7 @@ ImageLoader file_images(const world::World& world) {
     };
 }
 
-// ---- Noise, as HTerrain's perlin_noise shader: Stefan Gustavson's classic Perlin noise
+// ---- Noise, as Terrain3D's perlin_noise shader: Stefan Gustavson's classic Perlin noise
 // (webgl-noise).
 //
 // Copyright (C) 2011 by Ashima Arts (Simplex noise)
@@ -449,7 +449,7 @@ float squareish_distance(Vec2 a, Vec2 b, float r, float s) {
 }
 
 // A height from noise h, 0 to 1, at a cell: curved, shaped into an island and put between
-// base_height and base_height + height_range, as HTerrain's perlin_noise shader does.
+// base_height and base_height + height_range, as Terrain3D's perlin_noise shader does.
 float shape_height(const TerrainNoise& noise, float h, Vec2 pos, float terrain_size) {
     // pow(h, curve), with h kept from going below 0, where GLSL's pow is undefined.
     h = h > 0.0F ? slash::exp(noise.curve * slash::ln(h)) : 0.0F;
@@ -490,7 +490,7 @@ float sample(const std::vector<float>& heights, int resolution, float x, float z
     return lerp(lerp(at(x0, z0), at(x1, z0), fx), lerp(at(x0, z1), at(x1, z1), fx), fz);
 }
 
-// One pass of HTerrain's erode shader: a morphological erosion and dilation by a disc of radius
+// One pass of Terrain3D's erode shader: a morphological erosion and dilation by a disc of radius
 // 3 a third of a cell apart, mixed by weight, then by slope.
 std::vector<float> erode(const std::vector<float>& heights, int resolution,
                          const TerrainNoise& noise) {
@@ -556,7 +556,7 @@ float brush_value(const BrushDab& dab, int x, int z) {
     return dab.opacity * (d <= inner ? 1.0F : smoothstep(dab.radius, inner, d));
 }
 
-// apply_slope_limit of HTerrain's splat4 and color shaders.
+// apply_slope_limit of Terrain3D's splat4 and color shaders.
 float slope_limit(float value, float normal_y, float min_y, float max_y) {
     constexpr float kFalloff = 0.2F;
     min_y = min_y <= 0.0F ? -2.0F : min_y;
@@ -693,7 +693,7 @@ render::Gray16 encode_heights(const std::vector<float>& heights, int resolution,
 
 std::shared_ptr<const TerrainData> terrain_data(const world::World& world, entt::entity entity) {
     const auto* terrain =
-        world.valid(entity) ? world.ecs().try_get<const world::HTerrain>(entity) : nullptr;
+        world.valid(entity) ? world.ecs().try_get<const world::Terrain3D>(entity) : nullptr;
     if (terrain == nullptr) {
         return std::make_shared<const TerrainData>();
     }
@@ -713,7 +713,7 @@ std::shared_ptr<const TerrainData> terrain_data(const world::World& world, entt:
     std::shared_ptr<const TerrainData> data = make_data(*terrain, entity, sources);
     // Terrains that are gone go with it.
     std::erase_if(cache->entries, [&](const auto& entry) {
-        return !world.valid(entry.first) || !world.ecs().all_of<world::HTerrain>(entry.first);
+        return !world.valid(entry.first) || !world.ecs().all_of<world::Terrain3D>(entry.first);
     });
     cache->entries.insert_or_assign(entity, TerrainCache::Entry{.settings = std::move(settings),
                                                                 .sources = std::move(sources),
@@ -741,7 +741,7 @@ void install_terrain(world::World& world, HeightmapLoader heightmaps, ImageLoade
                             [cache](const world::World& /*world*/) { return cache->memory(); });
 }
 
-world::Affine3D terrain_transform(const world::HTerrain& terrain, int resolution,
+world::Affine3D terrain_transform(const world::Terrain3D& terrain, int resolution,
                                   const world::Affine3D& global) {
     world::Affine3D internal = global;
     internal.x = global.x * terrain.map_scale.x;
@@ -1064,7 +1064,7 @@ std::vector<TerrainBody> terrain_bodies(const world::World& world) {
     std::vector<TerrainBody> bodies;
     const auto& ecs = world.ecs();
     for (const entt::entity entity : terrains(world)) {
-        const auto& terrain = ecs.get<const world::HTerrain>(entity);
+        const auto& terrain = ecs.get<const world::Terrain3D>(entity);
         if (!terrain.collision_enabled) {
             continue;
         }
@@ -1088,7 +1088,7 @@ std::vector<Problem> check_terrains(const world::World& world) {
     std::vector<Problem> problems;
     const auto& ecs = world.ecs();
     for (const entt::entity entity : terrains(world)) {
-        const auto& terrain = ecs.get<const world::HTerrain>(entity);
+        const auto& terrain = ecs.get<const world::Terrain3D>(entity);
         if (!valid_chunk_size(terrain.chunk_size)) {
             problems.push_back({entity, field("chunk_size"),
                                 "is 16, 32 or 64, not " + std::to_string(terrain.chunk_size)});
@@ -1098,10 +1098,10 @@ std::vector<Problem> check_terrains(const world::World& world) {
                                 "has " + std::to_string(terrain.textures.size()) +
                                     " textures; a terrain shades with at most 4"});
         }
-        if (ecs.any_of<world::RigidBody3D, world::CharacterBody3D, world::AnimatableBody3D,
-                       world::StaticBody3D, world::Area3D>(entity)) {
+        if (ecs.any_of<world::RigidBody3D, world::CharacterMover3D, world::MovingBody3D,
+                       world::StaticBody3D, world::Zone3D>(entity)) {
             problems.push_back({entity, std::string(kField),
-                                "is on a physics body, so it doesn't collide: put the HTerrain "
+                                "is on a physics body, so it doesn't collide: put the Terrain3D "
                                 "on an entity of its own"});
         }
         const std::shared_ptr<const TerrainData> data = terrain_data(world, entity);
@@ -1117,7 +1117,7 @@ std::vector<float> generate_heights(const TerrainNoise& noise, int resolution,
     std::vector<float> heights(static_cast<std::size_t>(resolution) *
                                static_cast<std::size_t>(resolution));
     const auto size = static_cast<float>(resolution);
-    // HTerrain's dialog turns its scale into the shader's: 512 / scale, as its 512 pixel
+    // Terrain3D's dialog turns its scale into the shader's: 512 / scale, as its 512 pixel
     // viewport spans the terrain.
     constexpr float kViewport = 512.0F;
     const float noise_scale = std::abs(noise.scale) < 0.01F ? 0.0F : kViewport / noise.scale;

@@ -2,7 +2,7 @@
   "entities": {
     "crate": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [64.0, 64.0]
         },
         "Destructible2D": {
@@ -25,7 +25,7 @@
     },
     "ground": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [800.0, 20.0]
         },
         "StaticBody2D": {},
@@ -36,7 +36,7 @@
     },
     "old_crate": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [64.0, 64.0]
         },
         "Destructible2D": {

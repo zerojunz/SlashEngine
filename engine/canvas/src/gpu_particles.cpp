@@ -20,7 +20,7 @@
 namespace slash::canvas {
 namespace {
 
-using world::GPUParticles2D;
+using world::GpuEmitter2D;
 
 // A new number for each emitter made, in any world.
 std::uint64_t next_serial() {
@@ -43,7 +43,7 @@ struct Collision {
     float size = 1.0F;
 };
 
-// One GPUParticles2D's state: Godot's GPUParticles2D node and its particles storage, and the
+// One GpuEmitter2D's state: Godot's GPUParticles2D node and its particles storage, and the
 // steps kept.
 struct Emitter {
     std::uint64_t serial = next_serial();
@@ -246,13 +246,13 @@ void keep_chain(std::span<Emitter* const> links, std::span<const render::Particl
     }
 }
 
-std::uint32_t amount_of(const GPUParticles2D& settings) {
+std::uint32_t amount_of(const GpuEmitter2D& settings) {
     return static_cast<std::uint32_t>(
         std::clamp(settings.amount, 1, static_cast<int>(render::kMaxParticles)));
 }
 
 // The particles of each trail: the particle and a copy for each section, or 1 for none.
-std::uint32_t trail_of(const GPUParticles2D& settings) {
+std::uint32_t trail_of(const GpuEmitter2D& settings) {
     if (!settings.trail_enabled) {
         return 1;
     }
@@ -263,13 +263,13 @@ std::uint32_t trail_of(const GPUParticles2D& settings) {
 
 // The steps a second an emitter takes, 0 for one a tick: fixed_fps, or 60 for trails, as
 // Godot's particles storage.
-int fixed_fps_of(const GPUParticles2D& settings) {
+int fixed_fps_of(const GpuEmitter2D& settings) {
     const int fixed_fps = std::clamp(settings.fixed_fps, 0, 1000);
     return fixed_fps == 0 && settings.trail_enabled ? 60 : fixed_fps;
 }
 
 // The steps a trail spans: Godot's trail_lifetime times its fixed rate, rounded down.
-std::uint32_t trail_steps_of(const GPUParticles2D& settings) {
+std::uint32_t trail_steps_of(const GpuEmitter2D& settings) {
     if (!settings.trail_enabled) {
         return 1;
     }
@@ -279,12 +279,12 @@ std::uint32_t trail_steps_of(const GPUParticles2D& settings) {
         std::clamp(steps, 1.0, static_cast<double>(render::kMaxParticleTrailSteps)));
 }
 
-double lifetime_of(const GPUParticles2D& settings) {
+double lifetime_of(const GpuEmitter2D& settings) {
     return std::max(static_cast<double>(settings.lifetime), 0.001);
 }
 
 // GPUParticles2D::set_emitting.
-void set_emitting(Emitter& e, const GPUParticles2D& settings, bool emitting, bool first) {
+void set_emitting(Emitter& e, const GpuEmitter2D& settings, bool emitting, bool first) {
     if (emitting && emitting != e.emitting && !settings.use_fixed_seed && settings.one_shot &&
         !first) {
         ++e.restarts;
@@ -316,7 +316,7 @@ void set_emitting(Emitter& e, const GPUParticles2D& settings, bool emitting, boo
 // particles start, so its own emitting, one_shot, fixed_fps and preprocess go unused.
 struct SubLink {
     Emitter* emitter = nullptr;
-    const GPUParticles2D* settings = nullptr;
+    const GpuEmitter2D* settings = nullptr;
     std::array<float, 6> emission{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
     Vec2 velocity;
     std::uint32_t seed = 0;
@@ -326,7 +326,7 @@ struct SubLink {
 // The seconds an emitter's particles may live after it stops: 1.2 lifetimes, as Godot's
 // storage waits, and its trails' copies run on behind them. Godot stops drawing then, cutting
 // off longer trails; here they run out.
-double idle_of(const GPUParticles2D& settings) {
+double idle_of(const GpuEmitter2D& settings) {
     return (lifetime_of(settings) * 1.2) +
            (settings.trail_enabled ? static_cast<double>(std::max(settings.trail_lifetime, 0.0F))
                                    : 0.0);
@@ -334,7 +334,7 @@ double idle_of(const GPUParticles2D& settings) {
 
 // How long an emitter stays active once it stops emitting, in its own seconds: until its last
 // particles have had time to die, and those its sub-emitters started from them.
-double idle_limit(const GPUParticles2D& settings, std::span<const SubLink> subs) {
+double idle_limit(const GpuEmitter2D& settings, std::span<const SubLink> subs) {
     double limit = idle_of(settings);
     for (const SubLink& sub : subs) {
         double idle = idle_of(*sub.settings);
@@ -349,7 +349,7 @@ double idle_limit(const GPUParticles2D& settings, std::span<const SubLink> subs)
 
 class Stepper {
 public:
-    Stepper(const GPUParticles2D& settings, const world::Transform2D& transform, Vec2 velocity,
+    Stepper(const GpuEmitter2D& settings, const world::Transform2D& transform, Vec2 velocity,
             std::uint32_t seed, const Collision* collision, std::span<SubLink> subs = {})
         : s_(settings), transform_(transform), velocity_(velocity), seed_(seed),
           collision_(collision), subs_(subs), idle_(idle_limit(settings, subs)) {}
@@ -414,7 +414,7 @@ public:
     // A sub-emitter's step for its root's step of delta: as many of its own seconds as its
     // speed_scale makes them, emitting nothing of its own.
     [[nodiscard]] render::ParticleStep sub_step(SubLink& sub, double delta, bool clear) const {
-        const GPUParticles2D& settings = *sub.settings;
+        const GpuEmitter2D& settings = *sub.settings;
         Emitter& e = *sub.emitter;
         double own = 0.0;
         if (s_.speed_scale > 0.0F) {
@@ -527,7 +527,7 @@ public:
     }
 
 private:
-    const GPUParticles2D& s_;
+    const GpuEmitter2D& s_;
     const world::Transform2D& transform_;
     Vec2 velocity_;
     std::uint32_t seed_;
@@ -538,7 +538,7 @@ private:
 
 // One tick of an emitter: the node's part, which may set the component's emitting, then the
 // storage's. Returns whether a one_shot finished.
-bool tick(Emitter& e, GPUParticles2D& settings, const world::Transform2D& transform,
+bool tick(Emitter& e, GpuEmitter2D& settings, const world::Transform2D& transform,
           std::string_view id, double seconds, const Collision* collision = nullptr,
           std::span<SubLink> subs = {}) {
     const std::uint32_t amount = amount_of(settings);
@@ -615,7 +615,7 @@ public:
         : world_(world), tree_(tree), assets_(assets) {}
 
     // What an emitter collides with this tick, if its process material collides.
-    [[nodiscard]] std::optional<Collision> of(entt::entity entity, const GPUParticles2D& settings,
+    [[nodiscard]] std::optional<Collision> of(entt::entity entity, const GpuEmitter2D& settings,
                                               const world::Transform2D& global) {
         if (assets_ == nullptr || settings.process_material.empty()) {
             return std::nullopt;
@@ -747,8 +747,8 @@ private:
             std::ranges::sort(entities, {}, [](entt::entity e) { return entt::to_entity(e); });
             return entities;
         };
-        for (const entt::entity entity : in_order(ecs.view<const world::LightOccluder2D>())) {
-            const auto& occluder = ecs.get<world::LightOccluder2D>(entity);
+        for (const entt::entity entity : in_order(ecs.view<const world::Occluder2D>())) {
+            const auto& occluder = ecs.get<world::Occluder2D>(entity);
             const std::size_t canvas = canvases_->of(entity);
             if (!occluder.sdf_collision || !all[canvas].visible) {
                 continue;
@@ -761,8 +761,8 @@ private:
             }
             add(points, occluder.closed);
         }
-        for (const entt::entity entity : in_order(ecs.view<const world::TileMapLayer>())) {
-            const auto& layer = ecs.get<world::TileMapLayer>(entity);
+        for (const entt::entity entity : in_order(ecs.view<const world::TileLayer2D>())) {
+            const auto& layer = ecs.get<world::TileLayer2D>(entity);
             const std::size_t canvas = canvases_->of(entity);
             if (!all[canvas].visible || !layer.visible || !layer.occlusion_enabled ||
                 layer.tile_set.empty()) {
@@ -808,8 +808,8 @@ private:
     std::size_t points_ = 0;
 };
 
-// The chains of sub-emitters in a world, the root first: each GPUParticles2D's sub_emitter, in
-// the order of their keys, where it names another GPUParticles2D that no other has claimed, that
+// The chains of sub-emitters in a world, the root first: each GpuEmitter2D's sub_emitter, in
+// the order of their keys, where it names another GpuEmitter2D that no other has claimed, that
 // isn't one before it in its chain and that keeps the chain to render::kMaxParticleChain. Those
 // left out go in left_out, with why.
 std::vector<std::vector<entt::entity>>
@@ -825,7 +825,7 @@ particle_chains(const world::World& world,
         }
     };
     for (const auto& [key, entity] : by_key) {
-        const entt::entity sub = ecs.get<GPUParticles2D>(entity).sub_emitter;
+        const entt::entity sub = ecs.get<GpuEmitter2D>(entity).sub_emitter;
         if (sub == entt::null) {
             continue;
         }
@@ -837,8 +837,8 @@ particle_chains(const world::World& world,
             leave_out(key, "its sub-emitter no longer exists");
             continue;
         }
-        if (!ecs.all_of<GPUParticles2D>(sub)) {
-            leave_out(key, "\"" + key_of(world, sub) + "\" has no GPUParticles2D");
+        if (!ecs.all_of<GpuEmitter2D>(sub)) {
+            leave_out(key, "\"" + key_of(world, sub) + "\" has no GpuEmitter2D");
             continue;
         }
         if (const auto claimed = parent_of.find(sub); claimed != parent_of.end()) {
@@ -895,10 +895,10 @@ particle_chains(const world::World& world,
     return chains;
 }
 
-// Every GPUParticles2D in a world by its key.
+// Every GpuEmitter2D in a world by its key.
 std::map<std::string, entt::entity, std::less<>> emitters_by_key(const world::World& world) {
     std::map<std::string, entt::entity, std::less<>> by_key;
-    for (const entt::entity entity : world.ecs().view<GPUParticles2D>()) {
+    for (const entt::entity entity : world.ecs().view<GpuEmitter2D>()) {
         by_key.emplace(key_of(world, entity), entity);
     }
     return by_key;
@@ -932,11 +932,11 @@ struct GpuParticleSystem {
         for (const auto& chain : chains) {
             in_chain.insert(chain.begin(), chain.end());
         }
-        for (const entt::entity entity : ecs.view<GPUParticles2D>()) {
+        for (const entt::entity entity : ecs.view<GpuEmitter2D>()) {
             if (in_chain.contains(entity)) {
                 continue;
             }
-            auto& component = ecs.get<GPUParticles2D>(entity);
+            auto& component = ecs.get<GpuEmitter2D>(entity);
             const world::Transform2D global = tree.global(entity);
             const std::optional<Collision> collision = colliders.of(entity, component, global);
             if (tick(emitter(key_of(world, entity), ""), component, global, world.id_of(entity),
@@ -957,7 +957,7 @@ struct GpuParticleSystem {
         std::vector<std::string> keys;
         std::string signature;
         for (const entt::entity entity : chain) {
-            const auto& settings = ecs.get<GPUParticles2D>(entity);
+            const auto& settings = ecs.get<GpuEmitter2D>(entity);
             keys.push_back(key_of(world, entity));
             signature += (signature.empty() ? "" : ">") + keys.back() + ":" +
                          std::to_string(amount_of(settings)) + "/" +
@@ -974,7 +974,7 @@ struct GpuParticleSystem {
                 e.members.assign(chain.begin(), chain.end());
                 continue;
             }
-            const auto& settings = ecs.get<GPUParticles2D>(chain[k]);
+            const auto& settings = ecs.get<GpuEmitter2D>(chain[k]);
             const world::Transform2D global = tree.global(chain[k]);
             SubLink& sub = subs[k - 1];
             sub.emitter = &e;
@@ -992,7 +992,7 @@ struct GpuParticleSystem {
             sub.seed = gpu_particle_seed(settings, world.id_of(chain[k]), 0);
             sub.collision = colliders.of(chain[k], settings, global);
         }
-        auto& root = ecs.get<GPUParticles2D>(chain.front());
+        auto& root = ecs.get<GpuEmitter2D>(chain.front());
         const world::Transform2D global = tree.global(chain.front());
         const std::optional<Collision> collision = colliders.of(chain.front(), root, global);
         if (tick(emitter(keys.front(), signature), root, global, world.id_of(chain.front()),
@@ -1023,7 +1023,7 @@ struct GpuParticleSystem {
 
 } // namespace
 
-std::uint32_t gpu_particle_seed(const GPUParticles2D& settings, std::string_view id,
+std::uint32_t gpu_particle_seed(const GpuEmitter2D& settings, std::string_view id,
                                 std::uint32_t restarts) {
     if (settings.use_fixed_seed) {
         return static_cast<std::uint32_t>(settings.seed);
@@ -1052,17 +1052,16 @@ void add_gpu_particles_system(world::World& world, asset::Assets* assets) {
     world.add_system(
         "gpu_particles_2d",
         [system](world::World& w, double tick_seconds) { system->run_all(w, tick_seconds); },
-        {.doc = "Steps each GPUParticles2D's emission for renderers to run.",
+        {.doc = "Steps each GpuEmitter2D's emission for renderers to run.",
          .priority = 1110,
          .threaded = true,
-         .reads = {"Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
-                   "Camera2D"},
-         .writes = {"GPUParticles2D", "assets"}});
+         .reads = {"Transform2D", "Occluder2D", "TileLayer2D", "ScreenLayer", "Widget", "Camera2D"},
+         .writes = {"GpuEmitter2D", "assets"}});
 }
 
 std::optional<ParticleSteps> particle_steps(const world::World& world, entt::entity entity) {
     const auto* system = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem>>();
-    if (system == nullptr || !world.ecs().all_of<GPUParticles2D>(entity)) {
+    if (system == nullptr || !world.ecs().all_of<GpuEmitter2D>(entity)) {
         return std::nullopt;
     }
     const auto found = (*system)->emitters.find(key_of(world, entity));
@@ -1102,7 +1101,7 @@ std::vector<ParticleChainMember> particle_chain(const world::World& world, entt:
         if (!ecs.valid(at) || key_of(world, at) != key) {
             at = world.find(key);
         }
-        if (at == entt::null || !ecs.all_of<GPUParticles2D>(at)) {
+        if (at == entt::null || !ecs.all_of<GpuEmitter2D>(at)) {
             return {};
         }
         std::optional<ParticleSteps> steps = particle_steps(world, at);
@@ -1176,7 +1175,7 @@ std::vector<json::ValidationError> check_sub_emitters(const world::ComponentRegi
     }
     for (SubEmitterProblem& problem : check_sub_emitters(world)) {
         errors.push_back({"/entities/" + json::pointer_escape(problem.id) +
-                              "/components/GPUParticles2D/sub_emitter",
+                              "/components/GpuEmitter2D/sub_emitter",
                           std::move(problem.message)});
     }
     return errors;
@@ -1253,9 +1252,9 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
     if (!kept || kept->steps.empty()) {
         return std::vector<render::Particle>{};
     }
-    const auto& settings = world.ecs().get<GPUParticles2D>(entity);
-    const auto process_of = [&](const GPUParticles2D& emitter)
-        -> Result<std::shared_ptr<const render::ParticleProcess>> {
+    const auto& settings = world.ecs().get<GpuEmitter2D>(entity);
+    const auto process_of =
+        [&](const GpuEmitter2D& emitter) -> Result<std::shared_ptr<const render::ParticleProcess>> {
         if (emitter.process_material.empty()) {
             return std::make_shared<const render::ParticleProcess>();
         }
@@ -1280,7 +1279,7 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
         std::vector<std::shared_ptr<const render::ParticleProcess>> processes;
         std::vector<ChainRun> runs;
         for (const ParticleChainMember& member : chain) {
-            auto process = process_of(world.ecs().get<GPUParticles2D>(member.entity));
+            auto process = process_of(world.ecs().get<GpuEmitter2D>(member.entity));
             if (!process) {
                 return process.error();
             }
@@ -1300,7 +1299,7 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
     return live(run_steps(kept->amount, *process.value(), kept->steps, kept->shapes, kept->trail));
 }
 
-std::vector<render::Particle> simulate(const GPUParticles2D& settings,
+std::vector<render::Particle> simulate(const GpuEmitter2D& settings,
                                        const render::ParticleProcess& process,
                                        const world::Transform2D& transform, std::string_view id,
                                        double seconds, double tick_seconds,
@@ -1311,7 +1310,7 @@ std::vector<render::Particle> simulate(const GPUParticles2D& settings,
     if (tick_seconds <= 0.0) {
         return {};
     }
-    GPUParticles2D copy = settings;
+    GpuEmitter2D copy = settings;
     Emitter emitter;
     const auto ticks =
         static_cast<std::int64_t>(std::ceil((std::max(seconds, 0.0) / tick_seconds) - 1e-9));

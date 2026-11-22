@@ -1,6 +1,6 @@
 // 2D destruction, as physics3d's (Godot has none; Chaos's geometry collections and connection
 // graph are the model): a Destructible2D's outline is cut into cells (world::fracture_sites)
-// with Clipper2, and each piece becomes a RigidBody2D with a CollisionPolygon2D and a Polygon2D
+// with Clipper2, and each piece becomes a RigidBody2D with a PolygonCollider2D and a Polygon2D
 // drawing its part of the body's look (FracturePiece2D). Health, damage states, levels of
 // pieces, linked standing pieces and their stress follow the body's .damage.json profile as in
 // 3D, with y down.
@@ -92,16 +92,15 @@ std::pair<Vec2, Vec2> bounds_of(const Polygon& polygon) {
     return {low, high};
 }
 
-// The outline a body breaks along, in its own space: its CollisionPolygon2D's, its
-// CollisionShape2D's or its Sprite2D's region, counterclockwise as Clipper2 likes it.
+// The outline a body breaks along, in its own space: its PolygonCollider2D's, its
+// Collider2D's or its Sprite2D's region, counterclockwise as Clipper2 likes it.
 std::optional<Polygon> outline_of(const world::World& world, entt::entity entity) {
     const auto& ecs = world.ecs();
     Polygon out;
-    if (const auto* polygon = ecs.try_get<const world::CollisionPolygon2D>(entity);
+    if (const auto* polygon = ecs.try_get<const world::PolygonCollider2D>(entity);
         polygon != nullptr && polygon->polygon.size() >= 3) {
         out = polygon->polygon;
-    } else if (const auto* shape = ecs.try_get<const world::CollisionShape2D>(entity);
-               shape != nullptr) {
+    } else if (const auto* shape = ecs.try_get<const world::Collider2D>(entity); shape != nullptr) {
         const Vec2f turn = cos_sin(shape->rotation);
         const auto place = [&](Vec2 p) {
             return Vec2{shape->position.x + (p.x * turn.x) - (p.y * turn.y),
@@ -679,7 +678,7 @@ std::string deform_body_2d(world::World& world, entt::entity entity,
     }
     const bool explosive = kind == "explosive";
     // A tile map layer loses the cells a blast reaches.
-    if (ecs.all_of<world::TileMapLayer>(entity)) {
+    if (ecs.all_of<world::TileLayer2D>(entity)) {
         const auto* carver = ecs.ctx().find<TileCarver>();
         if (!explosive || deform.carve <= 0.0F || carver == nullptr || !*carver) {
             return {};
@@ -761,7 +760,7 @@ std::string deform_body_2d(world::World& world, entt::entity entity,
         if (auto part_look = look_of(world, entity, parts[i]); part_look.has_value()) {
             ecs.emplace<world::Polygon2D>(out, std::move(*part_look));
         }
-        ecs.emplace<world::CollisionPolygon2D>(out, world::CollisionPolygon2D{.polygon = parts[i]});
+        ecs.emplace<world::PolygonCollider2D>(out, world::PolygonCollider2D{.polygon = parts[i]});
         world::RigidBody2D body;
         const real_t area = std::abs(area_of(parts[i])) * scale * scale;
         body.mass = std::max(
@@ -788,12 +787,12 @@ std::string deform_body_2d(world::World& world, entt::entity entity,
         rigid->mass =
             std::max(static_cast<float>(rigid->mass * area_of(parts.front()) / total), 0.001F);
     }
-    ecs.remove<world::CollisionShape2D>(entity);
-    if (auto* shape = ecs.try_get<world::CollisionPolygon2D>(entity); shape != nullptr) {
+    ecs.remove<world::Collider2D>(entity);
+    if (auto* shape = ecs.try_get<world::PolygonCollider2D>(entity); shape != nullptr) {
         shape->polygon = parts.front();
     } else {
-        ecs.emplace<world::CollisionPolygon2D>(entity,
-                                               world::CollisionPolygon2D{.polygon = parts.front()});
+        ecs.emplace<world::PolygonCollider2D>(entity,
+                                              world::PolygonCollider2D{.polygon = parts.front()});
     }
     if (look.has_value()) {
         ecs.remove<world::Sprite2D>(entity);
@@ -907,8 +906,8 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
     const std::optional<Polygon> outline = outline_of(world, entity);
     if (!outline.has_value()) {
         return Error{.code = ErrorCode::InvalidArgument,
-                     .message = "can't break: it has no outline; give it a CollisionPolygon2D, a "
-                                "CollisionShape2D or a Sprite2D with a region"};
+                     .message = "can't break: it has no outline; give it a PolygonCollider2D, a "
+                                "Collider2D or a Sprite2D with a region"};
     }
     const world::Tree2D tree(world);
     Transform2D place = tree.global(entity);
@@ -1043,9 +1042,9 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
         if (auto look = look_of(world, entity, piece.polygon); look.has_value()) {
             ecs.emplace<world::Polygon2D>(out, std::move(*look));
         }
-        world::CollisionPolygon2D shape;
+        world::PolygonCollider2D shape;
         shape.polygon = piece.polygon;
-        ecs.emplace<world::CollisionPolygon2D>(out, std::move(shape));
+        ecs.emplace<world::PolygonCollider2D>(out, std::move(shape));
         world::RigidBody2D body = base;
         const real_t share = total > 0.0F ? area_of(piece.polygon) / total
                                           : 1.0F / static_cast<real_t>(pieces.size());
@@ -1104,7 +1103,7 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
         for (const world::FractureLink& link : parent_links) {
             const entt::entity other = world.find(link.piece);
             const auto* outline_other =
-                other != entt::null ? ecs.try_get<const world::CollisionPolygon2D>(other) : nullptr;
+                other != entt::null ? ecs.try_get<const world::PolygonCollider2D>(other) : nullptr;
             if (outline_other == nullptr) {
                 continue;
             }
@@ -1208,7 +1207,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
     if (const detail::Space* space = detail::find_space(world); space != nullptr) {
         down = space->settings().gravity_vector * space->settings().gravity;
     }
-    world::CPUParticles2D particles;
+    world::Emitter2D particles;
     particles.amount = amount;
     particles.lifetime = effect.lifetime;
     particles.one_shot = true;
@@ -1238,7 +1237,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
         particles.angular_velocity_max = 360.0F;
     }
     ecs.emplace<Transform2D>(made, placed_at(at, 0.0F));
-    ecs.emplace<world::CPUParticles2D>(made, std::move(particles));
+    ecs.emplace<world::Emitter2D>(made, std::move(particles));
     ecs.emplace<world::DamageEffect>(
         made, world::DamageEffect{.lifetime = effect.lifetime * 1.5F, .body = std::string(body)});
     return std::string(world.id_of(made));
@@ -1282,14 +1281,14 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
     if (!set.sound.stream.empty()) {
         if (const entt::entity sound = create_effect(world, body, "sound"); sound != entt::null) {
             ecs.emplace<Transform2D>(sound, placed_at(at, 0.0F));
-            world::AudioStreamPlayer2D player;
+            world::SoundPlayer2D player;
             player.stream = set.sound.stream;
             player.volume_db = set.sound.volume_db;
             player.pitch_scale = set.sound.pitch_scale;
             player.bus = set.sound.bus;
             player.autoplay = true;
             player.playing = true;
-            ecs.emplace<world::AudioStreamPlayer2D>(sound, std::move(player));
+            ecs.emplace<world::SoundPlayer2D>(sound, std::move(player));
             ecs.emplace<world::DamageEffect>(
                 sound,
                 world::DamageEffect{.lifetime = set.sound.lifetime, .body = std::string(body)});
@@ -1316,7 +1315,7 @@ Vec2 middle_of(const world::World& world, entt::entity entity) {
     const world::Tree2D tree(world);
     const Transform2D place = tree.global(entity);
     if (kind_of(world.ecs(), entity) == BodyKind::Thing &&
-        !world.ecs().all_of<world::TileMapLayer>(entity)) {
+        !world.ecs().all_of<world::TileLayer2D>(entity)) {
         if (const auto outline = outline_of(world, entity); outline.has_value()) {
             return world::affine(place).apply(centroid_of(*outline));
         }
@@ -1559,7 +1558,7 @@ std::vector<DamageReport2D> damage_area_2d(world::World& world, Vec2 center, flo
         const Transform2D place = tree.global(entity);
         const Vec2 d = place.position - center;
         float distance = std::sqrt((d.x * d.x) + (d.y * d.y));
-        if (world.ecs().all_of<world::TileMapLayer>(entity)) {
+        if (world.ecs().all_of<world::TileLayer2D>(entity)) {
             // A blast reaches a layer where it would take cells out, all of it at once.
             distance = radius + 1.0F;
             std::shared_ptr<const world::DamageProfile> keep;
@@ -1641,7 +1640,7 @@ std::vector<std::string> settle_group_2d(world::World& world, std::string_view g
         }
         const Transform2D place = tree.global(entity);
         Vec2 middle = place.position;
-        if (const auto* polygon = ecs.try_get<const world::CollisionPolygon2D>(entity);
+        if (const auto* polygon = ecs.try_get<const world::PolygonCollider2D>(entity);
             polygon != nullptr && !polygon->polygon.empty()) {
             middle = world::affine(place).apply(centroid_of(polygon->polygon));
         }

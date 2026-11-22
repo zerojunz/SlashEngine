@@ -33,26 +33,26 @@ json::Value parse(std::string_view text) {
 
 constexpr std::string_view kScene3D = R"({"format": 1, "entities": {
   "floor": {"components": {"Transform3D": {}, "StaticBody3D": {},
-                           "CollisionShape3D": {"size": [40, 1, 40]}}},
+                           "Collider3D": {"size": [40, 1, 40]}}},
   "crate": {"components": {"Transform3D": {"position": [0, 3, 0]}, "RigidBody3D": {},
-                           "CollisionShape3D": {}}},
+                           "Collider3D": {}}},
   "lamp": {"components": {"Transform3D": {"position": [6, 4, 0]}, "RigidBody3D": {"mass": 2},
-                          "CollisionShape3D": {"shape": "sphere", "radius": 0.25}}},
+                          "Collider3D": {"shape": "sphere", "radius": 0.25}}},
   "chain": {"components": {"Transform3D": {"position": [6, 5, 0]},
                            "PinJoint3D": {"node_a": "lamp"}}},
   "ball": {"components": {"Transform3D": {"position": [-6, 0.75, 0]}, "RigidBody3D": {},
-                          "CollisionShape3D": {"shape": "sphere", "radius": 0.25}}},
+                          "Collider3D": {"shape": "sphere", "radius": 0.25}}},
   "gust": {"components": {"Transform3D": {"position": [-6, 1, 0]},
                           "PhysicsField3D": {"type": "directional_force", "magnitude": 4,
                                              "shape": "box", "size": [2, 2, 40]}}}}})";
 
 constexpr std::string_view kScene2D = R"({"format": 1, "entities": {
   "floor": {"components": {"Transform2D": {"position": [0, 200]}, "StaticBody2D": {},
-                           "CollisionShape2D": {"size": [2000, 40]}}},
+                           "Collider2D": {"size": [2000, 40]}}},
   "crate": {"components": {"Transform2D": {"position": [0, 100]}, "RigidBody2D": {},
-                           "CollisionShape2D": {"size": [40, 40]}}},
+                           "Collider2D": {"size": [40, 40]}}},
   "lamp": {"components": {"Transform2D": {"position": [300, -100]}, "RigidBody2D": {},
-                          "CollisionShape2D": {"shape": "circle", "radius": 10}}},
+                          "Collider2D": {"shape": "circle", "radius": 10}}},
   "chain": {"components": {"Transform2D": {"position": [300, -160]},
                            "PinJoint2D": {"node_b": "lamp"}}}}})";
 
@@ -213,7 +213,7 @@ TEST_CASE("physics.cache records a 3D fall as an animation that plays it back th
     // Back at the start, the floor's player plays the fall: the crate lands where it did,
     // frozen as a kinematic body.
     project.ok("world.restore");
-    project.ok("component.set", R"({"id": "floor", "components": {"AnimationPlayer": {
+    project.ok("component.set", R"({"id": "floor", "components": {"Animator": {
         "library": "anims/fall.anim.json", "animation": "fall", "playing": true,
         "targets": {"crate": "crate", "ball": "ball"}}}})");
     project.steps(90);

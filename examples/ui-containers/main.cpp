@@ -1,8 +1,8 @@
 // UI containers, themes and the controls that draw boxes and textures, as Godot's: main.scene.json
-// is an inventory screen. A CenterContainer keeps a PanelContainer in the middle of the window;
-// in it a VBoxContainer stacks a title, a ProgressBar, a GridContainer of item slots with
-// TextureRect icons, a FlowContainer of tags and a hint. A NinePatchRect tooltip in the corner
-// holds a MarginContainer. ui/game.theme.json, the project's theme, styles all of it.
+// is an inventory screen. A CenterBox keeps a PanelBox in the middle of the window;
+// in it a VBoxContainer stacks a title, a ProgressBar, a GridBox of item slots with
+// Picture icons, a FlowBox of tags and a hint. A NineSlice tooltip in the corner
+// holds a MarginBox. ui/game.theme.json, the project's theme, styles all of it.
 //
 // This program writes the two textures, checks the screen with ui.layout and ui.theme as an
 // agent would, changes the bar and the grid, catches a misspelled style override, then draws the
@@ -126,15 +126,14 @@ int main() {
     // The bar shows its value; the grid in one row widens the frame, which stays centered.
     call(session, "component.set",
          R"({"id": "health", "components": {"ProgressBar": {"value": 35}}})");
-    call(session, "component.set",
-         R"({"id": "grid", "components": {"GridContainer": {"columns": 8}}})");
+    call(session, "component.set", R"({"id": "grid", "components": {"GridBox": {"columns": 8}}})");
     call(session, "ui.layout", R"({"ids": ["frame", "health", "grid", "slot_7"]})");
 
     // A style override its type doesn't have is reported, with the name it was probably meant to
     // be.
     call(
         session, "component.set",
-        R"({"id": "slot_1", "components": {"Control": {"theme_override_styles": {"panal": {"bg_color": [1, 0, 0, 1]}}}}})");
+        R"({"id": "slot_1", "components": {"Widget": {"theme_override_styles": {"panal": {"bg_color": [1, 0, 0, 1]}}}}})");
     call(session, "ui.layout", R"({"ids": ["slot_1"]})");
     call(session, "undo", "{}");
 

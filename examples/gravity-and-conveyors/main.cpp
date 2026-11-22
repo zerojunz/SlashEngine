@@ -36,7 +36,7 @@ constexpr float kWalkSpeed = 60.0F; // pixels per second, the belt's speed
 // Gravity off the floor, from the areas the hero is in, and walking left against the belt.
 void control_hero(world::World& world, double seconds) {
     const entt::entity hero = world.find("hero");
-    auto& body = world.ecs().get<world::CharacterBody2D>(hero);
+    auto& body = world.ecs().get<world::CharacterMover2D>(hero);
     if (const auto gravity = physics2d::gravity(world, hero); gravity && !body.on_floor) {
         body.velocity = body.velocity + gravity->gravity * static_cast<float>(seconds);
     }
@@ -60,7 +60,7 @@ slash::Vec2 position(const world::World& world, std::string_view id) {
 void print_tick(const world::World& world) {
     const slash::Vec2 crate = position(world, "crate");
     const slash::Vec2 hero = position(world, "hero");
-    const auto& body = world.ecs().get<world::CharacterBody2D>(world.find("hero"));
+    const auto& body = world.ecs().get<world::CharacterMover2D>(world.find("hero"));
     std::printf("tick %llu: crate at (%.1f, %.1f); hero at (%.1f, %.1f)%s, carried at %.1f\n",
                 static_cast<unsigned long long>(world.tick()), crate.x, crate.y, hero.x, hero.y,
                 body.on_floor ? " on the floor" : "", body.platform_velocity.x);
@@ -102,7 +102,7 @@ int main() {
 
     std::puts("-- with space's override off, the probe falls with the project's gravity");
     call(session, "component.set",
-         R"({"id": "space", "components": {"Area2D": {"gravity_space_override": "disabled"}}})");
+         R"({"id": "space", "components": {"Zone2D": {"gravity_space_override": "disabled"}}})");
     session.call("step", json::parse(R"({"ticks": 60})").value());
     print_tick(session.world());
     call(session, "physics.gravity", R"({"ids": ["probe"]})");

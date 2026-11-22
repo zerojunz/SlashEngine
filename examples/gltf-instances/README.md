@@ -7,7 +7,7 @@ rows, each turned and sized differently.
 
 A model with them loads each copy as a node of its own under the instancing node, named after it
 and its number (`Tree_0` to `Tree_5`), drawing the mesh where the copy is; the instancing node
-draws nothing itself. So the copies are parts as any other: `MeshInstance3D` draws them,
+draws nothing itself. So the copies are parts as any other: `Model3D` draws them,
 `model.inspect` lists them, collision hints, LODs and lightmaps take them, and `write_glb` writes
 them out as plain nodes.
 

@@ -5,10 +5,10 @@ A research spike of Nanite-style virtualized geometry
 nothing like it. [props/moon.model.json](props/moon.model.json) is a cratered moon of 41,018
 triangles, built from a sphere with six spheres cut out of it. [main.scene.json](main.scene.json)
 puts one moon two meters from the camera and one 120 meters away. Both draw with
-`MeshInstance3D.virtualized`:
+`Model3D.virtualized`:
 
 ```json
-"MeshInstance3D": {"mesh": "props/moon.model.json", "virtualized": true}
+"Model3D": {"mesh": "props/moon.model.json", "virtualized": true}
 ```
 
 Each moon's surface is cut into clusters of up to 128 triangles. The clusters are grouped and

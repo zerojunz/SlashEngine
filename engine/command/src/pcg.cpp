@@ -463,7 +463,7 @@ std::optional<Reply> sample(Session& session, Scene& scene, const Loaded& loaded
             const auto curve = world::curve_2d(scene.world, entity);
             if (curve == nullptr) {
                 return param_error(code::kInvalidParams, path + "/path",
-                                   quoted(id) + " has no Path2D with points to follow");
+                                   quoted(id) + " has no Spline2D with points to follow");
             }
             const world::Affine2D global = scene.tree2->global_affine(entity);
             for (int k = 0; static_cast<float>(k) * spacing <= curve->length() && k < kMaxPoints;
@@ -484,7 +484,7 @@ std::optional<Reply> sample(Session& session, Scene& scene, const Loaded& loaded
             const auto curve = world::curve_3d(scene.world, entity);
             if (curve == nullptr) {
                 return param_error(code::kInvalidParams, path + "/path",
-                                   quoted(id) + " has no Path3D with points to follow");
+                                   quoted(id) + " has no Spline3D with points to follow");
             }
             const world::Affine3D global = scene.tree3->global(entity);
             for (int k = 0; static_cast<float>(k) * spacing <= curve->length() && k < kMaxPoints;
@@ -1028,14 +1028,14 @@ Reply pcg_run(Session& session, const json::Value& params) {
         } else if (node.op == "multimesh") {
             const entt::entity entity = world.create(prefix).value();
             ecs.emplace<world::Transform3D>(entity);
-            world::MultiMeshInstance3D multimesh;
+            world::ModelInstances3D multimesh;
             multimesh.mesh = node.fields.find("mesh")->as_string();
             for (const PcgPoint& point : points) {
                 const world::Transform3D local = local_3d(to_local_3d, place_of(point));
                 multimesh.instances.push_back(
                     {.position = local.position, .rotation = local.rotation, .scale = local.scale});
             }
-            ecs.emplace<world::MultiMeshInstance3D>(entity, std::move(multimesh));
+            ecs.emplace<world::ModelInstances3D>(entity, std::move(multimesh));
             adopt(world, parent, entity, flat);
             made = 1;
         } else if (node.op == "foliage") {
@@ -1093,11 +1093,11 @@ Reply pcg_run(Session& session, const json::Value& params) {
                     curve.push_back(curve.front());
                 }
                 parts["Transform2D"] = json::Object{};
-                parts["Path2D"]["points"] = std::move(curve);
+                parts["Spline2D"]["points"] = std::move(curve);
             } else {
                 parts["Transform3D"] = json::Object{};
-                parts["Path3D"]["points"] = std::move(curve);
-                parts["Path3D"]["closed"] = closed;
+                parts["Spline3D"]["points"] = std::move(curve);
+                parts["Spline3D"]["closed"] = closed;
             }
             create["components"] = std::move(parts);
             Reply reply = session.call("entity.create", create);

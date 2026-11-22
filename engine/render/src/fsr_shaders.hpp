@@ -3625,7 +3625,7 @@ cbuffer Program : register(b0, space3) {
     float4 field;
     // x: the canvas layer the draw is in, which a light's layer range must hold.
     int4 layer;
-    // Multiplies normal draws: the CanvasModulate of the draw's canvas.
+    // Multiplies normal draws: the AmbientTint2D of the draw's canvas.
     float4 ambient;
     // Maps the draw's positions to the coordinates lights use: x' = dot(to_lights_x.xyz,
     // (x, y, 1)), y' likewise.
@@ -6850,7 +6850,7 @@ cbuffer Program : register(b0, space3) {
     float4 field;
     // x: the canvas layer the draw is in, which a light's layer range must hold.
     int4 layer;
-    // Multiplies normal draws: the CanvasModulate of the draw's canvas.
+    // Multiplies normal draws: the AmbientTint2D of the draw's canvas.
     float4 ambient;
     // Maps the draw's positions to the coordinates lights use: x' = dot(to_lights_x.xyz,
     // (x, y, 1)), y' likewise.

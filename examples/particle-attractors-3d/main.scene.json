@@ -14,17 +14,17 @@
     },
     "dust": {
       "components": {
-        "GPUParticles3D": {
+        "GpuEmitter3D": {
           "amount": 64,
           "draw_order": "view_depth",
           "explosiveness": 1.0,
           "lifetime": 4.0,
           "process_material": "dust.process_material.json"
         },
-        "QuadMesh": {
+        "QuadGeometry": {
           "size": [0.1, 0.1]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "billboard_mode": "particles",
           "shading_mode": "unshaded",
           "vertex_color_use_as_albedo": true
@@ -34,7 +34,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "background_color": [0.05, 0.05, 0.1, 1.0],
           "background_mode": "color"
         }
@@ -42,7 +42,7 @@
     },
     "gust": {
       "components": {
-        "GPUParticlesAttractorBox3D": {
+        "ParticleAttractorBox3D": {
           "directionality": 1.0,
           "size": [2.0, 1.0, 6.0],
           "strength": 2.0
@@ -54,7 +54,7 @@
     },
     "swirl": {
       "components": {
-        "GPUParticlesAttractorVectorField3D": {
+        "ParticleFlowField3D": {
           "size": [2.0, 1.0, 2.0],
           "slices_horizontal": 2,
           "slices_vertical": 2,
@@ -68,7 +68,7 @@
     },
     "well": {
       "components": {
-        "GPUParticlesAttractorSphere3D": {
+        "ParticleAttractorSphere3D": {
           "attenuation": 0.5,
           "radius": 1.5,
           "strength": 4.0

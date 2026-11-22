@@ -1,0 +1,76 @@
+#pragma once
+
+#include "slash/core/json.hpp"
+
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+// The names components and their fields had before SlashEngine gave them names of its own
+// (November 2026). Scenes, prefabs, commands and other files may still use them: loading takes
+// either name, and saving, formatting and describing use the current one.
+namespace slash::world {
+
+// A component's old name and its current one.
+struct NameAlias {
+    std::string_view old_name;
+    std::string_view name;
+};
+
+// A field's old name and its current one, in a component named by its current name.
+struct FieldAlias {
+    std::string_view component;
+    std::string_view old_name;
+    std::string_view name;
+};
+
+// Every renamed component and field.
+[[nodiscard]] std::span<const NameAlias> component_aliases();
+[[nodiscard]] std::span<const FieldAlias> field_aliases();
+
+// The current name of a component, given its current or an old name; any other name as given.
+[[nodiscard]] std::string_view current_component_name(std::string_view name);
+
+// The current name of a field of a component (by its current name), given the field's current or
+// old name; any other name as given.
+[[nodiscard]] std::string_view current_field_name(std::string_view component,
+                                                  std::string_view field);
+
+// An old name found and replaced: where (a JSON Pointer under what was upgraded), the old name and
+// the current one.
+struct Renamed {
+    std::string path;
+    std::string old_name;
+    std::string name;
+};
+
+// Replaces old names in a map of components by name, as scenes, prefabs and commands hold them:
+// each component's name, and the names of the fields in its object. Where a component or field
+// is given under both names, the current one's value is kept. Returns what it replaced, with
+// paths under `path`.
+std::vector<Renamed> upgrade_components(json::Value& components, std::string_view path = "");
+
+// Replaces old names in a scene or a prefab: each entity's components, or the prefab's.
+std::vector<Renamed> upgrade_scene(json::Value& scene);
+
+// Whether a scene or prefab names a component or field by an old name.
+[[nodiscard]] bool has_old_names(const json::Value& scene);
+
+// The scene or prefab with old names made current: `scene` itself when it has none, else `copy`,
+// which this fills.
+[[nodiscard]] const json::Value& current_names(const json::Value& scene, json::Value& copy);
+
+// Replaces old names in a command's params, wherever they name components: the keys of a
+// "components" object (and the fields in each), a "component" string, and the strings in a
+// "components", "with" or "without" list, at any depth. Returns whether it replaced any.
+bool upgrade_params(json::Value& params);
+
+// Whether upgrade_params would replace anything.
+[[nodiscard]] bool params_have_old_names(const json::Value& params);
+
+// A component path ("Sprite2D/modulate/a", as animation tracks and synchronizers name fields)
+// with its component's and first field's names made current.
+[[nodiscard]] std::string current_field_path(std::string_view path);
+
+} // namespace slash::world

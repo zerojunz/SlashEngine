@@ -30,7 +30,7 @@ using namespace rig; // NOLINT(google-build-using-namespace)
 
 // A cone radius wide at its base, length long along +y from its base.
 MeshData cone() {
-    world::CylinderMesh cylinder;
+    world::CylinderGeometry cylinder;
     cylinder.top_radius = 0.0F;
     cylinder.bottom_radius = 1.0F;
     cylinder.height = 1.0F;

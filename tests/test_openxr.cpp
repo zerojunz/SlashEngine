@@ -284,11 +284,11 @@ frame 0 head 0 1.7 0 0 0 0 1
             REQUIRE(rig.components.find(component)->assign(*rig.world, entity, fields, path).ok());
         }
     };
-    create("env", R"({"WorldEnvironment": {"background_mode": "color",
+    create("env", R"({"Environment3D": {"background_mode": "color",
                                            "background_color": [0, 0, 1, 1]}})");
-    create("post", R"({"Transform3D": {"position": [0, 1.7, -2]}, "MeshInstance3D": {},
-                       "BoxMesh": {"size": [0.5, 3, 0.5]},
-                       "StandardMaterial3D": {"shading_mode": "unshaded",
+    create("post", R"({"Transform3D": {"position": [0, 1.7, -2]}, "Model3D": {},
+                       "BoxGeometry": {"size": [0.5, 3, 0.5]},
+                       "Surface3D": {"shading_mode": "unshaded",
                                               "albedo_color": [1, 0.5, 0, 1]}})");
 
     // The runtime has its say in the device, then the session draws with it.

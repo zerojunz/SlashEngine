@@ -19,7 +19,7 @@
           "max_distance": 0.4,
           "section": "cape"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "hero.glb"
         },
         "Transform3D": {}

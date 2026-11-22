@@ -52,8 +52,8 @@ struct TreeTick {
     std::string invalid; // why the tree plays nothing this tick; "" when it plays
 };
 
-// A tree's parameters as it plays: those callers set (AnimationTree.parameters) and those it
-// keeps (AnimationTree.state), each left out while it has its default value.
+// A tree's parameters as it plays: those callers set (AnimationGraph.parameters) and those it
+// keeps (AnimationGraph.state), each left out while it has its default value.
 class TreeParameters {
 public:
     TreeParameters(const std::vector<TreeParameter>& list, json::Object& inputs,

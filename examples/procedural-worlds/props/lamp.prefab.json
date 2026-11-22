@@ -1,6 +1,6 @@
 {
   "components": {
-    "OmniLight3D": {
+    "PointLight3D": {
       "light_color": [1.0, 0.8, 0.55, 1.0],
       "light_energy": 2.0,
       "omni_range": 6.0

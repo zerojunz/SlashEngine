@@ -2,11 +2,11 @@
   "entities": {
     "body": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.5, 0.4, 0.8]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.8, 0.15, 0.1, 1.0]
         },
         "Transform3D": {
@@ -28,11 +28,11 @@
     },
     "cart": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "lap",
           "library": "cart.anim.json"
         },
-        "PathFollow3D": {
+        "SplineFollower3D": {
           "rotation_mode": "oriented"
         },
         "Transform3D": {
@@ -42,7 +42,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
           "ambient_light_energy": 0.5,
           "ambient_light_source": "color",
@@ -53,11 +53,11 @@
     },
     "ground": {
       "components": {
-        "CSGBox3D": {
+        "SolidBox3D": {
           "size": [14.0, 1.0, 10.0],
           "use_collision": true
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.3, 0.45, 0.2, 1.0]
         },
         "Transform3D": {
@@ -67,7 +67,7 @@
     },
     "guard": {
       "components": {
-        "PathFollow2D": {
+        "SplineFollower2D": {
           "loop": false
         },
         "Transform2D": {}
@@ -75,7 +75,7 @@
     },
     "patrol": {
       "components": {
-        "Path2D": {
+        "Spline2D": {
           "points": [
             {},
             {
@@ -96,7 +96,7 @@
     },
     "rail": {
       "components": {
-        "CSGPolygon3D": {
+        "SolidExtrusion3D": {
           "mode": "path",
           "path_interval": 0.25,
           "path_joined": true,
@@ -108,7 +108,7 @@
             [-0.35, -0.1]
           ]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.55, 0.55, 0.6, 1.0],
           "metallic": 0.7,
           "roughness": 0.4
@@ -118,7 +118,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.9, 0.5, 0.0]
         }
@@ -126,7 +126,7 @@
     },
     "track": {
       "components": {
-        "Path3D": {
+        "Spline3D": {
           "closed": true,
           "points": [
             {

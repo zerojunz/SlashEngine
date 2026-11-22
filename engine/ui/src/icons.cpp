@@ -211,7 +211,7 @@ const std::map<std::string, render::Image, std::less<>>& icons() {
                            .v = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F},
                            .points = {{2.0F, 4.0F}, {6.0F, 8.0F}, {10.0F, 4.0F}},
                            .color = {kArrow, kArrow, kArrow, 0.85F}}}));
-        // arrow_right.svg, CodeEdit's executing line: a chevron stroked 2 wide at 0.45.
+        // arrow_right.svg, CodeEditor's executing line: a chevron stroked 2 wide at 0.45.
         out.emplace("arrow_right", draw(16, 16,
                                         {{.kind = Shape::Kind::Stroke,
                                           .v = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F},

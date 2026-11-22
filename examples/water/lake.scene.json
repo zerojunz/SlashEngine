@@ -2,13 +2,13 @@
   "entities": {
     "beach": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [8.0, 0.2, 12.0]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [8.0, 0.2, 12.0]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "StaticBody3D": {},
         "Transform3D": {
           "position": [4.0, -1.0, 0.0],
@@ -18,13 +18,13 @@
     },
     "bed": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [40.0, 1.0, 40.0]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [40.0, 1.0, 40.0]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "StaticBody3D": {},
         "Transform3D": {
           "position": [0.0, -2.5, 0.0]
@@ -44,7 +44,7 @@
     },
     "course": {
       "components": {
-        "Path3D": {
+        "Spline3D": {
           "points": [
             {
               "position": [-12.0, 0.0, 10.0]
@@ -59,9 +59,9 @@
     },
     "crate": {
       "components": {
-        "BoxMesh": {},
-        "CollisionShape3D": {},
-        "MeshInstance3D": {},
+        "BoxGeometry": {},
+        "Collider3D": {},
+        "Model3D": {},
         "RigidBody3D": {
           "mass": 400.0
         },
@@ -72,15 +72,15 @@
     },
     "log": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [1.2, 0.4, 0.4]
         },
-        "CylinderMesh": {
+        "CylinderGeometry": {
           "bottom_radius": 0.2,
           "height": 1.2,
           "top_radius": 0.2
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "RigidBody3D": {
           "mass": 60.0
         },
@@ -91,13 +91,13 @@
     },
     "stone": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.6, 0.6, 0.6]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [0.6, 0.6, 0.6]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "RigidBody3D": {
           "mass": 800.0
         },
@@ -108,7 +108,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, 0.4, 0.0]
         }

@@ -14,17 +14,17 @@
 namespace slash::scene3d {
 namespace {
 
-// The entities with a GaussianSplat3D, in the order they were made.
+// The entities with a Splat3D, in the order they were made.
 std::vector<entt::entity> made_order(const world::World& world) {
     std::vector<entt::entity> out;
-    for (const entt::entity entity : world.ecs().view<const world::GaussianSplat3D>()) {
+    for (const entt::entity entity : world.ecs().view<const world::Splat3D>()) {
         out.push_back(entity);
     }
     std::ranges::sort(out, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     return out;
 }
 
-constexpr std::string_view kField = "/components/GaussianSplat3D/splats";
+constexpr std::string_view kField = "/components/Splat3D/splats";
 
 } // namespace
 
@@ -47,9 +47,9 @@ void add_splat_type(asset::Assets& assets) {
 std::vector<Problem> check_splats(const world::World& world) {
     std::vector<Problem> problems;
     for (const entt::entity entity : made_order(world)) {
-        const auto& cloud = world.ecs().get<const world::GaussianSplat3D>(entity);
+        const auto& cloud = world.ecs().get<const world::Splat3D>(entity);
         if (cloud.sh_degree < 0 || cloud.sh_degree > 3) {
-            problems.push_back({entity, "/components/GaussianSplat3D/sh_degree",
+            problems.push_back({entity, "/components/Splat3D/sh_degree",
                                 "is " + std::to_string(cloud.sh_degree) + ", not 0 to 3"});
         }
         if (cloud.splats.empty()) {
@@ -83,7 +83,7 @@ void Renderer::add_splats(const world::World& world, const world::Tree3D& tree,
                           const std::function<world::Affine3D(entt::entity)>& global,
                           std::uint32_t cull_mask, render::Splats3D& out) {
     for (const entt::entity entity : made_order(world)) {
-        const auto& cloud = world.ecs().get<const world::GaussianSplat3D>(entity);
+        const auto& cloud = world.ecs().get<const world::Splat3D>(entity);
         if (cloud.splats.empty() || !tree.visible(entity) || (cloud.layers & cull_mask) == 0 ||
             cloud.opacity <= 0.0F) {
             continue;

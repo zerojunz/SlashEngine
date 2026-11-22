@@ -2,7 +2,7 @@
   "entities": {
     "ears": {
       "components": {
-        "AudioListener2D": {
+        "Listener2D": {
           "current": true
         },
         "Transform2D": {
@@ -12,7 +12,7 @@
     },
     "footsteps": {
       "components": {
-        "AudioStreamPlayer2D": {
+        "SoundPlayer2D": {
           "bus": "Sfx",
           "max_polyphony": 2,
           "stream": "audio/steps.audio.json"
@@ -24,7 +24,7 @@
     },
     "music": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "bus": "Music",
           "stream": "audio/theme.wav"

@@ -197,32 +197,32 @@ environment variables, never from the file.
   `slash-cli scene format <file>` before committing a scene edited outside the engine.
 - `prefabs/`: `.prefab.json` files, one entity's components each, which scene entities extend.
 - `sprites/` (or any folder): `.png` textures for `Sprite2D` (and its normal maps and light
-  textures), `.frames.json` animations (`slash-cli schema frames`) that `AnimatedSprite2D` plays,
+  textures), `.frames.json` animations (`slash-cli schema frames`) that `Flipbook2D` plays,
   and `.material.json` materials (`slash-cli schema material`), node graphs that color a sprite's
   pixels. Exports ship them all. Check lighting with `light_sample` rather than a screenshot.
 - `animations/` (or any folder): `.anim.json` keyframe animations (`slash-cli schema animation`)
-  that `AnimationPlayer` plays on an entity's fields. Check one with `animation_eval`.
+  that `Animator` plays on an entity's fields. Check one with `animation_eval`.
 - `tiles/` (or any folder): `.tileset.json` tile sets (`slash-cli schema tileset`) that cut atlas
-  textures into tiles and name the terrains they connect. A `TileMapLayer` draws them; paint one
+  textures into tiles and name the terrains they connect. A `TileLayer2D` draws them; paint one
   with `tilemap_paint` rather than editing its rows by hand.
 - Physics bodies and areas are components on scene entities, as Godot's nodes: `RigidBody2D`,
-  `CharacterBody2D`, `Area2D` and the rest, with `CollisionShape2D` shapes. Ask what is where
+  `CharacterMover2D`, `Zone2D` and the rest, with `Collider2D` shapes. Ask what is where
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
-- Particles are `CPUParticles2D` components, as Godot's, with a texture from `sprites/`, or
-  `GPUParticles2D` ones for many thousands, moved on the GPU as a `.process_material.json` file
+- Particles are `Emitter2D` components, as Godot's, with a texture from `sprites/`, or
+  `GpuEmitter2D` ones for many thousands, moved on the GPU as a `.process_material.json` file
   (`slash-cli schema process_material`) says. Check either with `particles_eval` (how many,
   where, and each one) rather than a screenshot.
-- UI is `Control`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
+- UI is `Widget`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
   laid out in the window by anchors and offsets or by containers. `fonts/` (or any folder):
   `.ttf` and `.otf` files, and `.font.json` files (`slash-cli schema font`) for distance-field
   fonts that stay sharp at any size or that list `fallbacks` for the characters a font lacks
-  (Arabic, Japanese and so on). `Control.layout_direction` `rtl` mirrors a menu for
+  (Arabic, Japanese and so on). `Widget.layout_direction` `rtl` mirrors a menu for
   right-to-left languages. Check UI with `ui_layout` (each control's rect, each label's
   lines, each button's state and which control has focus) rather than a screenshot. Buttons
   emit `pressed` events; try one with `ui_press`, or a click or `ui_accept` with `input_inject`.
-  `LineEdit` is a text field and `TextEdit` one of several lines: type into them with
+  `TextField` is a text field and `TextArea` one of several lines: type into them with
   `input_inject` `{"type": "text", "text": "Mira"}` after a click or `ui_focus`, and read
-  `text_changed` events (and a LineEdit's `text_submitted`).
+  `text_changed` events (and a TextField's `text_submitted`).
 - Controls are input actions in `project.json`'s `input`, as Godot's input map: name what the
   game does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
   gameplay code reads actions, never keys. Try them with `input_inject` (keys, clicks, touches,
@@ -231,7 +231,7 @@ environment variables, never from the file.
   (`slash-cli schema audio`) that loop one or pick one of several at random, and the
   `.bus_layout.json` file (`slash-cli schema bus_layout`) that `project.json`'s
   `audio.bus_layout` names: buses such as Music and Sfx with their volumes and effects.
-  `AudioStreamPlayer`, `AudioStreamPlayer2D` and `AudioStreamPlayer3D` components play them.
+  `SoundPlayer`, `SoundPlayer2D` and `SoundPlayer3D` components play them.
   Check sound with `audio_state` and `audio_capture` (levels in dB, slice by slice) rather than
   by ear.
 - `storyboard/`: the game's facts as typed entries (`slash-cli schema storyboard`), and

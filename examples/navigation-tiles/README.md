@@ -1,6 +1,6 @@
 # Navigation on tiles
 
-Paths over a tile map, as Godot 4.6's `TileMapLayer` makes navigation regions of its cells.
+Paths over a tile map, as Godot 4.6's `TileLayer2D` makes navigation regions of its cells.
 [maze.tileset.json](maze.tileset.json) gives its tiles navigation outlines on two navigation
 layers: floor on the first, whose regions are in navigation layer 1, and water on the second,
 in navigation layer 2. Walls have collision polygons instead, and the rock has both.
@@ -27,7 +27,7 @@ regions join where the cells meet.
   goes straight along it. `simplify_epsilon` drops the points where the path crosses from cell
   to cell.
 - The `lawn` region bakes its file, [nav/lawn.navpoly.json](nav/lawn.navpoly.json), from the
-  `grass` layer under it, as Godot bakes a `NavigationRegion2D` over a `TileMapLayer`: the
+  `grass` layer under it, as Godot bakes a `NavArea2D` over a `TileLayer2D`: the
   tiles' outlines are where agents may walk and the rock's collision polygon is cut out, with
   an `agent_radius` of 2. The grass layer's `navigation_enabled` is `false`, so its cells
   aren't regions as well, and the path across the lawn goes round the rock.

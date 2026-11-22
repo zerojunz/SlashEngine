@@ -1,9 +1,9 @@
 #pragma once
 
 // Godot's float vector math that the bakes follow bit for bit (core/math: Vector3, Plane, AABB,
-// Face3 and Geometry3D's triangle and box test), shared by the lightmap's probes and VoxelGI's
-// voxelizer. Godot's code is MIT; its triangle and box test is Tomas Akenine-Möller's, public
-// domain.
+// Face3 and Geometry3D's triangle and box test), shared by the lightmap's probes and
+// VoxelLighting3D's voxelizer. Godot's code is MIT; its triangle and box test is Tomas
+// Akenine-Möller's, public domain.
 
 #include "slash/core/math.hpp"
 

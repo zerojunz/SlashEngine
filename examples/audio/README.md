@@ -1,7 +1,7 @@
 # Audio
 
 Sound as Godot's AudioServer. [main.scene.json](main.scene.json) has music on an
-`AudioStreamPlayer`, footsteps on an `AudioStreamPlayer2D` and an `AudioListener2D` to hear them
+`SoundPlayer`, footsteps on an `SoundPlayer2D` and an `Listener2D` to hear them
 from. [project.json](project.json) names [audio/default.bus_layout.json](audio/default.bus_layout.json),
 which sets up the buses: Music at -6 dB with a low pass filter turned off, and Sfx with a hard
 limiter, both mixing into Master. [audio/steps.audio.json](audio/steps.audio.json) takes turns
@@ -14,7 +14,7 @@ sound files (no audio files are committed), then plays the game the way an agent
   44100 Hz, so the same ticks always make the same sound and an agent can measure it.
 - `autoplay` starts the music at the first tick. `audio.play` starts a player at the next
   tick, as Godot's `play()`, and `audio.stop` stops it.
-- An `AudioStreamPlayer2D` fades over `max_distance` and pans by where it is on the screen
+- An `SoundPlayer2D` fades over `max_distance` and pans by where it is on the screen
   from the listener, at half the project's `audio.panning_strength_2d`, as Godot's
   `_update_panning`. `audio.state` shows each player's `volume` after that, left and right.
 - A player emits `finished` when its sound ends, as Godot's signal.

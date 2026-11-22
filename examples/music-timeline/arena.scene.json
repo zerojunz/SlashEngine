@@ -2,7 +2,7 @@
   "entities": {
     "music": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "parameters": {
             "switch_to_clip": "explore"

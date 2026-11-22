@@ -1,6 +1,6 @@
 # Animation expressions
 
-A hero whose `AnimationTree` state machine moves between idle, run and jump on its own, by
+A hero whose `AnimationGraph` state machine moves between idle, run and jump on its own, by
 expressions of values the game sets, as Godot's `advance_expression`. A jump trigger waits until
 the hero is on the ground, then the transition uses it up, as Unity's Animator triggers do.
 

@@ -166,8 +166,8 @@ struct ShapeInfo {
 // An entity's shapes in a body: the body's own, or a child entity's with no body of its own.
 struct ShapeSource {
     entt::entity entity = entt::null;
-    std::optional<world::CollisionShape2D> shape;
-    std::optional<world::CollisionPolygon2D> polygon;
+    std::optional<world::Collider2D> shape;
+    std::optional<world::PolygonCollider2D> polygon;
     std::optional<world::Affine2D> owner; // the child's transform; none for the body's own
 
     friend bool operator==(const ShapeSource&, const ShapeSource&) = default;
@@ -234,7 +234,7 @@ struct Body {
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
     b2BodyId id = b2_nullBodyId;
-    // Two for each of shape_key's sources: its CollisionShape2D, then its CollisionPolygon2D.
+    // Two for each of shape_key's sources: its Collider2D, then its PolygonCollider2D.
     // Box2D's shapes point into it, so it is sized before they are made.
     std::vector<ShapeInfo> info;
     std::vector<b2ShapeId> shapes;
@@ -267,7 +267,7 @@ struct Body {
     b2MassData anchored_mass{};
 };
 
-using JointKey = std::variant<world::PinJoint2D, world::DampedSpringJoint2D, world::GrooveJoint2D>;
+using JointKey = std::variant<world::PinJoint2D, world::SpringJoint2D, world::TrackJoint2D>;
 
 // A joint, made where its entity was then. As Godot's, it stays there when a parent carries the
 // entity away; moving the entity's own Transform2D makes it again.
@@ -464,7 +464,7 @@ inline const ShapeInfo* info_of(b2ShapeId shape) {
 
 // Moves a character one tick, as Godot's move_and_slide (character.cpp).
 void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
-                    world::CharacterBody2D& character, float seconds);
+                    world::CharacterMover2D& character, float seconds);
 
 // Whether an entity is a Vehicle2D's wheel ("<vehicle>_wheel_<n>"), which may spin faster than
 // Box2D lets other bodies turn, as its allowFastRotation is for (vehicle_tool.cpp).

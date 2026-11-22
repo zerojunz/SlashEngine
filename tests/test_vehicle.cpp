@@ -60,7 +60,7 @@ constexpr std::string_view kGround = R"({"format": 1, "entities": {
                               "Camera3D": {"current": true}}},
     "ground": {"components": {"Transform3D": {"position": [0, -0.5, 0]},
                               "StaticBody3D": {},
-                              "CollisionShape3D": {"shape": "box", "size": [400, 1, 400]}}}}})";
+                              "Collider3D": {"shape": "box", "size": [400, 1, 400]}}}}})";
 
 struct Project {
     std::string root;
@@ -225,8 +225,8 @@ TEST_CASE("a 3D car drives, steers, brakes and carries its driver") {
         "Vehicle3D": {"recipe": "vehicles/car.vehicle.json"}}})");
     project.ok("entity.create", R"({"id": "dana", "components": {
         "Transform3D": {"position": [3, 0, 0]},
-        "CharacterBody3D": {},
-        "CollisionShape3D": {"shape": "capsule", "radius": 0.3, "height": 1.8}}})");
+        "CharacterMover3D": {},
+        "Collider3D": {"shape": "capsule", "radius": 0.3, "height": 1.8}}})");
     project.ok("step", R"({"ticks": 60})");
     // It settles on its wheels.
     CHECK((project.world().find("car_wheel_0") != entt::null));
@@ -285,7 +285,7 @@ TEST_CASE("a 2D car rolls on sprung wheels and a 2D boat floats") {
     Project project("vehicle_drive_2d", R"({"format": 1, "entities": {
         "ground": {"components": {"Transform2D": {"position": [0, 500]},
                                   "StaticBody2D": {},
-                                  "CollisionShape2D": {"size": [100000, 1000]}}}}})");
+                                  "Collider2D": {"size": [100000, 1000]}}}}})");
     project.ok("vehicle.place", R"({"recipe": "vehicles/car.vehicle.json", "id": "car",
                                     "at": [0, -20]})");
     project.ok("step", R"({"ticks": 90})");
@@ -323,13 +323,13 @@ TEST_CASE("characters get in, ride, get out and are hit by vehicles") {
                                     "at": [0, 0.05, 0]})");
     project.ok("entity.create", R"({"id": "dana", "components": {
         "Transform3D": {"position": [3, 0, 0]},
-        "CharacterBody3D": {"collision_layer": 2},
-        "CollisionShape3D": {"shape": "capsule", "radius": 0.3, "height": 1.8}}})");
+        "CharacterMover3D": {"collision_layer": 2},
+        "Collider3D": {"shape": "capsule", "radius": 0.3, "height": 1.8}}})");
     project.ok("step", R"({"ticks": 30})");
     const json::Value entered =
         project.ok("vehicle.control", R"({"vehicle": "car", "action": "enter", "rider": "dana"})");
     CHECK(entered.find("seat")->as_string() == "driver");
-    CHECK(project.get<world::CharacterBody3D>("dana").collision_layer == 0);
+    CHECK(project.get<world::CharacterMover3D>("dana").collision_layer == 0);
     CHECK(project.get<world::VehicleRider>("dana").seat == "driver");
     // A second rider takes the next seat; the driver's is taken.
     project.ok("entity.create", R"({"id": "sam", "components": {
@@ -349,7 +349,7 @@ TEST_CASE("characters get in, ride, get out and are hit by vehicles") {
                                       "brake": 1})");
     project.ok("step", R"({"ticks": 240})");
     project.ok("vehicle.control", R"({"vehicle": "car", "action": "exit", "rider": "dana"})");
-    CHECK(project.get<world::CharacterBody3D>("dana").collision_layer == 2);
+    CHECK(project.get<world::CharacterMover3D>("dana").collision_layer == 2);
     CHECK(!project.world().ecs().all_of<world::VehicleRider>(project.world().find("dana")));
 
     // Someone in its way is hit, pushed and hurt.
@@ -357,8 +357,8 @@ TEST_CASE("characters get in, ride, get out and are hit by vehicles") {
     project.ok("entity.create", R"({"id": "walker", "components": {
         "Transform3D": {"position": [0, 0.9, )" +
                                     std::to_string(ahead) + R"(]},
-        "CharacterBody3D": {"motion_mode": "floating"},
-        "CollisionShape3D": {"shape": "capsule", "radius": 0.3, "height": 1.8}}})");
+        "CharacterMover3D": {"motion_mode": "floating"},
+        "Collider3D": {"shape": "capsule", "radius": 0.3, "height": 1.8}}})");
     project.ok("events.subscribe", R"({"kinds": ["vehicle_hit"]})");
     project.ok("vehicle.control", R"({"vehicle": "car", "action": "drive", "throttle": 1,
                                       "brake": 0})");
@@ -408,11 +408,11 @@ TEST_CASE("custom centers of mass move where bodies balance") {
     project.ok("entity.create", R"({"id": "plank", "components": {
         "Transform3D": {"position": [0, 2, 0]},
         "RigidBody3D": {"center_of_mass_mode": "custom", "center_of_mass": [1.5, 0, 0]},
-        "CollisionShape3D": {"shape": "box", "size": [4, 0.2, 1]}}})");
+        "Collider3D": {"shape": "box", "size": [4, 0.2, 1]}}})");
     project.ok("entity.create", R"({"id": "point", "components": {
         "Transform3D": {"position": [0, 1, 0]},
         "StaticBody3D": {},
-        "CollisionShape3D": {"shape": "box", "size": [0.2, 0.2, 2]}}})");
+        "Collider3D": {"shape": "box", "size": [0.2, 0.2, 2]}}})");
     project.ok("step", R"({"ticks": 120})");
     // Tipped down on +x: turned negative about z.
     CHECK(project.get<world::Transform3D>("plank").rotation.z < -0.2F);
@@ -421,11 +421,11 @@ TEST_CASE("custom centers of mass move where bodies balance") {
     flat.ok("entity.create", R"({"id": "plank", "components": {
         "Transform2D": {"position": [0, 0]},
         "RigidBody2D": {"center_of_mass_mode": "custom", "center_of_mass": [80, 0]},
-        "CollisionShape2D": {"size": [200, 10]}}})");
+        "Collider2D": {"size": [200, 10]}}})");
     flat.ok("entity.create", R"({"id": "point", "components": {
         "Transform2D": {"position": [0, 20]},
         "StaticBody2D": {},
-        "CollisionShape2D": {"size": [10, 10]}}})");
+        "Collider2D": {"size": [10, 10]}}})");
     flat.ok("step", R"({"ticks": 120})");
     // y is down: tipping down on +x turns it clockwise, positive.
     CHECK(flat.get<world::Transform2D>("plank").rotation > 0.2F);

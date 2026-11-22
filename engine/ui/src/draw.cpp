@@ -17,7 +17,7 @@
 namespace slash::ui {
 namespace {
 
-const world::Control kDefaultControl{};
+const world::Widget kDefaultControl{};
 
 std::uint8_t to_byte(float channel) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(channel, 0.0F, 1.0F) * 255.0F));
@@ -934,7 +934,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         const Placed& placed = layout.controls[index];
         drawer.set_canvas(placed.canvas);
         if (placed.visible && world.valid(placed.entity)) {
-            const auto* control = ecs.try_get<world::Control>(placed.entity);
+            const auto* control = ecs.try_get<world::Widget>(placed.entity);
             const Vec4 tint = times(
                 placed.modulate, (control != nullptr ? *control : kDefaultControl).self_modulate);
             const Rect bounds{0.0F, 0.0F, static_cast<float>(placed.size.x),
@@ -989,7 +989,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             finish(placed, calls_before, vertices_before, false);
         }
         // Then what the controls this one ends draw over their children, as Godot draws a
-        // ScrollContainer's scroll bars, which are its last children.
+        // ScrollBox's scroll bars, which are its last children.
         const auto after = over.find(index);
         if (after == over.end()) {
             continue;

@@ -16,7 +16,7 @@
 
 // Scatter rules: .scatter.json files that say what to place over terrains, meshes, tile maps and
 // areas, and how thickly, as Unreal's PCG graphs and Godot's MultiMesh "Populate Surface" do.
-// scatter.run places what they ask for as entities or as one MultiMeshInstance3D a layer:
+// scatter.run places what they ask for as entities or as one ModelInstances3D a layer:
 //
 //   {
 //     "format": 1,
@@ -43,7 +43,7 @@ struct ScatterLayer {
     // place prefabs.
     std::string mesh;
     std::string prefab;
-    // "entities" (one an instance) or "multimesh" (one MultiMeshInstance3D drawing mesh at
+    // "entities" (one an instance) or "multimesh" (one ModelInstances3D drawing mesh at
     // every place; 3D only).
     std::string as = "entities";
     // The entities to scatter over, with those under them: in 3D their geometry as navigation

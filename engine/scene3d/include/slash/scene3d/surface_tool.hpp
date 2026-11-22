@@ -15,7 +15,7 @@
 
 // Meshes gameplay code builds while a game runs, as Godot's SurfaceTool and ArrayMesh: set a
 // vertex's attributes, add it, add indices if you like, then commit the surface into a Model
-// (Godot's ArrayMesh, one surface per commit) and make it an asset any MeshInstance3D can draw:
+// (Godot's ArrayMesh, one surface per commit) and make it an asset any Model3D can draw:
 //
 //   scene3d::SurfaceTool tool;
 //   tool.set_uv({0, 0});
@@ -25,7 +25,7 @@
 //   scene3d::Model mesh;
 //   tool.commit(mesh);
 //   auto path = scene3d::make_mesh(world, "ground", std::move(mesh)); // "made:ground"
-//   world.ecs().get<world::MeshInstance3D>(entity).mesh = path.value();
+//   world.ecs().get<world::Model3D>(entity).mesh = path.value();
 //
 // The results are the same bits on every machine.
 namespace slash::scene3d {
@@ -45,7 +45,7 @@ public:
     static constexpr std::uint32_t kFlat = std::numeric_limits<std::uint32_t>::max();
     void set_smooth_group(std::uint32_t group) { smooth_group_ = group; }
     // The material the surface is drawn with; left unset, Godot's default.
-    void set_material(const world::StandardMaterial3D& material) { material_ = material; }
+    void set_material(const world::Surface3D& material) { material_ = material; }
 
     // A vertex at a position with the attributes set so far.
     void add_vertex(Vec3 position);
@@ -87,13 +87,13 @@ private:
     Vec2 uv_;
     Vec2 uv2_;
     std::uint32_t smooth_group_ = 0;
-    std::optional<world::StandardMaterial3D> material_;
+    std::optional<world::Surface3D> material_;
     std::vector<Vertex> vertices_;
     std::vector<std::uint32_t> indices_;
 };
 
 // Makes a mesh gameplay code built an asset at "made:<name>" in the assets the world's modules
-// load from (canvas::install attaches them), as Godot's ArrayMesh: a MeshInstance3D's mesh, a
+// load from (canvas::install attaches them), as Godot's ArrayMesh: a Model3D's mesh, a
 // particle emitter's or anything else that names a model can name the path. Making it again
 // with the same name changes it in place, and renderers draw the new one. Returns the path, or
 // fails when the world has no assets or name isn't letters, digits and "_-./".

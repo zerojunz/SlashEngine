@@ -14,7 +14,7 @@ goal by priority that applies, is unmet and is reached; `check_brain` warns abou
 reaches and actions no plan uses. An `NpcAgent` names its brain and keeps its facts (those that
 differ from the brain's), goal, plan and timers, so saving, undo and replays keep them. The `npc`
 system (priority 965, after navigation; `src/npc.cpp`) runs each agent's action (a `go_to` walks
-along its `NavigationAgent3D` or 2D's path when it has one), then has those due to think choose on
+along its `NavAgent3D` or 2D's path when it has one), then has those due to think choose on
 the world's job pool, each from its own facts, and starts their plans in entity order, emitting
 `npc_goal_changed`, `npc_action_started`, `npc_action_finished` and `npc_action_failed`.
 Gameplay code answers an `emit` action's event and sets facts with `npc::set_fact`, which has the

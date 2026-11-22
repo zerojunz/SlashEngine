@@ -679,7 +679,7 @@ float wrap_progress(float progress, float length, bool loop) {
     return std::clamp(progress, 0.0F, length);
 }
 
-Transform2D follow(const PathFollow2D& follower, const Curve2D& curve,
+Transform2D follow(const SplineFollower2D& follower, const Curve2D& curve,
                    const Transform2D& transform) {
     Transform2D out = transform;
     if (curve.length() == 0.0F) {
@@ -697,7 +697,7 @@ Transform2D follow(const PathFollow2D& follower, const Curve2D& curve,
     return out;
 }
 
-Transform3D follow(const PathFollow3D& follower, const Curve3D& curve,
+Transform3D follow(const SplineFollower3D& follower, const Curve3D& curve,
                    const Transform3D& transform) {
     Transform3D out = transform;
     if (curve.length() == 0.0F) {
@@ -750,11 +750,11 @@ namespace {
 
 struct PathCache {
     struct Entry2D {
-        Path2D path;
+        Spline2D path;
         std::shared_ptr<const Curve2D> curve;
     };
     struct Entry3D {
-        Path3D path;
+        Spline3D path;
         std::shared_ptr<const Curve3D> curve;
     };
     std::mutex mutex;
@@ -767,11 +767,11 @@ PathCache* find_cache(const World& world) {
     return found != nullptr ? found->get() : nullptr;
 }
 
-std::shared_ptr<const Curve2D> bake(const Path2D& path) {
+std::shared_ptr<const Curve2D> bake(const Spline2D& path) {
     return std::make_shared<const Curve2D>(path.points, path.bake_interval);
 }
 
-std::shared_ptr<const Curve3D> bake(const Path3D& path) {
+std::shared_ptr<const Curve3D> bake(const Spline3D& path) {
     return std::make_shared<const Curve3D>(path.points, path.closed, path.bake_interval,
                                            path.up_vector_enabled);
 }
@@ -807,11 +807,11 @@ auto cached(const World& world, entt::entity entity, Map PathCache::*map) {
 } // namespace
 
 std::shared_ptr<const Curve2D> curve_2d(const World& world, entt::entity entity) {
-    return cached<Path2D>(world, entity, &PathCache::curves_2d);
+    return cached<Spline2D>(world, entity, &PathCache::curves_2d);
 }
 
 std::shared_ptr<const Curve3D> curve_3d(const World& world, entt::entity entity) {
-    return cached<Path3D>(world, entity, &PathCache::curves_3d);
+    return cached<Spline3D>(world, entity, &PathCache::curves_3d);
 }
 
 void add_path_systems(World& world) {
@@ -828,7 +828,7 @@ void add_path_systems(World& world) {
         "path_follow",
         [](World& w, double /*tick_seconds*/) {
             auto& ecs = w.ecs();
-            if (const auto followers = ecs.view<PathFollow2D, Transform2D>();
+            if (const auto followers = ecs.view<SplineFollower2D, Transform2D>();
                 followers.begin() != followers.end()) {
                 const Tree2D tree(w);
                 for (const auto [entity, follower, transform] : followers.each()) {
@@ -840,7 +840,7 @@ void add_path_systems(World& world) {
                     }
                 }
             }
-            if (const auto followers = ecs.view<PathFollow3D, Transform3D>();
+            if (const auto followers = ecs.view<SplineFollower3D, Transform3D>();
                 followers.begin() != followers.end()) {
                 const Tree3D tree(w);
                 for (const auto [entity, follower, transform] : followers.each()) {
@@ -853,8 +853,9 @@ void add_path_systems(World& world) {
                 }
             }
         },
-        {.doc = "Wraps each PathFollow2D's and PathFollow3D's progress and places it on its "
-                "parent's curve.",
+        {.doc =
+             "Wraps each SplineFollower2D's and SplineFollower3D's progress and places it on its "
+             "parent's curve.",
          .priority = 930});
 }
 
@@ -862,10 +863,10 @@ std::vector<PathProblem> check_paths(const World& world) {
     std::vector<PathProblem> problems;
     const auto& ecs = world.ecs();
     std::vector<entt::entity> followers;
-    for (const entt::entity entity : ecs.view<const PathFollow2D>()) {
+    for (const entt::entity entity : ecs.view<const SplineFollower2D>()) {
         followers.push_back(entity);
     }
-    for (const entt::entity entity : ecs.view<const PathFollow3D>()) {
+    for (const entt::entity entity : ecs.view<const SplineFollower3D>()) {
         if (std::ranges::find(followers, entity) == followers.end()) {
             followers.push_back(entity);
         }
@@ -874,31 +875,32 @@ std::vector<PathProblem> check_paths(const World& world) {
     std::optional<Tree2D> tree_2d;
     std::optional<Tree3D> tree_3d;
     for (const entt::entity entity : followers) {
-        if (ecs.all_of<PathFollow2D>(entity)) {
+        if (ecs.all_of<SplineFollower2D>(entity)) {
             if (!tree_2d) {
                 tree_2d.emplace(world);
             }
             const entt::entity parent = tree_2d->parent(entity);
-            if (parent == entt::null || !ecs.all_of<Path2D>(parent)) {
-                problems.push_back({entity, "/components/PathFollow2D",
+            if (parent == entt::null || !ecs.all_of<Spline2D>(parent)) {
+                problems.push_back({entity, "/components/SplineFollower2D",
                                     "only follows a path as a Transform2D child of an entity "
-                                    "with a Path2D"});
+                                    "with a Spline2D"});
             }
         }
-        if (const auto* follower = ecs.try_get<const PathFollow3D>(entity); follower != nullptr) {
+        if (const auto* follower = ecs.try_get<const SplineFollower3D>(entity);
+            follower != nullptr) {
             if (!tree_3d) {
                 tree_3d.emplace(world);
             }
             const entt::entity parent = tree_3d->parent(entity);
-            const auto* path = parent != entt::null ? ecs.try_get<const Path3D>(parent) : nullptr;
+            const auto* path = parent != entt::null ? ecs.try_get<const Spline3D>(parent) : nullptr;
             if (path == nullptr) {
-                problems.push_back({entity, "/components/PathFollow3D",
+                problems.push_back({entity, "/components/SplineFollower3D",
                                     "only follows a path as a Transform3D child of an entity "
-                                    "with a Path3D"});
+                                    "with a Spline3D"});
             } else if (follower->rotation_mode == "oriented" && !path->up_vector_enabled) {
-                problems.push_back({entity, "/components/PathFollow3D/rotation_mode",
+                problems.push_back({entity, "/components/SplineFollower3D/rotation_mode",
                                     "\"oriented\" needs up vectors: set up_vector_enabled on the "
-                                    "parent's Path3D"});
+                                    "parent's Spline3D"});
             }
         }
     }

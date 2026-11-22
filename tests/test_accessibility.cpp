@@ -79,22 +79,22 @@ void make_menu(Session& s) {
             "Label": {"text": "Paused"}}}},
         {"command": "entity.create", "params": {"id": "resume", "components": {
             "Button": {"text": "Resume"},
-            "Control": {"accessibility_description": "Back to the game"}}}},
+            "Widget": {"accessibility_description": "Back to the game"}}}},
         {"command": "entity.create", "params": {"id": "music", "components": {
             "CheckBox": {"text": "Music", "button_pressed": true}}}},
         {"command": "entity.create", "params": {"id": "volume", "components": {
             "Slider": {"value": 50, "step": 5},
-            "Control": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
+            "Widget": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
                         "accessibility_labeled_by_nodes": ["title"]}}}},
         {"command": "entity.create", "params": {"id": "player", "components": {
-            "LineEdit": {"placeholder_text": "Your name"}}}},
+            "TextField": {"placeholder_text": "Your name"}}}},
         {"command": "entity.create", "params": {"id": "close", "components": {
-            "TextureButton": {}, "Control": {"custom_minimum_size": [16, 16]}}}},
+            "ImageButton": {}, "Widget": {"custom_minimum_size": [16, 16]}}}},
         {"command": "entity.create", "params": {"id": "secret", "components": {
-            "Button": {"text": "Cheat"}, "Control": {"visible": false}}}},
+            "Button": {"text": "Cheat"}, "Widget": {"visible": false}}}},
         {"command": "entity.create", "params": {"id": "menu", "components": {
-            "BoxContainer": {"vertical": true},
-            "Control": {"children": ["title", "resume", "music", "volume", "player", "close",
+            "StackBox": {"vertical": true},
+            "Widget": {"children": ["title", "resume", "music", "volume", "player", "close",
                                      "secret"],
                         "accessibility_live": "polite"}}}}
     ]})");
@@ -146,17 +146,17 @@ TEST_CASE("ui.accessibility gives each control's role, name, value, state and ac
     CHECK(compact(*volume.find("range")) == "[50,0,100,5]");
     CHECK(compact(*volume.find("actions")) == R"(["decrement","increment","set_value"])");
     CHECK(compact(*volume.find("labeled_by")) == R"(["title"])");
-    // An empty LineEdit is named by its placeholder, which it shows.
+    // An empty TextField is named by its placeholder, which it shows.
     const json::Value& player = children[4];
     CHECK(player.find("role")->as_string() == "text_field");
     CHECK(player.find("name")->as_string() == "Your name");
     CHECK(player.find("placeholder")->as_string() == "Your name");
     CHECK(player.find("value") == nullptr);
     CHECK(compact(*player.find("selection")) == "[0,0]");
-    // A TextureButton has nothing to call it, which is a problem.
+    // A ImageButton has nothing to call it, which is a problem.
     CHECK(children[5].find("name") == nullptr);
     CHECK(compact(*result.find("problems")) ==
-          compact(parse(R"([{"id": "close", "path": "/components/Control/accessibility_name",
+          compact(parse(R"([{"id": "close", "path": "/components/Widget/accessibility_name",
                              "message": "a screen reader has no name for this button: give it text, accessibility_name or tooltip_text"}])")));
 
     // Hidden controls come when asked for, flagged.
@@ -167,12 +167,12 @@ TEST_CASE("ui.accessibility gives each control's role, name, value, state and ac
 
     // A name and text both show; a tooltip stands in for neither.
     s.ok("component.set", R"({"id": "resume", "components": {
-        "Control": {"accessibility_name": "Play"}}})");
+        "Widget": {"accessibility_name": "Play"}}})");
     CHECK(s.element("resume").find("name")->as_string() == "Play: Resume");
     s.ok("component.set", R"({"id": "close", "components": {
-        "Control": {"tooltip_text": "Close the menu"}}})");
+        "Widget": {"tooltip_text": "Close the menu"}}})");
     CHECK(s.element("close").find("tooltip")->as_string() == "Close the menu");
-    // A TextureButton isn't a Button, so the tooltip doesn't name it.
+    // A ImageButton isn't a Button, so the tooltip doesn't name it.
     CHECK(s.element("close").find("name") == nullptr);
 }
 
@@ -204,7 +204,7 @@ TEST_CASE("ui.accessibility_action clicks, steps, sets and focuses as a screen r
     CHECK(s.fails("ui.accessibility_action", R"({"id": "title", "action": "click"})") ==
           "/action: \"title\": a control that isn't a button doesn't take \"click\"");
     CHECK(s.fails("ui.accessibility_action", R"({"id": "volume", "action": "scroll_up"})") ==
-          "/action: \"volume\": a control that isn't a ScrollContainer doesn't take \"scroll_up\"");
+          "/action: \"volume\": a control that isn't a ScrollBox doesn't take \"scroll_up\"");
     s.ok("component.set", R"({"id": "resume", "components": {"Button": {"disabled": true}}})");
     CHECK(s.fails("ui.accessibility_action", R"({"id": "resume", "action": "click"})") ==
           "/action: \"resume\": the button is disabled");
@@ -238,7 +238,7 @@ TEST_CASE("focus_mode accessibility takes focus only while a screen reader is se
 TEST_CASE("ui.accessibility shows an open menu's items, and click picks one") {
     Session s;
     s.ok("entity.create", R"({"id": "size", "components": {
-        "OptionButton": {"selected": 1, "items": [{"text": "Small"}, {"text": "Large"},
+        "Dropdown": {"selected": 1, "items": [{"text": "Small"}, {"text": "Large"},
                                                   {"text": "Huge", "disabled": true}]}}})");
     const json::Value closed = s.element("size");
     CHECK(closed.find("name")->as_string() == "Large");
@@ -270,18 +270,18 @@ TEST_CASE("ui.accessibility shows an open menu's items, and click picks one") {
     CHECK(s.element("size").find("name")->as_string() == "Small");
 }
 
-TEST_CASE("ui.accessibility_action scrolls a ScrollContainer by pages and into view") {
+TEST_CASE("ui.accessibility_action scrolls a ScrollBox by pages and into view") {
     Session s;
     s.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "a", "components": {
-            "Control": {"custom_minimum_size": [50, 300]}}}},
+            "Widget": {"custom_minimum_size": [50, 300]}}}},
         {"command": "entity.create", "params": {"id": "b", "components": {
-            "Button": {"text": "Last"}, "Control": {"custom_minimum_size": [50, 40]}}}},
+            "Button": {"text": "Last"}, "Widget": {"custom_minimum_size": [50, 40]}}}},
         {"command": "entity.create", "params": {"id": "list", "components": {
-            "BoxContainer": {"vertical": true}, "Control": {"children": ["a", "b"]}}}},
+            "StackBox": {"vertical": true}, "Widget": {"children": ["a", "b"]}}}},
         {"command": "entity.create", "params": {"id": "scroll", "components": {
-            "ScrollContainer": {},
-            "Control": {"children": ["list"], "offset_right": 100, "offset_bottom": 100}}}}
+            "ScrollBox": {},
+            "Widget": {"children": ["list"], "offset_right": 100, "offset_bottom": 100}}}}
     ]})");
     const json::Value scroll = s.element("scroll");
     CHECK(scroll.find("role")->as_string() == "scroll_view");
@@ -289,7 +289,7 @@ TEST_CASE("ui.accessibility_action scrolls a ScrollContainer by pages and into v
     const auto scrolled = [&s] {
         return s.ok("entity.get", R"({"id": "scroll"})")
             .find("components")
-            ->find("ScrollContainer")
+            ->find("ScrollBox")
             ->find("scroll_vertical")
             ->as_double();
     };
@@ -301,7 +301,7 @@ TEST_CASE("ui.accessibility_action scrolls a ScrollContainer by pages and into v
     s.ok("ui.accessibility_action",
          R"({"id": "scroll", "action": "set_scroll_offset", "value": [0, 0]})");
     CHECK(scrolled() == 0);
-    // scroll_into_view scrolls only a ScrollContainer that is the control's parent, as Godot's:
+    // scroll_into_view scrolls only a ScrollBox that is the control's parent, as Godot's:
     // "b" is the list's child, so nothing moves.
     s.ok("ui.accessibility_action", R"({"id": "b", "action": "scroll_into_view"})");
     CHECK(scrolled() == 0);

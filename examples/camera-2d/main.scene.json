@@ -49,14 +49,14 @@
     },
     "score": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "Coins: 0"
+        },
+        "Widget": {
           "offset_bottom": 24.0,
           "offset_left": 8.0,
           "offset_right": 108.0,
           "offset_top": 8.0
-        },
-        "Label": {
-          "text": "Coins: 0"
         }
       }
     }

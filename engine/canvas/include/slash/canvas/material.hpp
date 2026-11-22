@@ -52,7 +52,7 @@
 // compiled code into the file as "compiled", since games can't compile shaders.
 //
 // With "shader_type": "spatial", the file is a 3D material, Godot's ShaderMaterial for a mesh
-// (MeshInstance3D's material_override names it): its shader's vertex() moves the mesh's corners,
+// (Model3D's material_override names it): its shader's vertex() moves the mesh's corners,
 // its fragment() gives each pixel's ALBEDO, ROUGHNESS, NORMAL_MAP and the rest, and
 // "render_mode" lists Godot's render modes:
 //

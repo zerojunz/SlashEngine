@@ -23,7 +23,7 @@ enum class Break : std::uint8_t {
     Other,
     Cr,
     Lf,
-    Control,
+    Widget,
     Extend,
     Zwj,
     RegionalIndicator,
@@ -96,7 +96,7 @@ Break break_of(char32_t c) {
     case SBGeneralCategoryZL:
     case SBGeneralCategoryZP:
     case SBGeneralCategoryCF:
-        return Break::Control;
+        return Break::Widget;
     default:
         return Break::Other;
     }
@@ -122,8 +122,8 @@ bool joins(Break previous, Break next, char32_t c, bool pictographic_run, int re
     if (previous == Break::Cr && next == Break::Lf) {
         return true; // GB3
     }
-    if (previous == Break::Cr || previous == Break::Lf || previous == Break::Control ||
-        next == Break::Cr || next == Break::Lf || next == Break::Control) {
+    if (previous == Break::Cr || previous == Break::Lf || previous == Break::Widget ||
+        next == Break::Cr || next == Break::Lf || next == Break::Widget) {
         return false; // GB4, GB5
     }
     if (previous == Break::L &&

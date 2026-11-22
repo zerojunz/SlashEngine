@@ -19,7 +19,7 @@ struct Scene3D;
 }
 
 // Pipeline files, as Godot 4.3's Compositor resource and its CompositorEffects: a .pipeline.json
-// file that a WorldEnvironment's or a Camera3D's compositor names (the camera's wins, as Godot's)
+// file that a Environment3D's or a Camera3D's compositor names (the camera's wins, as Godot's)
 // turns the frame's passes off and adds the game's own screen passes. Each effect is a compositor
 // material (a .material.json file with "shader_type": "compositor", whose fragment() reads
 // SCREEN_TEXTURE, DEPTH_TEXTURE and NORMAL_ROUGHNESS_TEXTURE and writes COLOR) drawn over the 3D
@@ -82,7 +82,7 @@ void add_compositor_code(const std::string& name, CompositorCode code);
 [[nodiscard]] CompositorCode compositor_code(const std::string& name);
 
 // The pipeline file a world's frames use: the current camera's compositor, else the first
-// WorldEnvironment's; "" for none. at is where it was named, for problems
+// Environment3D's; "" for none. at is where it was named, for problems
 // ("/components/Camera3D/compositor").
 struct PipelineChoice {
     entt::entity entity = entt::null;

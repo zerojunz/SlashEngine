@@ -13,8 +13,8 @@
 namespace slash::canvas {
 namespace {
 
-using world::CollisionPolygon2D;
-using world::CollisionShape2D;
+using world::Collider2D;
+using world::PolygonCollider2D;
 
 std::uint8_t to_byte(float channel) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(channel, 0.0F, 1.0F) * 255.0F));
@@ -44,7 +44,7 @@ Vec4 darkened(Vec4 color, float amount) {
     return {color.x * (1.0F - amount), color.y * (1.0F - amount), color.z * (1.0F - amount),
             color.w};
 }
-// The gray CollisionShape2D draws a disabled shape with: Color::get_v in every channel.
+// The gray Collider2D draws a disabled shape with: Color::get_v in every channel.
 Vec4 grayed(Vec4 color) {
     const float value = std::max({color.x, color.y, color.z});
     return {value, value, value, color.w * 0.5F};
@@ -135,7 +135,7 @@ private:
     std::vector<render::Vertex2D>* out_;
 };
 
-// The arrow CollisionShape2D and CollisionPolygon2D draw for one-way collision: a line from
+// The arrow Collider2D and PolygonCollider2D draw for one-way collision: a line from
 // their origin 20 pixels down +y, then a tip 8 pixels long.
 void arrow(Painter& paint, const Place& place, float width, Vec4 color) {
     constexpr Vec2 kLineTo{0.0F, 20.0F};
@@ -217,8 +217,7 @@ std::vector<Vec2> convex_hull(std::vector<Vec2> points) {
     return hull.size() >= 3 ? hull : std::vector<Vec2>{};
 }
 
-void draw_shape(Painter& paint, const CollisionShape2D& shape, const Place& place,
-                Vec4 debug_color) {
+void draw_shape(Painter& paint, const Collider2D& shape, const Place& place, Vec4 debug_color) {
     const Vec4 color = shape.disabled ? grayed(debug_color) : debug_color;
     std::vector<Vec2> points;
     if (shape.shape == "circle") {
@@ -247,7 +246,7 @@ void draw_shape(Painter& paint, const CollisionShape2D& shape, const Place& plac
     }
 }
 
-void draw_polygon(Painter& paint, const CollisionPolygon2D& polygon, const Place& place,
+void draw_polygon(Painter& paint, const PolygonCollider2D& polygon, const Place& place,
                   Vec4 debug_color) {
     constexpr Vec4 kStroke{0.9F, 0.2F, 0.0F, 1.0F};
     if (polygon.polygon.size() > 2) {
@@ -272,10 +271,10 @@ CollisionShapes collision_shapes(const world::World& world, const TransformOf& t
     Painter paint(drawn.vertices);
     const auto& ecs = world.ecs();
     std::vector<entt::entity> entities;
-    for (const auto entity : ecs.view<const CollisionShape2D>()) {
+    for (const auto entity : ecs.view<const Collider2D>()) {
         entities.push_back(entity);
     }
-    for (const auto entity : ecs.view<const CollisionPolygon2D>(entt::exclude<CollisionShape2D>)) {
+    for (const auto entity : ecs.view<const PolygonCollider2D>(entt::exclude<Collider2D>)) {
         entities.push_back(entity);
     }
     std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
@@ -290,8 +289,8 @@ CollisionShapes collision_shapes(const world::World& world, const TransformOf& t
 
     // Tile map layers' polygons, filled, as TileMapLayer::_physics_draw_cell_debug draws them.
     std::vector<entt::entity> layers;
-    for (const auto entity : ecs.view<const world::TileMapLayer>()) {
-        if (ecs.get<world::TileMapLayer>(entity).collision_enabled) {
+    for (const auto entity : ecs.view<const world::TileLayer2D>()) {
+        if (ecs.get<world::TileLayer2D>(entity).collision_enabled) {
             layers.push_back(entity);
         }
     }
@@ -325,13 +324,13 @@ CollisionShapes collision_shapes(const world::World& world, const TransformOf& t
                     .scale = transform.scale,
                     .origin = transform.position,
                     .body_axis = cos_sin(transform.rotation)};
-        if (const auto* shape = ecs.try_get<CollisionShape2D>(entity); shape != nullptr) {
+        if (const auto* shape = ecs.try_get<Collider2D>(entity); shape != nullptr) {
             place.position = shape->position;
             place.shape_axis = cos_sin(shape->rotation);
             draw_shape(paint, *shape, place, color);
             ++drawn.shapes;
         }
-        if (const auto* polygon = ecs.try_get<CollisionPolygon2D>(entity); polygon != nullptr) {
+        if (const auto* polygon = ecs.try_get<PolygonCollider2D>(entity); polygon != nullptr) {
             place.position = {};
             place.shape_axis = {1.0F, 0.0F};
             draw_polygon(paint, *polygon, place, color);

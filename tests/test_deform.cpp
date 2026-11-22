@@ -126,22 +126,22 @@ double polygon_area(const std::vector<Vec2>& points) {
 constexpr std::string_view kPlate3D = R"({
     "Transform3D": {"position": [0, 1, 0]},
     "StaticBody3D": {},
-    "CollisionShape3D": {"shape": "box", "size": [2, 2, 0.3]},
-    "BoxMesh": {"size": [2, 2, 0.3]},
-    "MeshInstance3D": {},
-    "StandardMaterial3D": {"albedo_color": [0.6, 0.6, 0.7, 1]},
+    "Collider3D": {"shape": "box", "size": [2, 2, 0.3]},
+    "BoxGeometry": {"size": [2, 2, 0.3]},
+    "Model3D": {},
+    "Surface3D": {"albedo_color": [0.6, 0.6, 0.7, 1]},
     "Destructible3D": {"profile": "plate.damage.json"}})";
 
 constexpr std::string_view kCrate2D = R"({
     "Transform2D": {"position": [0, 0]},
     "StaticBody2D": {},
-    "CollisionShape2D": {"shape": "rectangle", "size": [64, 64]},
+    "Collider2D": {"shape": "rectangle", "size": [64, 64]},
     "Polygon2D": {"polygon": [[-32, -32], [32, -32], [32, 32], [-32, 32]],
                   "color": [0.6, 0.4, 0.2, 1]},
     "Destructible2D": {"profile": "crate.damage.json"}})";
 
 const std::vector<Vec2>& outline(const Scene& scene, entt::entity entity) {
-    const auto* shape = scene.world.ecs().try_get<const world::CollisionPolygon2D>(entity);
+    const auto* shape = scene.world.ecs().try_get<const world::PolygonCollider2D>(entity);
     REQUIRE(shape != nullptr);
     return shape->polygon;
 }
@@ -185,7 +185,7 @@ TEST_CASE("deform: a blow dents a 3D plate, a shot holes it and a blast carves i
     CHECK(piece.value()->volume < 2.0 * 2.0 * 0.3);
     CHECK(piece.value()->mesh.triangles > 12);
     // Dents don't change what it collides as.
-    CHECK(scene.world.ecs().get<const world::CollisionShape3D>(plate).shape == "box");
+    CHECK(scene.world.ecs().get<const world::Collider3D>(plate).shape == "box");
 
     auto holed = physics3d::damage_body(scene.world, plate, 30.0F, "pierce", Vec3{0.5F, 1, 0.15F},
                                         0.0F, Vec3{0, 0, -1});
@@ -193,7 +193,7 @@ TEST_CASE("deform: a blow dents a 3D plate, a shot holes it and a blast carves i
     CHECK(holed.value().deformed == "hole");
     REQUIRE(destructible.carves.size() == 1);
     // A holed static body collides as its triangles, so things go through the hole.
-    CHECK(scene.world.ecs().get<const world::CollisionShape3D>(plate).shape == "concave_polygon");
+    CHECK(scene.world.ecs().get<const world::Collider3D>(plate).shape == "concave_polygon");
     const double after_hole = scene3d::damaged_piece_of(scene.world, plate).value()->volume;
 
     auto carved = physics3d::damage_body(scene.world, plate, 50.0F, "explosive", Vec3{-1, 1, 0.2F});
@@ -232,11 +232,11 @@ TEST_CASE("deform: a carved 3D wall breaks into pieces that keep its carve") {
     CHECK(pieces == doctest::Approx(whole).epsilon(0.02));
 }
 
-TEST_CASE("deform: a blast digs a crater in an HTerrain made of soil") {
+TEST_CASE("deform: a blast digs a crater in an Terrain3D made of soil") {
     Scene scene;
     scene.files["ground.damage.json"] = R"({"format": 1, "material": "soil"})";
     const entt::entity ground = scene.create("ground", R"({"Transform3D": {},
-        "HTerrain": {"resolution": 65},
+        "Terrain3D": {"resolution": 65},
         "Destructible3D": {"profile": "ground.damage.json"}})");
     scene.step(1);
     const float blast = scene.amount_for("ground.damage.json", "explosive", 100.0F);
@@ -244,7 +244,7 @@ TEST_CASE("deform: a blast digs a crater in an HTerrain made of soil") {
         physics3d::damage_area(scene.world, Vec3{16, 0, 16}, 5.0F, blast, "explosive");
     REQUIRE(hurt.size() == 1);
     CHECK(hurt[0].deformed == "crater");
-    const auto& terrain = scene.world.ecs().get<const world::HTerrain>(ground);
+    const auto& terrain = scene.world.ecs().get<const world::Terrain3D>(ground);
     REQUIRE(terrain.craters.size() == 1);
     const world::TerrainCrater& crater = terrain.craters[0];
     CHECK(crater.radius == doctest::Approx(2.0)); // 100 x 0.02 meters, a meter a cell
@@ -274,7 +274,7 @@ TEST_CASE("deform: 2D outlines are carved, holed and dented, and cut-off parts f
     auto carved = physics2d::damage_body_2d(scene.world, crate, bite, "explosive", Vec2{32, 0});
     REQUIRE(carved.ok());
     CHECK(carved.value().deformed == "carve");
-    CHECK_FALSE(scene.world.ecs().all_of<world::CollisionShape2D>(crate));
+    CHECK_FALSE(scene.world.ecs().all_of<world::Collider2D>(crate));
     const double half_disc = 3.14159265 * 20.0 * 20.0 / 2.0;
     CHECK(polygon_area(outline(scene, crate)) == doctest::Approx(4096.0 - half_disc).epsilon(0.03));
     CHECK(scene.world.ecs().get<const world::Polygon2D>(crate).polygon.size() > 4);
@@ -298,7 +298,7 @@ TEST_CASE("deform: 2D outlines are carved, holed and dented, and cut-off parts f
 
     // A blast through the middle of a bar cuts it in two: one part falls away.
     const entt::entity bar = scene.create("bar", R"({"Transform2D": {"position": [200, 0]},
-        "StaticBody2D": {}, "CollisionShape2D": {"shape": "rectangle", "size": [128, 16]},
+        "StaticBody2D": {}, "Collider2D": {"shape": "rectangle", "size": [128, 16]},
         "Polygon2D": {"polygon": [[-64, -8], [64, -8], [64, 8], [-64, 8]]},
         "Destructible2D": {"profile": "crate.damage.json"}})");
     auto split = physics2d::damage_body_2d(scene.world, bar, bite, "explosive", Vec2{200, 0});
@@ -312,7 +312,7 @@ TEST_CASE("deform: 2D outlines are carved, holed and dented, and cut-off parts f
     CHECK(scene.world.ecs().all_of<world::RigidBody2D>(debris[0]));
     const double kept = polygon_area(outline(scene, bar));
     const double fell =
-        polygon_area(scene.world.ecs().get<const world::CollisionPolygon2D>(debris[0]).polygon);
+        polygon_area(scene.world.ecs().get<const world::PolygonCollider2D>(debris[0]).polygon);
     CHECK(kept + fell == doctest::Approx(128.0 * 16.0 - (16.0 * 40.0)).epsilon(0.05));
 }
 
@@ -321,7 +321,7 @@ TEST_CASE("deform: a blast takes the cells it reaches out of a destructible tile
     scene.files["rock.tileset.json"] = R"({"format": 1, "tile_size": [16, 16],
         "sources": {"rock": {"texture": "rock.png", "tiles": {"0,0": {"name": "rock"}}}}})";
     scene.files["ground.damage.json"] = R"({"format": 1, "material": "soil"})";
-    const entt::entity layer = scene.create("cave", R"({"TileMapLayer": {
+    const entt::entity layer = scene.create("cave", R"({"TileLayer2D": {
         "tile_set": "rock.tileset.json", "legend": {"r": "rock"},
         "rows": ["rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr",
                  "rrrrrrrr", "rrrrrrrr", "rrrrrrrr", "rrrrrrrr"]},
@@ -334,7 +334,7 @@ TEST_CASE("deform: a blast takes the cells it reaches out of a destructible tile
         physics2d::damage_area_2d(scene.world, Vec2{64, 64}, 100.0F, blast, "explosive");
     REQUIRE(hurt.size() == 1);
     CHECK(hurt[0].deformed == "carve");
-    const auto& rows = scene.world.ecs().get<const world::TileMapLayer>(layer).rows;
+    const auto& rows = scene.world.ecs().get<const world::TileLayer2D>(layer).rows;
     std::size_t cells = 0;
     for (const std::string& row : rows) {
         cells += static_cast<std::size_t>(std::ranges::count(row, 'r'));
@@ -388,8 +388,8 @@ TEST_CASE("deform: 2D cloth pulled past its tear_stretch tears by itself") {
 TEST_CASE("deform: a 3D soft body tears where it is cut and is made again without the faces") {
     Scene scene;
     const entt::entity flag = scene.create("flag", R"({"Transform3D": {"position": [0, 2, 0]},
-        "MeshInstance3D": {},
-        "PlaneMesh": {"size": [2, 2], "subdivide_width": 3, "subdivide_depth": 3},
+        "Model3D": {},
+        "PlaneGeometry": {"size": [2, 2], "subdivide_width": 3, "subdivide_depth": 3},
         "SoftBody3D": {"pinned_points": [{"point": 0}, {"point": 4}]}})");
     scene.step(2);
     const auto torn = physics3d::tear_soft_body(scene.world, flag, Vec3{0, 2, 0}, 0.4F);

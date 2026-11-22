@@ -4,6 +4,7 @@
 
 #include "slash/core/text.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/creature.hpp"
 #include "slash/world/tree3d.hpp"
@@ -104,7 +105,7 @@ json::Value schema() {
     track["properties"]["type"] =
         property("string", "What it does: sets a field (value), sets a number along a curve "
                            "(bezier, with path), emits events (event), moves a model's node "
-                           "(node), plays the target's AnimationPlayer (animation) or plays "
+                           "(node), plays the target's Animator (animation) or plays "
                            "sounds on its audio player (audio). Left out, from path, event or "
                            "node.");
     track["properties"]["type"]["enum"] = names(kTrackTypes);
@@ -122,7 +123,7 @@ json::Value schema() {
                            "rotation's Euler angles in radians, turning the shorter way round.");
     track["properties"]["property"]["enum"] = names(kNodeProperties);
     track["properties"]["target"] =
-        property("string", "The entity it acts on: a name in the AnimationPlayer's targets, "
+        property("string", "The entity it acts on: a name in the Animator's targets, "
                            "as a Godot track's node path. Left out, the player's own entity.");
     track["properties"]["target"]["minLength"] = 1;
     track["properties"]["interpolation"] = property("string", "How values between keys are found.");
@@ -214,7 +215,7 @@ json::Value schema() {
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine animation library";
     out["description"] = "Keyframe animations of component fields by name, like Godot's "
-                         "AnimationLibrary. AnimationPlayer plays them.";
+                         "AnimationLibrary. Animator plays them.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"animations", "format"};
@@ -516,7 +517,7 @@ private:
                              ? "an audio track plays sounds on its target's audio player, so it "
                                "has no path, event or node"
                              : "an animation track plays the animations of its target's "
-                               "AnimationPlayer, so it has no path, event or node");
+                               "Animator, so it has no path, event or node");
                 return;
             }
         } else if (kinds != 1) {
@@ -676,7 +677,7 @@ private:
 
     void check_animation_track(const json::Value& track, const std::string& at) {
         if (track.find("target") == nullptr) {
-            fail(at, "an animation track needs a \"target\": the entity whose AnimationPlayer "
+            fail(at, "an animation track needs a \"target\": the entity whose Animator "
                      "it plays");
         }
         for (const char* key : {"interpolation", "update", "loop_wrap"}) {
@@ -1442,19 +1443,19 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
         if (moved.empty()) {
             return;
         }
-        const json::Value* instance = components.find("MeshInstance3D");
+        const json::Value* instance = components.find("Model3D");
         const json::Value* mesh = instance != nullptr ? instance->find("mesh") : nullptr;
         if (mesh == nullptr || !mesh->is_string() || !scene3d::is_model_path(mesh->as_string())) {
             if (!extends) {
                 errors.push_back({at, path + "'s node tracks move the nodes of the model the "
                                              "entity draws, but it draws none: give it a "
-                                             "MeshInstance3D whose mesh is a model file"});
+                                             "Model3D whose mesh is a model file"});
             }
             return;
         }
         const Result<scene3d::Model>& model = files.model(mesh->as_string());
         if (!model) {
-            return; // the MeshInstance3D's own check says why
+            return; // the Model3D's own check says why
         }
         std::vector<std::string_view> names;
         names.reserve(model.value().nodes.size());
@@ -1476,7 +1477,7 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
         }
     };
     const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
-        const json::Value* player = components.find("AnimationPlayer");
+        const json::Value* player = components.find("Animator");
         if (player == nullptr || !player->is_object()) {
             return;
         }
@@ -1546,13 +1547,12 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
     if (const json::Value* entities = doc.find("entities"); entities != nullptr) {
         for (const auto& [id, entity] : entities->as_object()) {
             if (const json::Value* components = entity.find("components"); components != nullptr) {
-                check(*components,
-                      "/entities/" + json::pointer_escape(id) + "/components/AnimationPlayer",
+                check(*components, "/entities/" + json::pointer_escape(id) + "/components/Animator",
                       entity.find("extends") != nullptr || id.find('/') != std::string::npos);
             }
         }
     } else if (const json::Value* components = doc.find("components"); components != nullptr) {
-        check(*components, "/components/AnimationPlayer", doc.find("extends") != nullptr);
+        check(*components, "/components/Animator", doc.find("extends") != nullptr);
     }
     return errors;
 }
@@ -1583,6 +1583,9 @@ Result<Target> resolve_target(std::string_view path, const world::ComponentRegis
         }
         return make_error(ErrorCode::NotFound, std::move(message));
     }
+    // A path may name the component and its field by their old names.
+    parts[0] = std::string(target.component->name());
+    parts[1] = std::string(world::current_field_name(parts[0], parts[1]));
     const auto fields = target.component->fields();
     if (std::ranges::find(fields, parts[1]) == fields.end()) {
         std::string message = parts[0] + " has no field \"" + parts[1] + "\"";
@@ -1633,7 +1636,7 @@ Result<Target> resolve_target(std::string_view path, const world::ComponentRegis
             next = properties.find(part)->second;
         } else if (type == "object" && current.find("additionalProperties") != nullptr &&
                    current.find("additionalProperties")->is_object()) {
-            // A map's value by its key, as MeshInstance3D/blend_shapes/smile.
+            // A map's value by its key, as Model3D/blend_shapes/smile.
             target.part.push_back(part);
             next = *current.find("additionalProperties");
         } else {

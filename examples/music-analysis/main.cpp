@@ -169,7 +169,7 @@ int main() {
     call(session, "audio.analyze", R"({"path": "music/groove_loud.wav"})");
 
     // What the Master bus played over one turn of the loop, ten seconds in.
-    call(session, "entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+    call(session, "entity.create", R"({"id": "music", "components": {"SoundPlayer":
         {"stream": "music/groove.audio.json", "autoplay": true}}})");
     call(session, "step", R"({"ticks": 600})");
     call(session, "audio.analyze", R"({"bus": "Master", "seconds": 9.6})");

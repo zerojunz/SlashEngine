@@ -731,7 +731,7 @@ void stage_camera(world::World& world, const world::FluidRecipe& recipe, Vec2 vi
     world::Transform3D sun_place;
     sun_place.rotation = {-0.9F, 0.5F, 0.0F};
     ecs.emplace<world::Transform3D>(sun, sun_place);
-    ecs.emplace<world::DirectionalLight3D>(sun);
+    ecs.emplace<world::SunLight3D>(sun);
 }
 
 Reply fluid_preview(Session& session, const json::Value& params) {

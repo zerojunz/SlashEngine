@@ -3,8 +3,8 @@
 // A .creature.json recipe (slash/world/creature.hpp) built into a rigged, animated model, after
 // Unreal's Mutable: a skeleton of creature_skeleton's bones, the body and its parts made of
 // primitive meshes placed by the recipe's measures, and an animation for each of
-// creature_animations'. Models load .creature.json files through it, so a MeshInstance3D draws
-// one and an AnimationPlayer whose library is the same file plays its animations.
+// creature_animations'. Models load .creature.json files through it, so a Model3D draws
+// one and an Animator whose library is the same file plays its animations.
 
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"

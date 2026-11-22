@@ -15,8 +15,8 @@
 #include <vector>
 
 // 3D physics on Jolt Physics, as Godot 4.4's Jolt module (modules/jolt_physics). The components
-// are in slash/world/components.hpp: StaticBody3D, AnimatableBody3D, RigidBody3D, CharacterBody3D
-// and Area3D make an entity a body or an area, and CollisionShape3D gives it shapes.
+// are in slash/world/components.hpp: StaticBody3D, MovingBody3D, RigidBody3D, CharacterMover3D
+// and Zone3D make an entity a body or an area, and Collider3D gives it shapes.
 //
 // The "physics3d" system keeps a Jolt physics system in step with the components, as the 2D one
 // does Box2D's world: each tick it creates, changes and removes bodies to match them, steps Jolt,
@@ -36,7 +36,7 @@ struct Settings {
     Vec3 gravity_vector{0.0F, -1.0F, 0.0F};
     float linear_damp = 0.1F;  // what RigidBody3D's linear_damp combines with
     float angular_damp = 0.1F; // what RigidBody3D's angular_damp combines with
-    // Whether Area3D detects static bodies, which Godot's Jolt module leaves off.
+    // Whether Zone3D detects static bodies, which Godot's Jolt module leaves off.
     bool areas_detect_static_bodies = false;
     // Collision steps each physics tick takes, as Chaos's substeps: more keep fast, small or
     // stacked bodies steadier, at that many times the cost.
@@ -127,7 +127,7 @@ struct RayHit {
     Vec3 point;
     Vec3 normal;           // the surface's, toward the ray's start
     float fraction = 0.0F; // how far along the ray, from 0 to 1
-    // The cell hit, when the entity is a GridMap.
+    // The cell hit, when the entity is a BlockMap3D.
     std::optional<Vec3i> cell{}; // NOLINT(readability-redundant-member-init)
     // The surface its physics material names, such as "wood"; empty without one.
     std::string surface;
@@ -146,9 +146,10 @@ struct RayHit {
 // Entities whose shapes overlap a shape placed at position and rotation (radians, as
 // Transform3D's), as Godot's intersect_shape, sorted by ID. The shape's own position and
 // rotation apply too.
-[[nodiscard]] std::vector<entt::entity>
-overlap_shape(world::World& world, const world::CollisionShape3D& shape, Vec3 position,
-              Vec3 rotation, const QueryFilter& filter = {}, std::size_t max_results = 32);
+[[nodiscard]] std::vector<entt::entity> overlap_shape(world::World& world,
+                                                      const world::Collider3D& shape, Vec3 position,
+                                                      Vec3 rotation, const QueryFilter& filter = {},
+                                                      std::size_t max_results = 32);
 
 // The point of an area's or body's shapes nearest to point, as Godot's
 // get_closest_point_to_object_volume: point itself when it is inside a convex shape, else the
@@ -257,11 +258,11 @@ struct DamageReport {
                                                std::string_view by = {});
 // What damage dealt of a kind does to a body's shape short of breaking it, by its profile's
 // deform: explosive damage carves a sphere out of a profile that carves (and digs a crater into
-// an HTerrain, the entity's Destructible3D naming a soil profile), pierce damage holes it through
+// an Terrain3D, the entity's Destructible3D naming a soil profile), pierce damage holes it through
 // along direction (from at toward its middle when nullopt), and blunt, impact and explosive
 // damage dent a profile that dents, deepening a dent near the last. at is in the world, and the
 // dent or hole starts at the nearest point of its bounds. A carved or holed body's own
-// CollisionShape3D becomes what is left (a static body's triangles, a rigid body's hull).
+// Collider3D becomes what is left (a static body's triangles, a rigid body's hull).
 // damage_body calls it while health is left. Returns "dent", "hole", "carve", "crater" or "".
 std::string deform_body(world::World& world, entt::entity entity,
                         const world::DamageProfile& profile, float dealt, std::string_view kind,

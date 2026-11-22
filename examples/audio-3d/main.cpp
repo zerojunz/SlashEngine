@@ -1,7 +1,7 @@
 // 3D sound, as Godot's AudioStreamPlayer3D: a car drives past a listener along a road 10 meters
 // ahead, its keyframe animation moving it at 20 meters a second, so its engine fades in and
 // out, pans from left to right and drops in pitch as it passes, by the Doppler effect. A stream
-// trickles inside a cave, an Area3D that sends the sounds in it to its Cave bus and a share of
+// trickles inside a cave, an Zone3D that sends the sounds in it to its Cave bus and a share of
 // them to its Echo bus, which has a reverb.
 //
 // This program writes the sound files (square waves, made without libm so they are the same

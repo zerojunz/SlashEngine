@@ -29,7 +29,7 @@ float clamped(float value, float low, float high) {
 
 } // namespace
 
-Affine2D canvas_layer_transform(const CanvasLayer& layer, const Affine2D& world, Vec2 screen_size) {
+Affine2D canvas_layer_transform(const ScreenLayer& layer, const Affine2D& world, Vec2 screen_size) {
     // CanvasLayer::_update_xform: set_rotation_and_scale, then set_origin.
     Transform2D own;
     own.position = layer.offset;
@@ -55,7 +55,7 @@ Canvases::Canvases(const World& world, const Tree2D& tree, const CameraView& vie
                    Vec2 screen_size) {
     const Canvas scene{.layer = entt::null, .order = 0, .visible = true, .transform = view.canvas};
     const auto& ecs = world.ecs();
-    const auto layers = ecs.view<const CanvasLayer>();
+    const auto layers = ecs.view<const ScreenLayer>();
     if (layers.begin() == layers.end()) {
         canvases_.push_back(scene);
         return;
@@ -66,11 +66,11 @@ Canvases::Canvases(const World& world, const Tree2D& tree, const CameraView& vie
     std::ranges::sort(made, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     std::vector<entt::entity> stacked = made;
     std::ranges::stable_sort(
-        stacked, {}, [&](entt::entity entity) { return ecs.get<const CanvasLayer>(entity).layer; });
+        stacked, {}, [&](entt::entity entity) { return ecs.get<const ScreenLayer>(entity).layer; });
     std::unordered_map<entt::entity, std::size_t> index;
     bool placed = false;
     for (const entt::entity entity : stacked) {
-        const CanvasLayer& layer = ecs.get<const CanvasLayer>(entity);
+        const ScreenLayer& layer = ecs.get<const ScreenLayer>(entity);
         if (!placed && layer.layer >= 0) {
             world_ = canvases_.size();
             canvases_.push_back(scene);
@@ -87,8 +87,8 @@ Canvases::Canvases(const World& world, const Tree2D& tree, const CameraView& vie
         canvases_.push_back(scene);
     }
     for (const entt::entity entity : made) {
-        for (const entt::entity child : ecs.get<const CanvasLayer>(entity).children) {
-            if (child != entity && world.valid(child) && !ecs.all_of<CanvasLayer>(child)) {
+        for (const entt::entity child : ecs.get<const ScreenLayer>(entity).children) {
+            if (child != entity && world.valid(child) && !ecs.all_of<ScreenLayer>(child)) {
                 held_.try_emplace(child, index.at(entity));
             }
         }
@@ -96,19 +96,19 @@ Canvases::Canvases(const World& world, const Tree2D& tree, const CameraView& vie
     if (held_.empty()) {
         return;
     }
-    // Each entity's parent: through Transform2D children, else through Control children.
+    // Each entity's parent: through Transform2D children, else through Widget children.
     for (const entt::entity entity : ecs.view<const Transform2D>()) {
         if (const entt::entity parent = tree.parent(entity); parent != entt::null) {
             parents_.emplace(entity, parent);
         }
     }
     std::vector<entt::entity> controls;
-    for (const entt::entity entity : ecs.view<const Control>()) {
+    for (const entt::entity entity : ecs.view<const Widget>()) {
         controls.push_back(entity);
     }
     std::ranges::sort(controls, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     for (const entt::entity entity : controls) {
-        for (const entt::entity child : ecs.get<const Control>(entity).children) {
+        for (const entt::entity child : ecs.get<const Widget>(entity).children) {
             if (child != entity) {
                 parents_.try_emplace(child, entity);
             }
@@ -120,7 +120,7 @@ std::size_t Canvases::of(entt::entity entity) const {
     if (held_.empty()) {
         return world_;
     }
-    // Up through the parents, as far as there are links, so a loop of Control children ends.
+    // Up through the parents, as far as there are links, so a loop of Widget children ends.
     entt::entity at = entity;
     for (std::size_t steps = 0; steps <= parents_.size() && at != entt::null; ++steps) {
         if (const auto found = held_.find(at); found != held_.end()) {
@@ -139,7 +139,7 @@ Canvases canvases(const World& world, const Tree2D& tree, Vec2 screen_size) {
 Affine2D screen_transform(const World& world, const Canvases& canvases, entt::entity entity) {
     const std::size_t index = canvases.of(entity);
     if (index == canvases.world_canvas() && entity != entt::null && world.valid(entity) &&
-        world.ecs().all_of<Control>(entity)) {
+        world.ecs().all_of<Widget>(entity)) {
         return {};
     }
     return canvases.all()[index].transform;

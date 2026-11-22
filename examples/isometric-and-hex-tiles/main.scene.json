@@ -2,7 +2,7 @@
   "entities": {
     "board": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "hex.tileset.json"
         },
         "Transform2D": {
@@ -12,7 +12,7 @@
     },
     "island": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "iso.tileset.json"
         },
         "Transform2D": {
@@ -22,7 +22,7 @@
     },
     "trees": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "iso.tileset.json"
         },
         "Transform2D": {

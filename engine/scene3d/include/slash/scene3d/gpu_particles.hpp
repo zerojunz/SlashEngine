@@ -22,7 +22,7 @@
 // emitter's steps (render::ParticleStep3D) every tick as Godot's node and particles storage do,
 // and keeps those that can still have made a live particle; renderers run the steps their device
 // hasn't (RenderDevice::process_particles_3d) and draw each draw pass's mesh at every particle
-// (fill_particle_mesh). As GPUParticles2D's, the steps are kept beside the components by entity ID,
+// (fill_particle_mesh). As GpuEmitter2D's, the steps are kept beside the components by entity ID,
 // so scenes, snapshots and undo leave them as they are.
 namespace slash::scene3d {
 
@@ -55,7 +55,7 @@ using SdfLoader =
 // The most vector fields and SDFs act on one emitter, as Godot's MAX_3D_TEXTURES.
 inline constexpr std::size_t kMaxParticleFields3D = 7;
 
-// Adds the "gpu_particles_3d" system, which steps every GPUParticles3D's emission each tick after
+// Adds the "gpu_particles_3d" system, which steps every GpuEmitter3D's emission each tick after
 // the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
 // end, as Godot's: lifetime times 2 - explosiveness after it started. Each tick it pairs each
 // emitter with the GPUParticlesAttractor3Ds and GPUParticlesCollision3Ds visible in the tree
@@ -63,7 +63,7 @@ inline constexpr std::size_t kMaxParticleFields3D = 7;
 // Godot's scene cull does, in the order entities are stored (attractors, then spheres, boxes,
 // SDFs and height fields), and gives its steps that tick's attractors and colliders in its
 // particles' space: at most 32 of each, 7 vector fields and SDFs together and one height field.
-// It draws each GPUParticlesCollisionHeightField3D's heights when it moves or changes, or every
+// It draws each ParticleColliderHeight3D's heights when it moves or changes, or every
 // tick with update_mode "always", after stepping one with follow_camera_enabled after the current
 // Camera3D by the length of its x and z axes, as Godot does. images reads vector fields' textures
 // and sdfs SDFs' (through assets in canvas::install); without them, or for a texture that can't be
@@ -91,24 +91,24 @@ struct ParticleSurroundings3D {
                                                                  std::uint32_t width,
                                                                  std::uint32_t height);
 
-// A GPUParticlesAttractorVectorField3D's texels: image cut into slices_horizontal by
+// A ParticleFlowField3D's texels: image cut into slices_horizontal by
 // slices_vertical slices, each the image's size over the slices rounded down, left to right then
 // top to bottom, as Godot's Texture3D importer cuts them; each texel's channels over 255.
 // Refuses slices of no texels and fields of more than render::kMaxParticleFieldTexels3D.
 [[nodiscard]] Result<render::ParticleField3D>
 particle_field(const render::Image& image, int slices_horizontal, int slices_vertical);
 
-// The steps an entity's GPUParticles3D has kept; none if it has no GPUParticles3D, hasn't been
+// The steps an entity's GpuEmitter3D has kept; none if it has no GpuEmitter3D, hasn't been
 // stepped or the world has no gpu_particles_3d system.
 [[nodiscard]] std::optional<ParticleSteps3D> particle_steps_3d(const world::World& world,
                                                                entt::entity entity);
 
-// The seed an entity's GPUParticles3D steps with: seed itself with use_fixed_seed, otherwise
+// The seed an entity's GpuEmitter3D steps with: seed itself with use_fixed_seed, otherwise
 // particle_seed of the ID and seed, varied by each one_shot restart.
-[[nodiscard]] std::uint32_t gpu_particle_seed(const world::GPUParticles3D& settings,
+[[nodiscard]] std::uint32_t gpu_particle_seed(const world::GpuEmitter3D& settings,
                                               std::string_view id, std::uint32_t restarts);
 
-// How a GPUParticles3D's draw_order and transform_align draw.
+// How a GpuEmitter3D's draw_order and transform_align draw.
 [[nodiscard]] render::ParticleOrder3D particle_order_3d(std::string_view draw_order);
 [[nodiscard]] render::ParticleAlign particle_align(std::string_view transform_align);
 
@@ -124,29 +124,29 @@ run_steps_3d(std::uint32_t amount, const render::ParticleProcess3D& process,
 live_particles_3d(std::span<const render::Particle3D> particles, render::ParticleOrder3D order,
                   float phase);
 
-// The particles an entity's GPUParticles3D has after the last tick, run on the CPU from the steps
+// The particles an entity's GpuEmitter3D has after the last tick, run on the CPU from the steps
 // kept with process, in draw order, live ones only; none if it has none.
 [[nodiscard]] std::vector<render::Particle3D>
 gpu_particles_3d(const world::World& world, entt::entity entity,
                  const render::ParticleProcess3D& process);
 
-// The simulation stages a GPUParticles3D's steps run from a ParticleSimulation3D beside it, after
+// The simulation stages a GpuEmitter3D's steps run from a ParticleSimulation3D beside it, after
 // Niagara's: its neighbor, curl noise, drag and speed stages (none if it is disabled). Attributes,
 // events and collide are the CPU stages' alone.
 [[nodiscard]] render::ParticleStages3D gpu_stages(const world::ParticleSimulation& simulation);
 
-// Runs a GPUParticles3D's settings from the start for seconds, in ticks of tick_seconds, from a
+// Runs a GpuEmitter3D's settings from the start for seconds, in ticks of tick_seconds, from a
 // transform that stays put, apart from any world, and returns the live particles in draw order:
 // what the system would have after that long, with stages run after each step.
 [[nodiscard]] std::vector<render::Particle3D>
-simulate_gpu(const world::GPUParticles3D& settings, const world::Affine3D& transform,
+simulate_gpu(const world::GpuEmitter3D& settings, const world::Affine3D& transform,
              const render::ParticleProcess3D& process, std::string_view id, double seconds,
              double tick_seconds, const render::ParticleStages3D& stages = {});
 
 // A transform as 3D particle steps take one.
 [[nodiscard]] render::ParticleTransform particle_transform(const world::Affine3D& affine);
 
-// The process materials GPUParticles3D's process_material names, loaded by project path: a reload
+// The process materials GpuEmitter3D's process_material names, loaded by project path: a reload
 // gives new ones.
 using ParticleProcessSource =
     std::function<Result<std::shared_ptr<const render::ParticleProcess3D>>(

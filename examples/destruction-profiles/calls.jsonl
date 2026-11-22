@@ -20,6 +20,6 @@
 {"jsonrpc":"2.0","id":20,"method":"damage.apply","params":{"id":"old_crate","amount":5,"kind":"fire"}}
 {"jsonrpc":"2.0","id":21,"method":"damage.apply","params":{"at":[-60.0,58.0],"radius":80,"amount":40,"kind":"blunt","push":120}}
 {"jsonrpc":"2.0","id":22,"method":"step","params":{"ticks":60}}
-{"jsonrpc":"2.0","id":23,"method":"world.query","params":{"with":["FracturePiece2D"],"include":["CollisionPolygon2D"]}}
+{"jsonrpc":"2.0","id":23,"method":"world.query","params":{"with":["FracturePiece2D"],"include":["PolygonCollider2D"]}}
 {"jsonrpc":"2.0","id":24,"method":"physics.break","params":{"id":"crate_1","from":[0.0,0.0]}}
 {"jsonrpc":"2.0","id":25,"method":"damage.apply","params":{"id":"crate_2","amount":1,"kind":"heat"}}

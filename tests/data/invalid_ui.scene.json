@@ -2,20 +2,20 @@
   "entities": {
     "hint": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "Esc: resume"
+        },
+        "Widget": {
           "theme_override_colors": {
             "font_colour": [1.0, 1.0, 1.0, 1.0]
           }
-        },
-        "Label": {
-          "text": "Esc: resume"
         }
       }
     },
     "panel": {
       "components": {
-        "ColorRect": {},
-        "Control": {
+        "ColorFill": {},
+        "Widget": {
           "children": ["hint", "panel"]
         }
       }

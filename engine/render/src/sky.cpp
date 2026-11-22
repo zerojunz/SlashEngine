@@ -401,7 +401,7 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
         p[0] = {sky.color[0], sky.color[1], sky.color[2], 0.0F};
         break;
     case SkyKind::Procedural: {
-        // As ProceduralSkyMaterial's setters turn its properties into its shader's uniforms.
+        // As SkyGradient's setters turn its properties into its shader's uniforms.
         const ProceduralSky& m = sky.procedural;
         const float sky_energy = m.sky_energy_multiplier;
         const float ground_energy = m.ground_energy_multiplier;

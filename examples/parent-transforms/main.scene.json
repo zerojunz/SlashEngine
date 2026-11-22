@@ -25,7 +25,7 @@
     },
     "deck": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [48.0, 4.0]
         },
         "Transform2D": {

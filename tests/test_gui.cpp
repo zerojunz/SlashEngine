@@ -153,7 +153,7 @@ struct Gui {
         if (!control_fields.empty()) {
             control += ", " + std::string(control_fields);
         }
-        return create(id, "{\"Control\": " + control + "}, \"Button\": {" +
+        return create(id, "{\"Widget\": " + control + "}, \"Button\": {" +
                               std::string(button_fields) + "}}");
     }
 
@@ -332,12 +332,12 @@ namespace {
 //   b  d
 //   c
 void make_menu(Gui& gui) {
-    gui.create("title", R"({"Control": {"offset_left": 20}, "Label": {"text": "Menu"}})");
+    gui.create("title", R"({"Widget": {"offset_left": 20}, "Label": {"text": "Menu"}})");
     gui.button("a", {20, 30, 100, 40}, R"("text": "A")");
     gui.button("b", {20, 80, 100, 40}, R"("text": "B")");
     gui.button("c", {20, 140, 100, 40}, R"("text": "C")");
     gui.button("d", {160, 80, 100, 40}, R"("text": "D")");
-    gui.create("menu", R"({"Control": {"anchor_right": 1, "anchor_bottom": 1,
+    gui.create("menu", R"({"Widget": {"anchor_right": 1, "anchor_bottom": 1,
                                        "mouse_filter": "ignore",
                                        "children": ["title", "a", "b", "c", "d"]}})");
 }
@@ -383,17 +383,17 @@ TEST_CASE(
           "focus_exited c, focus_entered b");
 
     // The focus fields choose for themselves.
-    gui.set("b", R"({"Control": {"focus_neighbor_bottom": "a", "focus_next": "d"}})");
+    gui.set("b", R"({"Widget": {"focus_neighbor_bottom": "a", "focus_next": "d"}})");
     CHECK(gui.tap("Down") == "focus_exited b, focus_entered a");
     CHECK(gui.tap("Down") == "focus_exited a, focus_entered b");
     CHECK(gui.tap("Tab") == "focus_exited b, focus_entered d");
     // A control with focus_mode none is passed over, and loses focus.
-    gui.set("c", R"({"Control": {"focus_mode": "none"}})");
+    gui.set("c", R"({"Widget": {"focus_mode": "none"}})");
     CHECK(gui.tap("Tab") == "focus_exited d, focus_entered a");
     CHECK(gui.tap("Tab", R"("shift": true)") == "focus_exited a, focus_entered d");
     CHECK(gui.tap("Tab", R"("shift": true)") == "focus_exited d, focus_entered b");
     CHECK(ui::grab_focus(gui.world, gui.world.find("d")));
-    gui.set("d", R"({"Control": {"focus_mode": "none"}})");
+    gui.set("d", R"({"Widget": {"focus_mode": "none"}})");
     CHECK(gui.step() == "focus_exited b, focus_entered d, focus_exited d");
     CHECK(gui.focus().empty());
     CHECK_FALSE(ui::grab_focus(gui.world, gui.world.find("d")));
@@ -414,7 +414,7 @@ TEST_CASE("a click gives focus without showing it, until a key moves or shows it
     CHECK(gui.focus() == "a");
     CHECK(gui.boxes("a") == "flat");
     // focus_mode click takes focus from clicks only.
-    gui.set("b", R"({"Control": {"focus_mode": "click"}})");
+    gui.set("b", R"({"Widget": {"focus_mode": "click"}})");
     // Down from a passes b over for the closest that takes the keyboard's focus: d is 40
     // pixels across and 10 down from a, c 70 down.
     CHECK(gui.tap("Down") == "focus_exited a, focus_entered d");
@@ -508,14 +508,14 @@ TEST_CASE("disabled buttons aren't pressed, and a held button lets go when disab
     gui.set("ok", R"({"Button": {"disabled": false}})");
     CHECK(gui.send(click(50, 40, true)) == "button_down ok");
     // Losing focus lets go of it, as Godot's, then the pointer leaves.
-    gui.set("ok", R"({"Control": {"visible": false}})");
+    gui.set("ok", R"({"Widget": {"visible": false}})");
     CHECK(gui.step() == "focus_exited ok, button_up ok, mouse_exited ok");
     CHECK(gui.focus().empty());
     CHECK(gui.hovered().empty());
     CHECK(gui.send(click(50, 40, false)).empty());
 
     // A destroyed button goes quietly.
-    gui.set("ok", R"({"Control": {"visible": true}})");
+    gui.set("ok", R"({"Widget": {"visible": true}})");
     CHECK(gui.send(click(50, 40, true)) == "mouse_entered ok, focus_entered ok, button_down ok");
     gui.world.destroy(gui.world.find("ok"));
     CHECK(gui.step().empty());
@@ -525,7 +525,7 @@ TEST_CASE("disabled buttons aren't pressed, and a held button lets go when disab
 
 TEST_CASE("mouse_filter decides which control a click reaches") {
     Gui gui;
-    gui.create("caption", R"({"Control": {"anchor_right": 1, "anchor_bottom": 1},
+    gui.create("caption", R"({"Widget": {"anchor_right": 1, "anchor_bottom": 1},
                               "Label": {"text": "OK"}})");
     gui.button("ok", {20, 20, 100, 40}, "", R"("children": ["caption"])");
     // A Label lets clicks by (ignore), so the button under it is pressed.
@@ -533,25 +533,25 @@ TEST_CASE("mouse_filter decides which control a click reaches") {
           "mouse_entered ok, focus_entered ok, button_down ok, pressed ok, button_up ok");
 
     // One that stops them takes them itself, and the pointer leaves the button.
-    gui.set("caption", R"({"Control": {"mouse_filter": "stop"}})");
+    gui.set("caption", R"({"Widget": {"mouse_filter": "stop"}})");
     CHECK(gui.send({click(50, 40, true), click(50, 40, false)}) ==
           "mouse_exited ok, mouse_entered caption");
     CHECK(gui.hovered() == "caption");
 
     // One that passes them hands them on to its parent. (Hover is worked out as the pointer
     // moves onto a control, so it leaves and comes back.)
-    gui.set("caption", R"({"Control": {"mouse_filter": "pass"}})");
+    gui.set("caption", R"({"Widget": {"mouse_filter": "pass"}})");
     CHECK(gui.send(motion(300, 200)) == "mouse_exited caption");
     CHECK(gui.send({click(50, 40, true), click(50, 40, false)}) ==
           "mouse_entered ok, mouse_entered caption, button_down ok, pressed ok, button_up ok");
 
     // A control drawn over the button takes clicks first, unless it ignores them.
-    gui.create("cover", R"({"Control": {"anchor_right": 1, "anchor_bottom": 1},
-                            "ColorRect": {"color": [0, 0, 0, 0.5]}})");
+    gui.create("cover", R"({"Widget": {"anchor_right": 1, "anchor_bottom": 1},
+                            "ColorFill": {"color": [0, 0, 0, 0.5]}})");
     CHECK(gui.send({click(50, 40, true), click(50, 40, false)}) ==
           "mouse_exited caption, mouse_exited ok, mouse_entered cover");
     CHECK(gui.hovered() == "cover");
-    gui.set("cover", R"({"Control": {"mouse_filter": "ignore"}})");
+    gui.set("cover", R"({"Widget": {"mouse_filter": "ignore"}})");
     CHECK(gui.send(motion(300, 200)) == "mouse_exited cover");
     CHECK(gui.send({click(50, 40, true), click(50, 40, false)}) ==
           "mouse_entered ok, mouse_entered caption, button_down ok, pressed ok, button_up ok");
@@ -561,7 +561,7 @@ TEST_CASE("a top-level control takes clicks over its parent's tree and outside i
     Gui gui;
     gui.button("pop", {150, 100, 100, 40});
     gui.button("cover", {100, 80, 200, 100});
-    gui.create("menu", R"({"Control": {"offset_right": 100, "offset_bottom": 100,
+    gui.create("menu", R"({"Widget": {"offset_right": 100, "offset_bottom": 100,
                                        "children": ["pop", "cover"]}})");
     // As one of menu's children, pop is under cover, the one after it.
     CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
@@ -569,27 +569,27 @@ TEST_CASE("a top-level control takes clicks over its parent's tree and outside i
           "button_up cover");
 
     // A top-level control comes after the rest of its tree, as Godot's top_level.
-    gui.set("pop", R"({"Control": {"top_level": true}})");
+    gui.set("pop", R"({"Widget": {"top_level": true}})");
     CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
           "mouse_exited cover, mouse_entered pop, focus_exited cover, focus_entered pop, "
           "button_down pop, pressed pop, button_up pop");
 
     // When menu clips, the pointer reaches neither of its children there, but pop isn't clipped.
-    gui.set("menu", R"({"Control": {"clip_contents": true}})");
-    gui.set("pop", R"({"Control": {"top_level": false}})");
+    gui.set("menu", R"({"Widget": {"clip_contents": true}})");
+    gui.set("pop", R"({"Widget": {"top_level": false}})");
     CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) == "mouse_exited pop");
-    gui.set("pop", R"({"Control": {"top_level": true}})");
+    gui.set("pop", R"({"Widget": {"top_level": true}})");
     CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
           "mouse_entered pop, button_down pop, pressed pop, button_up pop");
 }
 
-TEST_CASE("a TextureButton draws the texture for its state and is as big as its texture") {
+TEST_CASE("a ImageButton draws the texture for its state and is as big as its texture") {
     Gui gui;
     for (const std::string_view name : {"normal", "hover", "pressed", "focused"}) {
         gui.files.files[std::string(name) + ".png"] = png(32, 16);
     }
-    gui.create("play", R"({"Control": {"offset_left": 10, "offset_top": 10},
-        "TextureButton": {"texture_normal": "normal.png", "texture_hover": "hover.png",
+    gui.create("play", R"({"Widget": {"offset_left": 10, "offset_top": 10},
+        "ImageButton": {"texture_normal": "normal.png", "texture_hover": "hover.png",
                           "texture_pressed": "pressed.png", "texture_focused": "focused.png"}})");
     ui::Layout layout = gui.layout();
     const ui::Placed* placed = layout.find(gui.world.find("play"));
@@ -605,13 +605,13 @@ TEST_CASE("a TextureButton draws the texture for its state and is as big as its 
     gui.tap("Up");
     CHECK(gui.boxes("play") == "hover.png, focused.png");
     // Disabled with no disabled texture, it draws the normal one, and keeps focus.
-    gui.set("play", R"({"TextureButton": {"disabled": true}})");
+    gui.set("play", R"({"ImageButton": {"disabled": true}})");
     CHECK(gui.boxes("play") == "normal.png, focused.png");
 
     // ignore_texture_size lets it be smaller, and scale stretches the texture over it.
-    gui.set("play", R"({"Control": {"offset_left": 10, "offset_top": 10, "offset_right": 30,
+    gui.set("play", R"({"Widget": {"offset_left": 10, "offset_top": 10, "offset_right": 30,
                                     "offset_bottom": 18},
-        "TextureButton": {"ignore_texture_size": true, "stretch_mode": "scale",
+        "ImageButton": {"ignore_texture_size": true, "stretch_mode": "scale",
                           "disabled": false, "texture_focused": ""}})");
     layout = gui.layout();
     CHECK(layout.find(gui.world.find("play"))->size == Vec2{20.0F, 8.0F});
@@ -620,8 +620,8 @@ TEST_CASE("a TextureButton draws the texture for its state and is as big as its 
 
 TEST_CASE("a button is as big as its text and style margins, and aligns its text") {
     Gui gui;
-    gui.create("label", R"({"Control": {}, "Label": {"text": "Play"}})");
-    gui.create("play", R"({"Control": {"offset_top": 100}, "Button": {"text": "Play"}})");
+    gui.create("label", R"({"Widget": {}, "Label": {"text": "Play"}})");
+    gui.create("play", R"({"Widget": {"offset_top": 100}, "Button": {"text": "Play"}})");
     ui::Layout layout = gui.layout();
     const Vec2 text = layout.find(gui.world.find("label"))->minimum_size;
     const ui::Placed* play = layout.find(gui.world.find("play"));
@@ -632,7 +632,7 @@ TEST_CASE("a button is as big as its text and style margins, and aligns its text
 
     // In a wider button the text goes left, center or right.
     const auto pen_x = [&](std::string_view alignment) {
-        gui.set("play", R"({"Control": {"offset_top": 100, "offset_right": 200},
+        gui.set("play", R"({"Widget": {"offset_top": 100, "offset_right": 200},
                             "Button": {"text": "Play", "alignment": ")" +
                             std::string(alignment) + "\"}}");
         const ui::Layout wide = gui.layout();
@@ -643,7 +643,7 @@ TEST_CASE("a button is as big as its text and style margins, and aligns its text
     CHECK(pen_x("right") == 196.0F - text.x);
 
     // Text too wide for a clip_text button is cut with an ellipsis.
-    gui.set("play", R"({"Control": {"offset_top": 100, "offset_right": 60},
+    gui.set("play", R"({"Widget": {"offset_top": 100, "offset_right": 60},
                         "Button": {"text": "Play the game", "clip_text": true,
                                    "text_overrun_behavior": "trim_ellipsis"}})");
     layout = gui.layout();
@@ -658,14 +658,14 @@ TEST_CASE("a button is as big as its text and style margins, and aligns its text
 TEST_CASE("check finds wrong shortcuts, groups on buttons that don't toggle and focus fields") {
     Gui gui;
     gui.create("thing", R"({"Transform2D": {}})");
-    gui.create("ok", R"({"Control": {"focus_next": "thing"}, "Label": {},
+    gui.create("ok", R"({"Widget": {"focus_next": "thing"}, "Label": {},
         "Button": {"button_group": "g", "shortcut": [
             {"type": "action", "action": "ui_acept"}, {"type": "key", "key": "Entr"},
             {"type": "action", "action": "ui_cancel", "pressed": true}]}})");
-    gui.create("both", R"({"Control": {}, "Button": {}, "TextureButton": {}})");
+    gui.create("both", R"({"Widget": {}, "Button": {}, "ImageButton": {}})");
     CHECK(problem_lines(ui::check(gui.world, gui.fonts())) ==
           std::vector<std::string>{
-              "both/components/TextureButton: an entity is one button; it has a Button too",
+              "both/components/ImageButton: an entity is one button; it has a Button too",
               "ok/components/Button/shortcut/0/action: no action \"ui_acept\"; did you mean "
               "\"ui_accept\"?",
               "ok/components/Button/shortcut/1/key: no key \"Entr\"; did you mean \"Enter\"?",
@@ -675,11 +675,11 @@ TEST_CASE("check finds wrong shortcuts, groups on buttons that don't toggle and 
               "toggle_mode too",
               "ok/components/Label: a button draws its own text; give it to the button, or put the "
               "Label in a child",
-              "ok/components/Control/focus_next: names no control"});
+              "ok/components/Widget/focus_next: names no control"});
 
     // Scene files are checked the same way, against the actions their project.json adds.
     const json::Value scene = parse(R"({"format": 1, "entities": {"ok": {"components": {
-        "Control": {}, "Button": {"shortcut": [{"type": "action", "action": "pause"},
+        "Widget": {}, "Button": {"shortcut": [{"type": "action", "action": "pause"},
                                               {"type": "action", "action": "paws"}]}}}}})");
     const world::FileReader reader = [](std::string_view path) -> slash::Result<std::string> {
         if (path != "project.json") {
@@ -740,19 +740,19 @@ TEST_CASE("ui.press, ui.focus and ui.layout drive and report buttons") {
     Session s;
     s.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "start", "components": {
-            "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 120,
+            "Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 120,
                         "offset_bottom": 60},
             "Button": {"text": "Start"}}}},
         {"command": "entity.create", "params": {"id": "sound", "components": {
-            "Control": {"offset_left": 20, "offset_top": 80, "offset_right": 120,
+            "Widget": {"offset_left": 20, "offset_top": 80, "offset_right": 120,
                         "offset_bottom": 120},
             "Button": {"text": "Sound", "toggle_mode": true}}}},
         {"command": "entity.create", "params": {"id": "locked", "components": {
-            "Control": {"offset_left": 20, "offset_top": 140, "offset_right": 120,
+            "Widget": {"offset_left": 20, "offset_top": 140, "offset_right": 120,
                         "offset_bottom": 180},
             "Button": {"text": "Locked", "disabled": true}}}},
         {"command": "entity.create", "params": {"id": "title", "components": {
-            "Control": {}, "Label": {"text": "Menu"}}}}]})");
+            "Widget": {}, "Label": {"text": "Menu"}}}}]})");
     CHECK(s.ok("ui.focus", R"({"id": "start"})") == parse(R"({"focused": "start"})"));
     CHECK(s.ok("ui.press", R"({"id": "sound"})") == parse(R"({"tick": 0})"));
     s.ok("input.inject", R"({"events": [{"type": "mouse_motion", "position": [50, 160]}]})");
@@ -777,8 +777,8 @@ TEST_CASE("ui.press, ui.focus and ui.layout drive and report buttons") {
     CHECK(s.fails("ui.press", R"({"id": "strat"})") ==
           "/id: no entity has the id \"strat\"; did you mean \"start\"?");
     CHECK(s.fails("ui.press", R"({"id": "title"})") ==
-          "/id: \"title\" isn't a button: it has no Button, CheckBox, CheckButton, "
-          "OptionButton, MenuButton or TextureButton");
+          "/id: \"title\" isn't a button: it has no Button, CheckBox, ToggleSwitch, "
+          "Dropdown, MenuButton or ImageButton");
     CHECK(s.fails("ui.press", R"({"id": "locked"})") ==
           "/id: \"locked\" is disabled, so it can't be pressed");
     CHECK(s.fails("ui.focus", R"({"id": "title"})") ==

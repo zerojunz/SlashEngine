@@ -99,7 +99,7 @@ constexpr std::string_view kSchema = R"({
         "type": "object", "additionalProperties": false, "required": ["below"],
         "properties": {
           "below": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "description": "The share of its health below which it looks so."},
-          "tint": {"$ref": "#/$defs/color", "description": "Multiplies its StandardMaterial3D's albedo (2D: its modulate)."},
+          "tint": {"$ref": "#/$defs/color", "description": "Multiplies its Surface3D's albedo (2D: its modulate)."},
           "material": {"type": "string", "minLength": 1, "description": "A .standard_material.json file it draws with in its place."},
           "mesh": {"type": "string", "minLength": 1, "description": "A model file it draws in place of its own (2D: a texture)."}
         }

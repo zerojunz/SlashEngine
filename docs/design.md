@@ -80,8 +80,8 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Editor | Full GUI editor | Full GUI editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | Launch |
 | Gameplay code | GDScript, C#, GDExtension | Blueprints, C++ | C++ with hot reload; plugins as C++ modules with a stable C ABI | Launch |
 | Scenes and prefabs | Node scenes with inheritance | Levels, Blueprint actors | JSON scenes, prefabs with overrides, on EnTT | Launch |
-| 2D sprites and animation | Sprite2D, AnimatedSprite2D | Paper2D | Batched sprites, sprite sheets, flipbooks | Launch |
-| Tilemaps | TileMapLayer, terrains | Paper2D tilemaps | Tilemap layers with terrain autotiling, stored as text | Launch |
+| 2D sprites and animation | Sprite2D, Flipbook2D | Paper2D | Batched sprites, sprite sheets, flipbooks | Launch |
+| Tilemaps | TileLayer2D, terrains | Paper2D tilemaps | Tilemap layers with terrain autotiling, stored as text | Launch |
 | 2D lighting | 2D lights, shadows, normal maps | None built in | 2D lights, occluders, normal-mapped sprites | Launch |
 | 2D physics | Godot Physics 2D | None built in | Box2D v3 | Launch |
 | 3D physics | Godot Physics, Jolt | Chaos | Jolt: rigid bodies, joints, character controller, vehicles | Launch |
@@ -89,9 +89,9 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Shadows | Cascaded directional, omni, spot | Virtual shadow maps, cascades | Cascaded, omni and spot shadow maps | Launch |
 | Post-processing | Tonemap, glow, SSAO, SSR, DoF | Full post stack | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | Launch |
 | Materials and shaders | Shading language, visual shaders | Material editor | HLSL shaders plus a JSON material graph agents write directly | Launch |
-| Keyframe animation | AnimationPlayer on any property | Sequencer | Keyframe tracks on any reflected property | Launch |
+| Keyframe animation | Animator on any property | Sequencer | Keyframe tracks on any reflected property | Launch |
 | Skeletal animation | Skeleton3D, skins | Skeletal meshes | Skinned meshes, blending, root motion | Launch |
-| Animation blending | AnimationTree, state machines, blend spaces | Animation Blueprints, Control Rig | Blend trees and state machines in text, two-bone and FABRIK IK | Launch |
+| Animation blending | AnimationGraph, state machines, blend spaces | Animation Blueprints, Control Rig | Blend trees and state machines in text, two-bone and FABRIK IK | Launch |
 | Particles | GPU and CPU particles | Niagara | CPU and GPU particles, particle graphs in text | Launch |
 | Audio | Buses, effects, 3D audio | MetaSounds, spatial audio | miniaudio: buses, effects, 3D spatial audio | Launch |
 | Soundtracks | Interactive, synchronized and playlist streams (playback only) | MetaSounds, Quartz | Music planned in the storyboard, written as scores or generated, arranged into Godot's interactive music and checked by analysis, all through commands | Launch |
@@ -103,15 +103,15 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Asset import | glTF, FBX, OBJ, `.blend` through Blender, images, audio | FBX, glTF, USD | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | Launch |
 | Profiling | Profiler, debugger, monitors | Unreal Insights | Tracy, plus perf.stats over the command API | Launch |
 | Asset generation and library | Asset Library (add-ons, no generation) | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants and reviewed automatically | Launch |
-| Global illumination | SDFGI, VoxelGI, LightmapGI | Lumen | Baked lightmaps and probe-based GI | Launch |
+| Global illumination | SDFGI, VoxelLighting3D, BakedLighting3D | Lumen | Baked lightmaps and probe-based GI | Launch |
 | Ray tracing | Vulkan ray tracing in development (4.7) | Hardware ray tracing, Lumen's hardware path | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | Launch |
-| Path tracing | Path-traced lightmap baking (LightmapGI) | Path Tracer, GPU Lightmass | A GPU path tracer for baked lightmaps and progressive reference stills | Launch |
+| Path tracing | Path-traced lightmap baking (BakedLighting3D) | Path Tracer, GPU Lightmass | A GPU path tracer for baked lightmaps and progressive reference stills | Launch |
 | Upscaling and frame generation | FSR 1, FSR 2.2, MetalFX | TSR; DLSS, FSR and XeSS plugins | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | Launch |
 | Sky and volumetrics | Procedural sky, volumetric fog | Sky atmosphere, volumetric clouds | Physical sky, volumetric fog | Launch |
 | Decals | Decal node | Deferred decals | Clustered decals | Launch |
 | Networking | High-level multiplayer, ENet, WebSocket, WebRTC | Replication | ENet transport, replication driven by reflection, WebSocket for web | Launch |
 | Terrain | Plugins | Landscape | Heightmap terrain with splat materials and LOD | Launch |
-| Level geometry | CSG, GridMap | Brushes, modeling tools | CSG and grid-based tile placement | Launch |
+| Level geometry | CSG, BlockMap3D | Brushes, modeling tools | CSG and grid-based tile placement | Launch |
 | LOD and culling | Auto mesh LOD, occlusion culling | Nanite, HLOD | Generated LODs with meshoptimizer, occlusion culling | Launch |
 | XR | OpenXR | OpenXR | OpenXR | Launch |
 | Localization | Translation tables, gettext | Localization dashboard | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | Launch |
@@ -123,19 +123,19 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | One-command export | Export templates per platform | Packaging per platform | slash-cli export to macOS, Windows, Linux, iOS, Android and web | Launch |
 | Procedural generation | Noise textures | PCG framework | FastNoiseLite noise and noise and gradient textures, scatter rules agents write, `.pcg.json` graphs that drive every world tool, and procedural content imported from Blender, Houdini and terrain tools | Launch |
 | Large worlds | Double-precision builds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch (done before launch) |
-| Cinematics | AnimationPlayer, cameras | Sequencer | Timeline tracks for cameras and events | After launch (done before launch) |
+| Cinematics | Animator, cameras | Sequencer | Timeline tracks for cameras and events | After launch (done before launch) |
 | Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch (done before launch) |
 | Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch (done before launch) |
-| Wind | Area3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | Launch |
+| Wind | Zone3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | Launch |
 | Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered grass, flowers, shrubs, bushes, trees, moss and rocks kept per cell, instanced batches, impostors, wind bending and characters' interactions | Launch |
 | Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | Launch |
 | Quests, dialogue and NPC scripts | Plugins (Dialogic) | Plugins, Blueprints | Questlines, branching dialogue, movement schedules and per-NPC behavior as text files over the NPC planner's facts | Launch |
 | Hair and fur | None built in | Groom, hair physics | Groomed strands drawn as cards, strands or shells and simulated against the body, wind and skeleton | Launch |
 | Characters | None built in | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | Launch |
 | Fauna | None built in | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | Launch |
-| Vehicle design | VehicleBody3D, VehicleWheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | Launch |
+| Vehicle design | WheeledBody3D, Wheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | Launch |
 | Damage design | None built in | Chaos Destruction, Geometry Collections | Real-time damage (fracture at the impact as it happens, re-fracture, stress through connected pieces, dents, tears, carving), plus damage profiles by material, damage states and optional authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | Launch |
-| VFX design | GPUParticles3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets; particle simulation stages (neighbors, curl noise, collision, attributes and events) on CPU particles and, for the neighbor, curl, drag and speed stages, on every GPU device | Launch |
+| VFX design | GpuEmitter3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets; particle simulation stages (neighbors, curl noise, collision, attributes and events) on CPU particles and, for the neighbor, curl, drag and speed stages, on every GPU device | Launch |
 | Fluids and smoke | None | Niagara Fluids (grids), Water | Gridless liquids and gases: position-based fluid particles, gas particles with temperature and vortices, screen-space liquid surfaces, Gerstner oceans with foam and buoyancy, in 2D and 3D | Launch |
 | Character anatomy and faces | Humanoid skeleton profile | MetaHuman Creator, Chaos Flesh | A full humanoid rig with fingers, eyes, jaw and twist bones; anatomical bones and muscles; `.face.json` faces sculpted by region controls and presets, skin detail, ARKit shapes, styled from the storyboard, in 2D and 3D | Launch |
 | One simulation | Jolt module (rigid, soft bodies, ragdolls, vehicles) | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, individual ragdoll profiles per character and creature (active ragdolls blending with animation, hit reactions, getting up), fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | Launch |
@@ -448,7 +448,7 @@ Games often make their textures, terrain and props from rules rather than by han
 - **Scatter rules.** Agents write rules that place prefabs or meshes over terrain, meshes, tile maps and areas by noise, density, slope and spacing, seeded so they repeat. A command writes the result as entities an agent can then edit, or a game runs the rules itself. Tile maps and terrains generate from noise files too.
 - **Every tool, procedurally.** Graphs of steps, as Unreal's PCG, drive the world tools too: foliage and grooms, fauna by habitat, characters with their routes and stories, vehicles, wind and physics fields, lights, effects, destructible props and fluids, in 2D and 3D, seeded so a world repeats and checked against budgets and navigation (roadmap item 21).
 - **Textures agents author (roadmap item 23).** A `.texture.json` file can also be a graph, as Substance Designer's and Houdini's COPs are: nodes over named parameters (noise, patterns, filters, height and normals, blends) with PBR outputs, baked in compute on every device with a CPU twin held to it, or compiled into a live shader whose parameters animations and gameplay code drive. `model.bake_maps` bakes a model's mesh maps on ray queries (occlusion, curvature, thickness, IDs, sky exposure, high to low detail). A `.paint.json` layer stack, as Substance Painter's, lays fills, graphs and generators over a model or sprite, masked by those maps and by part and material names, with strokes and decals as data and smart materials through `extends`. Every bake returns numbers (channel ranges, mask coverage, tiling, palette distance, texel density) before any picture, and `texture.check` holds graphs, stacks and their output to the storyboard. Weathering by gravity, wind and sky exposure, wear from gameplay damage, text and logo stamps, seeded variants, drafts from a prompt and Blender shader node import complete it. Strokes are written by agents; painting by hand waits for after launch.
-- **Imported from other tools.** Godot's noise and gradient resources convert with the Godot importer. Blender's geometry nodes and Houdini export instances through glTF's `EXT_mesh_gpu_instancing`, and terrain tools (World Machine, Gaea, World Creator) export heightmaps as 16-bit PNG, RAW or EXR, which become HTerrain maps. Closed formats such as Substance's `.sbsar` are left out; their exported texture maps import as any texture.
+- **Imported from other tools.** Godot's noise and gradient resources convert with the Godot importer. Blender's geometry nodes and Houdini export instances through glTF's `EXT_mesh_gpu_instancing`, and terrain tools (World Machine, Gaea, World Creator) export heightmaps as 16-bit PNG, RAW or EXR, which become Terrain3D maps. Closed formats such as Substance's `.sbsar` are left out; their exported texture maps import as any texture.
 
 ## Languages
 

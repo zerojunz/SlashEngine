@@ -27,7 +27,7 @@
     },
     "night": {
       "components": {
-        "CanvasModulate": {
+        "AmbientTint2D": {
           "color": [0.15, 0.17, 0.3, 1.0]
         }
       }

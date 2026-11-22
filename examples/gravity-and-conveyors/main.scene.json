@@ -2,7 +2,7 @@
   "entities": {
     "conveyor": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [160.0, 10.0]
         },
         "StaticBody2D": {
@@ -15,7 +15,7 @@
     },
     "crate": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [16.0, 16.0]
         },
         "RigidBody2D": {
@@ -28,7 +28,7 @@
     },
     "ground": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [480.0, 20.0]
         },
         "StaticBody2D": {},
@@ -39,8 +39,8 @@
     },
     "hero": {
       "components": {
-        "CharacterBody2D": {},
-        "CollisionShape2D": {
+        "CharacterMover2D": {},
+        "Collider2D": {
           "height": 32.0,
           "radius": 8.0,
           "shape": "capsule"
@@ -52,7 +52,7 @@
     },
     "planet": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 30.0,
           "shape": "circle"
         },
@@ -64,26 +64,26 @@
     },
     "planet_pull": {
       "components": {
-        "Area2D": {
+        "Collider2D": {
+          "radius": 80.0,
+          "shape": "circle"
+        },
+        "Transform2D": {
+          "position": [370.0, 100.0]
+        },
+        "Zone2D": {
           "gravity": 600.0,
           "gravity_point": true,
           "gravity_point_center": [0.0, 0.0],
           "gravity_point_unit_distance": 30.0,
           "gravity_space_override": "replace",
           "priority": 1
-        },
-        "CollisionShape2D": {
-          "radius": 80.0,
-          "shape": "circle"
-        },
-        "Transform2D": {
-          "position": [370.0, 100.0]
         }
       }
     },
     "probe": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 5.0,
           "shape": "circle"
         },
@@ -95,7 +95,7 @@
     },
     "rock_below": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [10.0, 10.0]
         },
         "RigidBody2D": {},
@@ -106,7 +106,7 @@
     },
     "rock_left": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [10.0, 10.0]
         },
         "RigidBody2D": {},
@@ -117,15 +117,15 @@
     },
     "space": {
       "components": {
-        "Area2D": {
-          "gravity": 0.0,
-          "gravity_space_override": "replace"
-        },
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [220.0, 200.0]
         },
         "Transform2D": {
           "position": [370.0, 100.0]
+        },
+        "Zone2D": {
+          "gravity": 0.0,
+          "gravity_space_override": "replace"
         }
       }
     }
