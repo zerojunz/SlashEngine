@@ -329,6 +329,10 @@ Agents can't be forced to prefer a tool, but they reliably use what the project 
 
 A custom language for agents is deliberately not on this list: models write C++ and JSON reliably because they have seen so much of both, and MCP tool calls are JSON already. When agents repeat the same sequence of calls, the fix is a new command or prefab.
 
+
+### Watching agents work
+
+The person can look in on any agent at any time (roadmap item 24). Every session writes a work journal to `.slash/work/` and serves itself read-only on loopback. `slash-cli watch` shows the agent's world in a window, a terminal or a browser page as it edits. Checkpoints keep a timeline the person can compare and restore files from. `work pause` and `work note` steer the agent, and the agent may keep a plan with `work.plan`. Remote viewing goes through agents rather than an exposed server: `work.view`, `work.timeline` and `work.report` give any MCP client the frame, digest and a self-contained report to show the person wherever they are.
 ## Model-agnostic provider interface
 
 Model agnosticism works at two levels. Outside the engine, agents connect over MCP and JSON-RPC, which are open protocols any model can use. Inside the engine, features that call a model (NPC dialogue, procedural content, an in-game assistant) go through one `ai::Provider` interface, and no engine code ever names a vendor.
