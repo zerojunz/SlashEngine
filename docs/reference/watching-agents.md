@@ -174,6 +174,32 @@ page, `work.feed`, `work.digest` and `slash-cli work plan` show. A step can name
 `task/...` it finishes: ticking it hands back the `storyboard.edit` that closes the task. Games
 made by `slash-cli init` tell agents to keep a plan, read notes and stop editing when paused.
 
+## Remote viewing
+
+A person away from the machine checks on the work by asking an agent, in any chat on any device:
+that agent looks in on the session through the engine, whichever vendor's agent does the work.
+
+- [`work.view`](commands.md#workview) is the session in one call: its world drawn now (an image
+  over MCP), its plan, whether it is paused, its last lines and its tests and checks. Once the
+  session ends, the last checkpoint's frame and the end of its journal.
+- [`work.timeline`](commands.md#worktimeline) is the way there in one picture: the checkpoints'
+  frames in rows, numbered, with their labels.
+- [`work.report`](commands.md#workreport) writes one HTML page of the run (plan, summary, each
+  checkpoint's frame and changes, the feed) for the agent to hand on, as an artifact or a file.
+- `work.pause`, `work.resume` and `work.note` take `session` too, so the person steers through
+  their agent as from the watch page.
+
+A call naming another live session goes through that session's watch server, as a watcher's:
+it runs between the agent's commands, read-only, and goes in no journal. An agent can't steer its
+own session that way. Hosts install the forwarder at start (`server::install_work_forwarder`).
+
+`slash-mcp --watch` ([CLI](cli.md#slash-mcp)) is the server for that agent: it offers only these
+tools and the reading ones (`work_digest`, `work_feed`, `work_checkpoints`, `work_compare`,
+`work_plan`), in a session with only the `read` capability, and names the session in each call,
+`--session`'s or the newest live one's. `slash-cli work timeline --out <file.png>` and
+`slash-cli work report` do the same from a terminal. `examples/remote-viewing` checks on a yard
+from a second agent's session.
+
 ## Settings
 
 `project.json`'s [`work`](project-format.md) block turns each part off:
@@ -197,7 +223,12 @@ answer watchers while they wait for the agent. `server::Follower` follows a sess
 window: the journal's new lines, read again when its files grow, and the world, fetched from the
 watch server on a thread of its own, since the session answers only between the agent's commands.
 The watch page is `watch_page` in `engine/server/src/watch_page.cpp`, which the server serves when
-`ServerOptions::watch_session` names the session.
+`ServerOptions::watch_session` names the session. Remote viewing is
+`engine/command/src/work_view.cpp`: `work.view`, `work.timeline` (`work::timeline_strip`) and
+`work.report` (`work::write_report`), and `forward_elsewhere`, which hands a call naming another
+live session to the `work::Forwarder` that `server::install_work_forwarder` sets
+(`server::call_watched`). `mcp::Tools::Watch` is `slash-mcp --watch`'s tool set
+(`mcp::watch_commands`).
 Steering is `Session::steering()`: `Session::call_command` refuses what a watcher couldn't run
 while `paused` is set, with `code::kPaused`, and `Session::call` moves the waiting `notes` into
 the agent's next reply; `Journal::steer` writes the lines, and `server::call_watched` runs a

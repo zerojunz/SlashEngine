@@ -41,6 +41,9 @@ itself. A client that doesn't list tools again can still call a loaded command b
 through `batch`. Every command can be called by its tool name whether it is listed or not.
 `slash-mcp --tools all` lists every command from the start instead, for clients that handle many
 tools (Claude Code defers large tool sets on its own); then there is no `tools_load`.
+`slash-mcp --watch` lists only the `work` tools for looking in on and steering other agents'
+sessions (`mcp::watch_commands`), all read-only, with instructions of their own and no
+`tools_load` ([remote viewing](watching-agents.md#remote-viewing)).
 
 Tool names replace dots with underscores (`entity_create` for
 `entity.create`), because some clients only accept letters, digits, `_` and `-`. The tool's

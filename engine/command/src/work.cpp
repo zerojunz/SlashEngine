@@ -1,6 +1,7 @@
 #include "slash/command/work.hpp"
 
 #include "checkpoints.hpp"
+#include "work_view.hpp"
 
 #include "slash/command/session.hpp"
 #include "slash/core/log.hpp"
@@ -1717,7 +1718,8 @@ void register_work_commands(Registry& registry) {
                               "\"" + std::string(name) +
                                   "\" is for the people watching, through the session's watch "
                                   "server: slash-cli work " +
-                                  std::string(name.substr(5)) + ", or the watch page");
+                                  std::string(name.substr(5)) +
+                                  ", the watch page, or from another session with \"session\"");
     };
     const auto steer = [](Session& session, json::Value line) {
         if (session.options().journal != nullptr) {
@@ -1725,9 +1727,15 @@ void register_work_commands(Registry& registry) {
         }
     };
 
+    json::Value steer_session;
+    steer_session["type"] = "string";
+    steer_session["description"] =
+        "Another running session to steer, as named in .slash/work/sessions.json.";
+
     json::Value pause;
     pause["type"] = "object";
     pause["additionalProperties"] = false;
+    pause["properties"]["session"] = steer_session;
     pause["required"] = json::Array{json::Value("why")};
     pause["properties"]["why"]["type"] = "string";
     pause["properties"]["why"]["minLength"] = 1;
@@ -1742,6 +1750,9 @@ void register_work_commands(Registry& registry) {
         .params = std::move(pause),
         .handler =
             [watchers_only, steer](Session& session, const json::Value& params) {
+                if (auto forwarded = forward_elsewhere(session, "work.pause", params)) {
+                    return *std::move(forwarded);
+                }
                 if (auto refused = watchers_only(session, "work.pause")) {
                     return *refused;
                 }
@@ -1760,7 +1771,7 @@ void register_work_commands(Registry& registry) {
     json::Value resume;
     resume["type"] = "object";
     resume["additionalProperties"] = false;
-    resume["properties"] = json::Object{};
+    resume["properties"]["session"] = steer_session;
     registry.add({
         .name = "work.resume",
         .description = "Lets the agent edit again after work.pause, for a person watching.",
@@ -1768,7 +1779,10 @@ void register_work_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = std::move(resume),
         .handler =
-            [watchers_only, steer](Session& session, const json::Value&) {
+            [watchers_only, steer](Session& session, const json::Value& params) {
+                if (auto forwarded = forward_elsewhere(session, "work.resume", params)) {
+                    return *std::move(forwarded);
+                }
                 if (auto refused = watchers_only(session, "work.resume")) {
                     return *refused;
                 }
@@ -1788,6 +1802,7 @@ void register_work_commands(Registry& registry) {
     json::Value note;
     note["type"] = "object";
     note["additionalProperties"] = false;
+    note["properties"]["session"] = steer_session;
     note["required"] = json::Array{json::Value("text")};
     note["properties"]["text"]["type"] = "string";
     note["properties"]["text"]["minLength"] = 1;
@@ -1802,6 +1817,9 @@ void register_work_commands(Registry& registry) {
         .params = std::move(note),
         .handler =
             [watchers_only, steer](Session& session, const json::Value& params) {
+                if (auto forwarded = forward_elsewhere(session, "work.note", params)) {
+                    return *std::move(forwarded);
+                }
                 if (auto refused = watchers_only(session, "work.note")) {
                     return *refused;
                 }
@@ -2022,6 +2040,8 @@ void register_work_commands(Registry& registry) {
                 return Reply::success(std::move(result));
             },
     });
+
+    register_view_commands(registry);
 }
 
 } // namespace slash::command::work

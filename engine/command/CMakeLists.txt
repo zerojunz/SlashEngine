@@ -43,6 +43,7 @@ add_library(slash_command
     src/water.cpp
     src/test.cpp
     src/work.cpp
+    src/work_view.cpp
     src/checkpoints.cpp)
 add_library(slash::command ALIAS slash_command)
 

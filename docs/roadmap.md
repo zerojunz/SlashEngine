@@ -1480,7 +1480,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               `paint.preview`, on models and sprites
         - [ ] Weathering, wear from damage, text and logo stamps, seeded variants, drafts from a
               prompt and Blender shader node import
-24. [ ] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
+24. [x] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
         whichever vendor's agent it is:
         - [x] A work journal every session writes (`.slash/work/`), sessions that serve themselves
               on loopback, `slash-cli watch --text`, `work digest` and `work.feed`
@@ -1489,7 +1489,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] A watch page in the browser: frames, diffs, the plan and test results
         - [x] Checkpoints, a timeline, compare, `work restore` and the timeline as a video
         - [x] Steering: `work pause` and `work note`, and the agent's own `work.plan`
-        - [ ] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
+        - [x] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
               `slash-mcp --watch`, so a person checks in from a phone by asking any agent
 25. [ ] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store, GOG and
         itch.io with one command, as Godot's export to those stores is done by hand:
@@ -1617,7 +1617,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
-| Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Next |
+| Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Done: the journal, `slash-cli watch`, the watch page, checkpoints, steering and remote viewing through agents (`work.view`, `work.timeline`, `work.report`, `slash-mcp --watch`) |
 | Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Next |
 | Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |

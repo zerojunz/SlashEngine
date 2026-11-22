@@ -61,6 +61,10 @@ private:
                                                   std::string_view command,
                                                   const json::Value& params);
 
+// Lets this program's sessions reach other sessions through call_watched: work.pause, work.note,
+// work.resume and work.view with "session", and slash-mcp --watch (command::work::set_forwarder).
+void install_work_forwarder();
+
 // What a host keeps for its session's watchers, by project.json's "work" block: the journal the
 // session writes (made before the session, which takes it in SessionOptions::journal) and,
 // once the session is made, its watch server. Either can be off, and one that can't start is

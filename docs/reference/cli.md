@@ -644,6 +644,10 @@ session's unless `--session` names one:
   path, which [`scene.open`](commands.md#sceneopen) can load.
 - `work video --out <file.ivf>` encodes the checkpoints' frames as an AV1 video with
   [`video.encode`](commands.md#videoencode), `--fps` of them a second.
+- `work timeline --out <file.png>` writes the checkpoints' frames in one picture and prints
+  [`work.timeline`](commands.md#worktimeline)'s result with `out` for the `png`.
+- `work report [--since <when>]` writes one HTML page of the session's work with
+  [`work.report`](commands.md#workreport) and prints its path.
 
 `work pause "<why>"`, `work resume` and `work note "<text>"` [steer](watching-agents.md#steering)
 a running session, the newest unless `--session` names one, through its watch server, as
@@ -1056,12 +1060,25 @@ slash-mcp [options]
 | `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`), e.g. `--allow read,run` |
 | `--tools <set>` | Tools to offer: `core` (default), the commands most tasks need and `tools_load`, which adds the others by group as a task needs them, or `all` ([MCP](protocols.md#mcp)) |
 | `--live` | Drive the game already running in the project (`slash-cli run --serve` or `slash-cli serve`) instead of an engine of its own |
+| `--watch` | Serve only the tools for looking in on other agents' sessions, read-only ([remote viewing](watching-agents.md#remote-viewing)); takes only `--project` and `--session` |
+| `--session <id>` | `--watch`: the session to look in on (default: the newest live one, chosen again for each message) |
 | `--version` | Print the engine version |
 | `--help` | Show the usage text |
 
 With `--live`, `slash-mcp` reads `.slash/server.json` for each message and forwards it to that
 server, so it reconnects on its own when the game restarts. If no game is running, each request
 gets an error saying so.
+
+With `--watch`, it serves an agent a person talks to elsewhere (a chat on a phone, another
+vendor's app) the tools for checking on the agents working in the project: `work_view`,
+`work_digest`, `work_feed`, `work_timeline`, `work_report`, `work_checkpoints`, `work_compare`,
+`work_plan`, `work_pause`, `work_resume` and `work_note`, in a session with only the `read`
+capability, so it can look and steer but never edit. Calls name the session `--session` gave, or
+the newest live one.
+
+```bash
+claude mcp add slashengine-watch -- slash-mcp --watch --project .
+```
 
 ### Client configs
 
