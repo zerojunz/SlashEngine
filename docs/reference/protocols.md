@@ -41,6 +41,9 @@ itself. A client that doesn't list tools again can still call a loaded command b
 through `batch`. Every command can be called by its tool name whether it is listed or not.
 `slash-mcp --tools all` lists every command from the start instead, for clients that handle many
 tools (Claude Code defers large tool sets on its own); then there is no `tools_load`.
+`slash-mcp --watch` lists only the `work` tools for looking in on and steering other agents'
+sessions (`mcp::watch_commands`), all read-only, with instructions of their own and no
+`tools_load` ([remote viewing](watching-agents.md#remote-viewing)).
 
 Tool names replace dots with underscores (`entity_create` for
 `entity.create`), because some clients only accept letters, digits, `_` and `-`. The tool's
@@ -112,11 +115,15 @@ game. Both write their URL and token to `.slash/server.json` in the project fold
 | `GET /v1/openapi.json` | The same commands as an OpenAPI 3.1 document |
 | `POST /rpc` | JSON-RPC 2.0, one message or batch per request |
 | `POST /mcp` | MCP over Streamable HTTP. Responses are plain JSON; the server never opens an event stream, so `GET /mcp` returns 405 |
+| `GET /watch` | A session's [watch server](watching-agents.md#the-watch-page) only: the watch page, for people |
 
 ### Security
 
 - The server listens on the loopback interface only.
-- Every request needs `Authorization: Bearer <token>`. A missing or wrong token gets 401.
+- Every request needs `Authorization: Bearer <token>`. A missing or wrong token gets 401. The
+  one exception is a watch server's `GET /watch`, a page that holds no secret: it reads the token
+  from its link's fragment (`/watch#token=...`), which browsers never send to servers, and sends
+  it with each command it calls.
 - A request whose `Host` or `Origin` header names another site gets 403, which blocks DNS
   rebinding attacks from web pages.
 - `.slash/server.json` is owner-only on macOS and Linux, should stay out of git (`slash-cli init`
@@ -146,6 +153,7 @@ error code:
 | `-32003` | 403 (and 401 for a bad token) |
 | `-32601`, `-32001` | 404 |
 | `-32005` | 409 |
+| `-32006` | 423 |
 | Anything else | 500 |
 | Request waited more than 30 s for the game loop, or the server stopped | 503 |
 
@@ -177,6 +185,7 @@ SlashEngine's own.
 | `-32003` | Permission denied | The session lacks a capability, or a path leaves the project folder |
 | `-32004` | Platform failure | The operating system or a tool refused, such as a failed file write or a failed export build |
 | `-32005` | Conflict | The data changed since the caller read it, such as a storyboard entry another agent edited; read it again and retry |
+| `-32006` | Paused | A person watching paused the session's edits ([`work.pause`](commands.md#workpause)); the message says why, and reads still work |
 
 `data` carries structured details where they help:
 

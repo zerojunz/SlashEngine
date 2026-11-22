@@ -589,6 +589,98 @@ It prints where it listens, and writes the same to `.slash/server.json`:
 {"endpoint_file":".slash/server.json","host":"127.0.0.1","port":18765,"token":"t0k","url":"http://127.0.0.1:18765"}
 ```
 
+### watch
+
+Opens a window on what an agent's session is doing: its world as it is now, redrawn whenever the
+agent changes it, with a bar naming the session and the agent's last command and an outline round
+each entity its commands touched, green round what it made and amber round what it changed,
+fading after a few seconds ([watching agents](watching-agents.md#the-watch-window)). The window
+reads the session through its read-only watch server, so it never changes the agent's world.
+With `--text`, `--json` or `--once` it follows the session's [work journal](watching-agents.md)
+instead, a line per command in plain words, until the session ends or Ctrl+C. With `--browser` it
+opens the session's [watch page](watching-agents.md#the-watch-page) in the browser instead, and
+with `--url` prints its link (`{"session": ..., "url": ...}`). Watch any session in the project,
+whichever agent runs it.
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | Project folder (default `.`) |
+| `--session <id>` | Which session (default: the newest live one, else the newest journal) |
+| `--text` | Lines in plain words rather than the window |
+| `--json` | The journal's lines as JSON rather than the window |
+| `--browser` | Open the watch page of a running session in the browser rather than the window |
+| `--url` | Print the watch page's link rather than opening anything |
+| `--last <n>` | `--text` and `--json`: lines to show first (default 20) |
+| `--once` | Print the last lines and stop |
+| `--driver <name>` | The window's graphics driver, as `run`'s (default `auto`) |
+| `--headless` | No window: follow the session and print a summary at the end (tests) |
+| `--ticks <n>` | Stop after this many ticks, 60 a second (default: until the window closes) |
+
+The window prints a summary when it closes: the session, the journal lines and worlds it read,
+the entities shown and those outlined last.
+
+```text
+13:05:03  claude-code  entity.create {"id":"crate"}  +crate
+13:05:04  claude-code  read: entity.get, world.query x3
+```
+
+### work
+
+`work digest` prints what the project's sessions did in a dozen lines; `--json` prints the whole
+[`work.digest`](commands.md#workdigest) result. `work list` prints each session's journal with
+its size and whether its session runs.
+
+The rest read and use a session's [checkpoints](watching-agents.md#checkpoints), the newest live
+session's unless `--session` names one:
+
+- `work checkpoints` prints one line a checkpoint (number, time, label or reason, how many files
+  it holds); `--json` prints [`work.checkpoints`](commands.md#workcheckpoints)' result.
+- `work compare [<a>] [<b>]` prints [`work.compare`](commands.md#workcompare)'s result from
+  checkpoint `a` (default: the one before `b`) to `b` (default: the last).
+- `work restore <n>` puts the files the session wrote back as they were at checkpoint `n`,
+  removing those it made after, and first keeps them as they are now as a new checkpoint, so a
+  restore can be undone by restoring that one. It refuses while any session in the project runs.
+  It prints the files it changed, the checkpoint that kept them and, when `n` holds a world, its
+  path, which [`scene.open`](commands.md#sceneopen) can load.
+- `work video --out <file.ivf>` encodes the checkpoints' frames as an AV1 video with
+  [`video.encode`](commands.md#videoencode), `--fps` of them a second.
+- `work timeline --out <file.png>` writes the checkpoints' frames in one picture and prints
+  [`work.timeline`](commands.md#worktimeline)'s result with `out` for the `png`.
+- `work report [--since <when>]` writes one HTML page of the session's work with
+  [`work.report`](commands.md#workreport) and prints its path.
+
+`work pause "<why>"`, `work resume` and `work note "<text>"` [steer](watching-agents.md#steering)
+a running session, the newest unless `--session` names one, through its watch server, as
+[`work.pause`](commands.md#workpause), [`work.resume`](commands.md#workresume) and
+[`work.note`](commands.md#worknote); `work plan` prints its [plan](commands.md#workplan) (`--json`
+as JSON):
+
+```text
+Build the boss room, 2 of 3 steps done; next: Run the tests
+1. [x] Lay out the floor
+2. [x] Place the boss
+3. [ ] Run the tests
+```
+
+```text
+1  15:06:47  scene.save  (1 file)
+2  15:06:47  crate placed
+3  15:06:47  scene.save  (1 file)
+```
+
+```json
+{"files":["main.scene.json"],"kept":5,"restored":3,"session":"20261122-150646-d839","world":".slash/work/checkpoints/20261122-150646-d839/3/world.scene.json"}
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--project <dir>` | Project folder (default `.`) |
+| `--since <time>` | `digest`: a duration (`45m`, `3h`, `2d`) or a UTC time (default `3h`) |
+| `--session <id>` | `digest`: one session only; the others: which session (default: the newest live one) |
+| `--json` | `digest`, `checkpoints`, `plan`: JSON rather than lines |
+| `--out <file>` | `video`: the `.ivf` file to write, in the project |
+| `--fps <n>` | `video`: checkpoints a second, 1 to 240 (default 1) |
+
 ### init
 
 Sets a game folder up for Claude Code, Codex, Cursor, opencode, Antigravity, Hermes Agent and
@@ -968,12 +1060,25 @@ slash-mcp [options]
 | `--allow <list>` | Capabilities to grant: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`), e.g. `--allow read,run` |
 | `--tools <set>` | Tools to offer: `core` (default), the commands most tasks need and `tools_load`, which adds the others by group as a task needs them, or `all` ([MCP](protocols.md#mcp)) |
 | `--live` | Drive the game already running in the project (`slash-cli run --serve` or `slash-cli serve`) instead of an engine of its own |
+| `--watch` | Serve only the tools for looking in on other agents' sessions, read-only ([remote viewing](watching-agents.md#remote-viewing)); takes only `--project` and `--session` |
+| `--session <id>` | `--watch`: the session to look in on (default: the newest live one, chosen again for each message) |
 | `--version` | Print the engine version |
 | `--help` | Show the usage text |
 
 With `--live`, `slash-mcp` reads `.slash/server.json` for each message and forwards it to that
 server, so it reconnects on its own when the game restarts. If no game is running, each request
 gets an error saying so.
+
+With `--watch`, it serves an agent a person talks to elsewhere (a chat on a phone, another
+vendor's app) the tools for checking on the agents working in the project: `work_view`,
+`work_digest`, `work_feed`, `work_timeline`, `work_report`, `work_checkpoints`, `work_compare`,
+`work_plan`, `work_pause`, `work_resume` and `work_note`, in a session with only the `read`
+capability, so it can look and steer but never edit. Calls name the session `--session` gave, or
+the newest live one.
+
+```bash
+claude mcp add slashengine-watch -- slash-mcp --watch --project .
+```
 
 ### Client configs
 

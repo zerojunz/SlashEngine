@@ -1,5 +1,7 @@
 #include "slash/server/server.hpp"
 
+#include "watch_page.hpp"
+
 #include "slash/command/command.hpp"
 #include "slash/command/mcp.hpp"
 #include "slash/command/rpc.hpp"
@@ -208,7 +210,12 @@ struct Server::Impl {
             jobs.pop_front();
             job->taken = true;
             lock.unlock();
+            const bool was_watching = session->watching();
+            if (options.watch_only) {
+                session->set_watching(true);
+            }
             job->run();
+            session->set_watching(was_watching);
             lock.lock();
             job->done = true;
             ++count;
@@ -242,6 +249,11 @@ struct Server::Impl {
             });
     }
 
+    [[nodiscard]] bool is_watch_page(const httplib::Request& req) const {
+        return options.watch_only && !options.watch_session.empty() && req.method == "GET" &&
+               req.path == "/watch";
+    }
+
     // Checks Host, Origin and the bearer token. Fills the response and returns false if the
     // request must be refused.
     bool admit(const httplib::Request& req, httplib::Response& res) const {
@@ -260,6 +272,9 @@ struct Server::Impl {
                                      "requests from other web origins are not allowed"));
                 return false;
             }
+        }
+        if (is_watch_page(req)) {
+            return true; // the page holds no secret; it reads the token from the link
         }
         constexpr std::string_view kBearer = "Bearer ";
         const std::string authorization = req.get_header_value("Authorization");
@@ -310,6 +325,22 @@ struct Server::Impl {
         http.Get("/v1/commands", [this](const httplib::Request& /*req*/, httplib::Response& res) {
             // The registry never changes after setup, so it is safe to read here.
             send_json(res, 200, commands_json(session->commands()));
+        });
+
+        http.Get("/watch", [this](const httplib::Request& req, httplib::Response& res) {
+            if (!is_watch_page(req)) {
+                send_json(res, 404,
+                          error_body(command::code::kMethodNotFound,
+                                     "only a session's watch server serves its watch page"));
+                return;
+            }
+            res.set_header("Content-Security-Policy",
+                           "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
+                           "script-src 'unsafe-inline'; connect-src 'self'");
+            res.set_header("Referrer-Policy", "no-referrer");
+            res.set_header("X-Frame-Options", "DENY");
+            res.set_header("Cache-Control", "no-store");
+            res.set_content(watch_page(options.watch_session), "text/html; charset=utf-8");
         });
 
         http.Get("/v1/openapi.json",

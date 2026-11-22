@@ -73,6 +73,19 @@ up instead of inventing them, and record new ones so other agents see them:
   whether new dialogue, interface text or art contradicts the storyboard; its findings are advice.
 - Before starting work, add a `task/...` entry with your name as `owner`, so others see it.
 
+## Show your work
+
+People can watch this session as it works (`slash-cli watch`, or its page in a browser), so keep
+them oriented:
+
+- At the start of a task, call `work_plan` (in `tools_load`'s `work` group) with the `task` and
+  its `steps`; tick steps with `done` as they finish, and set `status` to `blocked` when you need
+  a person. A step can name a storyboard `task/...` in `story`: ticking it hands back
+  `story_edits` for `storyboard_edit`.
+- `notes` in a reply are from a person watching: read them and adjust.
+- An edit that fails with code `-32006` means a person paused your edits: the message says why.
+  Keep to reads, say what you were doing, and wait for them to resume.
+
 ## Test the game
 
 `tests/` holds `.test.json` files (`slash-cli schema test`). Each test opens a scene and runs
@@ -288,6 +301,9 @@ description: Build or change scenes in this SlashEngine game through the slashen
    or can't draw, and with `map` a text picture. Use `frame_capture` with `points` (pixel colors)
    or `"image": true` and a small `scale` only when colors matter.
 6. If something is wrong, `undo` reverts the whole batch.
+7. Keep your plan with `work_plan` (`tools_load`'s `work` group) so people watching can follow:
+   `task` and `steps` at the start, `done` as steps finish. Read any `notes` a reply carries, and
+   stop editing when an edit fails with `-32006` (paused by a person watching).
 7. Call `scene_save`, then `test_run`: it runs the tests in `tests/` and `storyboard_check`, and
    returns only the checks that failed.
 

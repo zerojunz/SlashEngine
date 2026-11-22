@@ -1,0 +1,32 @@
+worker: work.plan
+worker: entity.create
+worker: scene.save
+worker: work.plan
+worker: entity.create
+worker: work.checkpoint
+helper: work.view
+  live: yes, frame: 320 x 180
+  plan: {"status":"working","steps":[{"done":true,"text":"Lay the floor"},{"done":false,"text":"Stack the crates"}],"task":"Build the yard"}
+  14:00:08  plan: Build the yard, 1 of 2 steps done; next: Stack the crates
+  14:00:09  entity.create {"components":{"Polygon2D":{"polygon":["[2 items]","[2 items]","[2 items]","[...  +crate
+  14:00:11  checkpoint 2: first crate
+helper: work.pause
+worker: entity.create
+  failed: a person watching paused this session's edits: "Crates go by the gate"; reads still work, and edits will once they resume
+helper: work.note
+helper: work.resume
+worker: component.set
+  a note came with it: The gate is at x 520
+worker: scene.save
+helper: work.pause
+  failed: "work.pause" is for the people watching, through the session's watch server: slash-cli work pause, the watch page, or from another session with "session"
+helper: work.timeline
+  sheet: 332 x 192
+  {"files":1,"n":1,"reason":"scene.save","time":"2026-11-22T14:00:06.000Z"}
+  {"files":0,"label":"first crate","n":2,"reason":"work.checkpoint","time":"2026-11-22T14:00:10.000Z"}
+  {"files":1,"n":3,"reason":"scene.save","time":"2026-11-22T14:00:18.000Z"}
+helper: work.report
+  .slash/work/reports/20261122-140000-y4rd.html: 3 frames, with the pause
+helper: work.view once the worker's session ended
+  live: no, frame: 480 x 270 of checkpoint 3
+  14:00:20  session ended

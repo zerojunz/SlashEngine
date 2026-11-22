@@ -39,6 +39,7 @@
 #include "slash/command/terrain.hpp"
 #include "slash/command/test.hpp"
 #include "slash/command/vehicle.hpp"
+#include "slash/command/work.hpp"
 #include "slash/command/xr.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
@@ -8970,6 +8971,7 @@ void register_builtin_commands(Registry& registry) {
     register_net_commands(registry);
     register_xr_commands(registry);
     register_face_capture_commands(registry);
+    work::register_work_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {

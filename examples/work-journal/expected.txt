@@ -1,0 +1,32 @@
+-- the agent's session
+entity.create {"id": "floor", "components": {"Transform2D": {"position": [0, 200]}}}
+entity.create {"id": "crate", "components": {"Transform2D": {"position": [40, 0]}}}
+world.query {}
+entity.get {"id": "crate"}
+component.set {"id": "crate", "components": {"Transform2D": {"position": [64, 180]}}}
+entity.get {"id": "crat"}
+storyboard.check {}
+scene.save {"path": "main.scene.json"}
+-- a reviewer's session
+work.feed {"session": "20261122-130500-a1b2", "text": true, "limit": 50}
+  13:05:01  session 20261122-130500-a1b2 started (slash-mcp)
+  13:05:02  claude-code  entity.create {"components":{"Transform2D":{"position":[0,200]}},"id":"floor"}  +floor
+  13:05:03  claude-code  entity.create {"components":{"Transform2D":{"position":[40,0]}},"id":"crate"}  +crate
+  13:05:04  claude-code  read: entity.get, world.query
+  13:05:07  claude-code  component.set {"components":{"Transform2D":{"position":[64,180]}},"id":"crate"}  ~crate(Transform2D)
+  13:05:08  claude-code  entity.get {"id":"crat"}  FAILED: /id: no entity has the id "crat"; did you mean "crate"?
+  13:05:09  claude-code  storyboard.check  -> ok
+  13:05:10  claude-code  scene.save {"path":"main.scene.json"}  wrote main.scene.json
+  13:05:12  checkpoint 1 (scene.save)
+  13:05:13  session ended
+work.feed {"session": "20261122-130500-a1b2", "after": 1, "limit": 2}
+{"lines":[{"changes":{"added":["floor"]},"client":"claude-code","command":"entity.create","n":2,"params":{"components":{"Transform2D":{"position":[0,200]}},"id":"floor"},"time":"2026-11-22T13:05:02.000Z"},{"changes":{"added":["crate"]},"client":"claude-code","command":"entity.create","n":3,"params":{"components":{"Transform2D":{"position":[40,0]}},"id":"crate"},"time":"2026-11-22T13:05:03.000Z"}],"live":false,"more":true,"next":3,"session":"20261122-130500-a1b2"}
+work.digest {"since": "2026-11-22T13:00:00Z"}
+  2 sessions: 20261122-130500-a1b2 (slash-mcp, claude-code); 20261122-131000-c3d4 (slash-cli rpc, codex)
+  4 commands and 6 reads from 13:05:01 to 13:15:04 UTC; 1 failed.
+  Scenes: main.scene.json.
+  Files written (1): main.scene.json.
+  Entities: 2 added, 0 removed, 1 changed.
+  Checks passing: storyboard.check.
+  Last failure: entity.get at 13:05:08: /id: no entity has the id "crat"; did you mean "crate"?
+{"checks":{"storyboard.check":{"gist":"ok","ok":true,"runs":1,"time":"2026-11-22T13:05:09.000Z"}},"commands":4,"entities":{"added":2,"changed":1,"removed":0},"failed":1,"files":["main.scene.json"],"from":"2026-11-22T13:05:01.000Z","last_failure":{"command":"entity.get","message":"/id: no entity has the id \"crat\"; did you mean \"crate\"?","time":"2026-11-22T13:05:08.000Z"},"reads":6,"scenes":["main.scene.json"],"sessions":[{"clients":["claude-code"],"commands":4,"host":"slash-mcp","id":"20261122-130500-a1b2","live":false},{"clients":["codex"],"commands":0,"host":"slash-cli rpc","id":"20261122-131000-c3d4","live":false}],"since":"2026-11-22T13:00:00.000Z","tests":{},"until":"2026-11-22T13:15:04.000Z"}

@@ -4,6 +4,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
 #include "slash/debug/overlay.hpp"
+#include "slash/debug/watch_view.hpp"
 #include "slash/input/input.hpp"
 #include "slash/render/device.hpp"
 #include "slash/ui/ui.hpp"
@@ -296,4 +297,105 @@ TEST_CASE("the canvas draws the debug panel over the game while it shows") {
     CHECK(shown[0] < 60);
     CHECK(shown[2] < 70);
     CHECK(renderer.controls_drawn() == 0); // the panel isn't the game's
+}
+
+TEST_CASE("a watch view outlines what an agent's commands touched, then fades") {
+    Game game;
+    game.ok("entity.create", R"({"id": "crate", "components": {
+        "Transform2D": {"position": [200, 100]},
+        "Polygon2D": {"polygon": [[0, 0], [40, 0], [40, 30], [0, 30]]}}})");
+    game.ok("entity.create", R"({"id": "spawn", "components": {
+        "Transform2D": {"position": [500, 300]}}})");
+    const std::unique_ptr<render::RenderDevice> device = render::create_software_device();
+    canvas::CanvasRenderer renderer(*device, game.session->assets());
+    auto target = device->create_texture({.width = 640, .height = 360, .render_target = true});
+    REQUIRE(target.ok());
+    debug::WatchView view(game.session->assets());
+    canvas::FrameContents contents;
+    const auto draw = [&](bool overlay) {
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.clear = {.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 1.0F};
+        options.width = kViewport.x;
+        options.height = kViewport.y;
+        options.overlay = overlay ? view.world() : nullptr;
+        contents = {};
+        options.contents = &contents;
+        REQUIRE(renderer.draw(game.session->world(), options).ok());
+    };
+    slash::ui::set_viewport(game.session->world(), kViewport);
+
+    // A journal line: the agent made the crate, then moved the spawn point.
+    view.touch(parse(R"({"n": 2, "command": "entity.create",
+                         "changes": {"added": ["crate"]}})"),
+               0.0);
+    view.touch(parse(R"({"n": 3, "command": "component.set",
+                         "changes": {"changed": {"spawn": {"Transform2D": ["position"]}}}})"),
+               1.0);
+    view.set_status("Watching 20261122-130000-test  slash-mcp (claude-code)");
+    draw(false);
+    view.update(game.session->world(), game.session->assets(), contents, kViewport, 1.0, true);
+    REQUIRE(view.outlines().size() == 2);
+    const debug::Outline& crate = view.outlines()[0];
+    CHECK(crate.id == "crate");
+    CHECK(crate.added);
+    // The polygon's pixels, three pixels round.
+    CHECK(crate.x == doctest::Approx(197.0F));
+    CHECK(crate.y == doctest::Approx(97.0F));
+    CHECK(crate.width == doctest::Approx(46.0F));
+    CHECK(crate.height == doctest::Approx(36.0F));
+    // Nothing draws the spawn point, so a small square marks its origin.
+    const debug::Outline& spawn = view.outlines()[1];
+    CHECK(spawn.id == "spawn");
+    CHECK_FALSE(spawn.added);
+    CHECK(spawn.x == doctest::Approx(491.0F));
+    CHECK(spawn.width == doctest::Approx(18.0F));
+
+    // The crate's outline draws in green on its left edge, the bar dark along the top.
+    draw(true);
+    auto image = device->read_texture(target.value());
+    REQUIRE(image.ok());
+    const auto pixel = [&](std::size_t x, std::size_t y) {
+        const std::size_t at = ((y * std::size_t{image.value().width}) + x) * 4;
+        return std::vector<std::uint8_t>(image.value().pixels.begin() + static_cast<long>(at),
+                                         image.value().pixels.begin() + static_cast<long>(at) + 3);
+    };
+    const std::vector<std::uint8_t> edge = pixel(198, 115);
+    CHECK(edge[1] > 150);
+    CHECK(edge[0] < 120);
+    CHECK(renderer.controls_drawn() == 0); // the view's controls aren't the world's
+
+    // Fading after the hold, gone after the fade; a removed entity's outline goes at once.
+    view.update(game.session->world(), game.session->assets(), contents, kViewport,
+                debug::kOutlineHold + 1.0, false);
+    REQUIRE(view.outlines().size() == 2);
+    CHECK(view.outlines()[0].alpha == doctest::Approx(0.5F));
+    CHECK(view.outlines()[1].alpha == doctest::Approx(1.0F));
+    view.touch(parse(R"({"n": 4, "command": "entity.destroy",
+                         "changes": {"removed": ["spawn"]}})"),
+               4.5);
+    view.update(game.session->world(), game.session->assets(), contents, kViewport,
+                debug::kOutlineHold + debug::kOutlineFade + 0.5, false);
+    CHECK(view.outlines().empty());
+}
+
+TEST_CASE("a watch view outlines a 3D entity's meshes as the camera sees them") {
+    Game game;
+    game.ok("entity.create", R"({"id": "camera", "components": {
+        "Transform3D": {"position": [0, 0, 5]}, "Camera3D": {"current": true}}})");
+    game.ok("entity.create", R"({"id": "leg", "components": {
+        "Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}}})");
+    game.ok("entity.create", R"({"id": "table", "components": {
+        "Transform3D": {"position": [0, 0, 0], "children": ["leg"]}}})");
+    debug::WatchView view(game.session->assets());
+    view.touch("table", false, 0.0);
+    view.update(game.session->world(), game.session->assets(), {}, kViewport, 0.0, true);
+    REQUIRE(view.outlines().size() == 1);
+    const debug::Outline& table = view.outlines()[0];
+    CHECK(table.id == "table");
+    // Its child's unit box, in the middle of the window.
+    CHECK(table.x + (table.width / 2) == doctest::Approx(kViewport.x / 2).epsilon(0.01));
+    CHECK(table.y + (table.height / 2) == doctest::Approx(kViewport.y / 2).epsilon(0.01));
+    CHECK(table.width > 40.0F);
+    CHECK(table.width < 200.0F);
 }
