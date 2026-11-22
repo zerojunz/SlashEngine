@@ -3,7 +3,9 @@
 #include "slash/command/session.hpp"
 #include "slash/core/log.hpp"
 #include "slash/platform/process.hpp"
+#include "slash/server/client.hpp"
 
+#include <charconv>
 #include <chrono>
 #include <iostream>
 #include <utility>
@@ -143,6 +145,141 @@ std::optional<std::string> StdinLines::next(std::chrono::milliseconds wait) {
 bool StdinLines::ended() const {
     const std::scoped_lock lock(shared_->mutex);
     return shared_->ended && shared_->lines.empty();
+}
+
+namespace {
+
+// A watch server's endpoint from its sessions.json entry ("http://127.0.0.1:port").
+std::optional<Endpoint> endpoint_of(const command::work::SessionEntry& entry) {
+    constexpr std::string_view kScheme = "http://";
+    std::string_view rest = entry.url;
+    if (!rest.starts_with(kScheme) || entry.token.empty()) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(kScheme.size());
+    const std::size_t colon = rest.rfind(':');
+    if (colon == std::string_view::npos) {
+        return std::nullopt;
+    }
+    int port = 0;
+    const std::string_view digits = rest.substr(colon + 1);
+    const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), port);
+    if (parsed.ec != std::errc{} || port <= 0) {
+        return std::nullopt;
+    }
+    Endpoint endpoint;
+    endpoint.host = std::string(rest.substr(0, colon));
+    endpoint.port = port;
+    endpoint.token = entry.token;
+    return endpoint;
+}
+
+} // namespace
+
+Follower::Follower(std::string project_root, std::string id, bool world)
+    : project_root_(std::move(project_root)), id_(std::move(id)), world_(world) {}
+
+Follower::~Follower() {
+    if (!fetcher_.joinable()) {
+        return;
+    }
+    bool done = false;
+    {
+        const std::scoped_lock lock(fetch_->mutex);
+        done = fetch_->done;
+    }
+    if (done) {
+        fetcher_.join();
+    } else {
+        fetcher_.detach();
+    }
+}
+
+Follower::Update Follower::poll(std::chrono::milliseconds refresh) {
+    Update update;
+    if (ended_) {
+        update.ended = true;
+        return update;
+    }
+    // The journal, read again when its files grow.
+    std::uint64_t bytes = 0;
+    for (const command::work::JournalFile& file : command::work::list_journals(project_root_)) {
+        if (file.id == id_) {
+            bytes += file.bytes;
+        }
+    }
+    if (bytes != bytes_ || !read_once_) {
+        bytes_ = bytes;
+        read_once_ = true;
+        if (auto read = command::work::read_journal(project_root_, id_); read) {
+            for (json::Value& line : read.value()) {
+                const json::Value* number = line.find("n");
+                if (number == nullptr || !number->is_int() || number->as_int() <= seen_) {
+                    continue;
+                }
+                seen_ = number->as_int();
+                ended_ = ended_ || line.find("end") != nullptr;
+                update.lines.push_back(std::move(line));
+            }
+        }
+        wanted_ = wanted_ || !update.lines.empty();
+    }
+    entry_.reset();
+    for (command::work::SessionEntry& live : command::work::live_sessions(project_root_)) {
+        if (live.id == id_) {
+            entry_ = std::move(live);
+        }
+    }
+    if (!entry_ && update.lines.empty()) {
+        // The process ended without its last line, or the session never served.
+        ended_ = true;
+    }
+
+    // The world: the answer to the last request, then another if one is due.
+    if (fetcher_.joinable()) {
+        std::optional<std::string> body;
+        bool done = false;
+        {
+            const std::scoped_lock lock(fetch_->mutex);
+            done = fetch_->done;
+            body = std::move(fetch_->body);
+        }
+        if (!done) {
+            update.ended = ended_;
+            return update;
+        }
+        fetcher_.join();
+        if (body && *body != scene_text_) {
+            scene_text_ = std::move(*body);
+            if (auto parsed = json::parse(scene_text_); parsed) {
+                if (const json::Value* scene = parsed.value().find("scene");
+                    scene != nullptr && scene->is_object()) {
+                    update.scene = *scene;
+                }
+            }
+        }
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const bool due = wanted_ || (refresh.count() > 0 && now - fetched_ >= refresh);
+    const std::optional<Endpoint> endpoint = entry_ ? endpoint_of(*entry_) : std::nullopt;
+    if (world_ && due && endpoint && !ended_) {
+        wanted_ = false;
+        fetched_ = now;
+        fetch_ = std::make_shared<Fetch>();
+        fetcher_ = std::thread([fetch = fetch_, endpoint = *endpoint] {
+            HttpRequest request;
+            request.path = "/v1/commands/scene.get";
+            request.body = "{}";
+            auto response = send(endpoint, request);
+            const std::scoped_lock lock(fetch->mutex);
+            if (response && response.value().status == 200) {
+                fetch->body = std::move(response.value().body);
+            }
+            fetch->done = true;
+        });
+    }
+    update.ended = ended_;
+    return update;
 }
 
 } // namespace slash::server

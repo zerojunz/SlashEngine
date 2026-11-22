@@ -591,17 +591,29 @@ It prints where it listens, and writes the same to `.slash/server.json`:
 
 ### watch
 
-Follows what an agent's session does, a line per command in plain words, from its
-[work journal](watching-agents.md), until the session ends or Ctrl+C. Watch any session in the
-project, whichever agent runs it.
+Opens a window on what an agent's session is doing: its world as it is now, redrawn whenever the
+agent changes it, with a bar naming the session and the agent's last command and an outline round
+each entity its commands touched, green round what it made and amber round what it changed,
+fading after a few seconds ([watching agents](watching-agents.md#the-watch-window)). The window
+reads the session through its read-only watch server, so it never changes the agent's world.
+With `--text`, `--json` or `--once` it follows the session's [work journal](watching-agents.md)
+instead, a line per command in plain words, until the session ends or Ctrl+C. Watch any session
+in the project, whichever agent runs it.
 
 | Flag | Meaning |
 | --- | --- |
 | `--project <dir>` | Project folder (default `.`) |
 | `--session <id>` | Which session (default: the newest live one, else the newest journal) |
-| `--last <n>` | Lines to show first (default 20) |
-| `--once` | Print them and stop |
-| `--json` | The journal's lines as JSON rather than text (`--text`, the default) |
+| `--text` | Lines in plain words rather than the window |
+| `--json` | The journal's lines as JSON rather than the window |
+| `--last <n>` | `--text` and `--json`: lines to show first (default 20) |
+| `--once` | Print the last lines and stop |
+| `--driver <name>` | The window's graphics driver, as `run`'s (default `auto`) |
+| `--headless` | No window: follow the session and print a summary at the end (tests) |
+| `--ticks <n>` | Stop after this many ticks, 60 a second (default: until the window closes) |
+
+The window prints a summary when it closes: the session, the journal lines and worlds it read,
+the entities shown and those outlined last.
 
 ```text
 13:05:03  claude-code  entity.create {"id":"crate"}  +crate
