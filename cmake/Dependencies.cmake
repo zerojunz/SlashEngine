@@ -28,6 +28,8 @@ macro(slash_add_dependency name)
         GIT_SHALLOW ${_slash_shallow}
         ${ARGN})
     list(APPEND SLASH_DEPENDENCIES ${name})
+    # Where each one's source is, for exports to ship its license (cmake/stage_notices.cmake).
+    set_property(GLOBAL APPEND PROPERTY SLASH_DEPENDENCY_SOURCES "${name}=${${name}_SOURCE_DIR}")
 endmacro()
 
 # Vulkan shaders see 16 KiB of each uniform push, as the other backends see all of it, MetalFX

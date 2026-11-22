@@ -2,7 +2,7 @@
 
 Game projects and exports: project.json, presets and building for each platform.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-22
 
 A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
 its scenes. `slash-cli init` creates one. `engine/runtime` runs it: `Game` loads the main scene
@@ -20,7 +20,9 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 font, sound, `.frames.json`, `.material.json`, `.process_material.json`, `.audio.json` and
 `.bus_layout.json` file, stages them as the game's data, configures
 `export/CMakeLists.txt` with the engine sources, builds, signs and installs into
-`<project>/build/export/<preset>`. Its work folder
+`<project>/build/export/<preset>`. The data carries the engine's notices in
+`licenses/slashengine/` (its license, `THIRD_PARTY.md` and each dependency's license file,
+`cmake/stage_notices.cmake`) and each SDK package's in `licenses/<package>/`. Its work folder
 and full build log are in `<project>/.slash/export/<preset>/`; a failure reports the step and the
 end of the log. A Mac builds every platform: macOS and iOS with Xcode's tools, Windows and Linux
 with llvm-mingw and a glibc 2.31 Debian sysroot that the first such export downloads

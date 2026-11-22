@@ -426,6 +426,10 @@ jobs:
           # The SDK's library ships beside the game, which finds it through $ORIGIN.
           test -f build/empty-game/build/export/linux/libhello.so
           test -f build/empty-game/build/export/linux/data/licenses/hello/LICENSE.txt
+          # And the engine's notices: its license, THIRD_PARTY.md and its dependencies'.
+          test -f build/empty-game/build/export/linux/data/licenses/slashengine/LICENSE.txt
+          test -f build/empty-game/build/export/linux/data/licenses/slashengine/THIRD_PARTY.md
+          test -f build/empty-game/build/export/linux/data/licenses/slashengine/SDL3/LICENSE.txt
 
       - name: Check the Simulator app and build an ad hoc .ipa for devices
         if: matrix.platform == 'ios'

@@ -1,0 +1,6 @@
+{
+  "extends": "textures/wall.texture.json",
+  "format": 1,
+  "parameters": {"mortar": 0.04, "rows": 8},
+  "type": "graph"
+}

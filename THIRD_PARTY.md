@@ -6,6 +6,10 @@ vendored. `cmake/dependencies.json` pins each one to an exact tag with its SPDX 
 SHA-256 of its license file, and the `licenses` test fails a pull request that adds a dependency
 or license not allowed here, or whose license text changed without review.
 
+Exported games carry these notices in their data, in `licenses/slashengine/`: the engine's
+`LICENSE.txt`, this file and the license file of each dependency the export fetched
+(`cmake/stage_notices.cmake`); SDK packages' licenses go beside it, in `licenses/<package>/`.
+
 | Name | Version | License | Used for | How it is included |
 | --- | --- | --- | --- | --- |
 | [SDL3](https://github.com/libsdl-org/SDL) | release-3.4.18 | zlib | Platform layer: windows, events, timers, GPU; two patches: one lets Vulkan shaders see 16 KiB of each uniform push, and one hands the Metal, Vulkan and Direct3D 12 devices' native objects to MetalFX and games' temporal upscalers (`cmake/patches/`) | Fetched, linked statically |
@@ -29,7 +33,7 @@ or license not allowed here, or whose license text changed without review.
 | [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | b9438627eef73a1157e84201b6fa6eb2ffd6d9f0 | MIT or Unlicense (public domain), at the user's choice | Decoding BC7 textures (`bc7decomp.cpp`) where a GPU can't sample them; tools and tests also encode with `bc7enc.cpp` | Fetched, those two files linked statically (the decoder alone in games) |
 | [cgltf](https://github.com/jkuhlmann/cgltf) | v1.15 | MIT | Reading glTF 2.0 models (`.gltf` and `.glb`) for `MeshInstance3D` | Fetched, header-only, compiled in `engine/scene3d` |
 | [MikkTSpace](https://github.com/mmikk/MikkTSpace) | 3e895b49d05ea07e4c2133156cfa94369e19e409 | Zlib | Tangents for models that leave them out (glTF, OBJ and FBX), as Godot makes them | Fetched, compiled in `engine/scene3d` |
-| [FastNoiseLite](https://github.com/Auburn/FastNoiseLite) | v1.1.1 | MIT | Noise for `procedural::Noise` and noise textures, as Godot's `FastNoiseLite` uses it | Fetched, header-only, compiled in `engine/procedural` |
+| [FastNoiseLite](https://github.com/Auburn/FastNoiseLite) | v1.1.1 | MIT | Noise for `procedural::Noise` and noise textures, as Godot's `FastNoiseLite` uses it; its HLSL port bakes texture graphs' noise on the GPU | Fetched, header-only, compiled in `engine/procedural`; its HLSL (without the 3D noise, its tables in group memory) is copied, with its MIT notice, into `engine/render/shaders/fast_noise_lite.hlsl`, which ships compiled in games |
 | [stb](https://github.com/nothings/stb) | a7d4c2175630e1ea5b6f8dd00ab96fed0b97b96d | MIT or Unlicense (public domain), at the user's choice | Decoding JPEG textures, which glTF models often carry, with `stb_image.h`; tests write JPEG files with `stb_image_write.h`; packing lightmap atlases with `stb_rect_pack.h`, as Godot packs them | Fetched, header-only, its JPEG decoder compiled in `engine/render` |
 | [ufbx](https://github.com/ufbx/ufbx) | v0.23.1 | MIT or Unlicense (public domain), at the user's choice | Reading FBX models (`.fbx`, binary and ASCII) for `MeshInstance3D`, as Godot 4.3's importer reads them | Fetched, its one source file compiled in `engine/scene3d` |
 | [xatlas](https://github.com/jpcy/xatlas) | f700c7790aaa030e794b52ba7791a05c085faf0c | MIT | Unwrapping meshes into lightmap UVs for `LightmapGI` bakes, as Godot unwraps them | Fetched, its one source file compiled in `engine/scene3d` through `src/xatlas_build.cpp`, which swaps in the engine's own trigonometry and a stable sort so charts are the same on every platform |

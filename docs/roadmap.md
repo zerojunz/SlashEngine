@@ -1466,10 +1466,10 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
 23. [ ] Textures agents author (2026-11-22), after Substance Designer and Painter, Houdini's COPs
         and Blender's shader nodes, in 2D and 3D, GPU first with a CPU twin held to every
         device ([design](design.md#procedural-generation)):
-        - [ ] Texture graphs: `.texture.json` files of `"type": "graph"`, nodes over parameters
+        - [x] Texture graphs: `.texture.json` files of `"type": "graph"`, nodes over parameters
               (generators, filters, height and normals, blends, PBR outputs), baked in compute
-              on every device, with `texture.generate`, `texture.inspect`, `texture.edit` and
-              `texture.check`
+              on every device (the CPU twin on Direct3D 12 and OpenGL), with `texture.generate`
+        - [ ] `texture.inspect`, `texture.edit` and `texture.check` for graphs
         - [ ] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
               uniforms that animations and gameplay code drive
         - [ ] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
@@ -1510,6 +1510,56 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               the engine's own
         - [ ] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
         - [ ] A denoiser hook with the ray-traced passes' inputs, for DLSS Ray Reconstruction
+27. [ ] Launch gaps (2026-11-22), from audits against Godot 4.6 and Unreal Engine 5, last in the
+        queue:
+        - [x] Exports ship the engine's third-party notices (`licenses/slashengine/`)
+        - [ ] Save data for game code, as Godot's `user://` and `ConfigFile`
+        - [ ] WebRTC peers, as Godot's `WebRTCMultiplayerPeer`
+        - [ ] Gamepad rumble, gyro and controller button glyphs
+        - [ ] HTTP requests from game code, as Godot's `HTTPRequest`
+        - [ ] 2D skeletons: `Skeleton2D`, `Bone2D` and skinned `Polygon2D`
+        - [ ] Dedicated server exports
+        - [ ] Sample games, `samples/pong` first
+        - [ ] Motion blur and lens effects (film grain, chromatic aberration, lens flares)
+        - [ ] Sky atmosphere and volumetric clouds, as Unreal's
+        - [ ] AI perception: sight and hearing senses for NPCs, as Unreal's AI Perception
+        - [ ] Client-side prediction and lag compensation for multiplayer
+        - [ ] Shader pipeline warm-up, as Unreal's PSO caches
+        - [ ] Subtitles and captions
+        - [ ] Spline meshes, as Unreal's `SplineMeshComponent`
+        - [ ] Virtual shadow maps
+        - [ ] Motion matching
+        - [ ] Sound graphs, as Unreal's MetaSounds
+        - [ ] A gameplay ability system, as Unreal's
+        - [ ] Crowds of many agents, as Unreal's Mass
+        - [ ] Online lobbies and voice chat through an SDK package (Epic Online Services first)
+        - [ ] USD and Alembic import
+        - [ ] Runtime virtual textures
+        - [ ] Audio occlusion
+        - [ ] Hierarchical LODs for far geometry
+        - [ ] Crash reports with automatic analysis: games catch crashes, write a report
+              (stack, log tail, build and platform), and `crash.analyze` groups reports and
+              names the likely cause in the game's code
+        - [ ] Sprite sheets: `sprite.sheet` generates an animation's frames of one character with
+              the asset library's generators (each frame from the last and a reference, held to
+              the same palette and outline), or slices a sheet, packs them into an atlas and writes
+              the `.frames.json`, with `sprite.check` measuring frame-to-frame consistency
+        - [ ] Aseprite import: `.aseprite` and `.ase` files' layers, frames, tags (as animations
+              with their directions) and slices read as textures and `.frames.json` files, and
+              reloaded when the file changes
+28. [ ] Grains (2026-11-22): sand, mud, snow, rubble and flesh that stretches and tears, as
+        glued grains on an XPBD solver, in 2D and 3D, GPU first with a CPU twin (after the feature
+        list of Carnage Grains for Blender; none of its files):
+        - [ ] `.grains.json` recipes: grains filling a model's volume (size, packing), glue that
+              breaks past a stretch, plasticity, clumping, friction and attachments to bones and
+              bodies that break past a distance; physics bodies, particle SDFs and fields act on
+              them, and torn glue raises events
+        - [ ] Activation by a sphere, a mask, `damage.apply` or infection spreading grain to
+              grain, so a hit turns part of a wall to rubble or a creature to torn flesh
+        - [ ] Upres and meshing: finer grains for drawing, the surface meshed with the source
+              model's UVs and glued links as strands
+        - [ ] `grains.place`, `grains.state`, `grains.check` and `grains.preview`, with PCG and
+              VFX hooks
 
 Console ports are not on this roadmap and never will be in this repository. As with Godot,
 PlayStation, Xbox and Switch support comes from licensed porting partners as private backends.
