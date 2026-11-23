@@ -376,7 +376,7 @@ TEST_CASE("project.json's rendering.scaling is read and checked") {
     CHECK(error.path == "/rendering/scaling/mode");
     CHECK(contains(error.message, "did you mean bilinear?"));
     CHECK(first_error(R"({"scale": 3})").path == "/rendering/scaling/scale");
-    CHECK(first_error(R"({"fsr_sharpness": -1})").path == "/rendering/scaling/fsr_sharpness");
+    CHECK(first_error(R"({"sharpness": -1})").path == "/rendering/scaling/sharpness");
     CHECK(first_error(R"({"upscaler": "Big Upscaler"})").path == "/rendering/scaling/upscaler");
     CHECK(first_error(R"({"mood": "fsr"})").path == "/rendering/scaling/mood");
     CHECK(slash::runtime::parse_project(project).error().code == slash::ErrorCode::InvalidArgument);

@@ -317,7 +317,7 @@ TEST_CASE("SSR's pyramid keeps the nearest depth, as Godot's downsample and Hi-Z
     CHECK(target.values == std::vector<float>{0.8F, 0.9F});
 }
 
-TEST_CASE("SSR settings come from project.json's rendering.environment.screen_space_reflection") {
+TEST_CASE("SSR settings come from project.json's rendering.ssr") {
     auto parsed = slash::json::parse(R"({"half_size": false})");
     REQUIRE(parsed.ok());
     CHECK_FALSE(render::ssr_settings_from_json(parsed.value()).half_size);

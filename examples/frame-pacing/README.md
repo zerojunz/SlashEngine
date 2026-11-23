@@ -14,5 +14,5 @@ registers the commands `slash-cli run --serve` adds and calls them as an agent w
   machine with a display, those show whether a game keeps to its frame cap.
 - Headless frames run one tick each and never wait for the frame cap, so headless runs stay fast
   and repeatable; the cap only paces windowed runs.
-- A game sets the same things in `project.json` (`max_fps` and `window.vsync_mode`), and its own
+- A game sets the same things in `project.json` (`max_fps` and `window.vsync`), and its own
   code calls `RenderDevice::set_vsync` and `Loop::set_max_fps`, e.g. from an options menu.

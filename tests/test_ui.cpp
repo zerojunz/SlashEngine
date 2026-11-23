@@ -471,11 +471,11 @@ TEST_CASE("check finds theme overrides a control's type doesn't have, and fonts 
         lines.push_back(problem.id + problem.path + ": " + problem.message);
     }
     CHECK(lines == std::vector<std::string>{
-                       "rect/components/Widget/theme_override_constants/margin: ColorFill has "
+                       "rect/components/Widget/theme_constants/margin: ColorFill has "
                        "no constants item \"margin\"; it has none",
-                       "title/components/Widget/theme_override_colors/font_colour: Label has no "
+                       "title/components/Widget/theme_colors/font_colour: Label has no "
                        "colors item \"font_colour\"; did you mean \"font_color\"?",
-                       "title/components/Widget/theme_override_fonts/font: asset "
+                       "title/components/Widget/theme_fonts/font: asset "
                        "\"fonts/missing.ttf\" could not be read: no such file",
                    });
     // The label still draws, with the default font.

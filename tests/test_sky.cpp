@@ -422,11 +422,9 @@ TEST_CASE("the sky's ggx_samples set how many samples each radiance level blurs 
     CHECK(coarse.levels[3] != fine.levels[3]);
 
     CHECK(render::sky_ggx_samples(
-              slash::json::parse(R"({"reflections": {"sky_reflections": {"ggx_samples": 8}}})")
-                  .value()) == 8);
+              slash::json::parse(R"({"reflections": {"sky_samples": 8}})").value()) == 8);
     CHECK(render::sky_ggx_samples(
-              slash::json::parse(R"({"reflections": {"sky_reflections": {"ggx_samples": 64}}})")
-                  .value()) == 32);
+              slash::json::parse(R"({"reflections": {"sky_samples": 64}})").value()) == 32);
 }
 
 TEST_CASE("every device lights meshes with the sky's radiance") {

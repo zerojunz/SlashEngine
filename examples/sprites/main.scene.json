@@ -3,7 +3,7 @@
     "ghost": {
       "components": {
         "Sprite2D": {
-          "hframes": 4,
+          "columns": 4,
           "texture": "hero.png",
           "visible": false
         },
@@ -26,11 +26,11 @@
     "sign": {
       "components": {
         "Sprite2D": {
+          "columns": 4,
           "flip_h": true,
           "frame": 3,
-          "hframes": 4,
-          "texture": "hero.png",
-          "z_index": -1
+          "sort_order": -1,
+          "texture": "hero.png"
         },
         "Transform2D": {
           "position": [96.0, 32.0],

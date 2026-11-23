@@ -813,7 +813,7 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     // An Animation Blueprint's sequences are an AnimationTree's states, starting at the idle, for
     // its task to join.
     const json::Value& tree = component(scene, "statue", "AnimationGraph");
-    CHECK(tree.find("tree_root")->as_string() == "unreal/Content/ABP_Figure.animtree.json");
+    CHECK(tree.find("root")->as_string() == "unreal/Content/ABP_Figure.animtree.json");
     CHECK(tree.find("libraries")->find("")->as_string() == "unreal/Content/ABP_Figure.anim.json");
     const json::Value machine = file_json(plan, "unreal/Content/ABP_Figure.animtree.json");
     const json::Value& root = *machine.find("root");
@@ -1199,7 +1199,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     // camera-facing quads.
     const json::Value& burst = component(scene, "sparks_burst", "GpuEmitter3D");
     CHECK(burst.find("amount")->as_int() == 40);
-    CHECK(burst.find("explosiveness")->as_double() == 1.0);
+    CHECK(burst.find("burst")->as_double() == 1.0);
     CHECK(burst.find("one_shot")->as_bool());
     CHECK(burst.find("lifetime")->as_double() == 1.5);
     CHECK(burst.find("seed")->as_int() == 42);
@@ -1207,7 +1207,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(burst.find("preprocess")->as_double() == 0.5);
     CHECK(*burst.find("visibility_aabb_position") == parse("[-1.0, 0.0, -1.0]"));
     CHECK(*burst.find("visibility_aabb_size") == parse("[2.0, 3.0, 2.0]"));
-    CHECK(component(scene, "sparks_burst", "Surface3D").find("billboard_mode")->as_string() ==
+    CHECK(component(scene, "sparks_burst", "Surface3D").find("billboard")->as_string() ==
           "particles");
     (void)component(scene, "sparks_burst", "QuadGeometry");
     const std::string material = burst.find("process_material")->as_string();
@@ -1235,7 +1235,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(smoke.find("initial_velocity_max")->as_double() == doctest::Approx(1.50333));
     CHECK(smoke.find("spread")->as_double() == doctest::Approx(27.017123));
     CHECK(*smoke.find("gravity") == parse("[0.0, 0.0, 0.0]"));
-    CHECK(smoke.find("local_coords")->as_bool());
+    CHECK(smoke.find("local_space")->as_bool());
     CHECK(smoke.find("mesh")->as_string() == "unreal/Content/SM_Crate.glb");
     CHECK(smoke.find("seed")->as_int() == 42);
     CHECK(scene.find("entities")->find("sparks_off") == nullptr);

@@ -2358,7 +2358,7 @@ Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity
     std::vector<VoxelGIMesh> meshes;
     for (const entt::entity found : made<world::Model3D>(world)) {
         const auto& instance = world.ecs().get<const world::Model3D>(found);
-        if (instance.gi_mode != "static" || !tree.visible(found) ||
+        if (instance.lighting_mode != "static" || !tree.visible(found) ||
             !at_or_under(tree, found, scope)) {
             continue;
         }

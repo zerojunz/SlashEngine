@@ -3,8 +3,8 @@
     "bush": {
       "components": {
         "Sprite2D": {
-          "texture": "bush.png",
-          "z_index": 1
+          "sort_order": 1,
+          "texture": "bush.png"
         },
         "Transform2D": {
           "position": [112.0, 144.0]
@@ -24,8 +24,8 @@
     "ghost": {
       "components": {
         "Sprite2D": {
-          "modulate": [1.0, 1.0, 1.0, 0.0],
-          "texture": "player.png"
+          "texture": "player.png",
+          "tint": [1.0, 1.0, 1.0, 0.0]
         },
         "Transform2D": {
           "position": [200.0, 148.0]

@@ -338,11 +338,11 @@ void add_tracks(json::Array& tracks, const std::string& id, const world::CacheTr
     kinematic["value"] = "kinematic";
     json::Value freeze;
     freeze["keys"] = json::Array{std::move(frozen)};
-    freeze["path"] = "RigidBody" + kind + "/freeze";
+    freeze["path"] = "RigidBody" + kind + "/frozen";
     freeze["target"] = id;
     json::Value mode;
     mode["keys"] = json::Array{std::move(kinematic)};
-    mode["path"] = "RigidBody" + kind + "/freeze_mode";
+    mode["path"] = "RigidBody" + kind + "/frozen_mode";
     mode["target"] = id;
     tracks.push_back(std::move(mode));
     tracks.push_back(std::move(freeze));

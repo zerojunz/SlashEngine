@@ -15,7 +15,7 @@ holds each call and its reply.
   `just_released`, so gameplay code never misses it.
 - Half a stick past the action's `deadzone` (0.25 here) reads as `strength` 0.5, and
   `get_vector` moves the player at half speed.
-- A touch clicks the left mouse button too (`input_devices.pointing.emulate_mouse_from_touch`,
+- A touch clicks the left mouse button too (`pointer.mouse_from_touch`,
   on by default), so mouse code works on phones.
 - `{"type": "action", "action": "move_right"}` presses an action by name, with an optional
   `strength`, as Godot's `Input.action_press`. A misspelled action is an error with the closest

@@ -200,7 +200,7 @@ TEST_CASE("a bone attachment follows the bone after the IK modifiers turn it") {
     CHECK(near(scene.global("grip").origin, {1.0F, 2.0F, 0.0F}));
 }
 
-TEST_CASE("external_skeleton follows a model from anywhere in the world") {
+TEST_CASE("skeleton_entity follows a model from anywhere in the world") {
     Scene scene;
     scene.create("arm", R"({"Transform3D": {"position": [2, 0, 0], "rotation": [0, 0, -1.5707964]},
         "Model3D": {"mesh": "models/arm.gltf"}})");
@@ -235,8 +235,8 @@ TEST_CASE("bone attachments are checked against their models, with did you mean"
               "unnamed /components/BoneSocket3D/bone_name: names no bone",
               "loose /components/BoneSocket3D: follows a bone, but its Transform3D parent "
               "draws no model file: put it in the Transform3D children of the Model3D's "
-              "entity, or name that entity in external_skeleton",
-              "far /components/BoneSocket3D/external_skeleton: follows an entity that draws "
+              "entity, or name that entity in skeleton_entity",
+              "far /components/BoneSocket3D/skeleton_entity: follows an entity that draws "
               "no model file: name the entity whose Model3D draws the model",
           });
 

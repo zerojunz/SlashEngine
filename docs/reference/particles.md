@@ -59,7 +59,7 @@ hashed random values, and Godot's 3D emission shapes, cone spread, basis flags a
 `scene3d::Renderer::add_particles` draws each emitter's mesh (its `mesh` file or primitive mesh
 component) as one CPU mesh per surface, refilled each frame with `update_mesh`: a copy of the
 mesh at each live particle, turned by `billboard` where its `Surface3D` has a
-`billboard_mode` (as Godot's `BaseMaterial3D` vertex code, which `face_camera` also applies to
+`billboard` (as Godot's `BaseMaterial3D` vertex code, which `face_camera` also applies to
 `Model3D`s) and colored by the particle. `particles.eval` lists them in 3D, and
 `examples/particles-3d` has a fountain, a fire and snow.
 
@@ -85,7 +85,7 @@ and `tests/test_particle_compute_3d.cpp` holds every device to it; a change to o
 and `check_particle_process_3d` checks what every device takes. `particles.eval` runs the steps
 kept on the CPU; `examples/gpu-particles-3d` has sparks, leaves and streaks. Attractors are Godot's
 `ParticleAttractorSphere3D`, `Box3D` and `VectorField3D`: the system pairs each emitter
-with those visible whose bounds touch its visibility box and whose `cull_mask` meets its
+with those visible whose bounds touch its visibility box and whose `layer_filter` meets its
 `layers` (Godot's scene cull), and puts them in its steps in the particles' space
 (`render::ParticleAttractor3D`, `for_particles` in `src/gpu_particles.cpp`); a vector field's
 texture is cut into slices by `particle_field` and read through the `ImageLoader`

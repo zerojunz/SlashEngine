@@ -1449,7 +1449,7 @@ Needs: `read`.
 {"parameters":{"shot/request":{"default":"none","doc":"\"fire\" plays the shot, \"abort\" stops it, \"fade_out\" fades it out; the tree sets it back to \"none\".","value":"none"},"speed/scale":{"default":1,"doc":"How fast its input plays; negative plays backward.","value":1}},"playing":[{"animation":"Wave-loop","time":0.5833,"weight":1},{"animation":"Point","time":0.0833,"weight":0.3333}],"state":{"point/backward":false,"shot/active":true,"shot/fade_in_remaining":0.1167,"shot/fade_out_remaining":0,"shot/internal_active":true,"shot/time_to_restart":-1,"wave/backward":false}}
 ```
 
-Numbers are rounded to four decimals. An entity with no `AnimationGraph`, or whose `tree_root` is
+Numbers are rounded to four decimals. An entity with no `AnimationGraph`, or whose `root` is
 empty or doesn't load, fails at `/id`.
 
 ### animation.set_parameters
@@ -2503,7 +2503,7 @@ cinematics. `record` starts recording the rigid bodies named (`[]` for every `Ri
 as a `.anim.json` [animation](scene-format.md#animations): for each body, value tracks
 of its `Transform3D` (or `Transform2D`) `position` and `rotation`, keyed only where the motion
 bends past `tolerance` (angles unwrapped so turns go the way the body turned), and its
-`RigidBody3D/freeze` set with `freeze_mode` `"kinematic"` from the start, so playing it moves
+`RigidBody3D/freeze` set with `frozen_mode` `"kinematic"` from the start, so playing it moves
 the bodies as they moved and pushes what they meet. An `Animator` whose `targets` name
 the bodies plays it, or a cinematic's `animation` track starts it; `player` sets one up. `stop`
 drops a recording.
@@ -3322,7 +3322,7 @@ they went off:
 ```
 
 `bounds` is `[x, y, width, height]` round the particles' positions, or `null` when none are
-alive. Each particle has its position in the world (particles in `local_coords` are placed by
+alive. Each particle has its position in the world (particles in `local_space` are placed by
 the entity's `Transform2D`), its rotation in radians clockwise, its scale, its color as
 `[r, g, b, a]` and its age in seconds, in draw order. Numbers are rounded to four decimals.
 
@@ -3516,7 +3516,7 @@ mean". [examples/lighting-check](../../examples/lighting-check/) fixes a courtya
 
 Bakes a [`BakedLighting3D`'s](scene-format.md#baked-lightmaps) light and [light
 probes](scene-format.md#light-probes), as Godot's LightmapGI bake: the
-`Model3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
+`Model3D`s whose `lighting_mode` is `"static"` under its parent (the whole world for a root),
 lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
 shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light and the probes'
 on the CPU, or with `"device": "gpu"` on a GPU that traces rays (Vulkan with ray queries, Metal
@@ -3553,7 +3553,7 @@ file that doesn't end in `.lightmap.json` fails at `/file` (or `/id`, for its `l
 ### voxel_gi.bake
 
 Bakes a [`VoxelLighting3D`'s](scene-format.md#voxelgi) cells, as Godot's VoxelGI bake: the
-`Model3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root)
+`Model3D`s whose `lighting_mode` is `"static"` under its parent (the whole world for a root)
 that touch its box, voxelized at its `subdiv` with their albedo, emission and normals. It writes
 a `.voxelgi.json` file and sets the VoxelLighting3D's `data` to it. Lights aren't baked: the renderer
 injects them into the cells as the game runs. It returns the file, how many meshes it voxelized,
@@ -3737,7 +3737,7 @@ the sign on a smaller window:
   one entity, a theme override name its type doesn't have, with the closest one, a style box
   override with a mistake, a theme that doesn't load, a `theme_type_variation` no theme
   defines, a font or texture that doesn't load, a button `shortcut` entry that isn't a binding
-  or names no action, a `button_group` on a button without `toggle_mode`, a `Label` on a button
+  or names no action, a `button_group` on a button without `toggles`, a `Label` on a button
   entity (a button draws its own text), two buttons on one entity, a `focus_*` field that
   names no control, a `TextField` with a `Label` or button on its entity, a
   `secret_character` longer than one character, a `TextArea` with a `Label`, button or
@@ -3980,7 +3980,7 @@ Needs: `read`. From [examples/accessibility](../../examples/accessibility/):
 ```
 
 `enabled` says whether controls serve a screen reader now (project.json's
-`gui.accessibility_support`). `problems` lists controls that can take focus with no name,
+`ui.accessibility_support`). `problems` lists controls that can take focus with no name,
 `accessibility_name`s holding the control's class name or a control character, and related
 controls that aren't controls, each with the JSON Pointer of the field to fix; with `ids`, only
 those of the controls returned.
@@ -4163,7 +4163,7 @@ an event's type doesn't have are errors, and so are misspelled names, with the c
   pressed and just released, so gameplay code that checks `is_action_just_pressed` never misses
   it. To hold a key, inject the press, `step` as long as it is held, then inject the release.
 - A touch also clicks the left mouse button, unless `project.json` turns
-  `input_devices.pointing.emulate_mouse_from_touch` off.
+  `pointer.mouse_from_touch` off.
 - A motion right after another from the same mouse, finger or stick merges into it, as Godot's
   accumulated input.
 - In a running game, events apply at the next tick of the game loop.
@@ -4283,14 +4283,14 @@ Needs: `read`. With the footsteps playing:
   is listed with kind `Video`: its `stream` is the video, `position` where its sound
   is and `length` the video's. `error` says why its `audio_track` can't play, such as Vorbis or a track
   the video doesn't have.
-- A player's `bus` is the one it plays on now: an `Zone2D` with `audio_bus_override` that holds
+- A player's `bus` is the one it plays on now: an `Zone2D` with `bus_override` that holds
   an `SoundPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)),
   as an `Zone3D` does an `SoundPlayer3D`.
 - A `capture` effect lists `frames_available`, the frames its buffer holds, and
   `discarded_frames` once a full buffer has dropped some. A `record` effect lists
   `"recording": true` while it records and `seconds` once it holds a recording; both show the
   state at the next tick, after any [`audio.record`](#audiorecord) waiting for it.
-- With the project's `audio.enable_input`, `input` shows the [microphone](scene-format.md#microphone)
+- With the project's `audio.input_enabled`, `input` shows the [microphone](scene-format.md#microphone)
   input: `active` while a microphone player or the game keeps it on, `source` (the sound
   [`audio.input`](#audioinput) plays into it, the microphone's name, or `""` for silence, as
   headless), `peak_db` over the last tick (`null` when silent), and `error` when the microphone
@@ -4591,7 +4591,7 @@ lights lanterns:
 ```
 
 Like `audio.play`, it waits for the next tick, so a failed `batch` or a dry run takes it back.
-It is an error when the project's `audio.enable_input` is off, and at `/stream` when the stream
+It is an error when the project's `audio.input_enabled` is off, and at `/stream` when the stream
 doesn't load or is itself a microphone. [`audio.state`](#audiostate)'s `input` shows what feeds
 the input.
 
@@ -4887,7 +4887,7 @@ images or a frame of another size is an error at its `/frames/<i>`. Nothing is w
 ## Localization
 
 Translations, as Godot's TranslationServer: `project.json`'s
-[`internationalization`](project-format.md#internationalization) lists CSV and gettext `.po` and
+[`localization`](project-format.md#localization) lists CSV and gettext `.po` and
 `.mo` files, and controls show their text in the game's locale as their
 `Widget.auto_translate_mode` says (see [scene-format.md](scene-format.md#translated-text)). Games start
 in the player's locale; sessions start in the project's `test` locale, else its fallback, so they
@@ -6742,7 +6742,7 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
   such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
   tenth, `[x, y, width, height]`, not cut to the window: a control's rect as
   [`ui.layout`](#uilayout) places it (only the part its clip leaves, inside a
-  `ScrollBox` or a parent with `clip_contents`), else the bounds of what it drew. `shown`,
+  `ScrollBox` or a parent with `clip_children`), else the bounds of what it drew. `shown`,
   from 0.01 to 0.99, is the share of its pixels that show when not all of them do: the rest are
   outside the window (or region), under something drawn after it or cut off by a clip.
 - What each shows: an `Flipbook2D`'s `animation` and `frame`, a sprite sheet's `frame`, a

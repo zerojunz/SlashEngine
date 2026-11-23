@@ -4,7 +4,7 @@ Light baked into a lightmap by a `BakedLighting3D`, as Godot 4.6's: sunlight bou
 onto the floor and into a crate's shadow, worked out once by `lightmap.bake` rather than every
 frame. [main.scene.json](main.scene.json) is a floor, a wall, a crate and a ball seen through a
 `Camera3D` in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light. The
-floor's, wall's and crate's `gi_mode` is `"static"`, Godot's default, so the `lightmap` entity
+floor's, wall's and crate's `lighting_mode` is `"static"`, Godot's default, so the `lightmap` entity
 bakes them. The ball's is `"dynamic"`, as for anything that moves: it isn't baked, and takes its
 ambient light from the light probes the bake places over the others instead. It bakes at
 `"low"` quality (32 rays a texel) with two bounces, which is enough for a scene this small and

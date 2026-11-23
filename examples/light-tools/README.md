@@ -3,7 +3,7 @@
 Light the way a lighting artist does, in numbers an agent can read: real units, color
 temperatures and a tool that brings a frame to a brightness.
 
-[project.json](project.json) turns on `rendering.lights_and_shadows.use_physical_light_units`,
+[project.json](project.json) turns on `rendering.physical_light_units`,
 as Godot's. [street.scene.json](street.scene.json) is a street at dusk seen through a camera
 whose `CameraLens` has an `exposure_sensitivity` of 6400 (ISO 6400):
 

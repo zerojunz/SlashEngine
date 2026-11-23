@@ -641,8 +641,7 @@ std::optional<RenderMethod> parse_render_method(std::string_view name) {
 }
 
 float mesh_lod_threshold(const json::Value& rendering) {
-    const json::Value* found = rendering.is_object() ? rendering.find("mesh_lod") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("lod_change") : nullptr;
+    const json::Value* found = rendering.is_object() ? rendering.find("lod") : nullptr;
     found = found != nullptr && found->is_object() ? found->find("threshold_pixels") : nullptr;
     if (found != nullptr && found->is_number() && found->as_double() >= 0.0) {
         return static_cast<float>(found->as_double());
@@ -715,11 +714,10 @@ OcclusionCulling occlusion_culling(const json::Value& rendering) {
     if (found == nullptr || !found->is_object()) {
         return out;
     }
-    if (const json::Value* use = found->find("use_occlusion_culling");
-        use != nullptr && use->is_bool()) {
+    if (const json::Value* use = found->find("enabled"); use != nullptr && use->is_bool()) {
         out.enabled = use->as_bool();
     }
-    if (const json::Value* rays = found->find("occlusion_rays_per_thread");
+    if (const json::Value* rays = found->find("rays_per_thread");
         rays != nullptr && rays->is_number() && rays->as_double() >= 1.0 &&
         rays->as_double() <= 65536.0) {
         out.rays_per_thread = static_cast<int>(rays->as_double());

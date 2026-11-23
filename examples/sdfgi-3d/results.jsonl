@@ -3,5 +3,5 @@
 {"id":3,"jsonrpc":"2.0","result":{"colors":[[0.678,0.667,0.694,1],[0.608,0.608,0.588,1],[0.247,0.282,0.345,1],[0.529,0.522,0.541,1]],"drawn":{"meshes":5},"height":180,"path":"shots/room.png","width":320}}
 {"id":4,"jsonrpc":"2.0","result":{"changed":{"Surface3D":{"albedo_color":[0.1,0.2,0.9,1.0]}},"id":"red_wall"}}
 {"id":5,"jsonrpc":"2.0","result":{"colors":[[0.655,0.671,0.729,1],[0.6,0.612,0.608,1],[0.227,0.286,0.365,1],[0.514,0.525,0.569,1]],"drawn":{"meshes":5},"height":180,"path":"shots/blue.png","width":320}}
-{"id":6,"jsonrpc":"2.0","result":{"changed":{"Environment3D":{"sdfgi_enabled":false}},"id":"environment"}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"Environment3D":{"field_lighting_enabled":false}},"id":"environment"}}
 {"id":7,"jsonrpc":"2.0","result":{"colors":[[0.655,0.667,0.698,1],[0.51,0.529,0.537,1],[0.216,0.259,0.341,1],[0.475,0.494,0.537,1]],"drawn":{"meshes":5},"height":180,"width":320}}

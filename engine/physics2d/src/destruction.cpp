@@ -419,12 +419,12 @@ std::optional<world::Polygon2D> look_of(const world::World& world, entt::entity 
         world::Polygon2D out;
         out.polygon = piece;
         out.texture = sprite->texture;
-        out.modulate = sprite->modulate;
-        out.z_index = sprite->z_index;
-        out.z_as_relative = sprite->z_as_relative;
+        out.tint = sprite->tint;
+        out.sort_order = sprite->sort_order;
+        out.sort_order_relative = sprite->sort_order_relative;
         out.visible = sprite->visible;
-        out.light_mask = sprite->light_mask;
-        out.texture_filter = sprite->texture_filter;
+        out.light_layers = sprite->light_layers;
+        out.filter = sprite->filter;
         Vec2 size{sprite->region.z, sprite->region.w};
         Vec2 origin{sprite->region.x, sprite->region.y};
         if (size.x <= 0.0F || size.y <= 0.0F) {
@@ -469,8 +469,8 @@ void set_loose(world::World& world, entt::entity entity, float lifetime) {
     if (piece == nullptr) {
         return;
     }
-    if (auto* rigid = ecs.try_get<world::RigidBody2D>(entity); rigid != nullptr && rigid->freeze) {
-        rigid->freeze = false;
+    if (auto* rigid = ecs.try_get<world::RigidBody2D>(entity); rigid != nullptr && rigid->frozen) {
+        rigid->frozen = false;
         rigid->sleeping = false;
         if (piece->lifetime <= 0.0F) {
             piece->lifetime = lifetime;
@@ -514,13 +514,13 @@ void show_state(world::World& world, entt::entity entity, const world::DamagePro
         }
     };
     if (auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
-        retint(sprite->modulate);
+        retint(sprite->tint);
         if (after != nullptr && !after->mesh.empty()) {
             sprite->texture = after->mesh;
         }
     }
     if (auto* polygon = ecs.try_get<world::Polygon2D>(entity); polygon != nullptr) {
-        retint(polygon->modulate);
+        retint(polygon->tint);
         if (after != nullptr && !after->mesh.empty() && !ecs.all_of<FracturePiece2D>(entity)) {
             polygon->texture = after->mesh;
         }
@@ -955,15 +955,15 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
         base.collision_mask = fixed->collision_mask;
         base.friction = fixed->friction;
         base.bounce = fixed->bounce;
-        base.physics_material_override = fixed->physics_material_override;
+        base.physics_material = fixed->physics_material;
     }
     if (profile != nullptr && (rigid == nullptr || own_piece != nullptr)) {
         mass = (total * area_scale / (kPixelsPerMeter * kPixelsPerMeter)) * profile->density;
     }
-    const bool standing = rigid == nullptr || (own_piece != nullptr && rigid->freeze);
+    const bool standing = rigid == nullptr || (own_piece != nullptr && rigid->frozen);
     const bool connected = profile != nullptr && profile->connected && standing;
-    base.freeze = false;
-    base.freeze_mode = "static";
+    base.frozen = false;
+    base.frozen_mode = "static";
     base.sleeping = false;
     base.inertia = 0.0F;
     base.lock_rotation = false;
@@ -1061,8 +1061,8 @@ Result<std::vector<entt::entity>> break_body_2d(world::World& world, entt::entit
                 body.linear_velocity = body.linear_velocity + (away * (push / length));
             }
         }
-        body.freeze = !loose[i];
-        if (body.freeze) {
+        body.frozen = !loose[i];
+        if (body.frozen) {
             body.linear_velocity = {};
             body.angular_velocity = 0.0F;
         }
@@ -1211,7 +1211,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
     particles.amount = amount;
     particles.lifetime = effect.lifetime;
     particles.one_shot = true;
-    particles.explosiveness = 1.0F;
+    particles.burst = 1.0F;
     particles.randomness = 0.5F;
     particles.lifetime_randomness = 0.3F;
     particles.seed = static_cast<int>(hash_id(world.id_of(made)) & 0x7FFFFFFFU);
@@ -1269,8 +1269,8 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
             ecs.emplace<Transform2D>(decal, place);
             world::Sprite2D sprite;
             sprite.texture = set.decal.texture;
-            sprite.modulate = set.decal.modulate;
-            sprite.z_index = 1;
+            sprite.tint = set.decal.modulate;
+            sprite.sort_order = 1;
             ecs.emplace<world::Sprite2D>(decal, std::move(sprite));
             ecs.emplace<world::DamageEffect>(
                 decal,
@@ -1284,7 +1284,7 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
             world::SoundPlayer2D player;
             player.stream = set.sound.stream;
             player.volume_db = set.sound.volume_db;
-            player.pitch_scale = set.sound.pitch_scale;
+            player.pitch = set.sound.pitch_scale;
             player.bus = set.sound.bus;
             player.autoplay = true;
             player.playing = true;
@@ -1541,7 +1541,7 @@ Result<DamageReport2D> damage_body_2d(world::World& world, entt::entity entity, 
         }
     } else if (piece) {
         const bool was_standing = ecs.all_of<world::RigidBody2D>(entity) &&
-                                  ecs.get<const world::RigidBody2D>(entity).freeze;
+                                  ecs.get<const world::RigidBody2D>(entity).frozen;
         set_loose(world, entity, profile->debris.lifetime);
         report.fell = was_standing;
     }
@@ -1615,7 +1615,7 @@ std::vector<std::string> settle_group_2d(world::World& world, std::string_view g
     std::vector<entt::entity> standing;
     for (const entt::entity entity : members) {
         const auto* rigid = ecs.try_get<const world::RigidBody2D>(entity);
-        if (rigid != nullptr && rigid->freeze) {
+        if (rigid != nullptr && rigid->frozen) {
             index.emplace(std::string(world.id_of(entity)), standing.size());
             standing.push_back(entity);
         }
@@ -1764,7 +1764,7 @@ void break_and_age_2d(world::World& world, Space& space, float seconds) {
             const entt::entity other = world.find(link.piece);
             const auto* rigid =
                 other != entt::null ? ecs.try_get<const world::RigidBody2D>(other) : nullptr;
-            if (rigid == nullptr || !rigid->freeze) {
+            if (rigid == nullptr || !rigid->frozen) {
                 state.unsettled.insert(piece.group);
                 break;
             }

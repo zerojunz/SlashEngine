@@ -1727,7 +1727,7 @@ TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in
         scene.world.ecs().get<world::TileLayer2D>(walls).occlusion_enabled = false;
         CHECK(draw() == std::array{white, white, white, white});
         scene.world.ecs().get<world::TileLayer2D>(walls).occlusion_enabled = true;
-        scene.world.ecs().get<world::SunLight2D>(sun).shadow_item_cull_mask = 2;
+        scene.world.ecs().get<world::SunLight2D>(sun).shadow_layers = 2;
         CHECK(draw() == std::array{white, white, white, black});
     }
 }

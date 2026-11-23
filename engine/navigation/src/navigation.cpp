@@ -5,6 +5,7 @@
 
 #include "slash/canvas/tilemap.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -1619,12 +1620,12 @@ json::Value settings_schema(Map map) {
             (*cell)["exclusiveMinimum"] = 0;
         }
     }
-    properties["merge_rasterizer_cell_scale"] =
+    properties["merge_cell_scale"] =
         number("Edge ends closer than cell_size times this, at most 0.1, are the same point.",
                defaults.merge_rasterizer_cell_scale);
-    properties["use_edge_connections"]["type"] = "boolean";
-    properties["use_edge_connections"]["default"] = defaults.use_edge_connections;
-    properties["use_edge_connections"]["description"] =
+    properties["connect_edges"]["type"] = "boolean";
+    properties["connect_edges"]["default"] = defaults.use_edge_connections;
+    properties["connect_edges"]["description"] =
         "Joins regions' edges that come within edge_connection_margin.";
     properties["edge_connection_margin"] =
         number("How close, in " + unit + ", regions' edges must come to join.",
@@ -1658,10 +1659,10 @@ MapSettings parse_settings(Map map, const json::Value& settings) {
     } else {
         out.cell_height = out.cell_size;
     }
-    number("merge_rasterizer_cell_scale", out.merge_rasterizer_cell_scale);
+    number("merge_cell_scale", out.merge_rasterizer_cell_scale);
     number("edge_connection_margin", out.edge_connection_margin);
     number("link_connection_radius", out.link_connection_radius);
-    if (const json::Value* use = settings.find("use_edge_connections"); use != nullptr) {
+    if (const json::Value* use = settings.find("connect_edges"); use != nullptr) {
         out.use_edge_connections = use->as_bool();
     }
     if (const json::Value* up = settings.find("up"); up != nullptr && map == Map::ThreeD) {
@@ -2078,8 +2079,10 @@ void restore(world::World& world, const Snapshot& snapshot) {
 
 // ---- Scene checks.
 
-std::vector<json::ValidationError> check_scene(const json::Value& doc,
+std::vector<json::ValidationError> check_scene(const json::Value& as_written,
                                                const world::FileReader& reader) {
+    json::Value current;
+    const json::Value& doc = world::current_names(as_written, current);
     std::vector<json::ValidationError> errors;
     if (!reader) {
         return errors;

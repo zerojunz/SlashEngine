@@ -18,7 +18,7 @@
     "bell_mount": {
       "components": {
         "ConeJoint3D": {
-          "node_b": "bell",
+          "body_b": "bell",
           "swing_span": 0.35
         },
         "Transform3D": {
@@ -71,8 +71,8 @@
         "HingeJoint3D": {
           "angular_limit_enabled": true,
           "angular_limit_lower": 0.0,
-          "motor_max_impulse": 5.0,
-          "node_a": "door"
+          "body_a": "door",
+          "motor_max_impulse": 5.0
         },
         "Transform3D": {
           "position": [-0.5, 1.05, 4.0],
@@ -97,10 +97,10 @@
     "drawer_runner": {
       "components": {
         "SlideJoint3D": {
+          "body_a": "cabinet",
+          "body_b": "drawer",
           "linear_limit_lower": 0.0,
-          "linear_limit_upper": 0.5,
-          "node_a": "cabinet",
-          "node_b": "drawer"
+          "linear_limit_upper": 0.5
         },
         "Transform3D": {
           "position": [4.0, 1.0, 0.0]
@@ -163,7 +163,7 @@
     "lamp_cord": {
       "components": {
         "PinJoint3D": {
-          "node_b": "lamp"
+          "body_b": "lamp"
         },
         "Transform3D": {
           "position": [-6.0, 5.0, 0.0]

@@ -1,7 +1,7 @@
 # Post-processing 3D
 
 What happens to a 3D world's colors after it is lit, as Godot's `Environment` does it in its
-Compatibility renderer, which [project.json](project.json)'s `rendering.rendering_method` picks
+Compatibility renderer, which [project.json](project.json)'s `rendering.renderer` picks
 (`gl_compatibility`; [glow-3d](../glow-3d/) has Forward+'s). [main.scene.json](main.scene.json)
 is a crate and a glowing lantern on the ground at night, seen through a `Camera3D` in a 320x180
 window. Its `environment` entity's `Environment3D` sets:

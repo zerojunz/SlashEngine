@@ -111,7 +111,7 @@ json::Value schema() {
     track["properties"]["type"]["enum"] = names(kTrackTypes);
     track["properties"]["path"] =
         property("string", "The value it sets: a component, its field and optionally a part, "
-                           "as \"Transform2D/position\" or \"Sprite2D/modulate/a\".");
+                           "as \"Transform2D/position\" or \"Sprite2D/tint/a\".");
     track["properties"]["event"] =
         property("string", "The event kind it emits when playback passes each key.");
     track["properties"]["node"] =
@@ -1422,8 +1422,10 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
     return library;
 }
 
-std::vector<json::ValidationError> check_players(const json::Value& doc,
+std::vector<json::ValidationError> check_players(const json::Value& as_written,
                                                  const world::FileReader& reader) {
+    json::Value current;
+    const json::Value& doc = world::current_names(as_written, current);
     std::vector<json::ValidationError> errors;
     if (!reader) {
         return errors;

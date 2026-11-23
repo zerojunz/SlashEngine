@@ -7,9 +7,9 @@
 #include <string_view>
 #include <vector>
 
-// The names components and their fields had before SlashEngine gave them names of its own
-// (November 2026). Scenes, prefabs, commands and other files may still use them: loading takes
-// either name, and saving, formatting and describing use the current one.
+// The names components, their fields and project settings had before SlashEngine gave them names
+// of its own (November 2026). Scenes, prefabs, commands, project.json and other files may still
+// use them: loading takes either name, and saving, formatting and describing use the current one.
 namespace slash::world {
 
 // A component's old name and its current one.
@@ -72,5 +72,27 @@ bool upgrade_params(json::Value& params);
 // A component path ("Sprite2D/modulate/a", as animation tracks and synchronizers name fields)
 // with its component's and first field's names made current.
 [[nodiscard]] std::string current_field_path(std::string_view path);
+
+// A project.json setting's old place and its current one, as names joined by '/'
+// ("rendering/environment/ssao" is now "rendering/ssao").
+struct SettingAlias {
+    std::string_view old_path;
+    std::string_view path;
+};
+
+// Every setting that moved or was renamed.
+[[nodiscard]] std::span<const SettingAlias> setting_aliases();
+
+// Moves settings a project.json document holds at old places to their current ones. Where a
+// setting is given at both, the current one's value is kept. Returns what it moved, with paths
+// as JSON Pointers into the document.
+std::vector<Renamed> upgrade_settings(json::Value& project);
+
+// Whether a project.json document holds a setting at an old place.
+[[nodiscard]] bool has_old_settings(const json::Value& project);
+
+// The project.json document with its settings at their current places: `project` itself when it
+// has none at old ones, else `copy`, which this fills.
+[[nodiscard]] const json::Value& current_settings(const json::Value& project, json::Value& copy);
 
 } // namespace slash::world

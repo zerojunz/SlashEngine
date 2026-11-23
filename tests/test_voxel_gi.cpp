@@ -915,10 +915,10 @@ TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {
     CHECK(renderer.problems().empty());
     // Unplotted, as when its gi_mode leaves it out, the floor round it takes none of its glow.
     auto& instance = gi.scene.world.ecs().get<world::Model3D>(ball);
-    instance.gi_mode = "disabled";
+    instance.lighting_mode = "disabled";
     const render::Image unplotted = draw_world(*device, renderer, gi.scene.world);
     CHECK(differences(plotted, unplotted)[0] > 50);
-    instance.gi_mode = "dynamic";
+    instance.lighting_mode = "dynamic";
     // Unchanged, the next frame is the same; moved, it lights somewhere else, and moved back, the
     // same again.
     CHECK(draw_world(*device, renderer, gi.scene.world).pixels == plotted.pixels);

@@ -1,7 +1,7 @@
 # SSR 3D
 
 A polished floor reflecting what stands on it with screen-space reflections, as Godot 4.6's SSR
-in its Forward+ renderer, the default `rendering.rendering_method`.
+in its Forward+ renderer, the default `rendering.renderer`.
 [main.scene.json](main.scene.json) is a hall seen through a `Camera3D` in a 320x180 window: a
 metallic floor with a roughness of 0.05, a warm back wall, a red crate, a blue pillar and a rug,
 lit by grey ambient light and a lamp.
@@ -10,7 +10,7 @@ The `Environment3D`'s `ssr_enabled` turns SSR on with Godot's defaults: rays of 
 `ssr_max_steps` 64 steps, fading in over `ssr_fade_in` 0.15 near where they leave the floor and
 out over `ssr_fade_out` 2 toward the screen's edges, and hitting what they pass within
 `ssr_depth_tolerance` 0.5 meters behind. [project.json](project.json) sets
-`rendering.environment.screen_space_reflection.half_size` to false, as Godot's project setting,
+`rendering.ssr.half_size` to false, as Godot's project setting,
 so the rays trace at the frame's full size instead of half.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

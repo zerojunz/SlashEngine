@@ -92,7 +92,7 @@
             "where": [
               {
                 "component": "Button",
-                "field": "button_pressed",
+                "field": "pressed",
                 "value": true
               }
             ]

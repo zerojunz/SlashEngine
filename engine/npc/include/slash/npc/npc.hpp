@@ -231,7 +231,7 @@ bool set_fact(world::World& world, entt::entity entity, std::string_view fact, i
 // Every error in a scene's or prefab's NpcAgent components, each with the JSON Pointer of the bad
 // value: a brain that doesn't load or validate, and facts the brain doesn't have. Files are read
 // through reader.
-[[nodiscard]] std::vector<json::ValidationError> check_scene(const json::Value& doc,
+[[nodiscard]] std::vector<json::ValidationError> check_scene(const json::Value& as_written,
                                                              const world::FileReader& reader);
 
 } // namespace slash::npc

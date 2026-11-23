@@ -63,7 +63,7 @@ validate_model_recipe(const json::Value& doc, const ModelPartLoader& load = {},
 // materials' and parts' fields changed and parts removed. Fails, at the form's JSON Pointer, for
 // a form it doesn't have (with the closest name), a parameter or part it doesn't have, or a form
 // that leaves it no parts.
-[[nodiscard]] Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
+[[nodiscard]] Result<json::Value> recipe_form(const json::Value& written, std::string_view group,
                                               std::string_view name);
 
 } // namespace slash::scene3d

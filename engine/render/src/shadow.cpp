@@ -688,23 +688,24 @@ bool valid_shadow_atlas_size(std::uint32_t size) {
     return size >= 256 && size <= kMaxTextureSize && (size & (size - 1)) == 0;
 }
 
-ShadowSettings shadow_settings_from_json(const json::Value& value) {
+ShadowSettings shadow_settings_from_json(const json::Value& rendering) {
     ShadowSettings out;
-    if (!value.is_object()) {
+    if (!rendering.is_object()) {
         return out;
     }
-    const auto read = [](const json::Value* atlas, std::string_view size_key, std::uint32_t& size,
-                         ShadowQuality& quality) {
-        if (atlas == nullptr || !atlas->is_object()) {
+    const json::Value* shadows = rendering.find("shadows");
+    const auto read = [shadows](std::string_view size_key, std::string_view quality_key,
+                                std::uint32_t& size, ShadowQuality& quality) {
+        if (shadows == nullptr || !shadows->is_object()) {
             return;
         }
-        if (const json::Value* found = atlas->find(size_key);
+        if (const json::Value* found = shadows->find(size_key);
             found != nullptr && found->is_number() && found->as_double() >= 0.0 &&
             found->as_double() <= kMaxTextureSize &&
             valid_shadow_atlas_size(static_cast<std::uint32_t>(found->as_double()))) {
             size = static_cast<std::uint32_t>(found->as_double());
         }
-        if (const json::Value* found = atlas->find("soft_shadow_filter_quality");
+        if (const json::Value* found = shadows->find(quality_key);
             found != nullptr && found->is_string()) {
             for (std::size_t i = 0; i < kShadowQualityNames.size(); ++i) {
                 if (found->as_string() == kShadowQualityNames.at(i)) {
@@ -713,10 +714,10 @@ ShadowSettings shadow_settings_from_json(const json::Value& value) {
             }
         }
     };
-    read(value.find("directional_shadow"), "size", out.directional_size, out.directional_quality);
-    read(value.find("positional_shadow"), "atlas_size", out.positional_size,
+    read("directional_size", "directional_softness", out.directional_size, out.directional_quality);
+    read("positional_atlas_size", "positional_softness", out.positional_size,
          out.positional_quality);
-    if (const json::Value* units = value.find("use_physical_light_units");
+    if (const json::Value* units = rendering.find("physical_light_units");
         units != nullptr && units->is_bool()) {
         out.use_physical_light_units = units->as_bool();
     }

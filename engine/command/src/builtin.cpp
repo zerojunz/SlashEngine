@@ -1003,9 +1003,8 @@ Reply material_eval(Session& session, const json::Value& params) {
         path = sprite->material;
         texture = sprite->texture;
         overrides = sprite->material_params;
-        inputs.color = {sprite->modulate.x, sprite->modulate.y, sprite->modulate.z,
-                        sprite->modulate.w};
-        if (sprite->texture_filter == "nearest") {
+        inputs.color = {sprite->tint.x, sprite->tint.y, sprite->tint.z, sprite->tint.w};
+        if (sprite->filter == "nearest") {
             filter = render::Filter::Nearest;
         }
     }
@@ -1358,15 +1357,15 @@ std::optional<Reply> find_tree(Session& session, const std::string& id, TreeTarg
         return unknown_entity(world, id, "/id");
     }
     const auto* tree = world.ecs().try_get<world::AnimationGraph>(out.entity);
-    if (tree == nullptr || tree->tree_root.empty()) {
+    if (tree == nullptr || tree->root.empty()) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + (tree == nullptr ? " has no AnimationGraph"
-                                                         : "'s AnimationGraph has no tree_root"));
+                                                         : "'s AnimationGraph has no root"));
     }
-    auto loaded = session.assets().load<animation::AnimationTreeResource>(tree->tree_root);
+    auto loaded = session.assets().load<animation::AnimationTreeResource>(tree->root);
     if (!loaded) {
         return param_error(code::kInvalidArgument, "/id",
-                           tree->tree_root + ": " + loaded.error().message);
+                           tree->root + ": " + loaded.error().message);
     }
     out.tree = std::move(loaded).value();
     return std::nullopt;
@@ -2506,14 +2505,14 @@ Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value
     std::vector<scene3d::Particle3D> particles;
     bool local_coords = false;
     if (const auto* emitter = world.ecs().try_get<world::Emitter3D>(entity)) {
-        local_coords = emitter->local_coords;
+        local_coords = emitter->local_space;
         particles = time != nullptr ? scene3d::simulate(*emitter, transform,
                                                         scene3d::particle_seed(id, emitter->seed),
                                                         time->as_double(), tick_seconds)
                                     : scene3d::particles_3d(world, entity);
     } else {
         const auto& gpu = world.ecs().get<world::GpuEmitter3D>(entity);
-        local_coords = gpu.local_coords;
+        local_coords = gpu.local_space;
         render::ParticleProcess3D process;
         if (!gpu.process_material.empty()) {
             auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu.process_material);
@@ -2610,8 +2609,7 @@ Reply particles_eval(Session& session, const json::Value& params) {
         for (const canvas::Particle& particle : particles) {
             live.push_back(
                 {.position = canvas::world_position(*emitter, transform, particle.position),
-                 .rotation =
-                     particle.rotation + (emitter->local_coords ? transform.rotation : 0.0F),
+                 .rotation = particle.rotation + (emitter->local_space ? transform.rotation : 0.0F),
                  .scale = particle.scale,
                  .color = particle.color,
                  .age = particle.age,
@@ -2640,11 +2638,11 @@ Reply particles_eval(Session& session, const json::Value& params) {
             particles = std::move(ran).value();
         }
         const world::Affine2D placed =
-            gpu->local_coords ? world::affine(transform) : world::Affine2D{};
+            gpu->local_space ? world::affine(transform) : world::Affine2D{};
         for (const render::Particle& particle : particles) {
             live.push_back(
                 {.position = placed.apply(particle.origin),
-                 .rotation = particle.custom.x + (gpu->local_coords ? transform.rotation : 0.0F),
+                 .rotation = particle.custom.x + (gpu->local_space ? transform.rotation : 0.0F),
                  .scale = std::sqrt((particle.basis.x * particle.basis.x) +
                                     (particle.basis.y * particle.basis.y)),
                  .color = particle.color,
@@ -5229,7 +5227,7 @@ Reply audio_input(Session& session, const json::Value& params) {
     world::World& world = session.world();
     if (!audio::settings(world).enable_input) {
         return Reply::failure(code::kInvalidArgument,
-                              "microphone input is off; turn on audio.enable_input in "
+                              "microphone input is off; turn on audio.input_enabled in "
                               "project.json");
     }
     if (auto set = audio::set_input_stream(world, text(params, "stream")); !set) {
@@ -5325,11 +5323,13 @@ Reply light_sample(Session& session, const json::Value& params) {
         positions.push_back({static_cast<float>(at.x), static_cast<float>(at.y)});
         const canvas::Inherited from_parents = canvas::inherited(world, tree, entity);
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(entity); sprite != nullptr) {
-            item.light_mask = static_cast<std::uint32_t>(sprite->light_mask);
-            item.z_index = canvas::z_index(sprite->z_index, sprite->z_as_relative, from_parents);
+            item.light_mask = static_cast<std::uint32_t>(sprite->light_layers);
+            item.z_index =
+                canvas::z_index(sprite->sort_order, sprite->sort_order_relative, from_parents);
         } else if (const auto* layer = ecs.try_get<world::TileLayer2D>(entity); layer != nullptr) {
-            item.light_mask = static_cast<std::uint32_t>(layer->light_mask);
-            item.z_index = canvas::z_index(layer->z_index, layer->z_as_relative, from_parents);
+            item.light_mask = static_cast<std::uint32_t>(layer->light_layers);
+            item.z_index =
+                canvas::z_index(layer->sort_order, layer->sort_order_relative, from_parents);
         }
     }
     if (const json::Value* mask = params.find("light_mask"); mask != nullptr) {
@@ -5919,7 +5919,7 @@ Reply frame_summary(Session& session, const json::Value& params) {
                 each["animation"] = animated->animation;
                 each["frame"] = animated->frame;
             } else if (const auto* sprite = ecs.try_get<world::Sprite2D>(item.entity);
-                       sprite != nullptr && sprite->hframes * sprite->vframes > 1) {
+                       sprite != nullptr && sprite->columns * sprite->rows > 1) {
                 each["frame"] = sprite->frame;
             }
             break;
@@ -7399,7 +7399,7 @@ void register_builtin_commands(Registry& registry) {
     uvs["minItems"] = 1;
     uvs["maxItems"] = 64;
     json::Value eval_color = property("array", "The vertex color, [r, g, b, a]. Default: the "
-                                               "entity's modulate, or white.");
+                                               "entity's tint, or white.");
     eval_color["items"]["type"] = "number";
     eval_color["minItems"] = 4;
     eval_color["maxItems"] = 4;
@@ -7418,7 +7418,7 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema(
             {
                 {"id", id_property("An entity with a Sprite2D: its material, texture, params and "
-                                   "modulate. Or give path.")},
+                                   "tint. Or give path.")},
                 {"path", property("string", "A .material.json file. Or give id.")},
                 {"uv", std::move(uvs)},
                 {"texture",
@@ -8446,7 +8446,7 @@ void register_builtin_commands(Registry& registry) {
                        "after 2D or 3D distance and panning (speakers: center, lfe, rear, side in "
                        "surround), a 3D player's pitch, filter and sends, and a generator's free "
                        "frames and skips or a polyphonic player's streams playing. With "
-                       "audio.enable_input, the microphone input: active, source and last tick's "
+                       "audio.input_enabled, the microphone input: active, source and last tick's "
                        "peak dB.",
         .capabilities = {Read},
         .effect = Effect::Read,
@@ -8557,7 +8557,7 @@ void register_builtin_commands(Registry& registry) {
         .name = "audio.input",
         .description = "Plays a sound or .audio.json file into the microphone input from the next "
                        "tick, in place of the microphone, so AudioStreamMicrophone players hear "
-                       "it; \"\" goes back to the microphone. Needs audio.enable_input. Returns "
+                       "it; \"\" goes back to the microphone. Needs audio.input_enabled. Returns "
                        "the tick.",
         .capabilities = {Run},
         .effect = Effect::Read,

@@ -6,6 +6,7 @@
 
 #include "slash/core/log.hpp"
 #include "slash/core/sha256.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -1206,11 +1207,15 @@ struct Multiplayer::State {
     }
 
     Result<json::Value> get_property(entt::entity entity, std::string_view path) const {
-        const std::vector<std::string_view> parts = split_path(path);
+        std::vector<std::string_view> parts = split_path(path);
         const world::ComponentType* type = world.components().find(parts[0]);
         if (type == nullptr || !type->has(world, entity)) {
             return make_error(ErrorCode::NotFound,
                               "no component for property \"" + std::string(path) + "\"");
+        }
+        // A property may name its field by its old name.
+        if (parts.size() > 1) {
+            parts[1] = world::current_field_name(type->name(), parts[1]);
         }
         json::Value fields = type->get(world, entity);
         json::Value* value = inside(fields, std::span(parts).subspan(1));
@@ -1223,7 +1228,7 @@ struct Multiplayer::State {
 
     Result<void> set_property(entt::entity entity, std::string_view path,
                               const json::Value& value) {
-        const std::vector<std::string_view> parts = split_path(path);
+        std::vector<std::string_view> parts = split_path(path);
         const world::ComponentType* type = world.components().find(parts[0]);
         if (type == nullptr) {
             return make_error(ErrorCode::NotFound,
@@ -1233,6 +1238,7 @@ struct Multiplayer::State {
         if (parts.size() == 1) {
             return type->assign(world, entity, value, at);
         }
+        parts[1] = world::current_field_name(type->name(), parts[1]);
         json::Value fields = type->has(world, entity) ? type->get(world, entity) : type->defaults();
         json::Value* field = fields.find(parts[1]);
         if (field == nullptr) {

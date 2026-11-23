@@ -336,15 +336,15 @@ TEST_CASE("SDFGI's settings read project.json's as Godot's") {
         REQUIRE(parsed.ok());
         return render::sdfgi_settings_from_json(parsed.value());
     };
-    const render::SdfgiSettings set = read(R"({"global_illumination": {"sdfgi": {
-        "probe_ray_count": 96, "frames_to_converge": 10, "frames_to_update_lights": 16}}})");
+    const render::SdfgiSettings set = read(R"({"field_lighting": {
+        "probe_ray_count": 96, "frames_to_converge": 10, "frames_to_update_lights": 16}})");
     CHECK(set.probe_ray_count == 96);
     CHECK(set.frames_to_converge == 10);
     CHECK(set.frames_to_update_lights == 16);
     // Values Godot doesn't offer, or of the wrong kind, keep their defaults.
-    CHECK(read(R"({"global_illumination": {"sdfgi": {"probe_ray_count": 12,
-        "frames_to_converge": "fast", "frames_to_update_lights": 3}}})") == defaults);
-    CHECK(read(R"({"global_illumination": {"voxel_gi": {"quality": "high"}}})") == defaults);
+    CHECK(read(R"({"field_lighting": {"probe_ray_count": 12,
+        "frames_to_converge": "fast", "frames_to_update_lights": 3}})") == defaults);
+    CHECK(read(R"({"voxel_lighting": {"quality": "high"}})") == defaults);
     CHECK(read("{}") == defaults);
 }
 

@@ -6,7 +6,7 @@
           "libraries": {
             "": "models/arm.gltf"
           },
-          "tree_root": "arm.animtree.json"
+          "root": "arm.animtree.json"
         },
         "Model3D": {
           "mesh": "models/arm.gltf"

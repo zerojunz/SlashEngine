@@ -477,8 +477,7 @@ Reply test_run(Session& session, const json::Value& params) {
         !l10n::settings(session.world()).translations.empty()) {
         Reply checked = session.call("l10n.check", json::Object{});
         if (!checked.ok) {
-            failed.push_back(
-                file_failure("project.json", "/internationalization", checked.message));
+            failed.push_back(file_failure("project.json", "/localization", checked.message));
         } else if (json::Value* errors = checked.value.find("errors"); errors != nullptr) {
             for (json::Value& error : errors->as_array()) {
                 failed.push_back(std::move(error));

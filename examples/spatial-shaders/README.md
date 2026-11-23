@@ -2,7 +2,7 @@
 
 A game's own 3D shaders, as Godot's `shader_type spatial`. A `.material.json` file with
 `"shader_type": "spatial"` names an `.hlsl` file whose `vertex()` moves a mesh's corners and whose
-`fragment()` gives its surface, and a `Model3D`'s `material_override` draws it. [main.scene.json](main.scene.json) has three:
+`fragment()` gives its surface, and a `Model3D`'s `material` draws it. [main.scene.json](main.scene.json) has three:
 
 - the [crystal](crystal.material.json) is tinted and glossy, and its edges glow brighter and
   dimmer with the time ([shaders/crystal.hlsl](shaders/crystal.hlsl));

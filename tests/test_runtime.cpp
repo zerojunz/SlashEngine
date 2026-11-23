@@ -82,7 +82,7 @@ TEST_CASE("a minimal project gets the defaults") {
         "main_scene": "a.scene.json", "window": {"width": 320, "vsync_mode": "mailbox",
         "linux_display_driver": "wayland"},
         "tick_hz": 30, "max_fps": 120, "rendering": {"clear_color": [0, 0.5, 1, 1],
-        "driver": "null", "fallback_to_opengl": false}, "gui": {"theme": "ui/game.theme.json"}})"));
+        "driver": "null", "fallback_to_opengl": false}, "ui": {"theme": "ui/game.theme.json"}})"));
     REQUIRE(project.ok());
     CHECK(project.value().gui_theme == "ui/game.theme.json");
     CHECK(project.value().vsync_mode == "mailbox");
@@ -111,8 +111,8 @@ TEST_CASE("project files are checked field by field") {
     CHECK(error_paths("{" + base + R"(, "window": {"width": 0}})") ==
           std::vector<std::string>{"/window/width"});
     CHECK(error_paths("{" + base + R"(, "tick_hz": 0})") == std::vector<std::string>{"/tick_hz"});
-    CHECK(error_paths("{" + base + R"(, "window": {"vsync_mode": "on"}})") ==
-          std::vector<std::string>{"/window/vsync_mode"});
+    CHECK(error_paths("{" + base + R"(, "window": {"vsync": "on"}})") ==
+          std::vector<std::string>{"/window/vsync"});
     CHECK(error_paths("{" + base + R"(, "window": {"linux_display_driver": "xorg"}})") ==
           std::vector<std::string>{"/window/linux_display_driver"});
     CHECK(error_paths("{" + base + R"(, "max_fps": 1001})") ==
@@ -128,11 +128,11 @@ TEST_CASE("project files are checked field by field") {
     CHECK(error_paths("{" + base + R"(, "rendering": {"driver": "opengl_es"}})").empty());
     CHECK(error_paths("{" + base + R"(, "rendering": {"fallback_to_opengl": "yes"}})") ==
           std::vector<std::string>{"/rendering/fallback_to_opengl"});
-    CHECK(error_paths("{" + base + R"(, "gui": {"theme": "../game.theme.json"}})") ==
-          std::vector<std::string>{"/gui/theme"});
-    CHECK(error_paths("{" + base + R"(, "gui": {"theme": "game.json"}})") ==
-          std::vector<std::string>{"/gui/theme"});
-    CHECK(error_paths("{" + base + R"(, "gui": {"theme": ""}})").empty());
+    CHECK(error_paths("{" + base + R"(, "ui": {"theme": "../game.theme.json"}})") ==
+          std::vector<std::string>{"/ui/theme"});
+    CHECK(error_paths("{" + base + R"(, "ui": {"theme": "game.json"}})") ==
+          std::vector<std::string>{"/ui/theme"});
+    CHECK(error_paths("{" + base + R"(, "ui": {"theme": ""}})").empty());
     for (const std::string_view scene :
          {"/abs.scene.json", "../up.scene.json", "a/./b.scene.json", "c:/x.scene.json",
           "dir\\\\x.scene.json", "scenes/main.json"}) {

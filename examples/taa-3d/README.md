@@ -4,7 +4,7 @@ A card's edges smoothed by temporal antialiasing, as Godot 4.6's TAA in its Forw
 [main.scene.json](main.scene.json) is a cream card turned 0.5 radians, seen through a
 `Camera3D` in a 160x90 window against a dark blue background, so each of its edges steps across
 the pixels. [project.json](project.json) turns TAA on with
-`rendering.anti_aliasing.quality.use_taa`, as Godot's project setting.
+`rendering.anti_aliasing.taa`, as Godot's project setting.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

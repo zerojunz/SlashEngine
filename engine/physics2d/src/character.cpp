@@ -544,8 +544,8 @@ class Slide {
 public:
     Slide(Mover& mover, const CharacterMover2D& character, float seconds)
         : mover_(mover), character_(character), delta_(seconds), margin_(character.safe_margin),
-          velocity_(to_b2(character.velocity)), up_(b2Normalize(to_b2(character.up_direction))),
-          grounded_(character.motion_mode != "floating" && !zero_approx(up_)),
+          velocity_(to_b2(character.velocity)), up_(b2Normalize(to_b2(character.up))),
+          grounded_(character.movement != "floating" && !zero_approx(up_)),
           floor_cos_(b2ComputeCosSin(character.floor_max_angle + kFloorAngleThreshold).cosine),
           floor_normal_(to_b2(character.floor_normal)) {}
 

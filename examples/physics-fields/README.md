@@ -8,7 +8,7 @@ A `.physics_material.json` file is Godot's `PhysicsMaterial` (`friction`, `rough
 `absorbent`) with what Chaos's physical materials add: `density`, which weighs a rigid body by
 its shapes' volume (in 2D, their area in square meters of 64 pixels), `strength`, which breaks a
 `Destructible3D` whose `damage_threshold` is 0, and a `surface` name that ray hits report. A
-body names one in `physics_material_override`, as Godot's do:
+body names one in `physics_material`, as Godot's do:
 
 ```json
 "crate_low": {"components": {

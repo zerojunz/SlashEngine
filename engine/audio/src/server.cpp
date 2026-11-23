@@ -740,7 +740,7 @@ bool Server::set_input_active(bool active) {
     }
     if (active) {
         if (!input_.enabled) {
-            log::warn("microphone input is off; turn on audio.enable_input in project.json");
+            log::warn("microphone input is off; turn on audio.input_enabled in project.json");
             return false;
         }
         if (!input_active()) {
@@ -753,7 +753,7 @@ bool Server::set_input_active(bool active) {
 
 bool Server::acquire_input() {
     if (!input_.enabled) {
-        log::warn("microphone input is off; turn on audio.enable_input in project.json");
+        log::warn("microphone input is off; turn on audio.input_enabled in project.json");
         return false;
     }
     if (!input_active()) {

@@ -373,7 +373,7 @@ TEST_CASE("damage: a linked 3D wall stands until the load through its pieces bre
     for (const entt::entity entity : scene.pieces<world::FracturePiece3D>()) {
         const auto& piece = scene.world.ecs().get<world::FracturePiece3D>(entity);
         CHECK(piece.group == "wall");
-        if (scene.world.ecs().get<world::RigidBody3D>(entity).freeze) {
+        if (scene.world.ecs().get<world::RigidBody3D>(entity).frozen) {
             ++standing;
             anchored += piece.anchored ? 1 : 0;
         }
@@ -391,7 +391,7 @@ TEST_CASE("damage: a linked 3D wall stands until the load through its pieces bre
     CHECK(fell.size() == static_cast<std::size_t>(standing - anchored));
     for (const entt::entity entity : scene.pieces<world::FracturePiece3D>()) {
         const auto& piece = scene.world.ecs().get<world::FracturePiece3D>(entity);
-        CHECK(scene.world.ecs().get<world::RigidBody3D>(entity).freeze == piece.anchored);
+        CHECK(scene.world.ecs().get<world::RigidBody3D>(entity).frozen == piece.anchored);
     }
 }
 

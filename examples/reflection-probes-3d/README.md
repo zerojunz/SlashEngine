@@ -1,7 +1,7 @@
 # Reflection probes 3D
 
 A chrome ball on a polished floor reflecting the room around it through a `ReflectionProbe`, as
-Godot 4.6's Forward+ renderer, the default `rendering.rendering_method`.
+Godot 4.6's Forward+ renderer, the default `rendering.renderer`.
 [main.scene.json](main.scene.json) is a room seen through a `Camera3D` in a 320x180 window: green,
 blue, cream and orange walls, a metallic floor with a roughness of 0.1 and a ball with a roughness
 of 0.05, lit by grey ambient light and a lamp, over a nearly black background.
@@ -9,7 +9,7 @@ of 0.05, lit by grey ambient light and a lamp, over a nearly black background.
 The `probe` entity's box is the room's size plus a little, so the floor and walls are inside it,
 and `blend_distance` 0.25 fades it in over the last quarter meter rather than the default meter.
 `interior` draws its cube with no sky, fog or ambient light, as for a room.
-[project.json](project.json) sets `rendering.reflections.reflection_atlas.reflection_size` to 128
+[project.json](project.json) sets `rendering.reflections.probe_size` to 128
 texels across each face of the cube, down from 256, which is enough for a small window.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

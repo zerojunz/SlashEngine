@@ -15,7 +15,7 @@
         },
         "Widget": {
           "children": ["title", "letter", "count"],
-          "custom_minimum_size": [288.0, 0.0],
+          "min_size": [288.0, 0.0],
           "offset_left": 16.0,
           "offset_top": 12.0
         }
@@ -29,7 +29,7 @@
           "wrap_mode": "boundary"
         },
         "Widget": {
-          "custom_minimum_size": [0.0, 124.0]
+          "min_size": [0.0, 124.0]
         }
       }
     },

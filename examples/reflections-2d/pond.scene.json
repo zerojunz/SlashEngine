@@ -3,8 +3,8 @@
     "boat": {
       "components": {
         "Sprite2D": {
-          "modulate": [0.35, 0.2, 0.1, 1.0],
-          "texture": "white.texture.json"
+          "texture": "white.texture.json",
+          "tint": [0.35, 0.2, 0.1, 1.0]
         },
         "Transform2D": {
           "position": [50.0, 46.0],
@@ -42,9 +42,9 @@
     "reed": {
       "components": {
         "Sprite2D": {
-          "modulate": [0.2, 0.5, 0.2, 1.0],
+          "sort_order": 1,
           "texture": "white.texture.json",
-          "z_index": 1
+          "tint": [0.2, 0.5, 0.2, 1.0]
         },
         "Transform2D": {
           "position": [20.0, 62.0],
@@ -56,8 +56,8 @@
       "components": {
         "Sprite2D": {
           "centered": false,
-          "texture": "sky.texture.json",
-          "z_index": -1
+          "sort_order": -1,
+          "texture": "sky.texture.json"
         },
         "Transform2D": {
           "scale": [40.0, 3.125]

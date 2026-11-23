@@ -3527,6 +3527,8 @@ private:
                 sources->as_array().emplace_back(skeletons().folder());
             }
         }
+        // Settings converted to their old places go to their current ones.
+        world::upgrade_settings(project);
         for (int pass = 0; pass < 32; ++pass) {
             const auto errors = runtime::validate_project(project);
             if (errors.empty()) {

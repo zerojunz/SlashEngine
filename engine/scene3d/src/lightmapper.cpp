@@ -845,7 +845,7 @@ private:
                 return make_error(ErrorCode::InvalidArgument,
                                   "\"" + mesh.entity +
                                       "\"'s lightmap is too small: raise its "
-                                      "gi_lightmap_texel_scale or the texel_scale");
+                                      "lightmap_texel_scale or the texel_scale");
             }
             // Normals turn by the inverse transpose of the basis.
             const world::Affine3D inverse = mesh.transform.inverse();

@@ -23,14 +23,14 @@ ui.theme {"id":"slot_0","items":["styles"]}
   into lines; `CenterBox` centers them at their minimum size; `MarginBox` and
   `PanelBox` inset them by margins. A container is at least as big as its children need,
   so the frame grows to fit what is in it and the center container keeps it centered.
-- Across a box, and in a grid cell, each child's `size_flags_horizontal` and
-  `size_flags_vertical` place it: `fill` (the default) takes the whole space, `shrink_center` keeps
+- Across a box, and in a grid cell, each child's `sizing_horizontal` and
+  `sizing_vertical` place it: `fill` (the default) takes the whole space, `shrink_center` keeps
   its minimum size in the middle. Along a box, `expand` children share the space left over, by
-  `size_flags_stretch_ratio`. The grid is `shrink_center`, so it stays 274 wide in the middle of
+  `stretch_ratio`. The grid is `shrink_center`, so it stays 274 wide in the middle of
   the 328-pixel box.
 - A theme is a `.theme.json` file of items by control type: colors, constants, fonts, font sizes
   and style boxes (`$cli schema theme`). A control uses its `theme_override_*` items, then the
-  themes in its own and its parents' `Widget.theme`, then the project's `gui.theme`, then
+  themes in its own and its parents' `Widget.theme`, then the project's `ui.theme`, then
   Godot's default theme. `ui.theme` says which one each item came from.
 - A `top_level` control is placed in the window by its own anchors and offsets, as Godot's: the
   slot's container leaves the tooltip out and goes on placing the gem, and the tooltip takes none
@@ -41,7 +41,7 @@ ui.theme {"id":"slot_0","items":["styles"]}
 - Style boxes are Godot's: `flat` ones are rects with `corner_radius`, `border_width` and a
   `shadow_size`, drawn with smooth edges as Godot's `StyleBoxFlat` draws them; `texture` ones cut
   a texture into nine parts; `empty` ones draw nothing. `content_margin` is the room a container
-  leaves around its children. A style box set with `theme_override_styles` replaces the theme's.
+  leaves around its children. A style box set with `theme_styles` replaces the theme's.
 - `ProgressBar` fills as far as its `value` between `min_value` and `max_value`, with its
   percentage on top; `ui.layout` reports the percentage as its line. `Picture` draws a texture
   as its `stretch_mode` says; `keep_aspect_centered` keeps the gems square. `NineSlice` keeps

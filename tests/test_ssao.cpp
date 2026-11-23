@@ -303,7 +303,7 @@ TEST_CASE("SSAO's depth pass makes depth linear, as Godot's downsample_depth") {
     }
 }
 
-TEST_CASE("SSAO settings come from project.json's rendering.environment.ssao") {
+TEST_CASE("SSAO settings come from project.json's rendering.ssao") {
     auto parsed = slash::json::parse(R"({"quality": "ultra", "half_size": false,
         "adaptive_target": 0.75, "blur_passes": 4, "fadeout_from": 10, "fadeout_to": 20})");
     REQUIRE(parsed.ok());

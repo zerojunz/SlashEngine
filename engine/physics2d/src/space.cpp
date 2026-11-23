@@ -130,11 +130,11 @@ float combine_bounce(float a, int material_a, float b, int material_b) {
 std::string_view material_path(const entt::registry& registry, entt::entity entity, Kind kind) {
     switch (kind) {
     case Kind::Rigid:
-        return registry.get<RigidBody2D>(entity).physics_material_override;
+        return registry.get<RigidBody2D>(entity).physics_material;
     case Kind::Animatable:
-        return registry.get<MovingBody2D>(entity).physics_material_override;
+        return registry.get<MovingBody2D>(entity).physics_material;
     case Kind::Static:
-        return registry.get<StaticBody2D>(entity).physics_material_override;
+        return registry.get<StaticBody2D>(entity).physics_material;
     case Kind::Character:
     case Kind::Area:
         break;
@@ -184,9 +184,8 @@ struct BodyFields {
 
 // Whether an area changes the gravity or damping of the bodies in it.
 bool overrides_space(const Zone2D& area) {
-    return area.gravity_space_override != "disabled" ||
-           area.linear_damp_space_override != "disabled" ||
-           area.angular_damp_space_override != "disabled";
+    return area.gravity_mode != "disabled" || area.linear_damp_mode != "disabled" ||
+           area.angular_damp_mode != "disabled";
 }
 
 BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind kind) {
@@ -222,8 +221,8 @@ BodyFields fields_of(const entt::registry& registry, entt::entity entity, Kind k
                 .mask = area.collision_mask,
                 .friction = 0.0F,
                 .bounce = 0.0F,
-                .monitoring = area.monitoring,
-                .monitorable = area.monitorable,
+                .monitoring = area.detects,
+                .monitorable = area.detectable,
                 .overrides = overrides_space(area)};
     }
     }
@@ -271,10 +270,10 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
 }
 
 b2BodyType frozen_type(const RigidBody2D& rigid) {
-    if (!rigid.freeze) {
+    if (!rigid.frozen) {
         return b2_dynamicBody;
     }
-    return rigid.freeze_mode == "kinematic" ? b2_kinematicBody : b2_staticBody;
+    return rigid.frozen_mode == "kinematic" ? b2_kinematicBody : b2_staticBody;
 }
 
 RigidKey rigid_key_of(const RigidBody2D& rigid, const Settings& settings) {
@@ -966,21 +965,21 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
 
     for (const entt::entity entity : registry.view<PinJoint2D>()) {
         const auto& pin = registry.get<PinJoint2D>(entity);
-        place(entity, pin, pin.node_a, pin.node_b);
+        place(entity, pin, pin.body_a, pin.body_b);
     }
     for (const entt::entity entity : registry.view<SpringJoint2D>()) {
         if (registry.all_of<PinJoint2D>(entity)) {
             continue;
         }
         const auto& spring = registry.get<SpringJoint2D>(entity);
-        place(entity, spring, spring.node_a, spring.node_b);
+        place(entity, spring, spring.body_a, spring.body_b);
     }
     for (const entt::entity entity : registry.view<TrackJoint2D>()) {
         if (registry.any_of<PinJoint2D, SpringJoint2D>(entity)) {
             continue;
         }
         const auto& groove = registry.get<TrackJoint2D>(entity);
-        place(entity, groove, groove.node_a, groove.node_b);
+        place(entity, groove, groove.body_a, groove.body_b);
     }
     // Past a limit a pin's motor stops pushing, as in Godot's GodotPinJoint2D::solve, so it
     // can't drive through the limit.
@@ -1424,17 +1423,13 @@ AreaForces Space::forces(const world::World& world, const world::Tree2D& tree, c
         }
         const auto& area = registry.get<Zone2D>(area_body->entity);
         bool used = false;
-        if (!gravity_done && area.gravity_space_override != "disabled") {
+        if (!gravity_done && area.gravity_mode != "disabled") {
             out.gravity_overridden = true;
-            used = apply(area.gravity_space_override,
-                         area_gravity(tree, area_body->entity, area, position), out.gravity,
-                         gravity_done);
+            used = apply(area.gravity_mode, area_gravity(tree, area_body->entity, area, position),
+                         out.gravity, gravity_done);
         }
-        used = apply(area.linear_damp_space_override, area.linear_damp, out.linear_damp,
-                     linear_done) ||
-               used;
-        used = apply(area.angular_damp_space_override, area.angular_damp, out.angular_damp,
-                     angular_done) ||
+        used = apply(area.linear_damp_mode, area.linear_damp, out.linear_damp, linear_done) || used;
+        used = apply(area.angular_damp_mode, area.angular_damp, out.angular_damp, angular_done) ||
                used;
         if (used) {
             out.areas.push_back(area_body->entity);
@@ -1647,7 +1642,7 @@ void Space::emit_events(world::World& world) {
         if (id.empty()) {
             continue;
         }
-        if (body->kind == Kind::Rigid && registry.get<RigidBody2D>(entity).contact_monitor) {
+        if (body->kind == Kind::Rigid && registry.get<RigidBody2D>(entity).report_contacts) {
             bodies.clear();
             touching_bodies(body->id, bodies);
             for (const entt::entity other : bodies) {
@@ -1655,7 +1650,7 @@ void Space::emit_events(world::World& world) {
                     now.emplace(id, other_id, false);
                 }
             }
-        } else if (body->kind == Kind::Area && registry.get<Zone2D>(entity).monitoring) {
+        } else if (body->kind == Kind::Area && registry.get<Zone2D>(entity).detects) {
             overlaps.clear();
             area_overlaps(*body, overlaps);
             for (const auto& [other, is_area] : overlaps) {

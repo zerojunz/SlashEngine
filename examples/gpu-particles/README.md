@@ -29,7 +29,7 @@ particles.eval {"id":"fire"}
 
 - The component holds what Godot's node holds: `amount`, `lifetime`, `one_shot`,
   `explosiveness`, `randomness`, `preprocess`, `speed_scale`, `fixed_fps`, `interpolate`,
-  `local_coords`, `draw_order`, `texture` and its `hframes` and `vframes` for animated particles,
+  `local_space`, `draw_order`, `texture` and its `hframes` and `vframes` for animated particles,
   and the `trail_` settings.
   The process material holds the rest, with Godot's property names: the `emission_shape`
   (`point`, `sphere`, `sphere_surface`, `box`, `points`, `directed_points`, `ring`),
@@ -48,7 +48,7 @@ particles.eval {"id":"fire"}
   `sdf_collision`, as by default) and tile occluders on occlusion layers with `sdf_collision`, as
   Godot's collide with the distance field it draws from them: `rigid` ones bounce off by
   `collision_bounce` and slide with `collision_friction`, `hide_on_contact` ones die. A particle
-  touches a shape when it comes within the emitter's `collision_base_size` of it, times half its
+  touches a shape when it comes within the emitter's `collision_size` of it, times half its
   texture's average side: 4 pixels for the rain's 8-pixel dot. The shapes are measured exactly,
   so every device and the CPU agree; `particles.eval` with a `time` runs apart from the world, with
   nothing to collide with.

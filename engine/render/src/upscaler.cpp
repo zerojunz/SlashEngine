@@ -263,8 +263,12 @@ Scaling scaling_from_json(const json::Value& value) {
         out.scale =
             std::clamp(static_cast<float>(scale->as_double()), kMinRenderScale, kMaxRenderScale);
     }
-    if (const json::Value* sharpness = value.find("fsr_sharpness");
-        sharpness != nullptr && sharpness->is_number()) {
+    // display.set's scaling still names it fsr_sharpness.
+    const json::Value* sharpness = value.find("sharpness");
+    if (sharpness == nullptr) {
+        sharpness = value.find("fsr_sharpness");
+    }
+    if (sharpness != nullptr && sharpness->is_number()) {
         out.fsr_sharpness =
             std::clamp(static_cast<float>(sharpness->as_double()), 0.0F, kMaxFsrSharpness);
     }

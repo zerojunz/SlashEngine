@@ -32,10 +32,10 @@ light.sample {"points":[[96,60],[200,90],[300,170]]}
   torch's reach, so only the moon lights it.
 - `light.sample` with an `id` samples at that entity, with its sprite's `light_mask` and
   `z_index`, so one call answers "is the hero in the dark?". A light reaches draws whose
-  `light_mask` shares a bit with its `range_item_cull_mask` and whose `z_index` is within its
+  `light_mask` shares a bit with its `lit_layers` and whose `z_index` is within its
   `range_z_min` and `range_z_max`.
 - Occluders cast shadows only from lights with `shadow_enabled`, when the occluder's
-  `occluder_light_mask` shares a bit with the light's `shadow_item_cull_mask`. `shadow_filter`
+  `light_layers` shares a bit with the light's `shadow_layers`. `shadow_filter`
   `pcf5` or `pcf13` softens the edges, and `shadow_color` is what shadowed pixels get instead
   of the light.
 - The crate's polygon runs clockwise on screen, and its `cull_mode` is `counter_clockwise`: the

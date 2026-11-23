@@ -1,7 +1,7 @@
 {
   "audio": {
     "bus_layout": "audio/default.bus_layout.json",
-    "enable_input": true,
+    "input_enabled": true,
     "input_usage_description": "Sing to light the lanterns."
   },
   "format": 1,

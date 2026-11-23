@@ -10,7 +10,7 @@
           }
         },
         "Sprite2D": {
-          "hframes": 8
+          "columns": 8
         },
         "Transform2D": {
           "children": ["sword"],

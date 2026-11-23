@@ -3464,7 +3464,7 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
                                         R"({"format": 1, "name": "UI", "version": "0.1.0",
                                             "main_scene": "main.scene.json",
                                             "window": {"width": 400, "height": 300},
-                                            "gui": {"allow_system_fallback": false}})")
+                                            "ui": {"system_font_fallback": false}})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;
@@ -3511,7 +3511,7 @@ TEST_CASE("ui.layout returns where controls are and the lines labels show") {
     engine.ok("component.set", R"({"id": "title", "components": {"Widget": {
         "theme_override_colors": {"font_colour": [1, 0, 0, 1]}}}})");
     CHECK(engine.ok("ui.layout", R"({"ids": ["title"]})")["problems"] == parse(R"([
-        {"id": "title", "path": "/components/Widget/theme_override_colors/font_colour",
+        {"id": "title", "path": "/components/Widget/theme_colors/font_colour",
          "message": "Label has no colors item \"font_colour\"; did you mean \"font_color\"?"}])"));
 
     CHECK(engine.fails("ui.layout", R"({"ids": ["titel"]})", command::code::kNotFound).message ==
@@ -3566,7 +3566,7 @@ TEST_CASE("ui.theme returns the theme items a control uses and where each comes 
     REQUIRE(slash::platform::write_file(root + "/project.json",
                                         R"({"format": 1, "name": "UI", "version": "0.1.0",
                                             "main_scene": "main.scene.json",
-                                            "gui": {"theme": "ui/game.theme.json"}})")
+                                            "ui": {"theme": "ui/game.theme.json"}})")
                 .ok());
     REQUIRE(slash::platform::write_file(
                 root + "/ui/game.theme.json",
@@ -3620,7 +3620,7 @@ TEST_CASE("text.measure returns text's size and lines in a font") {
         REQUIRE(slash::platform::write_file(root + "/project.json",
                                             R"({"format": 1, "name": "M", "version": "0.1.0",
                                                 "main_scene": "main.scene.json",
-                                                "gui": {"allow_system_fallback": false}})")
+                                                "ui": {"system_font_fallback": false}})")
                     .ok());
         command::SessionOptions options;
         options.project_root = root;
@@ -4749,14 +4749,14 @@ TEST_CASE("audio.input plays a sound into the microphone input, and audio.state 
     REQUIRE(
         slash::platform::write_file(root + "/sfx.audio.json", R"({"format": 1, "polyphonic": {}})")
             .ok());
-    // Without audio.enable_input, nothing records.
+    // Without audio.input_enabled, nothing records.
     {
         command::SessionOptions options;
         options.project_root = root;
         Engine engine(options);
         const auto off = engine.fails("audio.input", R"({"stream": "voice.wav"})",
                                       command::code::kInvalidArgument);
-        CHECK(contains(off.message, "audio.enable_input"));
+        CHECK(contains(off.message, "audio.input_enabled"));
         CHECK(engine.ok("audio.state").find("input") == nullptr);
     }
     REQUIRE(slash::platform::write_file(root + "/project.json",

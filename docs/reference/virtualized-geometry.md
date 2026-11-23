@@ -59,7 +59,7 @@ their [LODs](scene-format.md#mesh-lods):
 ```
 
 - The threshold is project.json's
-  [`rendering.mesh_lod.lod_change.threshold_pixels`](project-format.md#mesh-lods) (default `1`).
+  [`rendering.lod.threshold_pixels`](project-format.md#mesh-lods) (default `1`).
   The pixels are counted across the view's width, as LODs count them, and the entity's largest
   scale grows the errors.
 - Each frame the renderer cuts each virtualized surface for the camera. It makes the cut's mesh
@@ -87,7 +87,7 @@ a cut that it can't see:
   nothing.
 - **Behind occluders.** With [occlusion culling](scene-format.md#occlusion-culling) on, a
   cluster whose sphere the occlusion buffer hides is left out, with the same jitter timeouts
-  meshes have, unless the `Model3D` has `ignore_occlusion_culling`.
+  meshes have, unless the `Model3D` has `skip_occlusion`.
 
 Culling never changes what the frame shows. A cut with culled clusters draws its visible
 clusters as a second mesh, made again only when they change, and its whole cut into shadow maps

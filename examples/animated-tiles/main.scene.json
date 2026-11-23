@@ -3,8 +3,8 @@
     "deck": {
       "components": {
         "TileLayer2D": {
-          "tile_set": "pond.tileset.json",
-          "z_index": 1
+          "sort_order": 1,
+          "tile_set": "pond.tileset.json"
         },
         "Transform2D": {}
       }

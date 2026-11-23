@@ -498,7 +498,7 @@ Reply l10n_translate(Session& session, const json::Value& params) {
     if (const json::Value* asked = params.find("file"); asked != nullptr) {
         path = asked->as_string();
         if (std::ranges::find(settings.translations, path) == settings.translations.end()) {
-            std::string message = "project.json's internationalization lists no \"" + path + "\"";
+            std::string message = "project.json's localization lists no \"" + path + "\"";
             if (const std::string_view closest = closest_match(path, settings.translations);
                 !closest.empty()) {
                 message += "; did you mean \"" + std::string(closest) + "\"?";

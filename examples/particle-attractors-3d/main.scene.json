@@ -16,8 +16,8 @@
       "components": {
         "GpuEmitter3D": {
           "amount": 64,
+          "burst": 1.0,
           "draw_order": "view_depth",
-          "explosiveness": 1.0,
           "lifetime": 4.0,
           "process_material": "dust.process_material.json"
         },
@@ -25,8 +25,8 @@
           "size": [0.1, 0.1]
         },
         "Surface3D": {
-          "billboard_mode": "particles",
-          "shading_mode": "unshaded",
+          "billboard": "particles",
+          "shading": "unshaded",
           "vertex_color_use_as_albedo": true
         },
         "Transform3D": {}

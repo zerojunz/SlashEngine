@@ -173,8 +173,8 @@ void build(World& world, entt::entity entity, Flesh& flesh, const Character2D& c
         return;
     }
     Polygon2D polygon;
-    polygon.z_index = 3;
-    polygon.z_as_relative = true;
+    polygon.sort_order = 3;
+    polygon.sort_order_relative = true;
     const real_t ppm = character.pixels_per_meter;
     const real_t facing = character.flip_h ? -1.0F : 1.0F;
     const auto add_outline = [&](const std::vector<ViewPoint>& points, Vec4 color) {

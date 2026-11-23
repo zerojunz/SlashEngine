@@ -18,6 +18,6 @@ call and its reply.
   `filter_db`.
 - Its `doppler_tracking` measures how fast it moves, so it plays higher coming and lower going:
   `audio.state` shows the `pitch_scale` it plays at.
-- The cave is an `Zone3D` with `audio_bus_override` and a reverb bus, so the trickle inside it
+- The cave is an `Zone3D` with `bus_override` and a reverb bus, so the trickle inside it
   plays on Cave and sends `reverb_bus_amount` of itself to Echo; `audio.state` lists it in
   `sends`, and `audio.capture` measures what Echo's reverb played.

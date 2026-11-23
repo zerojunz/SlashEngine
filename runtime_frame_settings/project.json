@@ -1,2 +1,7 @@
-{"format": 1, "name": "G", "main_scene": "main.scene.json",
-                                     "window": {"vsync_mode": "disabled"}, "max_fps": 30}
+{
+  "format": 1,
+  "name": "G",
+  "main_scene": "main.scene.json",
+  "max_fps": 30,
+  "window": {"vsync": "disabled"}
+}
