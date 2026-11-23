@@ -33479,7 +33479,12 @@ typedef int fnl_domain_warp_type;
 #ifndef FNL_USED_WARP
 #define FNL_USED_WARP 7
 #endif
-#define FNL_USES(used, kind) ((((used) >> (kind)) & 1) != 0)
+// Windows' HLSL compiler takes no shifts in #if, so a kind's bit is worked out by comparisons
+// and tested by division.
+#define FNL_BIT(kind)                                                                              \
+    (((kind) == 0) * 1 + ((kind) == 1) * 2 + ((kind) == 2) * 4 + ((kind) == 3) * 8 +               \
+     ((kind) == 4) * 16 + ((kind) == 5) * 32)
+#define FNL_USES(used, kind) ((used) / FNL_BIT(kind) - (used) / (FNL_BIT(kind) * 2) * 2 != 0)
 
 /**
  * Structure containing entire noise system state.
@@ -33634,10 +33639,10 @@ static const float FNL_GRADIENTS_2D_TABLE[256] =
     -0.130526192220052f, -0.99144486137381f, -0.38268343236509f, -0.923879532511287f, -0.608761429008721f, -0.793353340291235f, -0.793353340291235f, -0.608761429008721f,
     -0.923879532511287f, -0.38268343236509f, -0.99144486137381f, -0.130526192220052f, -0.99144486137381f, 0.130526192220051f, -0.923879532511287f, 0.38268343236509f,
     -0.793353340291235f, 0.608761429008721f, -0.608761429008721f, 0.793353340291235f, -0.38268343236509f, 0.923879532511287f, -0.130526192220052f, 0.99144486137381f,
-    0.130526192220052f, 0.99144486137381f, 0.38268343236509f, 0.923879532511287f, 0.608761429008721f, 0.793353340291235f, 0.793353340291235f, 0.608761429008721f,
-    0.923879532511287f, 0.38268343236509f, 0.99144486137381f, 0.130526192220051f, 0.99144486137381f, -0.130526192220051f, 0.923879532511287f, -0.38268343236509f,
 )hlsl",
-R"hlsl(    0.793353340291235f, -0.60876142900872f, 0.608761429008721f, -0.793353340291235f, 0.38268343236509f, -0.923879532511287f, 0.130526192220052f, -0.99144486137381f,
+R"hlsl(    0.130526192220052f, 0.99144486137381f, 0.38268343236509f, 0.923879532511287f, 0.608761429008721f, 0.793353340291235f, 0.793353340291235f, 0.608761429008721f,
+    0.923879532511287f, 0.38268343236509f, 0.99144486137381f, 0.130526192220051f, 0.99144486137381f, -0.130526192220051f, 0.923879532511287f, -0.38268343236509f,
+    0.793353340291235f, -0.60876142900872f, 0.608761429008721f, -0.793353340291235f, 0.38268343236509f, -0.923879532511287f, 0.130526192220052f, -0.99144486137381f,
     -0.130526192220052f, -0.99144486137381f, -0.38268343236509f, -0.923879532511287f, -0.608761429008721f, -0.793353340291235f, -0.793353340291235f, -0.608761429008721f,
     -0.923879532511287f, -0.38268343236509f, -0.99144486137381f, -0.130526192220052f, -0.99144486137381f, 0.130526192220051f, -0.923879532511287f, 0.38268343236509f,
     -0.793353340291235f, 0.608761429008721f, -0.608761429008721f, 0.793353340291235f, -0.38268343236509f, 0.923879532511287f, -0.130526192220052f, 0.99144486137381f,
@@ -33765,7 +33770,8 @@ static inline int _fnlHash2D(int seed, int xPrimed, int yPrimed)
     return hash;
 }
 
-static inline float _fnlValCoord2D(int seed, int xPrimed, int yPrimed)
+)hlsl",
+R"hlsl(static inline float _fnlValCoord2D(int seed, int xPrimed, int yPrimed)
 {
     int hash = _fnlHash2D(seed, xPrimed, yPrimed);
     hash *= hash;
@@ -33777,8 +33783,7 @@ static inline float _fnlGradCoord2D(int seed, int xPrimed, int yPrimed, float xd
 {
     int hash = _fnlHash2D(seed, xPrimed, yPrimed);
     hash ^= hash >> 15;
-)hlsl",
-R"hlsl(    hash &= 127 << 1;
+    hash &= 127 << 1;
     return xd * GRADIENTS_2D[hash] + yd * GRADIENTS_2D[hash | 1];
 }
 
@@ -34184,7 +34189,8 @@ static float _fnlSingleCellular2D(fnl_state state, int seed, FNLfloat x, FNLfloa
         for (int xi = xr - 1; xi <= xr + 1; xi++)
         {
             int yPrimed = yPrimedBase;
-            for (int yi = yr - 1; yi <= yr + 1; yi++)
+)hlsl",
+R"hlsl(            for (int yi = yr - 1; yi <= yr + 1; yi++)
             {
                 int hash = _fnlHash2D(seed, xPrimed, yPrimed);
                 int idx = hash & (255 << 1);
@@ -34192,8 +34198,7 @@ static float _fnlSingleCellular2D(fnl_state state, int seed, FNLfloat x, FNLfloa
                 float vecX = (float)(xi - x) + RAND_VECS_2D[idx] * cellularJitter;
                 float vecY = (float)(yi - y) + RAND_VECS_2D[idx | 1] * cellularJitter;
 
-)hlsl",
-R"hlsl(                float newDistance = (_fnlFastAbs(vecX) + _fnlFastAbs(vecY)) + (vecX * vecX + vecY * vecY);
+                float newDistance = (_fnlFastAbs(vecX) + _fnlFastAbs(vecY)) + (vecX * vecX + vecY * vecY);
 
                 distance1 = _fnlFastMax(_fnlFastMin(distance1, newDistance), distance0);
                 if (newDistance < distance0)
@@ -34570,7 +34575,8 @@ float fnlGetNoise2D(fnl_state state, FNLfloat x, FNLfloat y)
     FNL_FLATTEN switch (state.fractal_type)
     {
     default:
-#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_NONE)
+)hlsl",
+R"hlsl(#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_NONE)
         return _fnlGenNoiseSingle2D(state, state.seed, x, y);
 #else
         return 0;
@@ -34581,8 +34587,7 @@ float fnlGetNoise2D(fnl_state state, FNLfloat x, FNLfloat y)
 #endif
 #if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_RIDGED)
     case FNL_FRACTAL_RIDGED:
-)hlsl",
-R"hlsl(        return _fnlGenFractalRidged2D(state, x, y);
+        return _fnlGenFractalRidged2D(state, x, y);
 #endif
 #if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_PINGPONG)
     case FNL_FRACTAL_PINGPONG:
@@ -35012,7 +35017,8 @@ fnl_state TG(noise_state)() {
     state.gain = TG(param)(6u);
     state.weighted_strength = TG(param)(7u);
     state.ping_pong_strength = TG(param)(8u);
-    state.cellular_distance_func = tg_to_int(TG(param)(9u));
+)hlsl",
+R"hlsl(    state.cellular_distance_func = tg_to_int(TG(param)(9u));
     state.cellular_return_type = tg_to_int(TG(param)(10u));
     state.cellular_jitter_mod = TG(param)(11u);
     return state;
@@ -35022,8 +35028,7 @@ fnl_state TG(warp_state)() {
     fnl_state state = fnlCreateState(tg_to_int(TG(param)(1u)));
     state.domain_warp_type = tg_to_int(TG(param)(13u));
     state.domain_warp_amp = TG(param)(14u);
-)hlsl",
-R"hlsl(    state.frequency = TG(param)(15u);
+    state.frequency = TG(param)(15u);
     // Godot's _convert_domain_warp_fractal_type_enum: none, progressive, independent.
     int fractal = tg_to_int(TG(param)(16u));
     state.fractal_type = fractal == 1   ? FNL_FRACTAL_DOMAIN_WARP_PROGRESSIVE
@@ -35365,7 +35370,8 @@ float4 TG(run_pixel)(int x, int y) {
         float cu = u - 0.5;
         float cv = v - 0.5;
         float ru = cu * c + cv * s;
-        float rv = -cu * s + cv * c;
+)hlsl",
+R"hlsl(        float rv = -cu * s + cv * c;
         float su = ru * TG(param)(0u) + 0.5 + TG(param)(3u);
         float sv = rv * TG(param)(1u) + 0.5 + TG(param)(4u);
         if (TG_TILING) {
@@ -35377,8 +35383,7 @@ float4 TG(run_pixel)(int x, int y) {
 #endif
 #if TG_OP < 0 || TG_OP == 17
     if (op == 17u) {
-)hlsl",
-R"hlsl(        float l00 = tg_luminance(TG(at)(0u, x - 1, y - 1));
+        float l00 = tg_luminance(TG(at)(0u, x - 1, y - 1));
         float l10 = tg_luminance(TG(at)(0u, x, y - 1));
         float l20 = tg_luminance(TG(at)(0u, x + 1, y - 1));
         float l01 = tg_luminance(TG(at)(0u, x - 1, y));

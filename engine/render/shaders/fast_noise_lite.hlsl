@@ -95,7 +95,12 @@ typedef int fnl_domain_warp_type;
 #ifndef FNL_USED_WARP
 #define FNL_USED_WARP 7
 #endif
-#define FNL_USES(used, kind) ((((used) >> (kind)) & 1) != 0)
+// Windows' HLSL compiler takes no shifts in #if, so a kind's bit is worked out by comparisons
+// and tested by division.
+#define FNL_BIT(kind)                                                                              \
+    (((kind) == 0) * 1 + ((kind) == 1) * 2 + ((kind) == 2) * 4 + ((kind) == 3) * 8 +               \
+     ((kind) == 4) * 16 + ((kind) == 5) * 32)
+#define FNL_USES(used, kind) ((used) / FNL_BIT(kind) - (used) / (FNL_BIT(kind) * 2) * 2 != 0)
 
 /**
  * Structure containing entire noise system state.
