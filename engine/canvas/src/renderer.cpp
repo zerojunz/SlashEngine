@@ -6,6 +6,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/procedural/foliage.hpp"
+#include "slash/procedural/texture.hpp"
 #include "slash/procedural/texture_graph.hpp"
 #include "slash/scene3d/fluid.hpp"
 #include "slash/scene3d/material.hpp"
@@ -1153,7 +1154,8 @@ CanvasRenderer::material_entry(const std::string& path) {
     }
     MaterialEntry& entry = it->second;
     const bool changed = entry.material_version != entry.material.version() ||
-                         (entry.source && entry.source_version != entry.source.version());
+                         (entry.source && entry.source_version != entry.source.version()) ||
+                         (entry.graph && entry.graph_version != entry.graph.version());
     if (changed) {
         entry.material_version = entry.material.version();
         entry.error.clear();
@@ -1163,6 +1165,18 @@ CanvasRenderer::material_entry(const std::string& path) {
             // The shader file is an asset, so poll() reloads it and the shader is made again.
             auto made = compile_material_shader(
                 material, [&](std::string_view file) -> Result<std::string> {
+                    if (file.ends_with(procedural::kTextureSuffix)) {
+                        // A live graph, and the graphs it extends.
+                        if (file == material.shader &&
+                            (!entry.graph || entry.graph.path() != file)) {
+                            auto graph = assets_->load<render::Image>(file);
+                            if (!graph) {
+                                return graph.error();
+                            }
+                            entry.graph = std::move(graph).value();
+                        }
+                        return assets_->read(file, "texture_graph");
+                    }
                     if (!entry.source || entry.source.path() != file) {
                         auto source = assets_->load<std::string>(file);
                         if (!source) {
@@ -1180,8 +1194,10 @@ CanvasRenderer::material_entry(const std::string& path) {
         }
         if (material.shader.empty() || material.compiled) {
             entry.source = {};
+            entry.graph = {};
         }
         entry.source_version = entry.source ? entry.source.version() : 0;
+        entry.graph_version = entry.graph ? entry.graph.version() : 0;
         if (compiled != entry.compiled) {
             if (entry.shader != render::ShaderId::None) {
                 device_->destroy_shader(entry.shader);

@@ -4,10 +4,12 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/shader.hpp"
 #include "slash/render/texture_graph.hpp"
 
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -106,6 +108,28 @@ struct CompiledGraph {
 [[nodiscard]] Result<render::Image>
 texture_graph_image(const json::Value& doc, std::string_view output, const GraphReader& reader,
                     render::RenderDevice* device = nullptr, jobs::Pool* pool = nullptr);
+
+// The most node pixels a live graph may work out for each pixel it draws: each output filters
+// four texels, and each texel runs its node and, at each pixel its op reads, the nodes before.
+inline constexpr std::int64_t kMaxLiveGraphCost = 2048;
+
+// A game shader's code (render::ShaderSource::code) whose fragment() works a graph out as it
+// draws, per pixel, instead of sampling a baked texture: a material whose "shader" names a
+// .texture.json graph. Its params are the material's: a number or array param named as one of
+// the graph's parameters moves it as the material draws (an animated material_params value
+// flows), and a graph parameter named "time" reads TIME unless the material has a "time" param.
+// Settings must follow moved parameters in a straight line, and moving them must leave the
+// nodes that run and their links as they are. A canvas_item shader multiplies COLOR by the
+// first output; a spatial one sets ALBEDO, NORMAL_MAP, ROUGHNESS, METALLIC, AO, EMISSION or
+// ALPHA from outputs named albedo (or color), normal, roughness, metallic, ao, emission and alpha,
+// and orm sets AO, ROUGHNESS and METALLIC from red, green and blue. Each output is filtered as
+// a texture of the graph's size, so at texel centers it draws the baked texels. Fails for image
+// nodes, compositor shaders and outputs costing more than kMaxLiveGraphCost. The code includes
+// shaders/texture_graph_common.hlsl and texture_graph_ops.hlsl by name, which the shader tools'
+// compiler has built in.
+[[nodiscard]] Result<std::string>
+texture_graph_shader(const json::Value& doc, const GraphReader& reader, render::ShaderType type,
+                     std::span<const render::ShaderSource::Param> params = {});
 
 // Sets the device that bakes graphs loaded as assets (canvas's .texture.json loader); null
 // bakes them with the CPU twin. A renderer sets its device while it lives and clears it after.

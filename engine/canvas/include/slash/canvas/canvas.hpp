@@ -348,8 +348,12 @@ private:
     struct MaterialEntry {
         asset::Handle<CanvasMaterial> material;
         asset::Handle<std::string> source; // a shader material's .hlsl file, unless compiled
+        // A live graph's .texture.json file, loaded as its texture, which reloads with it and
+        // the graphs it extends.
+        asset::Handle<render::Image> graph;
         std::uint64_t material_version = 0;
         std::uint64_t source_version = 0;
+        std::uint64_t graph_version = 0;
         std::shared_ptr<const render::CompiledShader> compiled;
         render::ShaderId shader = render::ShaderId::None;
         std::string error; // why its shader can't draw, or ""

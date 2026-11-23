@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"colors":[[0.368,0.098,0.018,1.0],[0.723,0.173,0.033,1.0],[0.374,0.116,0.019,1.0]]}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.43,0.126,0.024,1.0],[0.624,0.14,0.027,1.0],[0.563,0.213,0.035,1.0]]}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.184,0.196,0.235,1.0],[0.253,0.218,0.265,1.0],[0.201,0.332,0.346,1.0]]}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":["/nodes/flow"],"outputs":{"albedo":{"a":1,"b":0.025,"contrast":0.057,"g":0.158,"high":0.407,"low":0.071,"r":0.494,"tiles":false,"value":0.22}},"path":"textures/lava.texture.json"}}
+{"error":{"code":-32002,"data":{"path":"/path"},"message":"/path: textures/lava.texture.json: parameter \"time\" moves a setting of a \"noise\" node other than in a straight line, so it can't move as the material draws"},"id":5,"jsonrpc":"2.0"}
+{"id":6,"jsonrpc":"2.0","result":{"changed":["/nodes/flow"],"outputs":{"albedo":{"a":1,"b":0.025,"contrast":0.057,"g":0.158,"high":0.407,"low":0.071,"r":0.494,"tiles":false,"value":0.22}},"path":"textures/lava.texture.json"}}

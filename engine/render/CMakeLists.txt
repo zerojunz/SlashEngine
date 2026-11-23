@@ -347,7 +347,8 @@ foreach(entry IN LISTS slash_shaders)
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
         DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl shaders/material_ops.hlsl
-            shaders/fast_noise_lite.hlsl
+            shaders/fast_noise_lite.hlsl shaders/texture_graph_common.hlsl
+            shaders/texture_graph_ops.hlsl
             shaders/tonemap.hlsl
             ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"
