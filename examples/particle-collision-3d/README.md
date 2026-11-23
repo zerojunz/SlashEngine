@@ -11,8 +11,8 @@ rain's layer. [expected.txt](expected.txt) holds its output.
 - What a particle does on touching a collider is its process material's `collision_mode`:
   `rigid` pushes it out and bounces it off by `collision_bounce` (the share of its speed into
   the surface sent back) and `collision_friction` (the share of its speed along the surface
-  lost), as [sparks.process_material.json](sparks.process_material.json) does;
-  `hide_on_contact` kills it, as [rain.process_material.json](rain.process_material.json) does.
+  lost), as [sparks.particles.json](sparks.particles.json) does;
+  `hide_on_contact` kills it, as [rain.particles.json](rain.particles.json) does.
 - A particle touches a collider when it comes within the emitter's `collision_size`
   (times its own scale with `collision_use_scale`), here 5 centimeters for the sparks.
 - Each tick the `gpu_particles_3d` system pairs each emitter with the colliders visible in the

@@ -528,6 +528,15 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         world::upgrade_params(upgraded);
         given = &upgraded;
     }
+    // Some commands' string params may take an old value too ("schema.get"'s kinds).
+    if (std::ranges::any_of(world::param_value_aliases(), [&](const world::ParamValueAlias& alias) {
+            return alias.command == command->name;
+        })) {
+        if (json::Value values = *given; world::upgrade_param_values(command->name, values)) {
+            upgraded = std::move(values);
+            given = &upgraded;
+        }
+    }
     const json::Value& args = *given;
     if (const auto errors = json::validate(args, command->params); !errors.empty()) {
         return Reply::invalid_params(errors);

@@ -176,8 +176,8 @@ using LightmapSource = std::function<Result<SourceLightmap>(const std::string& p
 
 struct VoxelGIData;
 
-// The cells a VoxelLighting3D's data names (a .voxelgi.json file, voxel_gi.hpp), loaded by project
-// path: a reload gives new ones, and their light is injected again.
+// The cells a VoxelLighting3D's data names (a .voxellight.json file, voxel_gi.hpp), loaded by
+// project path: a reload gives new ones, and their light is injected again.
 using VoxelGISource =
     std::function<Result<std::shared_ptr<const VoxelGIData>>(const std::string& path)>;
 

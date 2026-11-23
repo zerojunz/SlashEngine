@@ -5,6 +5,7 @@
 #include "slash/core/assert.hpp"
 #include "slash/core/text.hpp"
 #include "slash/core/version.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -41,13 +42,13 @@ constexpr std::string_view kInstructions =
 - Camera2D picks what the window shows, as Godot's: the first enabled one in drawing order is current, so one in the player's Transform2D children follows the player. zoom, the limits, drag margins and smoothing shape the view; controls stay put on the screen. frame_summary's camera gives the world rect the window shows.
 - ScreenLayer draws what its children list in a canvas of its own, as Godot's: a HUD that stays put over the world, or a background under it (layer -1). Parallax2D scrolls its entity at scroll_scale times the camera's speed; repeat_size draws what it holds again to fill the window and autoscroll drifts it. canvas_convert turns window pixels, such as a click, into the world through the camera, or back.
 - 2D physics is Godot's: StaticBody2D, MovingBody2D, RigidBody2D, CharacterMover2D and Zone2D take their shapes from Collider2D or PolygonCollider2D, and collide by collision_layer and collision_mask. A CharacterMover2D moves by its velocity, as move_and_slide, and reports on_floor and on_wall. Zone2D space overrides change gravity and damping inside them (physics_gravity reports a body's), and a StaticBody2D's constant velocities make a conveyor. After a step, physics_raycast, physics_overlap and physics_contacts say what is where and what touches what.
-- Navigation is Godot's: NavArea2D and 3D place .navpoly.json and .navmesh.json files of convex polygons (schema_get kinds "navpoly", "navmesh"), a TileLayer2D's cells are regions of its tiles' navigation outlines, and NavLink2D and 3D join two points, such as a ladder's ends. navigation_path finds a path. A NavAgent2D or 3D finds one to its target_position while gameplay code moves it; navigation_agent shows its progress. Agents with avoidance_enabled steer round each other and NavObstacle2D and 3D: gameplay code sets the agent's velocity and moves it at the safe velocity in its velocity_computed event.
+- Navigation is Godot's: NavArea2D and 3D place .navmesh2d.json and .navmesh.json files of convex polygons (schema_get kinds "navmesh2d", "navmesh"), a TileLayer2D's cells are regions of its tiles' navigation outlines, and NavLink2D and 3D join two points, such as a ladder's ends. navigation_path finds a path. A NavAgent2D or 3D finds one to its target_position while gameplay code moves it; navigation_agent shows its progress. Agents with avoidance_enabled steer round each other and NavObstacle2D and 3D: gameplay code sets the agent's velocity and moves it at the safe velocity in its velocity_computed event.
 - NPCs plan, as F.E.A.R.'s goal-oriented action planning: a .npc.json brain (schema_get kind "npc") names facts, goals (when, want, priority) and actions (needs, effects, cost, and do: wait, go_to an entity or emit an event). An NpcAgent names its brain and keeps its facts, goal and plan; gameplay code answers an emit action's event by setting facts. npc_plan shows what an agent would choose and why; npc_draft has a model write or revise a brain from a brief and storyboard entries, checked before it is written.
 )"
     // MSVC takes string literals of at most 16380 bytes, so the text comes in pieces.
-    R"(- CSG shapes are Godot's: CSG shapes in a CSG shape's Transform3D children add to it, cut it or intersect it by their operation, in order; only the root draws the result, and with use_collision it is a static body. csg_get returns a root's triangles, volume and problems.
+    R"(- CSG shapes are Godot's: CSG shapes in a CSG shape's Transform3D children add to it, cut it or intersect it by their operation, in order; only the root draws the result, and with use_collision it is a static body. solid_get returns a root's triangles, volume and problems.
 - Spline2D and Spline3D are Godot's curves; a SplineFollower2D or SplineFollower3D in a path's Transform children sits progress along it, turned along it. Set progress, or animate SplineFollower3D/progress. A SolidExtrusion3D in mode "path" pushes its polygon along its path_node's Spline3D: rails, pipes, roads. path_get samples a curve and finds its nearest point.
-- A BlockMap3D is Godot's: items of a .meshlib.json library (schema_get kind meshlib) in cells written as legend keys and rows per floor, "name:orientation" for one of Godot's 24 turns. Change cells with gridmap_set (cells or a box), read them with gridmap_get; physics_raycast names the cell it hits.
+- A BlockMap3D is Godot's: items of a .blocks.json library (schema_get kind blocks) in cells written as legend keys and rows per floor, "name:orientation" for one of Godot's 24 turns. Change cells with blockmap_set (cells or a box), read them with blockmap_get; physics_raycast names the cell it hits.
 - An Terrain3D is the Terrain3D plugin's heightmap terrain: heights from a .height.png file, a splat map weighing up to 4 textures and a color map whose alpha cuts holes; map files that don't exist yet are flat, the first texture and white. Make heights with terrain_generate, paint with terrain_brush (raise, lower, smooth, flatten, level, splat, color, hole), read heights, normals and textures at points with terrain_get; never write the maps by hand.
 - Emitter2D emits particles as Godot's: an emission shape, a direction and spread, gravity and the rest as _min/_max ranges with curves over each particle's life, and color_ramp. particles_eval returns how many are alive, where they are and, with list, each one, now or after a time, so you can check particles without a screenshot. A one_shot emits a finished event when its last particle dies. Emitter3D is the same in meters, drawing the entity's mesh at each particle; a QuadGeometry with a Surface3D billboard_mode "particles" faces the camera.
 - UI is Godot's Control nodes: Widget places a rect in its parent's (or the window's) by anchors and offsets and lists its children; containers (StackBox, GridBox, MarginBox, CenterBox, FlowBox, PanelBox, ScrollBox) place their children instead; Label, ColorFill, Panel, Picture, NineSlice and ProgressBar draw in it, above the world. Themes are .theme.json files (schema_get kind "theme") set with Widget.theme or project.json's ui.theme; theme_* sets one item, theme_styles a style box. Fonts are .ttf, .otf or .font.json files (schema_get kind "font"). A .font.json file's fallbacks draw the characters its font lacks; Widget.layout_direction rtl mirrors a control and its children, and right-to-left text orders itself. ui_layout returns each control's rect and the lines labels show, ui_theme the theme items a control uses and where each comes from, and text_measure measures text, so you can check UI without a screenshot.
@@ -476,7 +477,15 @@ Reply Server::call_tool(const json::Value& params) {
         }
         return Reply::success(std::move(result));
     }
-    const auto tool = tools_.find(name->as_string());
+    auto tool = tools_.find(name->as_string());
+    if (tool == tools_.end()) {
+        // A command's old name ("csg_get") finds its tool by its current one.
+        for (const world::NameAlias& alias : world::command_aliases()) {
+            if (tool_name(alias.old_name) == name->as_string()) {
+                tool = tools_.find(tool_name(alias.name));
+            }
+        }
+    }
     if (tool == tools_.end()) {
         std::vector<std::string_view> names;
         names.reserve(tools_.size());

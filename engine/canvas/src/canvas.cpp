@@ -21,6 +21,7 @@
 #include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/video.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/character.hpp"
 #include "slash/world/flesh.hpp"
 #include "slash/world/fluid.hpp"
@@ -255,7 +256,7 @@ void add_asset_types(asset::Assets& assets) {
                                      return Result<std::string>(std::string(text));
                                  });
     assets.add_type<ProcessMaterial>(
-        "process_material", {std::string(kProcessMaterialSuffix)},
+        "particles", world::suffixes_of(kProcessMaterialSuffix),
         [](std::string_view text, std::string_view /*path*/) -> Result<ProcessMaterial> {
             auto doc = json::parse(text);
             if (!doc) {

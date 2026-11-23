@@ -2693,16 +2693,15 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     std::set<entt::entity> unprocessed; // emitters whose process material didn't load
     const auto process_of = [&](entt::entity entity) -> const render::ParticleProcess* {
         const auto& emitter = ecs.get<world::GpuEmitter2D>(entity);
-        if (emitter.process_material.empty()) {
+        if (emitter.particle_rules.empty()) {
             return &kStill;
         }
-        auto loaded = this->process_material(emitter.process_material);
+        auto loaded = this->process_material(emitter.particle_rules);
         if (!loaded) {
             if (unprocessed.insert(entity).second) {
-                warn_once(emitter.process_material, loaded.error().message, "process_material",
+                warn_once(emitter.particle_rules, loaded.error().message, "particle_rules",
                           kParticlesEvent);
-                problem(entity, "/components/GpuEmitter2D/process_material",
-                        loaded.error().message);
+                problem(entity, "/components/GpuEmitter2D/particle_rules", loaded.error().message);
             }
             return nullptr;
         }

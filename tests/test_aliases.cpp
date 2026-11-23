@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 using namespace slash;
 
@@ -225,4 +226,40 @@ TEST_CASE("project.json settings at their old places move to their new ones") {
     CHECK(std::ranges::any_of(moved, [](const world::Renamed& one) {
         return one.old_name == "window/vsync_mode" && one.name == "window/vsync";
     }));
+}
+
+TEST_CASE("files keep loading under their old suffixes") {
+    for (const world::SuffixAlias& alias : world::suffix_aliases()) {
+        CHECK(alias.old_suffix != alias.suffix);
+        CHECK(world::has_suffix("a/b" + std::string(alias.suffix), alias.suffix));
+        CHECK(world::has_suffix("a/b" + std::string(alias.old_suffix), alias.suffix));
+        const auto suffixes = world::suffixes_of(alias.suffix);
+        REQUIRE(suffixes.size() >= 2);
+        CHECK(suffixes.front() == alias.suffix);
+        CHECK(std::ranges::find(suffixes, alias.old_suffix) != suffixes.end());
+    }
+    CHECK(world::has_suffix("fx/fire.process_material.json", ".particles.json"));
+    CHECK_FALSE(world::has_suffix("fx/fire.material.json", ".particles.json"));
+    CHECK(world::has_suffix("level.scene.json", ".scene.json"));
+    CHECK(world::suffixes_of(".scene.json") == std::vector<std::string>{".scene.json"});
+}
+
+TEST_CASE("commands and their params' values answer to their old names") {
+    const auto commands = world::command_aliases();
+    REQUIRE_FALSE(commands.empty());
+    for (std::size_t i = 1; i < commands.size(); ++i) {
+        CHECK(commands[i - 1].old_name < commands[i].old_name);
+    }
+    CHECK(world::current_command_name("csg.get") == "solid.get");
+    CHECK(world::current_command_name("gridmap.set") == "blockmap.set");
+    CHECK(world::current_command_name("solid.get") == "solid.get");
+    CHECK(world::current_command_name("entity.create") == "entity.create");
+
+    CHECK(world::current_param_value("schema.get", "kind", "process_material") == "particles");
+    CHECK(world::current_param_value("schema.get", "kind", "scene") == "scene");
+    CHECK(world::current_param_value("schema.get", "id", "meshlib") == "meshlib");
+    json::Value params = parse(R"({"kind": "voxel_gi"})");
+    CHECK(world::upgrade_param_values("schema.get", params));
+    CHECK(params.find("kind")->as_string() == "voxel_light");
+    CHECK_FALSE(world::upgrade_param_values("schema.get", params));
 }

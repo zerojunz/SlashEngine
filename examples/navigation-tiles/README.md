@@ -26,7 +26,7 @@ regions join where the cells meet.
 - `tilemap.set` turns the wall in the bottom row into floor, the map is rebuilt, and the mouse
   goes straight along it. `simplify_epsilon` drops the points where the path crosses from cell
   to cell.
-- The `lawn` region bakes its file, [nav/lawn.navpoly.json](nav/lawn.navpoly.json), from the
+- The `lawn` region bakes its file, [nav/lawn.navmesh2d.json](nav/lawn.navmesh2d.json), from the
   `grass` layer under it, as Godot bakes a `NavArea2D` over a `TileLayer2D`: the
   tiles' outlines are where agents may walk and the rock's collision polygon is cut out, with
   an `agent_radius` of 2. The grass layer's `navigation_enabled` is `false`, so its cells

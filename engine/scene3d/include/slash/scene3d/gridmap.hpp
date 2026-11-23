@@ -30,14 +30,14 @@ class World;
 }
 
 // Grid maps, as Godot 4.6's BlockMap3D (modules/gridmap/grid_map.cpp) and MeshLibrary
-// (scene/resources/3d/mesh_library.cpp): items of a .meshlib.json file placed in cells, each
+// (scene/resources/3d/mesh_library.cpp): items of a .blocks.json file placed in cells, each
 // turned one of Godot's 24 ways. Cells are grouped into octants as Godot groups them; each
 // octant's items draw as one mesh per material, their shapes collide as one static body of the
 // BlockMap3D's in physics3d, and with bake_navigation each cell with a navigation mesh is a
 // navigation region.
 namespace slash::scene3d {
 
-inline constexpr std::string_view kMeshLibrarySuffix = ".meshlib.json";
+inline constexpr std::string_view kMeshLibrarySuffix = ".blocks.json";
 
 // One item of a mesh library, as Godot's MeshLibrary::Item: what a cell holding it draws,
 // collides as and walks on, each in the cell's space.
@@ -56,12 +56,12 @@ struct MeshLibraryItem {
     std::uint32_t navigation_layers = 1;
 };
 
-// A .meshlib.json file: items by name.
+// A .blocks.json file: items by name.
 struct MeshLibrary {
     std::map<std::string, MeshLibraryItem, std::less<>> items;
 };
 
-// The JSON Schema for .meshlib.json files.
+// The JSON Schema for .blocks.json files.
 [[nodiscard]] json::Value mesh_library_schema();
 
 // Every error in a document, each with its JSON Pointer: those of the schema, item names with a
@@ -71,7 +71,7 @@ struct MeshLibrary {
 // The library in a document, or its first error.
 [[nodiscard]] Result<MeshLibrary> parse_mesh_library(const json::Value& given);
 
-// Registers .meshlib.json files with assets as MeshLibrary. Called by add_asset_types.
+// Registers .blocks.json files with assets as MeshLibrary. Called by add_asset_types.
 void add_mesh_library_type(asset::Assets& assets);
 
 // ---- Cells

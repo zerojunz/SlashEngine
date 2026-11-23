@@ -60,7 +60,7 @@
     "plaza": {
       "components": {
         "NavArea2D": {
-          "navigation_polygon": "nav/plaza.navpoly.json"
+          "navmesh": "nav/plaza.navmesh2d.json"
         },
         "Transform2D": {
           "children": ["fountain"]

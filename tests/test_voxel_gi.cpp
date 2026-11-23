@@ -223,7 +223,7 @@ TEST_CASE("emissive materials voxelize their emission at the bake's exposure") {
     CHECK(material.albedo[0][0] == doctest::Approx(1.0F));
 }
 
-TEST_CASE(".voxelgi.json files keep a VoxelLighting3D's cells, and say what's wrong with them") {
+TEST_CASE(".voxellight.json files keep a VoxelLighting3D's cells, and say what's wrong with them") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(true), kSize, 6, 0.75F);
     const json::Value doc = scene3d::voxel_gi_json(data);
     CHECK(scene3d::validate_voxel_gi(doc).empty());
@@ -436,7 +436,7 @@ TEST_CASE("VoxelGIs say what's wrong with their settings and data") {
     CHECK(problems[1].path == "/components/VoxelLighting3D/size");
     CHECK(problems[2].path == "/components/VoxelLighting3D/camera_attributes");
     CHECK(problems[3].path == "/components/VoxelLighting3D/data");
-    CHECK(problems[3].message.find(".voxelgi.json") != std::string::npos);
+    CHECK(problems[3].message.find(".voxellight.json") != std::string::npos);
 }
 
 TEST_CASE("a VoxelLighting3D's texture packs into an atlas, each level's slices side by side") {
@@ -780,7 +780,7 @@ TEST_CASE("meshes take ambient light and reflections from a VoxelLighting3D's co
 namespace {
 
 // The floor and box under a sun, with a VoxelLighting3D around them whose data is
-// "gi.voxelgi.json", seen from above.
+// "gi.voxellight.json", seen from above.
 struct VoxelGIWorld {
     Scene scene;
     entt::entity sun = entt::null;
@@ -801,19 +801,19 @@ struct VoxelGIWorld {
         sun = scene.create("sun", R"({"Transform3D": {"rotation": [-1.2, 0.3, 0]},
             "SunLight3D": {"shadow_enabled": true, "light_energy": 2}})");
         gi = scene.create("gi", R"({"Transform3D": {}, "VoxelLighting3D": {"subdiv": "64",
-            "size": [4, 4, 4], "data": "gi.voxelgi.json"}})");
+            "size": [4, 4, 4], "data": "gi.voxellight.json"}})");
         data = std::make_shared<const scene3d::VoxelGIData>(
             scene3d::bake_voxel_gi(scene.world, gi, {}).value().data);
     }
 
-    // The cells of "gi.voxelgi.json", counting how often they load.
+    // The cells of "gi.voxellight.json", counting how often they load.
     scene3d::VoxelGISource source(int* loads = nullptr) const {
         return [this, loads](const std::string& path)
                    -> slash::Result<std::shared_ptr<const scene3d::VoxelGIData>> {
             if (loads != nullptr) {
                 ++*loads;
             }
-            if (path != "gi.voxelgi.json") {
+            if (path != "gi.voxellight.json") {
                 return slash::make_error(slash::ErrorCode::NotFound,
                                          "\"" + path + "\" doesn't exist");
             }
@@ -895,10 +895,10 @@ TEST_CASE("the 3D renderer lights a world's VoxelGIs with its lights and traces 
     gi.scene.world.ecs().get<world::Transform3D>(gi.gi).position = {};
 
     // Data that doesn't load is a problem at the VoxelLighting3D's data.
-    gi.scene.world.ecs().get<world::VoxelLighting3D>(gi.gi).data = "other.voxelgi.json";
+    gi.scene.world.ecs().get<world::VoxelLighting3D>(gi.gi).data = "other.voxellight.json";
     (void)draw_world(*device, renderer, gi.scene.world);
     REQUIRE(renderer.problems().size() == 1);
-    CHECK(renderer.problems()[0].message == "\"other.voxelgi.json\" doesn't exist");
+    CHECK(renderer.problems()[0].message == "\"other.voxellight.json\" doesn't exist");
 }
 
 TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {

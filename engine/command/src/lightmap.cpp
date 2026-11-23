@@ -250,7 +250,7 @@ std::string default_voxel_gi_path(const Session& session, std::string_view id) {
     return std::string(id) + std::string(scene3d::kVoxelGISuffix);
 }
 
-Reply voxel_gi_bake(Session& session, const json::Value& params) {
+Reply voxel_lighting_bake(Session& session, const json::Value& params) {
     world::World& world = session.world();
     const std::string& id = params.find("id")->as_string();
     const entt::entity entity = world.find(id);
@@ -271,7 +271,7 @@ Reply voxel_gi_bake(Session& session, const json::Value& params) {
     } else {
         path = default_voxel_gi_path(session, id);
     }
-    if (!path.ends_with(scene3d::kVoxelGISuffix)) {
+    if (!world::has_suffix(path, scene3d::kVoxelGISuffix)) {
         return param_error(code::kInvalidArgument, pointer,
                            quoted(path) + " is not a " + std::string(scene3d::kVoxelGISuffix) +
                                " file");
@@ -459,13 +459,13 @@ void register_lightmap_commands(Registry& registry) {
     json::Value voxel_gi = property("string", "An entity with a VoxelLighting3D.");
     voxel_gi["minLength"] = 1;
     json::Value voxel_gi_file = property(
-        "string", "The .voxelgi.json file to write, project path. Default: the "
+        "string", "The .voxellight.json file to write, project path. Default: the "
                   "VoxelLighting3D's data, else beside the scene, named after it and the entity.");
     voxel_gi_file["minLength"] = 1;
     registry.add({
-        .name = "voxel_gi.bake",
+        .name = "voxel_lighting.bake",
         .description =
-            "Bakes a VoxelLighting3D's cells into a .voxelgi.json file, as Godot's VoxelGI "
+            "Bakes a VoxelLighting3D's cells into a .voxellight.json file, as Godot's VoxelGI "
             "bake: the static meshes under its parent that touch its box, voxelized "
             "at its subdiv with their albedo, emission and normals. Lights are "
             "injected as the game runs. Sets data. Returns the file, counts, cells "
@@ -474,7 +474,7 @@ void register_lightmap_commands(Registry& registry) {
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(voxel_gi)}, {"file", std::move(voxel_gi_file)}},
                                 {"id"}),
-        .handler = voxel_gi_bake,
+        .handler = voxel_lighting_bake,
     });
 
     json::Value occluder = property("string", "An entity with an Occluder3D.");

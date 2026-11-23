@@ -21,7 +21,7 @@ step {"ticks":30}
 events.read {"subscription":"events_1"}
 {"dropped":0,"events":[{"id":"sparks","kind":"finished","seq":1,"tick":36}],"more":false}
 entity.get {"components":["GpuEmitter2D"],"id":"sparks","omit_defaults":true}
-{"components":{"GpuEmitter2D":{"amount":24,"burst":1.0,"emitting":false,"lifetime":0.6,"one_shot":true,"process_material":"sparks.process_material.json","seed":7,"texture":"dot.png","use_fixed_seed":true}},"id":"sparks"}
+{"components":{"GpuEmitter2D":{"amount":24,"burst":1.0,"emitting":false,"lifetime":0.6,"one_shot":true,"particle_rules":"sparks.particles.json","seed":7,"texture":"dot.png","use_fixed_seed":true}},"id":"sparks"}
 component.set {"components":{"GpuEmitter2D":{"emitting":true}},"id":"sparks"}
 {"changed":{"GpuEmitter2D":{"emitting":true}},"id":"sparks"}
 step {"ticks":30}
@@ -38,10 +38,10 @@ particles.eval {"id":"comets","list":true,"max_results":1}
 {"alive":4,"bounds":[58.7956,26.9748,146.1592,27.8562],"particles":[{"age":1.5,"color":[0.699,0.899,1,1],"position":[204.9548,54.831],"rotation":0,"scale":1,"trail":{"copies":12,"end":[159.7436,43.139],"length":46.7045}}],"trail_bounds":[24.3106,24.2416,180.6442,30.5893],"trails":4}
 particles.eval {"id":"fireflies","list":true,"max_results":2}
 {"alive":10,"bounds":[219.9319,20.0921,47.796,53.6587],"particles":[{"age":1.5,"color":[1,0.9,0.4,0.415],"position":[238.1317,25.7652],"rotation":0,"scale":0.5914},{"age":1.3333,"color":[1,0.9,0.4,0.3326],"position":[260.0377,27.561],"rotation":0,"scale":0.5028}]}
-component.set {"components":{"GpuEmitter2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
-{"changed":{"GpuEmitter2D":{"process_material":"broken.process_material.json"}},"id":"fire"}
+component.set {"components":{"GpuEmitter2D":{"process_material":"broken.particles.json"}},"id":"fire"}
+{"changed":{"GpuEmitter2D":{"particle_rules":"broken.particles.json"}},"id":"fire"}
 particles.eval {"id":"fire"}
-"asset \"broken.process_material.json\" did not load: /emission_shape: expected one of \"point\", \"sphere\", \"sphere_surface\", \"box\", \"points\", \"directed_points\", \"ring\", got \"sphear\""
+"asset \"broken.particles.json\" did not load: /emission_shape: expected one of \"point\", \"sphere\", \"sphere_surface\", \"box\", \"points\", \"directed_points\", \"ring\", got \"sphear\""
 undo {}
 {"can_redo":1,"can_undo":4,"undone":"component.set"}
 frame.capture {"points":[[80,140],[130,140]]}

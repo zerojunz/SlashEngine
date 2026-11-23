@@ -22,10 +22,10 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `<name>.theme.json` | Each `Theme` resource, named the same way |
 | `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
 | `<name>.texture.json` | Each `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` resource, named as frames are, as a [procedural texture](scene-format.md#procedural-textures) that makes the same pixels when it loads; its `FastNoiseLite` and `Gradient` come with it |
-| `<name>.process_material.json` | Each `ParticleProcessMaterial` resource, named as frames are (see [particles](#particles)) |
+| `<name>.particles.json` | Each `ParticleProcessMaterial` resource, named as frames are (see [particles](#particles)) |
 | `<name>.audio.json` | Each `AudioStreamRandomizer`, `AudioStreamPlaylist`, `AudioStreamSynchronized`, `AudioStreamInteractive`, `AudioStreamGenerator`, `AudioStreamPolyphonic` and `AudioStreamMicrophone` resource, named as frames are, and `<sound>.audio.json` beside a sound whose import settings loop it or give it beats (see [sounds and music](#sounds-and-music)) |
-| `<name>.meshlib.json` | Each `MeshLibrary` resource, text or binary (`.meshlib`, `.res`), named as frames are (see [3D](#3d)) |
-| `<name>.navmesh.json`, `<name>.navpoly.json` | Each `NavigationMesh` and `NavigationPolygon` resource, named as frames are |
+| `<name>.blocks.json` | Each `MeshLibrary` resource, text or binary (`.meshlib`, `.res`), named as frames are (see [3D](#3d)) |
+| `<name>.navmesh.json`, `<name>.navmesh2d.json` | Each `NavigationMesh` and `NavigationPolygon` resource, named as frames are |
 | `<name>.anim.json` | Each `AnimationPlayer`'s animation libraries: one library's named as above, several together as `<scene>_<player>.anim.json` |
 | `<name>.animtree.json` | Each `AnimationTree`'s `tree_root`: a resource file's beside it, a scene's own as `<scene>_<tree>.animtree.json` (see [animation trees](#animation-trees)) |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
@@ -141,7 +141,7 @@ above the world.
 | `LightmapProbe` | `Transform3D` and `LightmapProbe` |
 | `Decal` | `Transform3D` and `Decal`, with its fields of the same names; Godot 4.0's `extents` become a `size` twice as big |
 | `FogVolume` | `Transform3D` and `FogVolume`, with its fields of the same names, and its `FogMaterial` as the component of that name; a `ShaderMaterial` (Godot's fog shaders) and a material's `density_texture` are reported, and Godot 4.0's `extents` become a `size` twice as big |
-| `VoxelGI` | `Transform3D` and `VoxelGI`, with its fields and its data's of the same names, its `camera_attributes` on an entity of their own, and its baked cells as a `.voxelgi.json` file (see [3D](#3d)) |
+| `VoxelGI` | `Transform3D` and `VoxelGI`, with its fields and its data's of the same names, its `camera_attributes` on an entity of their own, and its baked cells as a `.voxellight.json` file (see [3D](#3d)) |
 | An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
 | `CSGCombiner3D`, `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`, `CSGPolygon3D`, `CSGMesh3D` | `Transform3D` and the component of the same name, with its material (see [3D](#3d)) |
 | `Path3D`, `PathFollow3D` | `Transform3D` and the component of the same name; a path's `Curve3D` is its `points` |
@@ -395,7 +395,7 @@ written.
 ## Particles
 
 A `CPUParticles2D` keeps its settings in its component. A `GPUParticles2D` keeps the node's, and
-its `ParticleProcessMaterial` becomes a [`.process_material.json`](scene-format.md#process-materials)
+its `ParticleProcessMaterial` becomes a [`.particles.json`](scene-format.md#process-materials)
 file that its `process_material` names:
 
 - Vectors lose their z: `direction = Vector3(0, -1, 0)` is `[0, -1]`, except
@@ -439,7 +439,7 @@ camera and play its frames as Godot's do. `visibility_aabb` only culls and is le
 A `GPUParticles3D` keeps its settings in its component too, with `visibility_aabb` as
 `visibility_aabb_position` and `visibility_aabb_size`, and `seed` only when `use_fixed_seed` is on,
 since Godot picks one at random otherwise. Its `ParticleProcessMaterial` becomes a
-`.process_material.json` file read in 3D: 3D vectors, Godot's 3D default gravity (`[0, -9.8, 0]`),
+`.particles.json` file read in 3D: 3D vectors, Godot's 3D default gravity (`[0, -9.8, 0]`),
 the ring emission, flatness, directional velocity, scale over velocity, the particle flags,
 `attractor_interaction_enabled` and the collision mode, and a `CurveXYZTexture`'s three curves as
 `{"x", "y", "z"}` points. `draw_pass_1` converts as a `CPUParticles3D`'s `mesh` (a primitive
@@ -510,11 +510,11 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   `CameraAttributesPractical` on an entity of their own, and its `VoxelGIData` gives its
   `dynamic_range`, `energy`, `bias`, `normal_bias`, `propagation`, `use_two_bounces` and
   `interior`. The data's baked cells, in a `.tscn`, a `.tres` or the `.res` file Godot's bake
-  saves, are written as a [`.voxelgi.json`](scene-format.md#voxelgi) file beside it, the format
-  `voxel_gi.bake` writes, with the exposure of the VoxelGI's camera attributes they were baked
+  saves, are written as a [`.voxellight.json`](scene-format.md#voxelgi) file beside it, the format
+  `voxel_lighting.bake` writes, with the exposure of the VoxelGI's camera attributes they were baked
   at, so the VoxelGI lights as it did in Godot with no new bake. Data with no cells, or cells
   that don't make a VoxelGI's, is reported; bake it with
-  [`voxel_gi.bake`](commands.md#voxel_gibake).
+  [`voxel_lighting.bake`](commands.md#voxel_gibake).
 - A `CollisionShape3D`'s `BoxShape3D`, `SphereShape3D`, `CapsuleShape3D`, `CylinderShape3D`,
   `ConvexPolygonShape3D`, `ConcavePolygonShape3D` (its `data` as `faces`) or
   `WorldBoundaryShape3D` becomes its `shape` and the fields it sets. A body's
@@ -531,7 +531,7 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
 - A `Path3D`'s `Curve3D` (or a `Path2D`'s `Curve2D`) becomes its `points`, each with its
   `position`, `in` and `out` handles and, in 3D, `tilt`, and the curve's `bake_interval`, and in
   3D `closed` and `up_vector_enabled`.
-- A `MeshLibrary` becomes a [`.meshlib.json` file](scene-format.md#grid-maps): each
+- A `MeshLibrary` becomes a [`.blocks.json` file](scene-format.md#grid-maps): each
   `item/<id>/` an item named after its `name`, with `:` made `_` and a duplicate or missing one
   given its ID (`Floor_2`, `item_3`), its mesh, the mesh's material, `mesh_transform`,
   `mesh_cast_shadow`, `shapes` (placed by position and rotation; a scaled one is reported),
@@ -545,7 +545,7 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   and `linear_limit_x/upper_distance` a 6DOF joint's `linear_x.limit_upper`. The softness,
   bias, relaxation and damping parameters and `solver_priority`, which Godot's Jolt physics
   ignores too, are reported.
-- A `NavigationMesh` becomes a `.navmesh.json` file and a `NavigationPolygon` a `.navpoly.json`
+- A `NavigationMesh` becomes a `.navmesh.json` file and a `NavigationPolygon` a `.navmesh2d.json`
   file with their polygons and baking settings, enums by name. Godot's navigation meshes bake
   only meshes by default, so `geometry_parsed_geometry_type` is written as `"mesh_instances"`
   unless it is set; a source geometry mode or group is reported, since a bake takes the

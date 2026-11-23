@@ -1756,6 +1756,9 @@ TEST_CASE("schema.get returns scene, component and command schemas") {
           "SlashEngine storyboard file");
     CHECK(engine.ok("schema.get", R"({"kind": "frames"})").find("title")->as_string() ==
           "SlashEngine sprite frames");
+    // An old kind names the same schema.
+    CHECK(engine.ok("schema.get", R"({"kind": "process_material"})") ==
+          engine.ok("schema.get", R"({"kind": "particles"})"));
     CHECK(engine.ok("schema.get", R"({"kind": "material"})").find("title")->as_string() ==
           "SlashEngine material");
     CHECK(engine.ok("schema.get", R"({"kind": "animation"})").find("title")->as_string() ==
@@ -1996,7 +1999,7 @@ TEST_CASE("a recipe made of other model files reloads when one of them changes")
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("csg.get returns the mesh a CSG root makes") {
+TEST_CASE("solid.get returns the mesh a CSG root makes") {
     Engine engine;
     engine.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "door", "components": {
@@ -2005,7 +2008,8 @@ TEST_CASE("csg.get returns the mesh a CSG root makes") {
             "Transform3D": {"position": [5, 0, 0], "children": ["door"]},
             "SolidBox3D": {"size": [2, 2, 2]},
             "Surface3D": {"albedo_color": [1, 0, 0, 1]}}}}]})");
-    const json::Value wall = engine.ok("csg.get", R"({"id": "wall"})");
+    const json::Value wall = engine.ok("solid.get", R"({"id": "wall"})");
+    CHECK(engine.ok("csg.get", R"({"id": "wall"})") == wall); // its old name
     // In the root's space, with the hole cut through it.
     CHECK(*wall.find("aabb") == parse(R"({"max": [1, 1, 1], "min": [-1, -1, -1]})"));
     CHECK(*wall.find("volume") == parse("6"));
@@ -2019,16 +2023,16 @@ TEST_CASE("csg.get returns the mesh a CSG root makes") {
     CHECK(triangles > 12);
     CHECK(wall.find("problems") == nullptr);
 
-    auto reply = engine.fails("csg.get", R"({"id": "door"})", command::code::kInvalidParams);
+    auto reply = engine.fails("solid.get", R"({"id": "door"})", command::code::kInvalidParams);
     CHECK(contains(reply.message, "ask for \"wall\""));
     engine.ok("entity.create", R"({"id": "lamp", "components": {"Transform3D": {}}})");
-    reply = engine.fails("csg.get", R"({"id": "lamp"})", command::code::kInvalidParams);
+    reply = engine.fails("solid.get", R"({"id": "lamp"})", command::code::kInvalidParams);
     CHECK(contains(reply.message, "has no CSG shape"));
 
     // A shape that leaves nothing says so.
     engine.ok("component.set",
               R"({"id": "door", "components": {"SolidBox3D": {"size": [3, 3, 3]}}})");
-    const json::Value empty = engine.ok("csg.get", R"({"id": "wall"})");
+    const json::Value empty = engine.ok("solid.get", R"({"id": "wall"})");
     CHECK(*empty.find("triangles") == parse("0"));
     REQUIRE(empty.find("problems") != nullptr);
     CHECK(contains(json::write(*empty.find("problems")), "makes an empty shape"));
@@ -2169,7 +2173,7 @@ TEST_CASE("gridmap commands set and read a BlockMap3D's cells, and rays name the
     const std::string root = "gridmap_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
-    REQUIRE(slash::platform::write_file(root + "/blocks.meshlib.json", R"({"format": 1,
+    REQUIRE(slash::platform::write_file(root + "/blocks.blocks.json", R"({"format": 1,
         "items": {
           "block": {"primitive": {"BoxGeometry": {"size": [2, 2, 2]}},
                     "shapes": [{"shape": "box", "size": [2, 2, 2]}]},
@@ -2179,26 +2183,26 @@ TEST_CASE("gridmap commands set and read a BlockMap3D's cells, and rays name the
     options.project_root = root;
     Engine engine(options);
     engine.ok("entity.create", R"({"id": "grid", "components": {"Transform3D": {
-        "position": [0, -2, 0]}, "BlockMap3D": {"mesh_library": "blocks.meshlib.json"}}})");
+        "position": [0, -2, 0]}, "BlockMap3D": {"mesh_library": "blocks.blocks.json"}}})");
     engine.ok("entity.create", R"({"id": "empty", "components": {"Transform3D": {}}})");
 
-    // gridmap.set fills cells or a box with one item, turned or not, or erases them.
-    CHECK(engine.ok("gridmap.set", R"({"id": "grid", "box": [-1, 0, 0, 3, 1, 2],
+    // blockmap.set fills cells or a box with one item, turned or not, or erases them.
+    CHECK(engine.ok("blockmap.set", R"({"id": "grid", "box": [-1, 0, 0, 3, 1, 2],
                                        "item": "block"})") ==
           parse(R"({"id": "grid", "changed": 6})"));
-    CHECK(engine.ok("gridmap.set", R"({"id": "grid", "cells": [[0, 1, 0]], "item": "ramp",
+    CHECK(engine.ok("blockmap.set", R"({"id": "grid", "cells": [[0, 1, 0]], "item": "ramp",
                                        "orientation": 16})") ==
           parse(R"({"id": "grid", "changed": 1})"));
-    CHECK(engine.ok("gridmap.set", R"({"id": "grid", "cells": [[1, 0, 1], [5, 5, 5]],
+    CHECK(engine.ok("blockmap.set", R"({"id": "grid", "cells": [[1, 0, 1], [5, 5, 5]],
                                        "item": null})") ==
           parse(R"({"id": "grid", "changed": 1})"));
-    CHECK(engine.ok("gridmap.get", R"({"id": "grid"})") ==
+    CHECK(engine.ok("blockmap.get", R"({"id": "grid"})") ==
           parse(R"({"cells": 6, "legend": {"b": "block", "r": "ramp:16"},
                     "floors": [{"y": 0, "origin": [-1, 0], "rows": ["bbb", "bb"]},
                                {"y": 1, "origin": [0, 0], "rows": ["r"]}],
                     "items": ["block", "ramp"]})"));
     // Given cells' items and centers, and the cells points are in, in the world's space.
-    CHECK(engine.ok("gridmap.get", R"({"id": "grid", "cells": [[0, 1, 0], [9, 0, 0]],
+    CHECK(engine.ok("blockmap.get", R"({"id": "grid", "cells": [[0, 1, 0], [9, 0, 0]],
                                        "points": [[-1.5, -1, 3]], "global": true})") ==
           parse(R"({"cells": [{"cell": [0, 1, 0], "item": "ramp", "orientation": 16,
                                "center": [1, 1, 1]},
@@ -2214,39 +2218,39 @@ TEST_CASE("gridmap commands set and read a BlockMap3D's cells, and rays name the
 
     // Each edit is one undo step, and a dry run changes nothing.
     engine.ok("undo");
-    CHECK(*engine.ok("gridmap.get", R"({"id": "grid"})").find("cells") == parse("7"));
-    engine.ok("gridmap.set", R"({"id": "grid", "box": [-1, 0, 0, 3, 2, 2], "item": null,
+    CHECK(*engine.ok("blockmap.get", R"({"id": "grid"})").find("cells") == parse("7"));
+    engine.ok("blockmap.set", R"({"id": "grid", "box": [-1, 0, 0, 3, 2, 2], "item": null,
                                  "dry_run": true})");
-    CHECK(*engine.ok("gridmap.get", R"({"id": "grid"})").find("cells") == parse("7"));
+    CHECK(*engine.ok("blockmap.get", R"({"id": "grid"})").find("cells") == parse("7"));
     CHECK(engine.ok("schema.get", R"({"kind": "meshlib"})").find("$defs") != nullptr);
 
-    auto reply = engine.fails("gridmap.set", R"({"id": "empty", "cells": [[0, 0, 0]],
+    auto reply = engine.fails("blockmap.set", R"({"id": "empty", "cells": [[0, 0, 0]],
                                                  "item": null})",
                               command::code::kInvalidParams);
     CHECK(reply.message == "/id: \"empty\" has no BlockMap3D");
-    reply = engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "blok"})",
+    reply = engine.fails("blockmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "blok"})",
                          command::code::kNotFound);
     CHECK(reply.message == "/item: the mesh library has no item \"blok\"; did you mean \"block\"?");
-    reply = engine.fails("gridmap.set", R"({"id": "grid", "item": "block"})",
+    reply = engine.fails("blockmap.set", R"({"id": "grid", "item": "block"})",
                          command::code::kInvalidParams);
     CHECK(contains(reply.message, "give cells"));
-    reply = engine.fails("gridmap.set", R"({"id": "grid", "box": [0, 0, 0, 100, 10, 100],
+    reply = engine.fails("blockmap.set", R"({"id": "grid", "box": [0, 0, 0, 100, 10, 100],
                                             "item": null})",
                          command::code::kInvalidParams);
     CHECK(reply.message == "/box: covers 100000 cells; the most is 65536");
-    engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block",
+    engine.fails("blockmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block",
                                     "orientation": 24})",
                  command::code::kInvalidParams);
     engine.ok("component.set", R"({"id": "grid", "components": {"BlockMap3D": {
         "mesh_library": "", "floors": [{"rows": ["q"]}]}}})");
-    reply = engine.fails("gridmap.get", R"({"id": "grid"})", command::code::kInvalidArgument);
+    reply = engine.fails("blockmap.get", R"({"id": "grid"})", command::code::kInvalidArgument);
     CHECK(reply.message ==
           "/id: \"grid\"'s BlockMap3D/floors/0/rows/0: column 0: \"q\" is not in the legend");
     engine.ok("component.set",
               R"({"id": "grid", "components": {"BlockMap3D": {"legend": {}, "floors": []}}})");
-    reply = engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block"})",
+    reply = engine.fails("blockmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block"})",
                          command::code::kInvalidParams);
-    CHECK(reply.message == "/id: \"grid\"'s BlockMap3D has no mesh_library to place items from");
+    CHECK(reply.message == "/id: \"grid\"'s BlockMap3D has no blocks file to place items from");
     std::filesystem::remove_all(root);
 }
 
@@ -2495,7 +2499,7 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
                      [8, 0, 8], [4, 0, 8]],
         "polygons": [[0, 5, 4, 1], [1, 4, 3, 2], [4, 7, 6, 3]]})")
                 .ok());
-    REQUIRE(slash::platform::write_file(root + "/nav/room.navpoly.json", R"({"format": 1,
+    REQUIRE(slash::platform::write_file(root + "/nav/room.navmesh2d.json", R"({"format": 1,
         "vertices": [[0, 0], [64, 0], [64, 64], [0, 64]], "polygons": [[0, 1, 2, 3]]})")
                 .ok());
     command::SessionOptions options;
@@ -2506,7 +2510,7 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
             "Transform3D": {}, "NavArea3D": {"navigation_mesh": "nav/l.navmesh.json"}}}},
         {"command": "entity.create", "params": {"id": "room", "components": {
             "Transform2D": {"position": [100, 50]},
-            "NavArea2D": {"navigation_polygon": "nav/room.navpoly.json"}}}},
+            "NavArea2D": {"navigation_polygon": "nav/room.navmesh2d.json"}}}},
         {"command": "entity.create", "params": {"id": "walker", "components": {
             "Transform3D": {"position": [1, 0, 1]},
             "NavAgent3D": {"target_position": [6, 0, 7]}}}}]})");
@@ -2625,7 +2629,7 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     REQUIRE(slash::platform::create_directories(root + "/nav").ok());
     const std::string yard_file = R"({"format": 1, "agent_radius": 5,
         "outlines": [[[0, 0], [100, 0], [100, 100], [0, 100]]]})";
-    REQUIRE(slash::platform::write_file(root + "/nav/yard.navpoly.json", yard_file).ok());
+    REQUIRE(slash::platform::write_file(root + "/nav/yard.navmesh2d.json", yard_file).ok());
     command::SessionOptions options;
     options.project_root = root;
     Engine engine(options);
@@ -2641,7 +2645,7 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
             "Collider2D": {"shape": "rectangle", "size": [20, 20]}}}},
         {"command": "entity.create", "params": {"id": "yard", "components": {
             "Transform2D": {"children": ["rock"]},
-            "NavArea2D": {"navigation_polygon": "nav/yard.navpoly.json"}}}}]})");
+            "NavArea2D": {"navigation_polygon": "nav/yard.navmesh2d.json"}}}}]})");
     const auto read = [&](const std::string& path) -> std::optional<std::string> {
         if (!std::filesystem::exists(root + "/" + path)) {
             return std::nullopt;
@@ -2671,9 +2675,9 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
 
     // A 2D bake keeps the file's settings and outlines, and paths go round the rock.
     CHECK(engine.ok("navigation.bake", R"({"id": "yard"})") ==
-          parse(R"({"file": "nav/yard.navpoly.json", "vertices": 8, "polygons": 4,
+          parse(R"({"file": "nav/yard.navmesh2d.json", "vertices": 8, "polygons": 4,
                     "obstructions": 1})"));
-    const json::Value yard = parse(*read("nav/yard.navpoly.json"));
+    const json::Value yard = parse(*read("nav/yard.navmesh2d.json"));
     CHECK(*yard.find("agent_radius") == 5);
     CHECK(yard.find("outlines")->size() == 1);
     const json::Value path = engine.ok("navigation.path", R"({"from": [10, 50], "to": [90, 50]})");
@@ -2681,7 +2685,7 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
 
     // Undo puts each file back as it was, removing one the bake made, and redo bakes again.
     engine.ok("undo");
-    CHECK(read("nav/yard.navpoly.json") == yard_file);
+    CHECK(read("nav/yard.navmesh2d.json") == yard_file);
     engine.ok("undo");
     CHECK_FALSE(read("nav/level.navmesh.json"));
     engine.ok("redo");
@@ -2701,7 +2705,7 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
         {"command": "component.set", "params": {"id": "yard", "components": {
             "Transform2D": {"children": ["rock", "cart"]}}}}]})");
     CHECK(engine.ok("navigation.bake", R"({"id": "yard"})") ==
-          parse(R"({"file": "nav/yard.navpoly.json", "vertices": 20, "polygons": 14,
+          parse(R"({"file": "nav/yard.navmesh2d.json", "vertices": 20, "polygons": 14,
                     "obstructions": 1, "obstacle_outlines": 1})"));
 
     reply = engine.fails("navigation.bake", R"({"id": "levle"})", command::code::kNotFound);
@@ -2713,12 +2717,12 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     engine.ok("component.set", R"({"id": "level", "components": {
         "NavArea3D": {"navigation_mesh": ""}}})");
     reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
-    CHECK(reply.message == "/id: \"level\" names no navigation_mesh file to bake into, such as "
+    CHECK(reply.message == "/id: \"level\" names no navmesh file to bake into, such as "
                            "\"navigation/level.navmesh.json\"");
     engine.ok("component.set", R"({"id": "level", "components": {
-        "NavArea3D": {"navigation_mesh": "nav/yard.navpoly.json"}}})");
+        "NavArea3D": {"navigation_mesh": "nav/yard.navmesh2d.json"}}})");
     reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
-    CHECK(reply.message == "/id: its navigation_mesh \"nav/yard.navpoly.json\" is not a "
+    CHECK(reply.message == "/id: its navmesh \"nav/yard.navmesh2d.json\" is not a "
                            ".navmesh.json file");
     std::filesystem::remove_all(root);
 }
@@ -2807,7 +2811,7 @@ TEST_CASE(
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("voxel_gi.bake writes a VoxelLighting3D's cells, and undo takes them back") {
+TEST_CASE("voxel_lighting.bake writes a VoxelLighting3D's cells, and undo takes them back") {
     const std::string root = "voxel_gi_bake_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
@@ -2830,20 +2834,20 @@ TEST_CASE("voxel_gi.bake writes a VoxelLighting3D's cells, and undo takes them b
     };
 
     // A dry run says what it would bake and writes nothing.
-    const json::Value dry = engine.ok("voxel_gi.bake", R"({"id": "gi", "dry_run": true})");
+    const json::Value dry = engine.ok("voxel_lighting.bake", R"({"id": "gi", "dry_run": true})");
     const json::Value baked = *dry.find("result");
-    CHECK(*baked.find("file") == "gi.voxelgi.json");
+    CHECK(*baked.find("file") == "gi.voxellight.json");
     CHECK(*baked.find("meshes") == 1); // the ball is dynamic
     CHECK(*baked.find("size") == parse("[64, 32, 64]"));
     CHECK(*baked.find("levels") == 7);
     CHECK(*dry.find("changes") ==
-          parse(R"({"changed": {"gi": {"VoxelLighting3D": {"data": "gi.voxelgi.json"}}}})"));
-    CHECK_FALSE(read("gi.voxelgi.json"));
+          parse(R"({"changed": {"gi": {"VoxelLighting3D": {"data": "gi.voxellight.json"}}}})"));
+    CHECK_FALSE(read("gi.voxellight.json"));
 
     // An unsaved scene's VoxelLighting3D bakes beside the project's root, named after itself, and
     // keeps the file in data; the file loads as the cells.
-    CHECK(engine.ok("voxel_gi.bake", R"({"id": "gi"})") == baked);
-    const std::optional<std::string> data = read("gi.voxelgi.json");
+    CHECK(engine.ok("voxel_lighting.bake", R"({"id": "gi"})") == baked);
+    const std::optional<std::string> data = read("gi.voxellight.json");
     REQUIRE(data);
     const scene3d::VoxelGIData cells = scene3d::parse_voxel_gi(parse(*data)).value();
     CHECK(baked.find("cells")->as_int() == static_cast<std::int64_t>(cells.cells.size()));
@@ -2852,29 +2856,30 @@ TEST_CASE("voxel_gi.bake writes a VoxelLighting3D's cells, and undo takes them b
         world::World& world = engine.session->world();
         return world.ecs().get<world::VoxelLighting3D>(world.find("gi")).data;
     };
-    CHECK(data_path() == "gi.voxelgi.json");
+    CHECK(data_path() == "gi.voxellight.json");
     // Baking again changes nothing.
-    CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi"})").find("unchanged") == true);
+    CHECK(*engine.ok("voxel_lighting.bake", R"({"id": "gi"})").find("unchanged") == true);
 
     // Undo takes the file and data back.
     engine.ok("undo");
-    CHECK_FALSE(read("gi.voxelgi.json"));
+    CHECK_FALSE(read("gi.voxellight.json"));
     CHECK(data_path().empty());
 
     // A saved scene's VoxelLighting3D bakes beside it, named after it and the entity; file names
-    // another, which must be a .voxelgi.json file.
+    // another, which must be a .voxellight.json file.
     engine.ok("scene.save", R"({"path": "levels/yard.scene.json"})");
-    CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi"})").find("file") ==
-          "levels/yard.gi.voxelgi.json");
-    CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi", "file": "light/yard.voxelgi.json"})")
-               .find("file") == "light/yard.voxelgi.json");
-    CHECK(read("light/yard.voxelgi.json"));
-    auto reply = engine.fails("voxel_gi.bake", R"({"id": "gi", "file": "yard.json"})",
+    CHECK(*engine.ok("voxel_lighting.bake", R"({"id": "gi"})").find("file") ==
+          "levels/yard.gi.voxellight.json");
+    CHECK(*engine.ok("voxel_lighting.bake", R"({"id": "gi", "file": "light/yard.voxellight.json"})")
+               .find("file") == "light/yard.voxellight.json");
+    CHECK(read("light/yard.voxellight.json"));
+    auto reply = engine.fails("voxel_lighting.bake", R"({"id": "gi", "file": "yard.json"})",
                               command::code::kInvalidArgument);
-    CHECK(reply.message == "/file: \"yard.json\" is not a .voxelgi.json file");
-    reply = engine.fails("voxel_gi.bake", R"({"id": "floor"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/file: \"yard.json\" is not a .voxellight.json file");
+    reply =
+        engine.fails("voxel_lighting.bake", R"({"id": "floor"})", command::code::kInvalidParams);
     CHECK(reply.message == "/id: \"floor\" has no VoxelLighting3D");
-    reply = engine.fails("voxel_gi.bake", R"({"id": "g"})", command::code::kNotFound);
+    reply = engine.fails("voxel_lighting.bake", R"({"id": "g"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
     std::filesystem::remove_all(root);
 }
@@ -3423,7 +3428,7 @@ TEST_CASE("particles.eval runs a GpuEmitter2D's steps on the CPU") {
     const std::string root = "command_gpu_particles_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
-    REQUIRE(slash::platform::write_file(root + "/up.process_material.json",
+    REQUIRE(slash::platform::write_file(root + "/up.particles.json",
                                         R"({"format": 1, "direction": [0, -1], "spread": 0,
                                             "gravity": [0, 0], "initial_velocity_min": 60,
                                             "initial_velocity_max": 60})")
@@ -3434,7 +3439,7 @@ TEST_CASE("particles.eval runs a GpuEmitter2D's steps on the CPU") {
     engine.ok("entity.create", R"({"id": "jet", "components": {
         "Transform2D": {"position": [100, 50]},
         "GpuEmitter2D": {"amount": 4, "explosiveness": 1, "fixed_fps": 0,
-                           "process_material": "up.process_material.json"}}})");
+                           "process_material": "up.particles.json"}}})");
     CHECK(engine.ok("particles.eval", R"({"id": "jet"})") ==
           parse(R"({"alive": 0, "bounds": null})"));
     engine.ok("step", R"({"ticks": 30})");
@@ -3449,10 +3454,10 @@ TEST_CASE("particles.eval runs a GpuEmitter2D's steps on the CPU") {
     CHECK(*engine.ok("schema.get", R"({"kind": "process_material"})").find("title") ==
           "SlashEngine particle process material");
     engine.ok("component.set", R"({"id": "jet", "components": {
-        "GpuEmitter2D": {"process_material": "gone.process_material.json"}}})");
+        "GpuEmitter2D": {"process_material": "gone.particles.json"}}})");
     CHECK(contains(
         engine.fails("particles.eval", R"({"id": "jet"})", command::code::kInvalidArgument).message,
-        "gone.process_material.json"));
+        "gone.particles.json"));
     std::filesystem::remove_all(root);
 }
 

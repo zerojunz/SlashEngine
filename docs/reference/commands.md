@@ -34,7 +34,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `occluder.bake`, `particles.bake_sdf`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_lighting.bake`, `occluder.bake`, `particles.bake_sdf`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -49,7 +49,7 @@ changes, in the same form as [`world.diff`](#worlddiff):
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
 and `prefab.save` check everything and return their usual result but write no file, and
-`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `occluder.bake` and `particles.bake_sdf` what they would bake. Commands that change nothing, such
+`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake`, `voxel_lighting.bake`, `occluder.bake` and `particles.bake_sdf` what they would bake. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -69,9 +69,9 @@ as `entity.get`, reject it as an unknown param.
 | Hair | [`hair.get`](#hairget) |
 | Damage | [`damage.apply`](#damageapply), [`damage.state`](#damagestate), [`damage.check`](#damagecheck) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
-| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
+| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`solid.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
-| Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
+| Grid maps | [`blockmap.set`](#gridmapset), [`blockmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.generate`](#tilemapgenerate), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity), [`physics.soft_body`](#physicssoft_body), [`physics.break`](#physicsbreak), [`physics.debug`](#physicsdebug), [`physics.cache`](#physicscache) |
@@ -84,7 +84,7 @@ as `entity.get`, reject it as an unknown param.
 | Visual effects | [`vfx.play`](#vfxplay), [`vfx.state`](#vfxstate), [`vfx.check`](#vfxcheck), [`vfx.preview`](#vfxpreview) |
 | Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample), [`light.tune`](#lighttune), [`lighting.check`](#lightingcheck) |
-| Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
+| Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_lighting.bake`](#voxel_gibake) |
 | Occlusion culling | [`occluder.bake`](#occluderbake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.accessibility`](#uiaccessibility), [`ui.accessibility_action`](#uiaccessibility_action), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
@@ -173,15 +173,15 @@ time:
 Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprite-frames),
 [`.material.json`](scene-format.md#materials), [`.anim.json`](scene-format.md#animations),
 [`.animtree.json`](scene-format.md#animation-trees),
-[`.process_material.json`](scene-format.md#process-materials),
+[`.particles.json`](scene-format.md#process-materials),
 [`.tileset.json`](scene-format.md#tile-sets), [`.font.json`](scene-format.md#fonts),
 [`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
 [`.test.json`](scene-format.md#tests),
-[`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
+[`.navmesh.json` or `.navmesh2d.json`](scene-format.md#navigation-meshes-and-polygons),
 [`.npc.json`](scene-format.md#npcs), [`.quest.json`](scene-format.md#quests),
 [`.dialogue.json`](scene-format.md#dialogue),
-[`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
+[`.blocks.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
 [`.standard_material.json`](scene-format.md#material-files),
 [`.texture.json`](scene-format.md#procedural-textures),
 [`.scatter.json`](scene-format.md#scatter-rules),
@@ -190,7 +190,7 @@ one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"npc"`, `"quest"`, `"dialogue"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"pcg"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"character"`, `"face"`, `"creature"`, `"vehicle"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"particles"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navmesh2d"`, `"npc"`, `"quest"`, `"dialogue"`, `"blocks"`, `"lightmap"`, `"voxel_light"`, `"model"`, `"standard_material"`, `"texture"`, `"scatter"`, `"pcg"`, `"physics_material"`, `"ragdoll"`, `"foliage"`, `"groom"`, `"character"`, `"face"`, `"creature"`, `"vehicle"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1698,7 +1698,7 @@ Needs: `read`.
 A bone the model hasn't fails at `/bones/<n>` with "did you mean", and an entity that draws no
 model, or a model with no nodes (an OBJ model), at `/id`.
 
-### csg.get
+### solid.get
 
 Returns the mesh a [CSG root](scene-format.md#csg-shapes) makes from the shapes under it: its
 size, its surfaces by material and what couldn't be made.
@@ -1766,7 +1766,7 @@ Needs: `read`.
 An entity with neither path fails at `/id`, and a `closest_to` with the wrong number of
 coordinates at `/closest_to`.
 
-### gridmap.set
+### blockmap.set
 
 Places one item of a [`BlockMap3D`'s](scene-format.md#grid-maps) mesh library in cells, turned by
 an orientation, or erases them with `null`, as Godot's `set_cell_item`. Writes the map in
@@ -1797,7 +1797,7 @@ library at `/id`; and cells past -32768 to 32767 at `/cells` or `/box`.
 {"code":-32001,"data":{"path":"/item"},"message":"/item: the mesh library has no item \"wal\"; did you mean \"wall\"?"}
 ```
 
-### gridmap.get
+### blockmap.get
 
 Returns a [`BlockMap3D`'s](scene-format.md#grid-maps) cells as its legend and floors of rows, the
 names of its library's items and any `problems`; or, with `cells`, what each given cell holds and
@@ -2820,7 +2820,7 @@ An unknown ID fails at `/id` with a "did you mean", and an entity with no agent 
 
 ### navigation.bake
 
-Bakes a [region's](scene-format.md#regions) `.navmesh.json` or `.navpoly.json` file from the
+Bakes a [region's](scene-format.md#regions) `.navmesh.json` or `.navmesh2d.json` file from the
 geometry under it, as Godot's `bake_navigation_mesh` and `bake_navigation_polygon`, with the
 [settings](scene-format.md#baking) in the file (Godot's defaults for a file that isn't there
 yet). It replaces the file's `vertices` and `polygons`, keeping everything else as written, and
@@ -3550,12 +3550,12 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The courtyard of
 An unknown ID fails at `/id` with a "did you mean"; so does an entity with no `BakedLighting3D`. A
 file that doesn't end in `.lightmap.json` fails at `/file` (or `/id`, for its `light_data`).
 
-### voxel_gi.bake
+### voxel_lighting.bake
 
 Bakes a [`VoxelLighting3D`'s](scene-format.md#voxelgi) cells, as Godot's VoxelGI bake: the
 `Model3D`s whose `lighting_mode` is `"static"` under its parent (the whole world for a root)
 that touch its box, voxelized at its `subdiv` with their albedo, emission and normals. It writes
-a `.voxelgi.json` file and sets the VoxelLighting3D's `data` to it. Lights aren't baked: the renderer
+a `.voxellight.json` file and sets the VoxelLighting3D's `data` to it. Lights aren't baked: the renderer
 injects them into the cells as the game runs. It returns the file, how many meshes it voxelized,
 how many `cells` it made, the cells along each axis (`size`), the octree's `levels`, and
 `problems` when there are any: models or textures that don't load, which it leaves out. A bake
@@ -3566,7 +3566,7 @@ again. Meshes draw with the new cells at the next command or tick.
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | required | An entity with a `VoxelLighting3D` |
-| `file` | string | its `data`, else beside the scene, named after it and the entity | The `.voxelgi.json` file to write, project path |
+| `file` | string | its `data`, else beside the scene, named after it and the entity | The `.voxellight.json` file to write, project path |
 
 Needs: `edit` and `filesystem`. Takes `dry_run`. The room of
 [examples/voxel-gi-3d](../../examples/voxel-gi-3d/):
@@ -3576,11 +3576,11 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The room of
 ```
 
 ```json
-{"cells":12104,"file":"main.gi.voxelgi.json","levels":7,"meshes":4,"size":[64,32,64]}
+{"cells":12104,"file":"main.gi.voxellight.json","levels":7,"meshes":4,"size":[64,32,64]}
 ```
 
 An unknown ID fails at `/id` with a "did you mean"; an entity with no `VoxelLighting3D` fails at `/id`. A
-file that doesn't end in `.voxelgi.json` fails at `/file` (or `/id`, for its `data`).
+file that doesn't end in `.voxellight.json` fails at `/file` (or `/id`, for its `data`).
 
 ### occluder.bake
 

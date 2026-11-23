@@ -57,7 +57,7 @@
       "components": {
         "Model3D": {},
         "NavArea3D": {
-          "navigation_mesh": "valley.navmesh.json"
+          "navmesh": "valley.navmesh.json"
         },
         "PlaneGeometry": {
           "size": [40.0, 40.0]

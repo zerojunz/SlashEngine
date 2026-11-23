@@ -16,8 +16,8 @@ snapshots and undo leave them alone. `particles.eval` returns live particles, or
 settings for a time with `canvas::simulate`; `examples/particles` has a fountain, sparks, smoke
 and a portal.
 
-`GpuEmitter2D` is Godot's too, its particles moved on the device as a `.process_material.json`
-file (Godot's `ParticleProcessMaterial`; `$cli schema process_material`) says. The
+`GpuEmitter2D` is Godot's too, its particles moved on the device as a `.particles.json`
+file (Godot's `ParticleProcessMaterial`; `$cli schema particles`) says. The
 `gpu_particles_2d` system (priority 1110; `engine/canvas/src/gpu_particles.cpp`) ports Godot's
 node and particles storage: each tick it works out each emitter's `render::ParticleStep`s
 (`fixed_fps`, preprocess, the emission cycle, one-shot timing) and keeps those that can still
@@ -63,7 +63,7 @@ mesh at each live particle, turned by `billboard` where its `Surface3D` has a
 `Model3D`s) and colored by the particle. `particles.eval` lists them in 3D, and
 `examples/particles-3d` has a fountain, a fire and snow.
 
-`GpuEmitter3D` is Godot 4.6's: `.process_material.json` files read in 3D too
+`GpuEmitter3D` is Godot 4.6's: `.particles.json` files read in 3D too
 (`canvas::ProcessMaterial` holds both forms; `parse_process_material_3d` takes Godot's 3D fields
 and per-axis curves, a 2D file's two numbers keeping the 3D default's z) into a
 `render::ParticleProcess3D`. The `gpu_particles_3d` system (`engine/scene3d/src/gpu_particles.cpp`,

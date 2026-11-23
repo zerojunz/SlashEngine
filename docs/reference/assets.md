@@ -7,7 +7,7 @@ Status: current · Updated: 2026-11-20
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
 `canvas::add_asset_types` adds textures (`.png`, `.jpg`, `.bmp`, `.ktx2`), `.frames.json`, `.material.json`,
-`.process_material.json` and `.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
+`.particles.json` and `.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
 `text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
 adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.

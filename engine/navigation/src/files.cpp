@@ -1,4 +1,5 @@
 #include "slash/navigation/navigation.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <algorithm>
 #include <array>
@@ -508,7 +509,7 @@ void add_asset_types(asset::Assets& assets) {
         return bytes;
     };
     assets.add_type<NavigationMesh>(
-        "navigation_mesh", {std::string(kMeshSuffix)},
+        "navmesh", {std::string(kMeshSuffix)},
         [](std::string_view text, std::string_view /*path*/) -> Result<NavigationMesh> {
             auto doc = json::parse(text);
             if (!doc) {
@@ -521,7 +522,7 @@ void add_asset_types(asset::Assets& assets) {
                    polygons_bytes(mesh.polygons);
         });
     assets.add_type<NavigationPolygon>(
-        "navigation_polygon", {std::string(kPolygonSuffix)},
+        "navmesh2d", world::suffixes_of(kPolygonSuffix),
         [](std::string_view text, std::string_view /*path*/) -> Result<NavigationPolygon> {
             auto doc = json::parse(text);
             if (!doc) {
