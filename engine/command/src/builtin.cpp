@@ -1050,6 +1050,9 @@ Reply material_eval(Session& session, const json::Value& params) {
     if (loaded && !instance.value().compiled) {
         auto compiled = canvas::compile_material_shader(
             *loaded, [&](std::string_view file) -> Result<std::string> {
+                if (file.ends_with(procedural::kTextureSuffix)) {
+                    return session.assets().read(file, "texture_graph");
+                }
                 auto source = session.assets().load<std::string>(file);
                 if (!source) {
                     return source.error();

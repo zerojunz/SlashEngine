@@ -231,6 +231,7 @@ add_executable(slash_tests
     test_texture_forms.cpp
     test_texture_graph.cpp
     test_texture_graph_gpu.cpp
+    test_texture_graph_live.cpp
     test_textures.cpp
     test_tilemap.cpp
     test_tree2d.cpp

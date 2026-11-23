@@ -1,7 +1,7 @@
 // FastNoiseLite 1.1.1's HLSL (https://github.com/Auburn/FastNoiseLite, HLSL/FastNoiseLite.hlsl)
-// for shaders/texture_graph.hlsl's noise, with its 3D noise and warps left out and its tables in
-// group memory (fnlLoadTables). The CPU twin samples the same version's C++ (the fastnoiselite
-// pin in cmake/dependencies.json); keep the two at one version.
+// for texture graphs' noise, with its 3D noise and warps left out and its tables in group memory
+// (fnlLoadTables), or read where they are with FNL_STATIC_TABLES. The CPU twin samples the same
+// version's C++ (the fastnoiselite pin in cmake/dependencies.json); keep the two at one version.
 //
 // MIT License
 //
@@ -82,6 +82,25 @@ typedef int fnl_domain_warp_type;
     #define FNL_FLATTEN
     #define FNL_UNROLL
 #endif
+
+// The kinds of noise, fractal and domain warp compiled, a bit for each FNL_NOISE_*,
+// FNL_FRACTAL_* and FNL_DOMAIN_WARP_* value: a live texture graph's shader defines them to the
+// kinds its graph uses, so drivers compile only those; the bake compiles every kind.
+#ifndef FNL_USED_NOISE
+#define FNL_USED_NOISE 63
+#endif
+#ifndef FNL_USED_FRACTAL
+#define FNL_USED_FRACTAL 63
+#endif
+#ifndef FNL_USED_WARP
+#define FNL_USED_WARP 7
+#endif
+// Windows' HLSL compiler takes no shifts in #if, so a kind's bit is worked out by comparisons
+// and tested by division.
+#define FNL_BIT(kind)                                                                              \
+    (((kind) == 0) * 1 + ((kind) == 1) * 2 + ((kind) == 2) * 4 + ((kind) == 3) * 8 +               \
+     ((kind) == 4) * 16 + ((kind) == 5) * 32)
+#define FNL_USES(used, kind) ((used) / FNL_BIT(kind) - (used) / (FNL_BIT(kind) * 2) * 2 != 0)
 
 /**
  * Structure containing entire noise system state.
@@ -282,6 +301,12 @@ static const float FNL_RAND_VECS_2D_TABLE[512] =
     0.01426758847f, -0.9998982128f, -0.6734383991f, 0.7392433447f, 0.639412098f, -0.7688642071f, 0.9211571421f, 0.3891908523f, -0.146637214f, -0.9891903394f, -0.782318098f, 0.6228791163f, -0.5039610839f, -0.8637263605f, -0.7743120191f, -0.6328039957f,
 };
 
+#ifdef FNL_STATIC_TABLES
+// A fragment shader has no group memory, so live texture graphs (FNL_STATIC_TABLES) read the
+// constant tables themselves.
+#define GRADIENTS_2D FNL_GRADIENTS_2D_TABLE
+#define RAND_VECS_2D FNL_RAND_VECS_2D_TABLE
+#else
 // The tables, copied into group memory by fnlLoadTables before any noise is sampled: indexing a
 // constant array at run time makes some compilers (Tint) copy the whole array at every lookup.
 groupshared float GRADIENTS_2D[256];
@@ -299,6 +324,7 @@ void fnlLoadTables(uint thread, uint threads)
         RAND_VECS_2D[j] = FNL_RAND_VECS_2D_TABLE[j];
     }
 }
+#endif
 
 // Utilities
 
@@ -413,18 +439,30 @@ static float _fnlGenNoiseSingle2D(fnl_state state, int seed, FNLfloat x, FNLfloa
 {
     FNL_FLATTEN switch (state.noise_type)
     {
+#if FNL_USES(FNL_USED_NOISE, FNL_NOISE_OPENSIMPLEX2)
     case FNL_NOISE_OPENSIMPLEX2:
         return _fnlSingleSimplex2D(seed, x, y);
+#endif
+#if FNL_USES(FNL_USED_NOISE, FNL_NOISE_OPENSIMPLEX2S)
     case FNL_NOISE_OPENSIMPLEX2S:
         return _fnlSingleOpenSimplex2S2D(seed, x, y);
+#endif
+#if FNL_USES(FNL_USED_NOISE, FNL_NOISE_CELLULAR)
     case FNL_NOISE_CELLULAR:
         return _fnlSingleCellular2D(state, seed, x, y);
+#endif
+#if FNL_USES(FNL_USED_NOISE, FNL_NOISE_PERLIN)
     case FNL_NOISE_PERLIN:
         return _fnlSinglePerlin2D(seed, x, y);
+#endif
+#if FNL_USES(FNL_USED_NOISE, FNL_NOISE_VALUE_CUBIC)
     case FNL_NOISE_VALUE_CUBIC:
         return _fnlSingleValueCubic2D(seed, x, y);
+#endif
+#if FNL_USES(FNL_USED_NOISE, FNL_NOISE_VALUE)
     case FNL_NOISE_VALUE:
         return _fnlSingleValue2D(seed, x, y);
+#endif
     default:
         return 0;
     }
@@ -906,14 +944,22 @@ static void _fnlDoSingleDomainWarp2D(fnl_state state, int seed, float amp, float
 {
     FNL_FLATTEN switch (state.domain_warp_type)
     {
+#if FNL_USES(FNL_USED_WARP, FNL_DOMAIN_WARP_OPENSIMPLEX2)
     case FNL_DOMAIN_WARP_OPENSIMPLEX2:
         _fnlSingleDomainWarpSimplexGradient(seed, amp * 38.283687591552734375f, freq, x, y, xp, yp, false);
         break;
+#endif
+#if FNL_USES(FNL_USED_WARP, FNL_DOMAIN_WARP_OPENSIMPLEX2_REDUCED)
     case FNL_DOMAIN_WARP_OPENSIMPLEX2_REDUCED:
         _fnlSingleDomainWarpSimplexGradient(seed, amp * 16.0f, freq, x, y, xp, yp, true);
         break;
+#endif
+#if FNL_USES(FNL_USED_WARP, FNL_DOMAIN_WARP_BASICGRID)
     case FNL_DOMAIN_WARP_BASICGRID:
         _fnlSingleDomainWarpBasicGrid2D(seed, amp, freq, x, y, xp, yp);
+        break;
+#endif
+    default:
         break;
     }
 }
@@ -1142,13 +1188,23 @@ float fnlGetNoise2D(fnl_state state, FNLfloat x, FNLfloat y)
     FNL_FLATTEN switch (state.fractal_type)
     {
     default:
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_NONE)
         return _fnlGenNoiseSingle2D(state, state.seed, x, y);
+#else
+        return 0;
+#endif
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_FBM)
     case FNL_FRACTAL_FBM:
         return _fnlGenFractalFBM2D(state, x, y);
+#endif
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_RIDGED)
     case FNL_FRACTAL_RIDGED:
         return _fnlGenFractalRidged2D(state, x, y);
+#endif
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_PINGPONG)
     case FNL_FRACTAL_PINGPONG:
         return _fnlGenFractalPingPong2D(state, x, y);
+#endif
     }
 }
 
@@ -1157,14 +1213,20 @@ void fnlDomainWarp2D(fnl_state state, inout FNLfloat x, inout FNLfloat y)
     FNL_FLATTEN switch (state.fractal_type)
     {
     default:
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_NONE)
         _fnlDomainWarpSingle2D(state, x, y);
+#endif
         break;
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_DOMAIN_WARP_PROGRESSIVE)
     case FNL_FRACTAL_DOMAIN_WARP_PROGRESSIVE:
         _fnlDomainWarpFractalProgressive2D(state, x, y);
         break;
+#endif
+#if FNL_USES(FNL_USED_FRACTAL, FNL_FRACTAL_DOMAIN_WARP_INDEPENDENT)
     case FNL_FRACTAL_DOMAIN_WARP_INDEPENDENT:
         _fnlDomainWarpFractalIndependent2D(state, x, y);
         break;
+#endif
     }
 }
 
