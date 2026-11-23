@@ -2,7 +2,7 @@
   "entities": {
     "deck": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "pond.tileset.json",
           "z_index": 1
         },
@@ -11,7 +11,7 @@
     },
     "pond": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "tile_set": "pond.tileset.json"
         },
         "Transform2D": {}

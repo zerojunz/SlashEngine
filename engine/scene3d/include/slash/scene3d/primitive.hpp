@@ -28,24 +28,24 @@ struct MeshData {
     std::vector<std::uint32_t> indices;
 };
 
-[[nodiscard]] MeshData box_mesh(const world::BoxMesh& box);
-[[nodiscard]] MeshData sphere_mesh(const world::SphereMesh& sphere);
-[[nodiscard]] MeshData cylinder_mesh(const world::CylinderMesh& cylinder);
-[[nodiscard]] MeshData capsule_mesh(const world::CapsuleMesh& capsule);
-[[nodiscard]] MeshData plane_mesh(const world::PlaneMesh& plane);
-[[nodiscard]] MeshData quad_mesh(const world::QuadMesh& quad);
-[[nodiscard]] MeshData prism_mesh(const world::PrismMesh& prism);
-[[nodiscard]] MeshData torus_mesh(const world::TorusMesh& torus);
+[[nodiscard]] MeshData box_mesh(const world::BoxGeometry& box);
+[[nodiscard]] MeshData sphere_mesh(const world::SphereGeometry& sphere);
+[[nodiscard]] MeshData cylinder_mesh(const world::CylinderGeometry& cylinder);
+[[nodiscard]] MeshData capsule_mesh(const world::CapsuleGeometry& capsule);
+[[nodiscard]] MeshData plane_mesh(const world::PlaneGeometry& plane);
+[[nodiscard]] MeshData quad_mesh(const world::QuadGeometry& quad);
+[[nodiscard]] MeshData prism_mesh(const world::PrismGeometry& prism);
+[[nodiscard]] MeshData torus_mesh(const world::TorusGeometry& torus);
 
 // One of the primitive mesh components.
-using Primitive =
-    std::variant<world::BoxMesh, world::SphereMesh, world::CylinderMesh, world::CapsuleMesh,
-                 world::PlaneMesh, world::QuadMesh, world::PrismMesh, world::TorusMesh>;
+using Primitive = std::variant<world::BoxGeometry, world::SphereGeometry, world::CylinderGeometry,
+                               world::CapsuleGeometry, world::PlaneGeometry, world::QuadGeometry,
+                               world::PrismGeometry, world::TorusGeometry>;
 
 // Their component names, in the variant's order.
 inline constexpr std::array<std::string_view, 8> kPrimitiveNames = {
-    "BoxMesh",   "SphereMesh", "CylinderMesh", "CapsuleMesh",
-    "PlaneMesh", "QuadMesh",   "PrismMesh",    "TorusMesh"};
+    "BoxGeometry",   "SphereGeometry", "CylinderGeometry", "CapsuleGeometry",
+    "PlaneGeometry", "QuadGeometry",   "PrismGeometry",    "TorusGeometry"};
 
 // The entity's primitive mesh component, or nullopt for none; an error naming them when it has
 // more than one.

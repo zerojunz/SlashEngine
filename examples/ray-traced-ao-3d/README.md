@@ -4,7 +4,7 @@ The room of [ssao-3d](../ssao-3d/), its ambient occlusion traced by rays instead
 the screen, as `rendering.ray_tracing`'s `ambient_occlusion` turns it on in Forward+.
 [main.scene.json](main.scene.json) is the same: a floor, a back wall and a side wall, a crate
 against the back wall and a small blue box on the open floor, lit by warm ambient light and a dim
-sun, with the `WorldEnvironment`'s `ssao_enabled` on.
+sun, with the `Environment3D`'s `ssao_enabled` on.
 
 [project.json](project.json) sets `rendering.ray_tracing`: `ambient_occlusion` on, with 16 rays a
 pixel. Each opaque pixel sends them over the half of the sphere it faces, up to `ssao_radius`, and

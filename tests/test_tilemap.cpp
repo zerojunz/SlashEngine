@@ -122,9 +122,9 @@ std::vector<Vec2i> rect(int x, int y, int width, int height) {
     return out;
 }
 
-world::TileMapLayer layer(std::map<std::string, std::string> legend, std::vector<std::string> rows,
-                          Vec2i origin = {}) {
-    world::TileMapLayer out;
+world::TileLayer2D layer(std::map<std::string, std::string> legend, std::vector<std::string> rows,
+                         Vec2i origin = {}) {
+    world::TileLayer2D out;
     out.tile_set = "ground.tileset.json";
     out.origin = origin;
     out.legend = std::move(legend);
@@ -132,7 +132,7 @@ world::TileMapLayer layer(std::map<std::string, std::string> legend, std::vector
     return out;
 }
 
-std::string decode_error(const world::TileMapLayer& layer) {
+std::string decode_error(const world::TileLayer2D& layer) {
     auto cells = canvas::decode_cells(layer, ground());
     return cells.ok() ? "(valid)" : cells.error().message;
 }
@@ -285,7 +285,7 @@ TEST_CASE("a layer's cells are rows of legend keys, and encode in canonical form
 
     // Encoding: the origin is the top left of the cells, rows stop at their last tile, keys keep
     // standing for their tiles, and new keys go to the most used tiles first.
-    world::TileMapLayer out = layer({{"W", "water"}, {"z", "grass"}}, {});
+    world::TileLayer2D out = layer({{"W", "water"}, {"z", "grass"}}, {});
     canvas::Cells edit;
     for (const Vec2i cell : rect(3, -1, 3, 2)) {
         edit.emplace(cell, canvas::TileRef{.source = "ground", .atlas = {3, 0}}); // water
@@ -318,7 +318,7 @@ TEST_CASE("a layer's cells are rows of legend keys, and encode in canonical form
     for (int i = 0; i < 100; ++i) {
         wide.emplace(Vec2i{i, 0}, canvas::TileRef{.source = "s", .atlas = {i, 0}});
     }
-    world::TileMapLayer big;
+    world::TileLayer2D big;
     canvas::encode_cells(wide, many.value(), big);
     CHECK(big.legend.size() == 100);
     CHECK(big.legend.at("aa") == "s:0,0");
@@ -721,11 +721,11 @@ TEST_CASE("cells draw in order down the screen, so taller tiles overlap as they 
                        canvas::TileOffsetAxis::Horizontal)) == "0,0 0,1 1,0 1,1 2,0");
 }
 
-TEST_CASE("TileMapLayer saves its cells as text and checks them against its tile set") {
+TEST_CASE("TileLayer2D saves its cells as text and checks them against its tile set") {
     world::ComponentRegistry components;
     world::register_builtin_components(components);
     world::World world(components);
-    const world::ComponentType* type = components.find("TileMapLayer");
+    const world::ComponentType* type = components.find("TileLayer2D");
     REQUIRE(type != nullptr);
     const entt::entity entity = world.create("map").value();
     std::string path;
@@ -747,22 +747,22 @@ TEST_CASE("TileMapLayer saves its cells as text and checks them against its tile
         return slash::make_error(slash::ErrorCode::NotFound, "no such file");
     };
     const json::Value scene = parse(R"({"format": 1, "entities": {
-        "ok": {"components": {"TileMapLayer": {"tile_set": "ground.tileset.json",
+        "ok": {"components": {"TileLayer2D": {"tile_set": "ground.tileset.json",
                "legend": {"g": "grass"}, "rows": ["g.g"]}}},
-        "typo": {"components": {"TileMapLayer": {"tile_set": "ground.tileset.json",
+        "typo": {"components": {"TileLayer2D": {"tile_set": "ground.tileset.json",
                  "legend": {"g": "gras"}, "rows": ["gx"]}}},
-        "gone": {"components": {"TileMapLayer": {"tile_set": "gone.tileset.json"}}},
-        "no_set": {"components": {"TileMapLayer": {"rows": ["g"]}}},
+        "gone": {"components": {"TileLayer2D": {"tile_set": "gone.tileset.json"}}},
+        "no_set": {"components": {"TileLayer2D": {"rows": ["g"]}}},
         "prefab": {"extends": "map.prefab.json",
-                   "components": {"TileMapLayer": {"rows": ["zz"]}}}}})");
+                   "components": {"TileLayer2D": {"rows": ["zz"]}}}}})");
     const auto errors = canvas::check_tile_layers(scene, reader);
     REQUIRE(errors.size() == 4);
-    CHECK(errors[0].path == "/entities/gone/components/TileMapLayer/tile_set");
+    CHECK(errors[0].path == "/entities/gone/components/TileLayer2D/tile_set");
     CHECK(errors[0].message.find("gone.tileset.json") != std::string::npos);
-    CHECK(errors[1].path == "/entities/no_set/components/TileMapLayer/tile_set");
+    CHECK(errors[1].path == "/entities/no_set/components/TileLayer2D/tile_set");
     CHECK(errors[1].message == "a layer with cells needs a tile set");
-    CHECK(errors[2].path == "/entities/typo/components/TileMapLayer/legend/g");
-    CHECK(errors[3].path == "/entities/typo/components/TileMapLayer/rows/0");
+    CHECK(errors[2].path == "/entities/typo/components/TileLayer2D/legend/g");
+    CHECK(errors[3].path == "/entities/typo/components/TileLayer2D/rows/0");
     CHECK(errors[3].message == "column 1: \"x\" is not in the legend");
 }
 
@@ -873,14 +873,14 @@ TEST_CASE("the canvas draws tile map layers, one draw per run of a texture") {
     const Warnings warnings;
     const auto device = render::create_null_device();
     canvas::CanvasRenderer renderer(*device, scene.assets);
-    scene.create("map", R"({"TileMapLayer": {"tile_set": "map.tileset.json",
+    scene.create("map", R"({"TileLayer2D": {"tile_set": "map.tileset.json",
         "legend": {"r": "red", "b": "blue", "g": "green", "x": "past_the_edge"},
         "rows": ["rbg", "xrr"]}})");
-    scene.create("hidden", R"({"TileMapLayer": {"tile_set": "map.tileset.json",
+    scene.create("hidden", R"({"TileLayer2D": {"tile_set": "map.tileset.json",
         "legend": {"r": "red"}, "rows": ["r"], "visible": false}})");
-    scene.create("broken", R"({"TileMapLayer": {"tile_set": "map.tileset.json",
+    scene.create("broken", R"({"TileLayer2D": {"tile_set": "map.tileset.json",
         "legend": {"r": "red"}, "rows": ["q"]}})");
-    scene.create("no_set", R"({"TileMapLayer": {"tile_set": "gone.tileset.json",
+    scene.create("no_set", R"({"TileLayer2D": {"tile_set": "gone.tileset.json",
         "legend": {"r": "red"}, "rows": ["r"]}})");
 
     REQUIRE(renderer.draw(scene.world, {}).ok());
@@ -902,11 +902,11 @@ TEST_CASE("the canvas draws tile map layers, one draw per run of a texture") {
         });
     };
     CHECK(logged(R"("error":"the tile main:2,0 at [16, 0, 8, 8] goes outside the 16x8 )"));
-    CHECK(logged(R"("id":"broken","error":"TileMapLayer/rows/0: column 0: \"q\" is not )"));
+    CHECK(logged(R"("id":"broken","error":"TileLayer2D/rows/0: column 0: \"q\" is not )"));
     CHECK(logged(R"("tile_set":"gone.tileset.json")"));
 
     // Painting a cell is seen on the next frame.
-    auto& map = scene.world.ecs().get<world::TileMapLayer>(scene.world.find("map"));
+    auto& map = scene.world.ecs().get<world::TileLayer2D>(scene.world.find("map"));
     map.rows = {"rrr"};
     REQUIRE(renderer.draw(scene.world, options).ok());
     CHECK(renderer.tiles_drawn() == 3);
@@ -926,7 +926,7 @@ TEST_CASE("tiles draw centered on their cells, moved by the layer's transform, o
         CAPTURE(render::backend_name(device->backend()));
         Scene scene;
         scene.create("map", R"({"Transform2D": {"position": [8, 0]},
-            "TileMapLayer": {"tile_set": "map.tileset.json", "texture_filter": "nearest",
+            "TileLayer2D": {"tile_set": "map.tileset.json", "texture_filter": "nearest",
                              "origin": [-1, 1], "legend": {"r": "red", "b": "blue", "g": "green"},
                              "rows": ["rb", ".g"]}})");
         // A sprite above the layer covers one tile.
@@ -1065,7 +1065,7 @@ TEST_CASE("cells name a tile's alternative and turns after the tile") {
     CHECK(error("main:9,9:h") == R"(the source "main" has no tile at 9,9)");
 
     // Turned tiles are their own legend entries, keyed by the tile's name where it is free.
-    world::TileMapLayer layer;
+    world::TileLayer2D layer;
     layer.tile_set = "solid.tileset.json";
     canvas::Cells cells;
     cells[{0, 0}] = ref("block");
@@ -1131,7 +1131,7 @@ TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
         scene.files.write("quarters.tileset.json", R"({"format": 1, "tile_size": [8, 8],
             "sources": {"q": {"texture": "quarters.png", "tiles": {"0,0": {"name": "q",
                 "alternatives": {"1": {"flip_h": true, "modulate": [0, 1, 1, 1]}}}}}}})");
-        scene.create("map", R"({"TileMapLayer": {"tile_set": "quarters.tileset.json",
+        scene.create("map", R"({"TileLayer2D": {"tile_set": "quarters.tileset.json",
             "texture_filter": "nearest",
             "legend": {"a": "q", "b": "q:h", "c": "q:v", "d": "q:t", "e": "q:ht", "f": "q:1",
                        "g": "q:1:h"},
@@ -1217,7 +1217,7 @@ TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, a
         scene.files.write("tall.tileset.json", R"({"format": 1, "tile_size": [8, 8],
             "sources": {"q": {"texture": "quarters.png", "tiles": {"0,0": {"name": "o",
                 "texture_origin": [2, 3]}}}}})");
-        scene.create("map", R"({"TileMapLayer": {"tile_set": "tall.tileset.json",
+        scene.create("map", R"({"TileLayer2D": {"tile_set": "tall.tileset.json",
             "texture_filter": "nearest", "legend": {"o": "o", "h": "o:h"},
             "rows": ["....", ".o.h"]}})");
         auto target = device->create_texture(
@@ -1335,11 +1335,11 @@ TEST_CASE("animated tiles and tiles larger than one cell, as Godot's TileSetAtla
             "sources": {"s": {"texture": "strip.png", "tiles": {
                 "0,0": {"name": "flash", "animation_frames": [0.5, 0.5],
                         "animation_mode": "random_start_times"}}}}})");
-        scene.create("map", R"({"TileMapLayer": {"tile_set": "strip.tileset.json",
+        scene.create("map", R"({"TileLayer2D": {"tile_set": "strip.tileset.json",
             "texture_filter": "nearest", "legend": {"f": "flash", "w": "wide"},
             "rows": ["f.w"]}})");
         scene.create("random", R"({"Transform2D": {"position": [0, 4]},
-            "TileMapLayer": {"tile_set": "random.tileset.json", "texture_filter": "nearest",
+            "TileLayer2D": {"tile_set": "random.tileset.json", "texture_filter": "nearest",
             "legend": {"f": "flash"}, "rows": ["f.f.f"]}})");
         auto target = device->create_texture(
             {.width = 20, .height = 8, .filter = render::Filter::Nearest, .render_target = true});
@@ -1400,11 +1400,11 @@ TEST_CASE("a tile set source's normal map turns light on its tiles, flipped with
             "down": {"texture": "white.png", "normal_texture": "down.png",
                      "tiles": {"0,0": {"name": "down"}}},
             "plain": {"texture": "white.png", "tiles": {"0,0": {"name": "plain"}}}}})");
-        scene.create("map", R"({"TileMapLayer": {"tile_set": "lit.tileset.json",
+        scene.create("map", R"({"TileLayer2D": {"tile_set": "lit.tileset.json",
             "texture_filter": "nearest",
             "legend": {"a": "up", "b": "up:v", "c": "down", "d": "plain"}, "rows": ["abcd"]}})");
-        scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
-        scene.create("sun", R"({"DirectionalLight2D": {}})");
+        scene.create("night", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
+        scene.create("sun", R"({"SunLight2D": {}})");
         auto target = device->create_texture(
             {.width = 32, .height = 8, .filter = render::Filter::Nearest, .render_target = true});
         REQUIRE(target.ok());
@@ -1428,18 +1428,18 @@ TEST_CASE("tile map layers are solid where their tiles have collision polygons")
     slash::physics2d::install(scene.world);
     scene.files.write("solid.tileset.json", std::string(kSolid));
     // Five blocks from x 0 to 80, y 32 to 48, and a ledge row above them on the right.
-    const entt::entity ground = scene.create("ground", R"({"TileMapLayer": {
+    const entt::entity ground = scene.create("ground", R"({"TileLayer2D": {
         "tile_set": "solid.tileset.json", "origin": [0, 2], "legend": {"b": "block"},
         "rows": ["bbbbb"]}})");
-    scene.create("ledges", R"({"TileMapLayer": {"tile_set": "solid.tileset.json",
+    scene.create("ledges", R"({"TileLayer2D": {"tile_set": "solid.tileset.json",
         "origin": [6, 1], "legend": {"l": "ledge"}, "rows": ["ll"]}})");
     scene.create("ball", R"({"Transform2D": {"position": [40, 0]}, "RigidBody2D": {},
-        "CollisionShape2D": {"shape": "circle", "radius": 4}})");
+        "Collider2D": {"shape": "circle", "radius": 4}})");
     scene.create("riser", R"({"Transform2D": {"position": [112, 40]},
         "RigidBody2D": {"gravity_scale": 0, "linear_velocity": [0, -300]},
-        "CollisionShape2D": {"shape": "circle", "radius": 4}})");
+        "Collider2D": {"shape": "circle", "radius": 4}})");
     scene.create("lander", R"({"Transform2D": {"position": [104, 0]}, "RigidBody2D": {},
-        "CollisionShape2D": {"shape": "circle", "radius": 4}})");
+        "Collider2D": {"shape": "circle", "radius": 4}})");
     const auto y_of = [&](std::string_view id) {
         return scene.world.ecs().get<world::Transform2D>(scene.world.find(id)).position.y;
     };
@@ -1465,7 +1465,7 @@ TEST_CASE("tile map layers are solid where their tiles have collision polygons")
     CHECK(canvas::collision_shapes(scene.world).shapes == 3);
 
     // Moving the layer moves its body; painting cells rebuilds it.
-    auto& map = scene.world.ecs().get<world::TileMapLayer>(ground);
+    auto& map = scene.world.ecs().get<world::TileLayer2D>(ground);
     scene.world.ecs().emplace<world::Transform2D>(ground).position = {0, 16};
     hit = slash::physics2d::raycast(scene.world, {8, 0}, {8, 100});
     REQUIRE(hit.has_value());
@@ -1511,7 +1511,7 @@ TEST_CASE("isometric cells draw and collide at their centers, down the screen") 
             "sources": {"w": {"texture": "wide.png", "region_size": [32, 8],
                               "tiles": {"0,0": {"name": "red"}, "0,1": {"name": "blue"}}}}})");
         // Cells (2, 0) and (1, 1) are both centered 12 pixels down, at x 24 and 8.
-        scene.create("map", R"({"TileMapLayer": {"tile_set": "diamonds.tileset.json",
+        scene.create("map", R"({"TileLayer2D": {"tile_set": "diamonds.tileset.json",
             "texture_filter": "nearest", "legend": {"r": "red", "b": "blue"},
             "rows": ["..b", ".r"]}})");
         auto target = device->create_texture(
@@ -1700,14 +1700,13 @@ TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in
                 "2,0": {"name": "fence",
                         "occlusion": [{"layer": 1, "points": [[-4, 0], [4, 0]],
                                        "closed": false}]}}}}})");
-        scene.create("floor", R"({"TileMapLayer": {"tile_set": "walls.tileset.json",
+        scene.create("floor", R"({"TileLayer2D": {"tile_set": "walls.tileset.json",
             "legend": {"f": "floor"}, "rows": ["ffff", "ffff", "ffff"]}})");
         const entt::entity walls =
-            scene.create("walls", R"({"TileMapLayer": {"tile_set": "walls.tileset.json",
+            scene.create("walls", R"({"TileLayer2D": {"tile_set": "walls.tileset.json",
                 "legend": {"w": "wall", "f": "fence"}, "rows": [".w.f"]}})");
-        scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
-        const entt::entity sun =
-            scene.create("sun", R"({"DirectionalLight2D": {"shadow_enabled": true}})");
+        scene.create("night", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
+        const entt::entity sun = scene.create("sun", R"({"SunLight2D": {"shadow_enabled": true}})");
         auto target = device->create_texture(
             {.width = 32, .height = 24, .filter = render::Filter::Nearest, .render_target = true});
         REQUIRE(target.ok());
@@ -1725,10 +1724,10 @@ TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in
         CHECK(draw() == std::array{white, black, black, white});
         CHECK(renderer.shadows_drawn() > 0);
         // A layer whose occlusion is off casts no shadows.
-        scene.world.ecs().get<world::TileMapLayer>(walls).occlusion_enabled = false;
+        scene.world.ecs().get<world::TileLayer2D>(walls).occlusion_enabled = false;
         CHECK(draw() == std::array{white, white, white, white});
-        scene.world.ecs().get<world::TileMapLayer>(walls).occlusion_enabled = true;
-        scene.world.ecs().get<world::DirectionalLight2D>(sun).shadow_item_cull_mask = 2;
+        scene.world.ecs().get<world::TileLayer2D>(walls).occlusion_enabled = true;
+        scene.world.ecs().get<world::SunLight2D>(sun).shadow_item_cull_mask = 2;
         CHECK(draw() == std::array{white, white, white, black});
     }
 }

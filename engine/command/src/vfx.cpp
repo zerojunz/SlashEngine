@@ -228,9 +228,9 @@ Reply vfx_play(Session& session, const json::Value& params) {
         effect.free_on_finish = free_on_finish;
         ecs.emplace<world::VisualEffect3D>(entity, std::move(effect));
         if (bone != nullptr) {
-            world::BoneAttachment3D attachment;
+            world::BoneSocket3D attachment;
             attachment.bone_name = bone->as_string();
-            ecs.emplace<world::BoneAttachment3D>(entity, attachment);
+            ecs.emplace<world::BoneSocket3D>(entity, attachment);
         }
         if (parent != entt::null) {
             ecs.get<world::Transform3D>(parent).children.push_back(entity);
@@ -585,21 +585,21 @@ json::Value sample_of(const world::World& world, entt::entity effect, bool flat,
         } else {
             layers.insert(part.layer);
         }
-        if (ecs.all_of<world::CPUParticles3D>(entity)) {
+        if (ecs.all_of<world::Emitter3D>(entity)) {
             particles += static_cast<std::int64_t>(scene3d::particles_3d(world, entity).size());
         }
-        if (ecs.all_of<world::CPUParticles2D>(entity)) {
+        if (ecs.all_of<world::Emitter2D>(entity)) {
             particles += static_cast<std::int64_t>(canvas::particles(world, entity).size());
         }
-        if (const auto* g = ecs.try_get<const world::GPUParticles3D>(entity);
+        if (const auto* g = ecs.try_get<const world::GpuEmitter3D>(entity);
             g != nullptr && g->emitting) {
             particles += g->amount;
         }
-        if (const auto* g = ecs.try_get<const world::GPUParticles2D>(entity);
+        if (const auto* g = ecs.try_get<const world::GpuEmitter2D>(entity);
             g != nullptr && g->emitting) {
             particles += g->amount;
         }
-        if (const auto* l = ecs.try_get<const world::OmniLight3D>(entity); l != nullptr) {
+        if (const auto* l = ecs.try_get<const world::PointLight3D>(entity); l != nullptr) {
             light += l->light_energy;
         }
         if (const auto* l = ecs.try_get<const world::SpotLight3D>(entity); l != nullptr) {
@@ -609,7 +609,7 @@ json::Value sample_of(const world::World& world, entt::entity effect, bool flat,
             l != nullptr && l->enabled) {
             light += l->energy;
         }
-        if (const auto* rect = ecs.try_get<const world::ColorRect>(entity); rect != nullptr) {
+        if (const auto* rect = ecs.try_get<const world::ColorFill>(entity); rect != nullptr) {
             flash = std::max(flash, static_cast<double>(rect->color.w));
         }
     }
@@ -729,7 +729,7 @@ Reply vfx_preview(Session& session, const json::Value& params) {
         world::Transform3D sun_place;
         sun_place.rotation = {-0.9F, 0.4F, 0.0F};
         ecs.emplace<world::Transform3D>(sun, sun_place);
-        ecs.emplace<world::DirectionalLight3D>(sun);
+        ecs.emplace<world::SunLight3D>(sun);
     }
     json::Array samples;
     std::size_t next = 0;
@@ -820,7 +820,7 @@ void register_vfx_commands(Registry& registry) {
                                  "in the parent's space with a parent.");
         p["parent"] = property("string", "An entity to play it under, moving with it.");
         p["bone"] = property("string", "With a parent that draws a 3D model: a bone to follow, "
-                                       "as a BoneAttachment3D.");
+                                       "as a BoneSocket3D.");
         p["parameters"] = property("object", "The recipe's parameters to set, by name.");
         p["seed"] = property("integer", "Added to its emitters' seeds.");
         p["free_on_finish"] =

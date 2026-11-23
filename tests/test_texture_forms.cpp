@@ -240,7 +240,7 @@ TEST_CASE("exports ship textures in the forms project.json asks for, in place of
     write("ui/atlas.png", png_of(gradient(8, 8)));
     // A terrain's heightmap is data, and its splat and color maps ship as they are, since
     // terrains read their pixels.
-    write("land.scene.json", R"({"format": 1, "entities": {"land": {"components": {"HTerrain": {
+    write("land.scene.json", R"({"format": 1, "entities": {"land": {"components": {"Terrain3D": {
         "heightmap": "land.height.png", "splatmap": "land.splat.png",
         "colormap": "land.color.png"}}}}})");
     render::Gray16 heights{.width = 16, .height = 16, .values = {}};

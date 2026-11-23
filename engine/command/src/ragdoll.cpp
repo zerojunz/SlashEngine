@@ -204,7 +204,7 @@ Reply ragdoll_generate(Session& session, const json::Value& params) {
             return param_error(code::kNotFound, "/id", found.error().message);
         }
         entity = found.value();
-        const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+        const auto* instance = world.ecs().try_get<const world::Model3D>(entity);
         if ((instance == nullptr || instance->mesh.empty()) && params.find("model") == nullptr &&
             world.ecs().any_of<world::Transform2D, world::Ragdoll2D>(entity)) {
             return ragdoll_generate_2d(session, params, entity);
@@ -212,7 +212,7 @@ Reply ragdoll_generate(Session& session, const json::Value& params) {
         if (instance == nullptr || instance->mesh.empty()) {
             return param_error(code::kInvalidParams, "/id",
                                quoted(params.find("id")->as_string()) +
-                                   " has no MeshInstance3D drawing a model");
+                                   " has no Model3D drawing a model");
         }
         model_path = instance->mesh;
     }
@@ -423,7 +423,7 @@ void register_ragdoll_commands(Registry& registry) {
         .effect = Effect::Edit,
         .params = schema_of(
             {
-                {"id", id_property("An entity whose MeshInstance3D draws the model, or the root "
+                {"id", id_property("An entity whose Model3D draws the model, or the root "
                                    "of a 2D character's Transform2D tree.")},
                 {"model", std::move(model)},
                 {"out", std::move(out)},

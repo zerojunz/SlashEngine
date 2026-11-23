@@ -2,7 +2,7 @@
   "entities": {
     "burst": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 64,
           "lifetime": 0.8,
           "process_material": "burst.process_material.json",
@@ -13,7 +13,7 @@
     },
     "comets": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 4,
           "lifetime": 1.6,
           "process_material": "comets.process_material.json",
@@ -30,7 +30,7 @@
     },
     "fire": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 48,
           "process_material": "fire.process_material.json",
           "texture": "dot.png"
@@ -42,7 +42,7 @@
     },
     "fireflies": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 24,
           "lifetime": 4.0,
           "process_material": "fireflies.process_material.json",
@@ -55,7 +55,7 @@
     },
     "ledge": {
       "components": {
-        "LightOccluder2D": {
+        "Occluder2D": {
           "polygon": [
             [-20.0, 0.0],
             [20.0, 0.0],
@@ -70,7 +70,7 @@
     },
     "rain": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 40,
           "lifetime": 1.2,
           "process_material": "rain.process_material.json",
@@ -83,7 +83,7 @@
     },
     "rockets": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 4,
           "process_material": "rockets.process_material.json",
           "sub_emitter": "burst",
@@ -96,7 +96,7 @@
     },
     "smoke": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 30,
           "lifetime": 3.0,
           "process_material": "smoke.process_material.json",
@@ -109,7 +109,7 @@
     },
     "snow": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 40,
           "draw_order": "index",
           "fixed_fps": 0,
@@ -125,7 +125,7 @@
     },
     "sparks": {
       "components": {
-        "GPUParticles2D": {
+        "GpuEmitter2D": {
           "amount": 24,
           "explosiveness": 1.0,
           "lifetime": 0.6,

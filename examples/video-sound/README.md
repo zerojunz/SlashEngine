@@ -6,7 +6,7 @@ A video's sound played with its picture
 engine's own AV1 encoder into a Matroska file (`video::encode_matroska`) with two audio tracks
 of a square wave that halves in loudness with each color: 16-bit PCM, then the same at 48 kHz
 encoded as Opus by libopus (`video::encode_opus`). In
-[main.scene.json](main.scene.json) the `VideoStreamPlayer` `tv` plays it on the `Cutscenes` bus
+[main.scene.json](main.scene.json) the `Video` `tv` plays it on the `Cutscenes` bus
 of [default.bus_layout.json](default.bus_layout.json), 6 dB down, and the output is what
 `audio.state` lists for `tv` and what `audio.capture` measures on that bus:
 

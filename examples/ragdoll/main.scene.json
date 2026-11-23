@@ -2,11 +2,11 @@
   "entities": {
     "arm": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "Wave-loop",
           "library": "models/arm.gltf"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "models/arm.gltf"
         },
         "Transform3D": {
@@ -28,7 +28,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
           "ambient_light_energy": 0.5,
           "ambient_light_source": "color",
@@ -39,12 +39,12 @@
     },
     "forearm": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "height": 0.3,
           "radius": 0.05,
           "shape": "capsule"
         },
-        "PhysicalBone3D": {
+        "SimulatedBone3D": {
           "body_offset_position": [0.0, 0.25, 0.0],
           "bone_name": "Elbow",
           "joint_rotation": [0.0, 0.0, 1.5707964],
@@ -56,34 +56,34 @@
     },
     "ground": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "position": [0.0, -0.5, 0.0],
           "size": [20.0, 1.0, 20.0]
         },
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [20.0, 20.0]
         },
-        "StandardMaterial3D": {
+        "StaticBody3D": {},
+        "Surface3D": {
           "albedo_color": [0.35, 0.58, 0.28, 1.0]
         },
-        "StaticBody3D": {},
         "Transform3D": {}
       }
     },
     "pedestal": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.3, 0.6, 0.3]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [0.3, 0.6, 0.3]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "StaticBody3D": {},
+        "Surface3D": {
           "albedo_color": [0.6, 0.6, 0.65, 1.0]
         },
-        "StaticBody3D": {},
         "Transform3D": {
           "position": [0.0, 0.3, 0.0]
         }
@@ -91,7 +91,7 @@
     },
     "ragdoll": {
       "components": {
-        "PhysicalBoneSimulator3D": {},
+        "BoneSimulation3D": {},
         "Transform3D": {
           "children": ["upper_arm", "forearm"]
         }
@@ -99,7 +99,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, -0.5, 0.0]
         }
@@ -107,12 +107,12 @@
     },
     "upper_arm": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "height": 0.5,
           "radius": 0.06,
           "shape": "capsule"
         },
-        "PhysicalBone3D": {
+        "SimulatedBone3D": {
           "body_offset_position": [0.0, 0.4, 0.0],
           "bone_name": "Shoulder"
         },

@@ -1,8 +1,9 @@
-// VoxelGI, as Godot 4.6's: the voxelizer (scene/3d/voxelizer.cpp), its distance field, the light
-// injection Godot's voxel_gi.glsl runs on the GPU (here on the CPU, on the job pool) and baking a
-// VoxelGI entity (scene/3d/voxel_gi.cpp). Godot's code is MIT; its triangle and box test is Tomas
-// Akenine-Möller's, its distance transform Pedro Felzenszwalb and Daniel Huttenlocher's (after
-// Philip Rideout's code), and its RGBE9995 packing Microsoft's MiniEngine (MIT).
+// VoxelLighting3D, as Godot 4.6's: the voxelizer (scene/3d/voxelizer.cpp), its distance field, the
+// light injection Godot's voxel_gi.glsl runs on the GPU (here on the CPU, on the job pool) and
+// baking a VoxelLighting3D entity (scene/3d/voxel_gi.cpp). Godot's code is MIT; its triangle and
+// box test is Tomas Akenine-Möller's, its distance transform Pedro Felzenszwalb and Daniel
+// Huttenlocher's (after Philip Rideout's code), and its RGBE9995 packing Microsoft's MiniEngine
+// (MIT).
 
 #include "slash/scene3d/voxel_gi.hpp"
 
@@ -100,9 +101,9 @@ std::uint64_t cell_key(const VoxelGICell& cell) {
 json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
-    schema["title"] = "SlashEngine VoxelGI data";
+    schema["title"] = "SlashEngine VoxelLighting3D data";
     schema["description"] =
-        "The cells a VoxelGI voxelized, as Godot's VoxelGIData: voxel_gi.bake writes it.";
+        "The cells a VoxelLighting3D voxelized, as Godot's VoxelGIData: voxel_gi.bake writes it.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "bounds", "octree_size", "level_counts", "cells"};
@@ -113,8 +114,8 @@ json::Value make_schema() {
     properties["bounds"]["items"]["type"] = "number";
     properties["bounds"]["minItems"] = 6;
     properties["bounds"]["maxItems"] = 6;
-    properties["bounds"]["description"] =
-        "The box it voxelized, in its VoxelGI's space: position x, y, z, then size x, y, z.";
+    properties["bounds"]["description"] = "The box it voxelized, in its VoxelLighting3D's space: "
+                                          "position x, y, z, then size x, y, z.";
     properties["octree_size"]["type"] = "array";
     properties["octree_size"]["items"]["type"] = "integer";
     properties["octree_size"]["items"]["minimum"] = 1;
@@ -953,8 +954,8 @@ struct Grid3D {
     }
 };
 
-// The light lights bring places in a VoxelGI's cells, as voxel_gi.glsl's compute_light_at_pos:
-// shadows are marched through the cells' distance field.
+// The light lights bring places in a VoxelLighting3D's cells, as voxel_gi.glsl's
+// compute_light_at_pos: shadows are marched through the cells' distance field.
 class LightField {
 public:
     LightField(const VoxelGIData& data, const VoxelGIOctree& octree,
@@ -1361,19 +1362,19 @@ Box placed_box(std::span<const render::Vertex3D> vertices, const world::Affine3D
     return out;
 }
 
-// Reads entities' meshes as a VoxelGI takes them, their materials' images through sources and
-// their emission at exposure; what can't be read is a problem.
+// Reads entities' meshes as a VoxelLighting3D takes them, their materials' images through sources
+// and their emission at exposure; what can't be read is a problem.
 class MeshReader {
 public:
     MeshReader(const world::World& world, const LightmapSources& sources, float exposure,
                std::vector<Problem>& problems)
         : world_(world), sources_(sources), exposure_(exposure), problems_(problems) {}
 
-    // The meshes of the entity's MeshInstance3D in its own space (voxel_gi_meshes).
+    // The meshes of the entity's Model3D in its own space (voxel_gi_meshes).
     void read(entt::entity entity, std::vector<VoxelGIMesh>& out) {
         const auto& ecs = world_.ecs();
-        const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
-        const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+        const auto& instance = ecs.get<const world::Model3D>(entity);
+        const auto* standard = ecs.try_get<const world::Surface3D>(entity);
         std::shared_ptr<const VoxelGIMaterial> override_material;
         if (standard != nullptr) {
             override_material = material(*standard, entity, nullptr);
@@ -1419,12 +1420,12 @@ private:
         return loaded.value();
     }
 
-    // A StandardMaterial3D as baked; its textures are those of a model where given, else its
+    // A Surface3D as baked; its textures are those of a model where given, else its
     // own project paths.
     std::shared_ptr<const VoxelGIMaterial>
-    material(const world::StandardMaterial3D& standard, entt::entity entity,
+    material(const world::Surface3D& standard, entt::entity entity,
              const std::function<std::shared_ptr<const render::Image>(bool emission)>& model) {
-        const std::string field = "/components/StandardMaterial3D/";
+        const std::string field = "/components/Surface3D/";
         std::shared_ptr<const render::Image> albedo;
         std::shared_ptr<const render::Image> emission;
         if (model) {
@@ -1441,10 +1442,10 @@ private:
             exposure_ * (physical_light_units(world_) ? standard.emission_intensity : 1.0F)));
     }
 
-    void add_model(entt::entity entity, const world::MeshInstance3D& instance,
+    void add_model(entt::entity entity, const world::Model3D& instance,
                    const std::shared_ptr<const VoxelGIMaterial>& override_material,
                    std::vector<VoxelGIMesh>& out) {
-        const std::string field = "/components/MeshInstance3D/mesh";
+        const std::string field = "/components/Model3D/mesh";
         if (!sources_.models) {
             problems_.push_back({entity, field, "models can't load here"});
             return;
@@ -1960,7 +1961,7 @@ private:
     const VoxelGISettings& settings_;
     jobs::Pool* pool_;
     std::array<std::uint32_t, 3> octree_size_;
-    world::Affine3D to_map_; // the VoxelGI's space to the finest map's texels
+    world::Affine3D to_map_; // the VoxelLighting3D's space to the finest map's texels
 };
 
 } // namespace
@@ -2059,9 +2060,8 @@ world::Affine3D voxel_gi_to_cell(const VoxelGIData& data) {
     return out;
 }
 
-VoxelGIMaterial voxel_gi_material(const world::StandardMaterial3D& standard,
-                                  const render::Image* albedo, const render::Image* emission,
-                                  float exposure) {
+VoxelGIMaterial voxel_gi_material(const world::Surface3D& standard, const render::Image* albedo,
+                                  const render::Image* emission, float exposure) {
     VoxelGIMaterial out;
     const std::array<float, 3> albedo_color{srgb_to_linear(standard.albedo_color.x),
                                             srgb_to_linear(standard.albedo_color.y),
@@ -2184,7 +2184,7 @@ std::vector<VoxelGIMesh> voxel_gi_meshes(const world::World& world, entt::entity
                                          const LightmapSources& sources, float exposure,
                                          std::vector<Problem>& problems) {
     std::vector<VoxelGIMesh> out;
-    if (!world.valid(entity) || !world.ecs().all_of<world::MeshInstance3D>(entity)) {
+    if (!world.valid(entity) || !world.ecs().all_of<world::Model3D>(entity)) {
         return out;
     }
     MeshReader reader(world, sources, exposure, problems);
@@ -2210,7 +2210,7 @@ Result<VoxelGIAtlas> voxel_gi_atlas(const VoxelGITexture& texture) {
     const std::size_t levels = texture.sizes.size();
     if (levels == 0 || levels > render::kMaxVoxelGILevels || texture.levels.size() != levels) {
         return make_error(ErrorCode::InvalidArgument,
-                          "a VoxelGI's texture has 1 to " +
+                          "a VoxelLighting3D's texture has 1 to " +
                               std::to_string(render::kMaxVoxelGILevels) + " levels");
     }
     for (std::size_t i = 0; i < levels; ++i) {
@@ -2219,7 +2219,7 @@ Result<VoxelGIAtlas> voxel_gi_atlas(const VoxelGITexture& texture) {
             size[1] > render::kMaxVoxelGICells || size[2] > render::kMaxVoxelGICells ||
             texture.levels[i].size() != std::size_t{size[0]} * size[1] * size[2] * 4) {
             return make_error(ErrorCode::InvalidArgument,
-                              "a VoxelGI's texture has 1 to " +
+                              "a VoxelLighting3D's texture has 1 to " +
                                   std::to_string(render::kMaxVoxelGICells) +
                                   " texels along each axis and 4 bytes a texel");
         }
@@ -2250,7 +2250,7 @@ Result<VoxelGIAtlas> voxel_gi_atlas(const VoxelGITexture& texture) {
     }
     if (height > render::kMaxTextureSize || width > render::kMaxTextureSize) {
         return make_error(ErrorCode::InvalidArgument,
-                          "a VoxelGI's texture is too big for an atlas of " +
+                          "a VoxelLighting3D's texture is too big for an atlas of " +
                               std::to_string(render::kMaxTextureSize) + " texels a side");
     }
     out.image.width = static_cast<std::uint32_t>(width);
@@ -2274,7 +2274,7 @@ Result<VoxelGIAtlas> voxel_gi_atlas(const VoxelGITexture& texture) {
     return out;
 }
 
-render::VoxelGIProbe voxel_gi_probe(const world::VoxelGI& voxel_gi, const VoxelGIData& data,
+render::VoxelGIProbe voxel_gi_probe(const world::VoxelLighting3D& voxel_gi, const VoxelGIData& data,
                                     const VoxelGIAtlas& atlas, const world::Affine3D& transform,
                                     float exposure_normalization) {
     const world::Affine3D to_cell = voxel_gi_to_cell(data) * transform.inverse();
@@ -2322,10 +2322,10 @@ VoxelGILight voxel_gi_light(const render::Light3D& light, float indirect_energy,
 
 Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity,
                                   const LightmapSources& sources) {
-    if (!world.valid(entity) || !world.ecs().all_of<world::VoxelGI>(entity)) {
-        return make_error(ErrorCode::InvalidArgument, "the entity has no VoxelGI");
+    if (!world.valid(entity) || !world.ecs().all_of<world::VoxelLighting3D>(entity)) {
+        return make_error(ErrorCode::InvalidArgument, "the entity has no VoxelLighting3D");
     }
-    const auto& gi = world.ecs().get<const world::VoxelGI>(entity);
+    const auto& gi = world.ecs().get<const world::VoxelLighting3D>(entity);
     const int subdiv = voxel_gi_subdiv(gi.subdiv);
     if (subdiv == 0) {
         return make_error(ErrorCode::InvalidArgument,
@@ -2338,14 +2338,12 @@ Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity
     float exposure = 1.0F;
     if (!gi.camera_attributes.empty()) {
         const entt::entity attributes = world.find(gi.camera_attributes);
-        if (attributes == entt::null ||
-            !world.ecs().all_of<world::CameraAttributesPractical>(attributes)) {
-            return make_error(ErrorCode::InvalidArgument,
-                              "camera_attributes \"" + gi.camera_attributes +
-                                  "\" isn't an entity with CameraAttributesPractical");
+        if (attributes == entt::null || !world.ecs().all_of<world::CameraLens>(attributes)) {
+            return make_error(ErrorCode::InvalidArgument, "camera_attributes \"" +
+                                                              gi.camera_attributes +
+                                                              "\" isn't an entity with CameraLens");
         }
-        exposure =
-            world.ecs().get<const world::CameraAttributesPractical>(attributes).exposure_multiplier;
+        exposure = world.ecs().get<const world::CameraLens>(attributes).exposure_multiplier;
     }
     VoxelGIBake out;
     const world::Tree3D tree(world);
@@ -2358,8 +2356,8 @@ Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity
     // VoxelGI::_find_meshes finds them.
     MeshReader reader(world, sources, exposure, out.problems);
     std::vector<VoxelGIMesh> meshes;
-    for (const entt::entity found : made<world::MeshInstance3D>(world)) {
-        const auto& instance = world.ecs().get<const world::MeshInstance3D>(found);
+    for (const entt::entity found : made<world::Model3D>(world)) {
+        const auto& instance = world.ecs().get<const world::Model3D>(found);
         if (instance.gi_mode != "static" || !tree.visible(found) ||
             !at_or_under(tree, found, scope)) {
             continue;
@@ -2381,9 +2379,9 @@ Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity
 
 std::vector<Problem> check_voxel_gis(const world::World& world) {
     std::vector<Problem> problems;
-    for (const entt::entity entity : made<world::VoxelGI>(world)) {
-        const auto& gi = world.ecs().get<const world::VoxelGI>(entity);
-        const std::string base = "/components/VoxelGI/";
+    for (const entt::entity entity : made<world::VoxelLighting3D>(world)) {
+        const auto& gi = world.ecs().get<const world::VoxelLighting3D>(entity);
+        const std::string base = "/components/VoxelLighting3D/";
         if (voxel_gi_subdiv(gi.subdiv) == 0) {
             problems.push_back({entity, base + "subdiv",
                                 "\"" + gi.subdiv + R"(" isn't "64", "128", "256" or "512")"});
@@ -2393,11 +2391,10 @@ std::vector<Problem> check_voxel_gis(const world::World& world) {
         }
         if (!gi.camera_attributes.empty()) {
             const entt::entity attributes = world.find(gi.camera_attributes);
-            if (attributes == entt::null ||
-                !world.ecs().all_of<world::CameraAttributesPractical>(attributes)) {
-                problems.push_back({entity, base + "camera_attributes",
-                                    "\"" + gi.camera_attributes +
-                                        "\" isn't an entity with CameraAttributesPractical"});
+            if (attributes == entt::null || !world.ecs().all_of<world::CameraLens>(attributes)) {
+                problems.push_back(
+                    {entity, base + "camera_attributes",
+                     "\"" + gi.camera_attributes + "\" isn't an entity with CameraLens"});
             }
         }
         const std::string& path = gi.data;

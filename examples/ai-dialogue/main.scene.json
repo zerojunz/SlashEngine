@@ -2,10 +2,10 @@
   "entities": {
     "column": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "children": ["speech", "talk"],
           "custom_minimum_size": [320.0, 0.0]
         }
@@ -20,7 +20,7 @@
     },
     "speech": {
       "components": {
-        "Control": {},
+        "Widget": {},
         "Label": {
           "autowrap_mode": "word_smart",
           "text": "Mira looks up from the counter."
@@ -32,7 +32,7 @@
         "Button": {
           "text": "Talk"
         },
-        "Control": {}
+        "Widget": {}
       }
     }
   },

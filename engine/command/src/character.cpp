@@ -1075,20 +1075,20 @@ Reply character_place(Session& session, const json::Value& params) {
             transform.rotation.y = static_cast<real_t>(yaw->as_double());
         }
         ecs.emplace<world::Transform3D>(entity, transform);
-        world::MeshInstance3D instance;
+        world::Model3D instance;
         instance.mesh = recipe_path;
-        ecs.emplace<world::MeshInstance3D>(entity, instance);
-        components = {"Transform3D", "MeshInstance3D"};
+        ecs.emplace<world::Model3D>(entity, instance);
+        components = {"Transform3D", "Model3D"};
         if (with_flesh) {
             ecs.emplace<world::Flesh3D>(entity);
             components.emplace_back("Flesh3D");
         }
         if (!recipe.value().hair.groom.empty()) {
-            world::HairInstance3D hair;
+            world::Hair3D hair;
             hair.groom = recipe.value().hair.groom;
             hair.section = "scalp";
-            ecs.emplace<world::HairInstance3D>(entity, hair);
-            components.emplace_back("HairInstance3D");
+            ecs.emplace<world::Hair3D>(entity, hair);
+            components.emplace_back("Hair3D");
         }
         for (const world::Garment& worn : recipe.value().clothing) {
             if (worn.cloth) {
@@ -1118,7 +1118,7 @@ Reply character_place(Session& session, const json::Value& params) {
             return made.value();
         };
         if (const entt::entity twists = child("twists"); twists != entt::null) {
-            world::CopyTransformModifier3D copy;
+            world::BoneCopy3D copy;
             const auto twist = [&](std::string apply, std::string reference, bool inverted) {
                 world::CopyTransformSetting setting;
                 setting.amount = 0.5F;
@@ -1136,7 +1136,7 @@ Reply character_place(Session& session, const json::Value& params) {
                 twist(side + "LowerArmTwist", side + "Hand", false);
                 twist(side + "UpperLegTwist", side + "UpperLeg", true);
             }
-            ecs.emplace<world::CopyTransformModifier3D>(twists, std::move(copy));
+            ecs.emplace<world::BoneCopy3D>(twists, std::move(copy));
         }
         if (look_at != entt::null) {
             for (const std::string side : {"Left", "Right"}) {
@@ -1144,7 +1144,7 @@ Reply character_place(Session& session, const json::Value& params) {
                 if (eye == entt::null) {
                     continue;
                 }
-                world::LookAtModifier3D look;
+                world::BoneLookAt3D look;
                 look.bone = side + "Eye";
                 look.target_node = look_at;
                 look.forward_axis = "plus_y";
@@ -1152,7 +1152,7 @@ Reply character_place(Session& session, const json::Value& params) {
                 look.use_angle_limitation = true;
                 look.primary_limit_angle = 1.2F;
                 look.secondary_limit_angle = 0.8F;
-                ecs.emplace<world::LookAtModifier3D>(eye, look);
+                ecs.emplace<world::BoneLookAt3D>(eye, look);
             }
         }
         result["modifiers"] = std::move(modifiers);
@@ -1300,8 +1300,8 @@ void register_character_commands(Registry& registry) {
     ppm["exclusiveMinimum"] = 0;
     registry.add({
         .name = "character.place",
-        .description = "Makes an entity of a .character.json recipe: in 3D a MeshInstance3D "
-                       "drawing its rigged model, with a HairInstance3D on its scalp for a groom, "
+        .description = "Makes an entity of a .character.json recipe: in 3D a Model3D "
+                       "drawing its rigged model, with a Hair3D on its scalp for a groom, "
                        "a Cloth3D on a cloth garment and modifier children for its twist bones "
                        "and eyes; in 2D a Character2D, whose cut-out's bones the character_2d "
                        "system keeps as <id>_<bone> children.",

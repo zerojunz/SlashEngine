@@ -14,7 +14,7 @@ ball rolling across it, which no palette of 8 colors a block can keep, and codes
   frame within 3 levels of its source on average.
 
 Then it writes `sunset.ivf` and opens [main.scene.json](main.scene.json), where the
-`VideoStreamPlayer` `cutscene` plays it stretched over the whole window. It checks a few pixels
+`Video` `cutscene` plays it stretched over the whole window. It checks a few pixels
 `frame.capture` draws against the source as the video plays, seeks to 1.5 seconds (decoding on
 from the key frame at 1 second) and runs past the end.
 

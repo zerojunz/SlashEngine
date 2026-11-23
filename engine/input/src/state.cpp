@@ -439,7 +439,7 @@ Map Map::with_defaults(Keyboard keyboard) {
     add("ui_text_select_all", {key_binding(Key::A, cmd)});
     add("ui_text_clear_carets_and_selection", {key_binding(Key::Escape)});
     add("ui_swap_input_direction", {key_binding(Key::QuoteLeft, cmd)});
-    // TextEdit's.
+    // TextArea's.
     const Modifiers cmd_alt =
         mac ? Modifiers{.alt = true, .meta = true} : Modifiers{.ctrl = true, .alt = true};
     add("ui_text_newline", {key_binding(Key::Enter), key_binding(Key::KpEnter),

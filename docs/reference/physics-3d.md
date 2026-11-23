@@ -5,8 +5,8 @@
 Status: current · Updated: 2026-11-20
 
 `engine/physics3d` is 3D physics on Jolt Physics, as Godot 4.4's Jolt module. Bodies and areas
-are components: `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `CharacterBody3D` and
-`Area3D`, with `CollisionShape3D` shapes (`box`, `sphere`, `capsule`, `cylinder`,
+are components: `StaticBody3D`, `MovingBody3D`, `RigidBody3D`, `CharacterMover3D` and
+`Zone3D`, with `Collider3D` shapes (`box`, `sphere`, `capsule`, `cylinder`,
 `convex_polygon`, `concave_polygon`, `world_boundary`), built as Godot's `JoltShape3D`
 subclasses build them (`src/shapes.cpp`). As in 2D, the ECS holds the truth: the `physics3d`
 system (priority 950) brings Jolt's system up to date with the components, applies Godot's
@@ -22,20 +22,20 @@ three-number points, a 3D shape or a 3D body. Jolt is built with
 `CROSS_PLATFORM_DETERMINISTIC` and the space adds and changes bodies in entity order, so results
 are the same on every platform. `examples/physics-3d` has every kind of body.
 
-Joints are Godot's `PinJoint3D`, `HingeJoint3D`, `SliderJoint3D`, `ConeTwistJoint3D` and
-`Generic6DOFJoint3D` as components on an entity of their own, built into Jolt constraints as
+Joints are Godot's `PinJoint3D`, `HingeJoint3D`, `SlideJoint3D`, `ConeJoint3D` and
+`SixAxisJoint3D` as components on an entity of their own, built into Jolt constraints as
 Godot's `JoltJoint3D` subclasses build them (`src/joints.cpp`): made at the entity's
 `Transform3D` between `node_a` and `node_b` (a missing one is the world), made again when that
-transform or the bodies change and rebuilt in place for other changes. `VehicleBody3D` on a
-rigid body rolls it on the `VehicleWheel3D` entities among its children, with Godot's
-`VehicleBody3D` code ported line for line in `src/vehicle.cpp`: its inputs go to the wheels
+transform or the bodies change and rebuilt in place for other changes. `WheeledBody3D` on a
+rigid body rolls it on the `Wheel3D` entities among its children, with Godot's
+`WheeledBody3D` code ported line for line in `src/vehicle.cpp`: its inputs go to the wheels
 before the step, each wheel's ray cast, suspension and friction push the body after it, and the
 wheels' `Transform3D` and contact fields are written back. `examples/joints-and-vehicles` has a
 lamp, a bell, a door, a drawer and a car.
 
 Soft bodies are Godot's `SoftBody3D` on its Jolt module (`src/soft_body.cpp`, after
 `JoltSoftBody3D`): `sync_soft_bodies` makes a Jolt soft body of the primitive mesh the entity's
-`MeshInstance3D` draws, its vertices welded by position into points (`SoftBody::mesh_to_physics`)
+`Model3D` draws, its vertices welded by position into points (`SoftBody::mesh_to_physics`)
 with Godot's stiffness, shrinking and edge springs, moves pinned points to their attachments
 before each step and keeps each body's `scene3d::SoftBodyPose` after it. Soft bodies feel Jolt's
 own gravity, which the space sets to the project's (every other body's `mGravityFactor` is 0, as
@@ -71,7 +71,7 @@ freeze them with `FracturePiece3D` links, loosen those near the hit and, after e
 links too weak and drop what no link holds. `Space::note_impact` damages profiled bodies by
 their `impact` settings. physics2d does the same (`src/destruction.cpp`): Box2D's hit events
 (`Space::collect_hits`) and `damage_body_2d` cut a body's outline into cells with Clipper2,
-each a `RigidBody2D` with a `CollisionPolygon2D` and a `Polygon2D` of its part of the look
+each a `RigidBody2D` with a `PolygonCollider2D` and a `Polygon2D` of its part of the look
 (`FracturePiece2D`). `damage.apply`, `damage.state` and `damage.check`
 (`engine/command/src/damage.cpp`) drive and read them; `examples/destruction-profiles` breaks a
 garden wall, a window and 2D crates. Damage short of breaking deforms by the profile's `deform`:
@@ -79,7 +79,7 @@ physics3d's `deform_body` adds a `Destructible3D`'s `dents` and `carves` (in its
 which scene3d's `deform` (in `src/csg.cpp`: carves as hulls of rings subtracted in Manifold,
 dents by `Warp` on a refined mesh) applies, `damaged_piece_of` keeps and the renderer draws;
 `reshape` makes a carved body collide as what is left, and a break moves its damage into the new
-`FractureCut`, so pieces keep it. An `HTerrain`'s `craters` are dug into its heights by
+`FractureCut`, so pieces keep it. An `Terrain3D`'s `craters` are dug into its heights by
 `scene3d::dig_crater` as the data is made. physics2d's `deform_body_2d` cuts a 2D outline with
 Clipper2 (`open_holes` slots holes to the edge), drops the parts cut off as debris and carves
 tile map layers through the `TileCarver` the canvas sets (`set_tile_carver`). Cloth tears:
@@ -106,19 +106,19 @@ the world's job pool (`fracture_of` passes it), in the same order on any number 
 `examples/break-effects` scorches a crate, fells a deer and wrecks a van.
 
 Wind is SlashEngine's own, after Unreal's `WindDirectionalSource` (Godot's only wind is an
-`Area3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in
+`Zone3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in
 `engine/physics3d/src/soft_body.cpp`, after `_compute_area_windforce`). `world::WindField`
 (`slash/world/wind.hpp`, `engine/world/src/wind.cpp`, built with `-ffp-contract=off`) sums the
 enabled `WindSource3D`s, directional along the entity's -z or `point_wind` out to `radius`, with
 gusts that travel downwind and turbulence across it from a noise of whole numbers hashed with
 each source's ID, on the clock the `wind` system (priority -650, added by `canvas::install` and
 `physics3d::install`) keeps (`world::wind_time`, reset with the world's state). Soft bodies take
-its drag by their `drag_coefficient` before each step, `CPUParticles3D` add it times
-`wind_influence` to gravity, `GPUParticles3D` get it as a box attractor that pushes everywhere
+its drag by their `drag_coefficient` before each step, `Emitter3D` add it times
+`wind_influence` to gravity, `GpuEmitter3D` get it as a box attractor that pushes everywhere
 (`wind_attractor` in `engine/scene3d/src/gpu_particles.cpp`, so devices need no change), and
 spatial shaders read it at the mesh's origin as `WIND` (`render::kShaderWindConstant`, filled in
 `scene3d::Renderer::prepare`). In 2D, `world::WindField2D` sums `WindSource2D`s along their x
-axis in pixels, which `CPUParticles2D` feel by `wind_influence` and canvas shaders read as `WIND`
+axis in pixels, which `Emitter2D` feel by `wind_influence` and canvas shaders read as `WIND`
 (filled by `CanvasRenderer::draw`'s `blow`). `wind.sample` returns either at points;
 `examples/wind` blows a meadow.
 
@@ -133,7 +133,7 @@ times `bend` with sway, each instance's phase and rate hashed from its place by 
 `phase_spread` and `frequency_spread`, gusts rolling downwind by `wave_length`, `flutter` across
 the wind and an `idle` rock in still air, plus the push of characters, capped) and `install_foliage`, the
 `foliage` system (priority 970) springing instances that `CharacterBody`, `RigidBody` and
-`VehicleBody3D` entities push. `scene3d::Renderer` draws each instance's model bent about its
+`WheeledBody3D` entities push. `scene3d::Renderer` draws each instance's model bent about its
 foot, fading by alpha hash past `cull_distance` and as an impostor far off; `CanvasRenderer`
 draws 2D instances as quads leaned by their height. Blocking types are a static body of the
 entity's: physics3d takes `scene3d::foliage_bodies` (`src/foliage.cpp`) as grid bodies with a
@@ -148,7 +148,7 @@ Hair and fur are Unreal's Groom and its Chaos hair (Godot has none): a `.groom.j
 both dimensions share (2D at z 0): small steps of position-based dynamics with a pull toward the
 groomed shape that weakens toward the tips, bends, follow-the-leader lengths with Müller's
 damping correction, wind, fields and the `StrandCollider`s `strand_colliders_3d` and `_2d` find
-under the hair's tree root. `scene3d::hair_growth` (`src/hair.cpp`) grows a `HairInstance3D`'s
+under the hair's tree root. `scene3d::hair_growth` (`src/hair.cpp`) grows a `Hair3D`'s
 guides over `model_section` (cloth's section, which now carries normals and texture
 coordinates) by area with hashed randoms, and the strands drawn that `world::follow_guide`
 places, kept in the world by key (`world::keep_hair_3d`); `hair_frames` carries each root by its
@@ -174,7 +174,7 @@ humanoid profile (fingers, eyes and jaw) plus twist bones, each turned as the pr
 as its own animations (`add_clips`), of primitive meshes placed by `character_measures`, each
 garment's coverage (`garment_coverage`) pushed out by its layer, the groom's `scalp`, a cloth
 garment's free part as the material a `Cloth3D` names and props loaded at attachment nodes;
-`load_model` and `check_model` take recipes, so `MeshInstance3D` draws them. In 2D,
+`load_model` and `check_model` take recipes, so `Model3D` draws them. In 2D,
 `character_cutout` makes a side-on cut-out of bones and shapes, which the `character_2d` system
 (priority 880) keeps as `<id>_<bone>` children of each `Character2D` with a `Polygon2D` each,
 drawn by `CanvasRenderer::gather_polygons`. `scene3d::silhouette` and `world::color_difference`
@@ -182,8 +182,8 @@ drawn by `CanvasRenderer::gather_polygons`. `scene3d::silhouette` and `world::co
 by `test.run`) holds the cast to the storyboard's `character_rules` (outlines and main colors
 apart, heights, palette, props), `character.generate` keeps the most distinct of seeded
 candidates within them, and `character.place` puts one in a 3D or 2D scene.
-`character.place` adds the twist bones' `CopyTransformModifier3D` and, with `look_at`, the eyes'
-`LookAtModifier3D`s, and a `Character2D`'s `look_at`, `jaw_open` and hands pose its cut-out
+`character.place` adds the twist bones' `BoneCopy3D` and, with `look_at`, the eyes'
+`BoneLookAt3D`s, and a `Character2D`'s `look_at`, `jaw_open` and hands pose its cut-out
 (`pose_character`). `examples/character-design` designs a cast and `examples/character-rig`
 looks, grips and twists.
 Faces are MetaHuman Creator's too: a `.face.json` file or a recipe's inline `face`
@@ -226,7 +226,7 @@ end rings pinned to their bones, elements keeping shape and volume, fibers pulli
 activation, points springing toward the muscle's shape between its moved ends and staying out of
 its bone, and the root's acceleration felt; `bind_skin` and `skin_offsets` move skin by it. The
 `flesh_3d` system (`engine/scene3d/src/flesh.cpp`, priority 957, added by `canvas::install`)
-steps each `Flesh3D` on a character's `MeshInstance3D` from `pose_of` and `apply_modifiers`,
+steps each `Flesh3D` on a character's `Model3D` from `pose_of` and `apply_modifiers`,
 and `Renderer::skinned_mesh` adds its `FleshPose` after skinning; `flesh_2d` steps each
 `Character2D`'s `Flesh2D` and `gather_polygons` adds `flesh_offsets_2d` to its parts, with a
 `<id>_anatomy` view. A character model's `::skeleton` and `::muscles` forms
@@ -265,7 +265,7 @@ private `Session`; `animation.tune` sets a motion, scales bones to `ranges` and 
 by `slide` (`length` or `swing`), writing the instance's motion or the recipe file.
 `examples/animation-tuning` plants a deer's feet and tunes a stag and a 2D fox.
 
-Vehicles are recipes, after Unreal's Chaos Vehicles (Godot has only `VehicleBody3D`): a
+Vehicles are recipes, after Unreal's Chaos Vehicles (Godot has only `WheeledBody3D`): a
 `.vehicle.json` file (`slash/world/vehicle.hpp`, `engine/world/src/vehicle.cpp`, built with
 `-ffp-contract=off`; `$cli schema vehicle`) says what a car, bike, truck, tracked vehicle, boat
 or aircraft looks like (body, seats, doors, wheels, wings, and `parts` of its own: shapes or
@@ -279,13 +279,13 @@ reduced at speed), and `vehicle_side_view` its 2D profile. `scene3d::build_vehic
 collision, which `load_model` and `check_model` take as recipes. The `vehicles_3d` system
 (`engine/physics3d/src/vehicle_tool.cpp`, priority 945) keeps each `Vehicle3D`'s `RigidBody3D`
 (the recipe's mass and `center_of_mass`, a field `RigidBody3D` and `RigidBody2D` now have, as
-Godot's) and `VehicleBody3D` with a `VehicleWheel3D` child a wheel, drives the wheels from its
+Godot's) and `WheeledBody3D` with a `Wheel3D` child a wheel, drives the wheels from its
 `controls` (tracked vehicles slewing on tracks that slide), floats boats at four corners, flies
 aircraft by thrust, lift and control torques through `constant_force` and `constant_torque`,
 keeps bikes upright, carries `VehicleRider`s in their seats and hits characters, creatures and
 ragdolls (`vehicle_hit`); `vehicles_2d` (`engine/physics2d/src/vehicle_tool.cpp`) does the same
-for a `Vehicle2D` from the side, its wheels `RigidBody2D` circles on `GrooveJoint2D`s and
-`DampedSpringJoint2D`s. `enter_vehicle` and `exit_vehicle` are gameplay code's; `vehicle.place`,
+for a `Vehicle2D` from the side, its wheels `RigidBody2D` circles on `TrackJoint2D`s and
+`SpringJoint2D`s. `enter_vehicle` and `exit_vehicle` are gameplay code's; `vehicle.place`,
 `vehicle.control`, `vehicle.tune` (a merge patch kept in the vehicle's `overrides`),
 `vehicle.check` (a test drive in a private `Session` held to the design), `vehicle.design`
 (writes a recipe an agent designed after fitting its torque, drag, brakes and steering to
@@ -306,8 +306,8 @@ shapes' volume or area, its `strength` as a `Destructible3D`'s fallback threshol
 enabled `PhysicsField3D`s and `PhysicsField2D`s at a place; `Space::apply_fields`
 (`engine/physics3d/src/fields.cpp`, `engine/physics2d/src/fields.cpp`) applies them before each
 step (forces, velocities, anchors as kinematic bodies, strain as impacts, kill after the step
-as `field_killed`, sleep), soft bodies' points included, and `CPUParticles3D` and
-`CPUParticles2D` add `particle_force` per particle. `physics_3d.substeps` and
+as `field_killed`, sleep), soft bodies' points included, and `Emitter3D` and
+`Emitter2D` add `particle_force` per particle. `physics_3d.substeps` and
 `physics_2d.substeps` set Jolt's collision steps and Box2D's substeps.
 `examples/physics-fields` blasts crates and slides a 2D puck. While `world::record_physics`
 records (`physics.debug`'s `record`; `slash/world/physics_debug.hpp`), each space adds a
@@ -317,7 +317,7 @@ stretch and bodies awake after it (`finish_debug` in each `src/debug.cpp`) and f
 where `apply_fields` applies them. `physics.cache` records rigid bodies' transforms after each
 step (`world::PhysicsCache`, `slash/world/physics_cache.hpp`, added to by both spaces) and
 writes them as a `.anim.json` animation that freezes them kinematic and keys them where their
-motion bends, as Chaos Cache, for an `AnimationPlayer` or a cinematic to play back
+motion bends, as Chaos Cache, for an `Animator` or a cinematic to play back
 (`engine/command/src/physics_debug.cpp`). `examples/physics-debugger` reads a blast and replays
 the collapse.
 

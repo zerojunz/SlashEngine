@@ -81,7 +81,7 @@ std::string png(const render::Image& image) {
 
 } // namespace
 
-TEST_CASE("a material file is a StandardMaterial3D that recipes share, alone or changed") {
+TEST_CASE("a material file is a Surface3D that recipes share, alone or changed") {
     const std::map<std::string, std::string, std::less<>> files{
         {"materials/stone.standard_material.json",
          R"({"format": 1, "albedo_color": [0.5, 0.5, 0.5, 1], "roughness": 0.7,
@@ -143,7 +143,7 @@ TEST_CASE("a material file is a StandardMaterial3D that recipes share, alone or 
     REQUIRE_FALSE(unread.ok());
     CHECK(unread.error().message ==
           "/materials/stone: a material file is read from the project: load the recipe as a "
-          "model, through its MeshInstance3D or load_model");
+          "model, through its Model3D or load_model");
 
     // Each problem with a file is the material's.
     const auto first = [&read](std::string_view material) {

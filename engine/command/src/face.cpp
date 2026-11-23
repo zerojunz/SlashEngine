@@ -1788,14 +1788,14 @@ Result<void> stage_3d(Session& stage, const std::string& recipe, const world::He
     const Vec3 fill_from{c.x - 0.7F, c.y + 0.1F, c.z + 0.5F};
     if (auto made = create(
             stage, "key",
-            json::Object{{"DirectionalLight3D", json::Object{{"light_energy", 1.1}}},
+            json::Object{{"SunLight3D", json::Object{{"light_energy", 1.1}}},
                          {"Transform3D", json::Object{{"rotation", vec3(looking(key_from, c))}}}});
         !made) {
         return made;
     }
     if (auto made = create(
             stage, "fill",
-            json::Object{{"DirectionalLight3D", json::Object{{"light_energy", 0.35}}},
+            json::Object{{"SunLight3D", json::Object{{"light_energy", 0.35}}},
                          {"Transform3D", json::Object{{"rotation", vec3(looking(fill_from, c))}}}});
         !made) {
         return made;
@@ -1803,7 +1803,7 @@ Result<void> stage_3d(Session& stage, const std::string& recipe, const world::He
     if (auto made = create(
             stage, "environment",
             json::Object{
-                {"WorldEnvironment",
+                {"Environment3D",
                  json::Object{
                      {"background_mode", "color"},
                      {"background_color", json::Array{static_cast<double>(background.x),
@@ -1818,9 +1818,8 @@ Result<void> stage_3d(Session& stage, const std::string& recipe, const world::He
     if (!expressions.as_object().empty()) {
         mesh["blend_shapes"] = expressions;
     }
-    return create(
-        stage, "subject",
-        json::Object{{"MeshInstance3D", std::move(mesh)}, {"Transform3D", json::Object{}}});
+    return create(stage, "subject",
+                  json::Object{{"Model3D", std::move(mesh)}, {"Transform3D", json::Object{}}});
 }
 
 // The 2D stage: the recipe's side-on cut-out, scaled so its head fills the frame, over a sprite

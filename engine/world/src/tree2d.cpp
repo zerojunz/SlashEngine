@@ -240,7 +240,7 @@ void check_layers(const World& world, const std::unordered_map<entt::entity, ent
                   std::vector<TreeProblem>& problems) {
     const auto& ecs = world.ecs();
     std::vector<entt::entity> layers;
-    for (const entt::entity entity : ecs.view<const CanvasLayer>()) {
+    for (const entt::entity entity : ecs.view<const ScreenLayer>()) {
         layers.push_back(entity);
     }
     if (layers.empty()) {
@@ -249,12 +249,12 @@ void check_layers(const World& world, const std::unordered_map<entt::entity, ent
     std::ranges::sort(layers, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     std::unordered_map<entt::entity, entt::entity> control_parents;
     std::vector<entt::entity> controls;
-    for (const entt::entity entity : ecs.view<const Control>()) {
+    for (const entt::entity entity : ecs.view<const Widget>()) {
         controls.push_back(entity);
     }
     std::ranges::sort(controls, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     for (const entt::entity entity : controls) {
-        for (const entt::entity child : ecs.get<const Control>(entity).children) {
+        for (const entt::entity child : ecs.get<const Widget>(entity).children) {
             control_parents.try_emplace(child, entity);
         }
     }
@@ -263,18 +263,18 @@ void check_layers(const World& world, const std::unordered_map<entt::entity, ent
     };
     std::unordered_map<entt::entity, entt::entity> held;
     for (const entt::entity layer : layers) {
-        const auto& children = ecs.get<const CanvasLayer>(layer).children;
+        const auto& children = ecs.get<const ScreenLayer>(layer).children;
         for (std::size_t i = 0; i < children.size(); ++i) {
             const entt::entity child = children[i];
             const std::string path = "/entities/" + std::string(world.id_of(layer)) +
-                                     "/components/CanvasLayer/children/" + std::to_string(i);
+                                     "/components/ScreenLayer/children/" + std::to_string(i);
             const auto parent = parents.find(child);
             const auto control_parent = control_parents.find(child);
             if (child == entt::null || !world.valid(child)) {
                 problems.push_back({path, "children can't be null"});
             } else if (child == layer) {
                 problems.push_back({path, "a canvas layer can't hold itself"});
-            } else if (ecs.all_of<CanvasLayer>(child)) {
+            } else if (ecs.all_of<ScreenLayer>(child)) {
                 problems.push_back({path, quoted(child) +
                                               " is a canvas layer; canvas layers can't hold each "
                                               "other"});

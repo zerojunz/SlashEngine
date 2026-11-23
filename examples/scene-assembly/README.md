@@ -13,7 +13,7 @@ way an agent does over MCP or JSON-RPC, and [results.jsonl](results.jsonl) holds
   ground, as Godot's editor snaps a node to the floor; the other two are each moved aside to
   the nearest free spot, 0.8 meters away, where their boxes only touch.
 - The lamp, asked to go above the platform, stands on the platform.
-- Five fence posts are spread evenly along the fence's `Path3D`, from end to end, each turned to
+- Five fence posts are spread evenly along the fence's `Spline3D`, from end to end, each turned to
   face along it (`"rotate": true`): the posts on the second side are turned a quarter turn.
 - A kite asked to go past the edge of the yard has nothing below it. With `dry_run`, the reply
   says so and nothing moves.

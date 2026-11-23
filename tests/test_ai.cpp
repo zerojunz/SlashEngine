@@ -1867,7 +1867,7 @@ TEST_CASE("style.check asks a vision model where a frame strays from its referen
     const auto yard = [](std::string_view sky) {
         return R"({"format": 1, "entities": {
             "camera": {"components": {"Camera3D": {"current": true}, "Transform3D": {}}},
-            "environment": {"components": {"WorldEnvironment": {"background_mode": "color",
+            "environment": {"components": {"Environment3D": {"background_mode": "color",
                 "background_color": )" +
                std::string(sky) + R"(}}}}})";
     };
@@ -1928,7 +1928,7 @@ TEST_CASE("npc.draft has a model write a brain and sends its problems back until
         "fountain": {"components": {"Transform3D": {}}},
         "bench": {"components": {"Transform3D": {"position": [2, 0, 0]}}},
         "walker": {"components": {"Transform3D": {}, "NpcAgent": {}}},
-        "title": {"components": {"Control": {}}}}})");
+        "title": {"components": {"Widget": {}}}}})");
     write(root + "/storyboard/world.json", R"({"format": 1, "entries": {
         "character/ada": {"name": "Ada", "summary": "An old gardener who drinks often."}}})");
     Engine engine(root);
@@ -2009,10 +2009,10 @@ TEST_CASE("l10n.translate drafts what a locale lacks and keeps only drafts that 
         "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
         "internationalization": {"locale": {"translations": ["menu.csv", "pl.po"]}}})");
     write(root + "/main.scene.json", R"({"format": 1, "entities": {
-        "a": {"components": {"Control": {}, "Label": {"text": "Quit"}}},
-        "b": {"components": {"Control": {}, "Label": {"text": "Hint"}}},
-        "c": {"components": {"Control": {}, "Label": {"text": "Paused"}}},
-        "d": {"components": {"Control": {}, "Label": {"text": "Play"}}}}})");
+        "a": {"components": {"Widget": {}, "Label": {"text": "Quit"}}},
+        "b": {"components": {"Widget": {}, "Label": {"text": "Hint"}}},
+        "c": {"components": {"Widget": {}, "Label": {"text": "Paused"}}},
+        "d": {"components": {"Widget": {}, "Label": {"text": "Play"}}}}})");
     write(root + "/src/hud.cpp", "void hud(World& world, int coins) {\n"
                                  "    show(tr(world, \"%d of %s\"));\n"
                                  "    show(tr_n(world, \"%d coin\", \"%d coins\", coins));\n"

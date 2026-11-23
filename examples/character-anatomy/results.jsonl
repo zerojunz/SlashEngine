@@ -1,5 +1,5 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":2,"path":"main.scene.json"}}
-{"id":2,"jsonrpc":"2.0","result":{"components":["Transform3D","MeshInstance3D","Flesh3D"],"height":1.8,"id":"bram","modifiers":["bram_twists"]}}
+{"id":2,"jsonrpc":"2.0","result":{"components":["Transform3D","Model3D","Flesh3D"],"height":1.8,"id":"bram","modifiers":["bram_twists"]}}
 {"id":3,"jsonrpc":"2.0","result":{"tick":30,"ticks":30}}
 {"id":4,"jsonrpc":"2.0","result":{"dimensions":3,"elements":6048,"muscles":[{"activation":0.0,"bulge":0.0,"group":"arm","kind":"biceps","length":1.0,"name":"biceps_left"},{"activation":0.0,"bulge":0.0,"group":"arm","kind":"triceps","length":1.0,"name":"triceps_left"}],"points":2744}}
 {"id":5,"jsonrpc":"2.0","result":{"added":["Skeleton3D"],"changed":{"Skeleton3D":{"bone_rotations":{"LeftLowerArm":[0.0,0.0,-2.0]}}},"id":"bram"}}

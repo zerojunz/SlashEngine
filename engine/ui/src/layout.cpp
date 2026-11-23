@@ -50,9 +50,9 @@ constexpr std::size_t kLeft = 0;
 constexpr std::size_t kTop = 1;
 constexpr std::size_t kRight = 2;
 constexpr std::size_t kBottom = 3;
-constexpr float kRoomForAll = 1.0e6F; // a TextEdit's height with room for every row
+constexpr float kRoomForAll = 1.0e6F; // a TextArea's height with room for every row
 
-const world::Control kDefaultControl{};
+const world::Widget kDefaultControl{};
 
 std::string name_of(const world::World& world, entt::entity entity) {
     const std::string_view id = world.id_of(entity);
@@ -86,7 +86,7 @@ struct ThemeLink {
 // Godot's default theme.
 class Resolver {
 public:
-    Resolver(const ThemeLink* themes, const world::Control& control, std::string_view type)
+    Resolver(const ThemeLink* themes, const world::Widget& control, std::string_view type)
         : themes_(themes), control_(&control) {
         const std::string& variation = control.theme_type_variation;
         for (const ThemeLink* link = themes; link != nullptr && !variation.empty();
@@ -230,7 +230,7 @@ private:
     }
 
     const ThemeLink* themes_;
-    const world::Control* control_;
+    const world::Widget* control_;
     std::vector<std::string_view> types_;
     bool variation_found_ = false;
 };
@@ -493,7 +493,7 @@ void finish_label(text::Fonts& fonts, LabelWork& work, Vec2 size, bool rtl) {
 
 // ---- Buttons ----
 
-// What a CheckBox or CheckButton draws besides a Button's: the icon showing whether it is on.
+// What a CheckBox or ToggleSwitch draws besides a Button's: the icon showing whether it is on.
 struct CheckWork {
     std::string icon;         // the icon for its state and whether it is on
     std::optional<Vec2> size; // that icon's size, if it loads
@@ -502,7 +502,7 @@ struct CheckWork {
     float normal_left = 0.0F; // the normal style's margins, which the icon keeps from the edge
     float normal_right = 0.0F;
     int v_offset = 0;
-    bool end = false; // at the end of the button (a CheckButton), not its start
+    bool end = false; // at the end of the button (a ToggleSwitch), not its start
 };
 
 // A Button being laid out: the theme items of the state it is drawn in, and its text, shaped as
@@ -521,14 +521,14 @@ struct ButtonWork {
     int icon_max_width = 0;
     Vec4 icon_color{1.0F, 1.0F, 1.0F, 1.0F};
     std::optional<Vec2> icon; // the icon's size, if it loads
-    // Room kept for a CheckBox's or CheckButton's icon on the left and the right, as Button's
+    // Room kept for a CheckBox's or ToggleSwitch's icon on the left and the right, as Button's
     // _internal_margin.
     std::array<float, 2> internal{};
     std::optional<CheckWork> check;
     LabelWork text;
 };
 
-// What an OptionButton draws besides a Button's: the arrow at its end, as its NOTIFICATION_DRAW
+// What an Dropdown draws besides a Button's: the arrow at its end, as its NOTIFICATION_DRAW
 // draws it.
 struct OptionWork {
     std::string arrow; // the arrow icon, if it loads
@@ -749,7 +749,7 @@ Vec2 button_minimum(const ButtonWork& work) {
     }
     const Vec2 style = work.align ? work.largest : work.style.minimum_size();
     Vec2 minimum{style.x + size.x, style.y + size.y};
-    // CheckBox::get_minimum_size and CheckButton's: room for the icon beside the content.
+    // CheckBox::get_minimum_size and ToggleSwitch's: room for the icon beside the content.
     if (work.check) {
         const Vec2 icon = work.check->largest;
         if (icon.x > 0.0F || icon.y > 0.0F) {
@@ -768,7 +768,7 @@ Vec2 button_minimum(const ButtonWork& work) {
 
 // ---- Placement ----
 
-Transform local_transform(const world::Control& control, Vec2 position) {
+Transform local_transform(const world::Widget& control, Vec2 position) {
     const Vec2 cs = control.rotation == 0.0F ? Vec2{1.0F, 0.0F} : cos_sin(control.rotation);
     Transform t{.a = static_cast<float>(cs.x * control.scale.x),
                 .b = static_cast<float>(cs.y * control.scale.x),
@@ -897,10 +897,10 @@ ScrollMode scroll_mode_of(std::string_view name) {
     return name == "reserve" ? ScrollMode::Reserve : ScrollMode::Auto;
 }
 
-// A ScrollContainer being laid out: its theme items, the scroll it asks for, and its bars and
+// A ScrollBox being laid out: its theme items, the scroll it asks for, and its bars and
 // scroll as last sorted.
 struct ScrollWork {
-    const world::ScrollContainer* scroll = nullptr;
+    const world::ScrollBox* scroll = nullptr;
     ScrollMode h_mode = ScrollMode::Auto;
     ScrollMode v_mode = ScrollMode::Auto;
     StyleBox panel;
@@ -1058,7 +1058,7 @@ enum class Depends : std::uint8_t { None, Width, Height };
 
 struct Node {
     entt::entity entity = entt::null;
-    const world::Control* control = &kDefaultControl;
+    const world::Widget* control = &kDefaultControl;
     std::size_t parent = kNone;
     std::size_t canvas = 0; // as Placed::canvas
     std::vector<std::size_t> kids;
@@ -1070,16 +1070,16 @@ struct Node {
     bool translate = true; // its text shows translated (Node::can_auto_translate)
 
     // Theme items and what doesn't change between passes.
-    const world::BoxContainer* box = nullptr;
-    const world::GridContainer* grid = nullptr;
-    const world::CenterContainer* center = nullptr;
-    const world::FlowContainer* flow = nullptr;
+    const world::StackBox* box = nullptr;
+    const world::GridBox* grid = nullptr;
+    const world::CenterBox* center = nullptr;
+    const world::FlowBox* flow = nullptr;
     int separation = 0;
     int h_separation = 0;
     int v_separation = 0;
     std::array<int, 4> margins{};
-    std::optional<StyleBox> panel;           // Panel's or PanelContainer's
-    std::optional<StyleBox> container_panel; // PanelContainer's, for its children's rect
+    std::optional<StyleBox> panel;           // Panel's or PanelBox's
+    std::optional<StyleBox> container_panel; // PanelBox's, for its children's rect
     std::optional<LabelWork> label;
     std::unique_ptr<world::Label> shown_label; // its Label with the text translated
     const world::ProgressBar* bar = nullptr;
@@ -1087,39 +1087,39 @@ struct Node {
     StyleBox bar_fill;
     LabelText percent;
     float percent_height = 0.0F;
-    const world::TextureRect* texture_rect = nullptr;
-    std::optional<Vec2> texture_size; // TextureRect's, if it loads
-    const world::NinePatchRect* nine_patch = nullptr;
+    const world::Picture* texture_rect = nullptr;
+    std::optional<Vec2> texture_size; // Picture's, if it loads
+    const world::NineSlice* nine_patch = nullptr;
     std::optional<Vec2> patch_texture_size;
-    const world::VideoStreamPlayer* video = nullptr;
+    const world::Video* video = nullptr;
     std::optional<Vec2> video_size; // its stream's, if it loads
     bool video_shown = false;       // the video system has decoded a frame to draw
-    const world::ColorRect* color_rect = nullptr;
+    const world::ColorFill* color_rect = nullptr;
     std::optional<ButtonWork> button;
-    // An OptionButton: its Button with the selected option's text and icon, and its arrow.
+    // An Dropdown: its Button with the selected option's text and icon, and its arrow.
     std::unique_ptr<world::Button> shown_button;
     std::optional<OptionWork> option;
-    const world::TextureButton* texture_button = nullptr;
-    // TextureButton's textures' sizes, those that load: normal, pressed, hover, disabled and
+    const world::ImageButton* texture_button = nullptr;
+    // ImageButton's textures' sizes, those that load: normal, pressed, hover, disabled and
     // focused.
     std::array<std::optional<Vec2>, 5> button_textures;
     std::optional<ButtonState> button_state;
     std::optional<SliderWork> slider;
     std::optional<BarWork> scroll_bar; // a ScrollBar's
-    std::optional<ScrollWork> scroll;  // a ScrollContainer's
-    // A LineEdit: a copy with its caret column in its text, its theme items, its shaped text and
+    std::optional<ScrollWork> scroll;  // a ScrollBox's
+    // A TextField: a copy with its caret column in its text, its theme items, its shaped text and
     // the gui system's state for it.
-    std::optional<world::LineEdit> line_edit;
+    std::optional<world::TextField> line_edit;
     std::unique_ptr<LineEditView> edit_view;
     std::optional<Field> field;
     EditState edit;
-    // A TextEdit, its theme items, its scroll bars' and how they look, its CodeHighlighter and
+    // A TextArea, its theme items, its scroll bars' and how they look, its SyntaxColors and
     // the gui system's state for it.
-    const world::TextEdit* text_edit = nullptr;
+    const world::TextArea* text_edit = nullptr;
     std::unique_ptr<TextEditView> text_view;
     std::unique_ptr<std::array<BarTheme, 2>> text_bars; // horizontal, vertical
     std::array<BarLook, 2> text_bar_looks{};
-    const world::CodeHighlighter* highlighter = nullptr;
+    const world::SyntaxColors* highlighter = nullptr;
     const TextEditState* text_state = nullptr;
 
     // Each pass.
@@ -1129,7 +1129,7 @@ struct Node {
     Placed placed;
 };
 
-// One line of a FlowContainer.
+// One line of a FlowBox.
 struct FlowLine {
     int child_count = 0;
     int min_line_height = 0;
@@ -1167,13 +1167,13 @@ struct Builder {
         return entity == preview ? canvases->all().size() : canvases->of(entity);
     }
 
-    // Whether a canvas shows: a hidden CanvasLayer hides its controls.
+    // Whether a canvas shows: a hidden ScreenLayer hides its controls.
     [[nodiscard]] bool canvas_visible(std::size_t canvas) const {
         return canvases == nullptr || canvas >= canvases->all().size() ||
                canvases->all()[canvas].visible;
     }
 
-    // What places a root control in its canvas: a CanvasLayer's transform, or none for the
+    // What places a root control in its canvas: a ScreenLayer's transform, or none for the
     // world's controls, which stay on the screen, and for a drag's preview.
     [[nodiscard]] std::optional<Transform> canvas_transform(std::size_t canvas) const {
         if (canvases == nullptr || canvas >= canvases->all().size()) {
@@ -1192,8 +1192,8 @@ struct Builder {
                          .ty = static_cast<float>(t.origin.y)};
     }
 
-    [[nodiscard]] const world::Control& control_of(entt::entity entity) const {
-        const auto* control = world.ecs().try_get<world::Control>(entity);
+    [[nodiscard]] const world::Widget& control_of(entt::entity entity) const {
+        const auto* control = world.ecs().try_get<world::Widget>(entity);
         return control != nullptr ? *control : kDefaultControl;
     }
 
@@ -1204,13 +1204,12 @@ struct Builder {
     }
 
     void child_problem(entt::entity entity, std::size_t child, std::string message) {
-        problem(entity, "/components/Control/children/" + std::to_string(child),
-                std::move(message));
+        problem(entity, "/components/Widget/children/" + std::to_string(child), std::move(message));
     }
 
     void link(const std::vector<entt::entity>& controls) {
         for (const entt::entity entity : controls) {
-            const auto* control = world.ecs().try_get<world::Control>(entity);
+            const auto* control = world.ecs().try_get<world::Widget>(entity);
             if (control == nullptr) {
                 continue;
             }
@@ -1223,7 +1222,7 @@ struct Builder {
                 } else if (!is_control(world, child)) {
                     child_problem(entity, i,
                                   name_of(world, child) +
-                                      " isn't a control; give it a Control or a UI component");
+                                      " isn't a control; give it a Widget or a UI component");
                 } else if (const auto found = parents.find(child); found != parents.end()) {
                     child_problem(entity, i,
                                   name_of(world, child) + " is already a child of " +
@@ -1273,7 +1272,7 @@ struct Builder {
             auto& list = children[parent];
             list.erase(std::ranges::find(list, at));
             parents.erase(at);
-            const auto& listed = world.ecs().get<world::Control>(parent).children;
+            const auto& listed = world.ecs().get<world::Widget>(parent).children;
             const auto index =
                 static_cast<std::size_t>(std::ranges::find(listed, at) - listed.begin());
             child_problem(parent, index,
@@ -1373,47 +1372,45 @@ struct Builder {
         };
 
         // The first container decides how children are placed; check() reports the others.
-        if (const auto* box = ecs.try_get<world::BoxContainer>(entity); box != nullptr) {
+        if (const auto* box = ecs.try_get<world::StackBox>(entity); box != nullptr) {
             node.kind = Kind::Box;
             node.box = box;
             node.separation =
                 resolver(box->vertical ? "VBoxContainer" : "HBoxContainer").constant("separation");
-        } else if (const auto* grid = ecs.try_get<world::GridContainer>(entity); grid != nullptr) {
+        } else if (const auto* grid = ecs.try_get<world::GridBox>(entity); grid != nullptr) {
             node.kind = Kind::Grid;
             node.grid = grid;
-            const Resolver theme = resolver("GridContainer");
+            const Resolver theme = resolver("GridBox");
             node.h_separation = theme.constant("h_separation");
             node.v_separation = theme.constant("v_separation");
-        } else if (ecs.all_of<world::MarginContainer>(entity)) {
+        } else if (ecs.all_of<world::MarginBox>(entity)) {
             node.kind = Kind::Margin;
-            const Resolver theme = resolver("MarginContainer");
+            const Resolver theme = resolver("MarginBox");
             node.margins = {theme.constant("margin_left"), theme.constant("margin_top"),
                             theme.constant("margin_right"), theme.constant("margin_bottom")};
-        } else if (const auto* center = ecs.try_get<world::CenterContainer>(entity);
-                   center != nullptr) {
+        } else if (const auto* center = ecs.try_get<world::CenterBox>(entity); center != nullptr) {
             node.kind = Kind::Center;
             node.center = center;
-        } else if (const auto* flow = ecs.try_get<world::FlowContainer>(entity); flow != nullptr) {
+        } else if (const auto* flow = ecs.try_get<world::FlowBox>(entity); flow != nullptr) {
             node.kind = Kind::Flow;
             node.flow = flow;
             const Resolver theme = resolver(flow->vertical ? "VFlowContainer" : "HFlowContainer");
             node.h_separation = theme.constant("h_separation");
             node.v_separation = theme.constant("v_separation");
             node.depends = flow->vertical ? Depends::Height : Depends::Width;
-        } else if (ecs.all_of<world::PanelContainer>(entity)) {
+        } else if (ecs.all_of<world::PanelBox>(entity)) {
             node.kind = Kind::Panel;
-            node.container_panel = resolver("PanelContainer").style("panel");
+            node.container_panel = resolver("PanelBox").style("panel");
             node.panel = node.container_panel;
-        } else if (const auto* scroll = ecs.try_get<world::ScrollContainer>(entity);
-                   scroll != nullptr) {
+        } else if (const auto* scroll = ecs.try_get<world::ScrollBox>(entity); scroll != nullptr) {
             node.kind = Kind::Scroll;
-            start_scroll(node, *scroll, resolver("ScrollContainer"));
+            start_scroll(node, *scroll, resolver("ScrollBox"));
         }
         if (ecs.all_of<world::Panel>(entity) && !node.panel) {
             node.panel = resolver("Panel").style("panel");
         }
-        node.color_rect = ecs.try_get<world::ColorRect>(entity);
-        if (const auto* video = ecs.try_get<world::VideoStreamPlayer>(entity); video != nullptr) {
+        node.color_rect = ecs.try_get<world::ColorFill>(entity);
+        if (const auto* video = ecs.try_get<world::Video>(entity); video != nullptr) {
             node.video = video;
             if (!video->stream.empty()) {
                 auto loaded = fonts.assets().load<video::VideoFile>(video->stream);
@@ -1421,18 +1418,18 @@ struct Builder {
                     node.video_size = Vec2{static_cast<float>(loaded.value()->width),
                                            static_cast<float>(loaded.value()->height)};
                 } else {
-                    problem(entity, "/components/VideoStreamPlayer/stream", loaded.error().message);
+                    problem(entity, "/components/Video/stream", loaded.error().message);
                 }
             }
             node.video_shown = video::shown(world, world.id_of(entity)).image != nullptr;
         }
-        if (const auto* rect = ecs.try_get<world::TextureRect>(entity); rect != nullptr) {
+        if (const auto* rect = ecs.try_get<world::Picture>(entity); rect != nullptr) {
             node.texture_rect = rect;
             if (!rect->texture.empty()) {
                 std::string error;
                 node.texture_size = texture_size(rect->texture, &error);
                 if (!node.texture_size && !error.empty()) {
-                    problem(entity, "/components/TextureRect/texture", error);
+                    problem(entity, "/components/Picture/texture", error);
                 }
             }
             if (rect->expand_mode.starts_with("fit_height")) {
@@ -1441,13 +1438,13 @@ struct Builder {
                 node.depends = Depends::Height;
             }
         }
-        if (const auto* patch = ecs.try_get<world::NinePatchRect>(entity); patch != nullptr) {
+        if (const auto* patch = ecs.try_get<world::NineSlice>(entity); patch != nullptr) {
             node.nine_patch = patch;
             if (!patch->texture.empty()) {
                 std::string error;
                 node.patch_texture_size = texture_size(patch->texture, &error);
                 if (!node.patch_texture_size && !error.empty()) {
-                    problem(entity, "/components/NinePatchRect/texture", error);
+                    problem(entity, "/components/NineSlice/texture", error);
                 }
             }
         }
@@ -1471,7 +1468,7 @@ struct Builder {
         }
         if (const world::Button* button = button_of(world, entity); button != nullptr) {
             const std::string_view type = button_type(world, entity);
-            if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+            if (const auto* option = ecs.try_get<world::Dropdown>(entity); option != nullptr) {
                 start_option(node, *option, resolver(type));
             } else if (const std::string language = shown_language(button->language);
                        (node.translate && !button->text.empty()) || language != button->language) {
@@ -1495,15 +1492,15 @@ struct Builder {
             work.look = bar_look(world, entity, Bar::Own);
             work.focused = shows_focus(world, entity);
         }
-        if (const auto* edit = ecs.try_get<world::LineEdit>(entity); edit != nullptr) {
-            start_line_edit(node, *edit, resolver("LineEdit"));
+        if (const auto* edit = ecs.try_get<world::TextField>(entity); edit != nullptr) {
+            start_line_edit(node, *edit, resolver("TextField"));
         }
-        if (const auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
+        if (const auto* edit = ecs.try_get<world::TextArea>(entity); edit != nullptr) {
             start_text_edit(
                 node, *edit,
-                resolver(ecs.all_of<world::CodeEdit>(entity) ? "CodeEdit" : "TextEdit"));
+                resolver(ecs.all_of<world::CodeEditor>(entity) ? "CodeEditor" : "TextArea"));
         }
-        if (const auto* texture = ecs.try_get<world::TextureButton>(entity); texture != nullptr) {
+        if (const auto* texture = ecs.try_get<world::ImageButton>(entity); texture != nullptr) {
             node.texture_button = texture;
             const std::array<std::pair<const std::string*, std::string_view>, 5> paths{{
                 {&texture->texture_normal, "texture_normal"},
@@ -1520,7 +1517,7 @@ struct Builder {
                 std::string error;
                 node.button_textures.at(i) = texture_size(path, &error);
                 if (!node.button_textures.at(i)) {
-                    problem(entity, "/components/TextureButton/" + std::string(paths.at(i).second),
+                    problem(entity, "/components/ImageButton/" + std::string(paths.at(i).second),
                             error);
                 }
             }
@@ -1528,12 +1525,12 @@ struct Builder {
                 node.button_state =
                     ButtonState{.mode = draw_mode(world, entity),
                                 .click_margin = static_cast<float>(
-                                    resolver("TextureButton").constant("click_margin"))};
+                                    resolver("ImageButton").constant("click_margin"))};
             }
         }
         if (!node.control->theme_type_variation.empty() &&
             !resolver(node.classes.front()).variation_found()) {
-            problem(entity, "/components/Control/theme_type_variation",
+            problem(entity, "/components/Widget/theme_type_variation",
                     "\"" + node.control->theme_type_variation +
                         "\" is no type variation in the themes this control uses; give it a "
                         "base_type in one");
@@ -1550,13 +1547,13 @@ struct Builder {
         if (!button.icon.empty()) {
             std::string error;
             work.icon = texture_size(button.icon, &error);
-            // An OptionButton's icons are its options', which start_option checks.
-            if (!work.icon && type != "OptionButton") {
+            // An Dropdown's icons are its options', which start_option checks.
+            if (!work.icon && type != "Dropdown") {
                 problem(node.entity, "/components/" + std::string(type) + "/icon", error);
             }
         }
-        if (type == "CheckBox" || type == "CheckButton") {
-            start_check(node, work, button, theme, type == "CheckButton");
+        if (type == "CheckBox" || type == "ToggleSwitch") {
+            start_check(node, work, button, theme, type == "ToggleSwitch");
         }
         if (const auto* menu = world.ecs().try_get<world::MenuButton>(node.entity);
             menu != nullptr) {
@@ -1570,10 +1567,10 @@ struct Builder {
         return work;
     }
 
-    // An OptionButton: a Button showing the selected option's text and icon, with room kept
+    // An Dropdown: a Button showing the selected option's text and icon, with room kept
     // for its arrow (NOTIFICATION_THEME_CHANGED) and, with fit_to_longest_item, the size of its
     // longest option (_refresh_size_cache).
-    void start_option(Node& node, const world::OptionButton& option, const Resolver& theme) {
+    void start_option(Node& node, const world::Dropdown& option, const Resolver& theme) {
         node.shown_button =
             std::make_unique<world::Button>(static_cast<const world::Button&>(option));
         world::Button& shown = *node.shown_button;
@@ -1586,7 +1583,7 @@ struct Builder {
         shown.text =
             selected ? item_text(option.items[static_cast<std::size_t>(option.selected)]) : "";
         shown.icon = selected ? option.items[static_cast<std::size_t>(option.selected)].icon : "";
-        ButtonWork& work = start_button_node(node, shown, theme, "OptionButton");
+        ButtonWork& work = start_button_node(node, shown, theme, "Dropdown");
         OptionWork& made = node.option.emplace();
         const std::string arrow = theme.icon("arrow");
         if (const auto size = texture_size(arrow); size) {
@@ -1618,7 +1615,7 @@ struct Builder {
             }
             made.arrow_color = theme.color(std::string(color));
         }
-        check_item_icons(node.entity, "OptionButton", option.items);
+        check_item_icons(node.entity, "Dropdown", option.items);
         if (!option.fit_to_longest_item) {
             return;
         }
@@ -1642,7 +1639,7 @@ struct Builder {
         made.longest = longest;
     }
 
-    // The icon a CheckBox or CheckButton shows, as its NOTIFICATION_DRAW picks it, and the room
+    // The icon a CheckBox or ToggleSwitch shows, as its NOTIFICATION_DRAW picks it, and the room
     // kept for it, as its NOTIFICATION_THEME_CHANGED sets the internal margins.
     void start_check(const Node& node, ButtonWork& work, const world::Button& button,
                      const Resolver& theme, bool check_button) {
@@ -1720,10 +1717,10 @@ struct Builder {
         return made;
     }
 
-    // A ScrollContainer's theme items and the scroll it asks for. Its bars take HScrollBar's and
+    // A ScrollBox's theme items and the scroll it asks for. Its bars take HScrollBar's and
     // VScrollBar's items from the themes it uses, not its overrides, as Godot's bars are
     // controls of their own.
-    void start_scroll(Node& node, const world::ScrollContainer& scroll, const Resolver& theme) {
+    void start_scroll(Node& node, const world::ScrollBox& scroll, const Resolver& theme) {
         ScrollWork& work = node.scroll.emplace();
         work.scroll = &scroll;
         work.h_mode = scroll_mode_of(scroll.horizontal_scroll_mode);
@@ -1735,7 +1732,7 @@ struct Builder {
             theme.constant("scrollbar_margin_right"), theme.constant("scrollbar_margin_bottom")};
         work.h_separation = theme.constant("scrollbar_h_separation");
         work.v_separation = theme.constant("scrollbar_v_separation");
-        static const world::Control kNoOverrides;
+        static const world::Widget kNoOverrides;
         work.h = bar_theme(Resolver(node.themes, kNoOverrides, "HScrollBar"), false);
         work.v = bar_theme(Resolver(node.themes, kNoOverrides, "VScrollBar"), true);
         work.h_look = bar_look(world, node.entity, Bar::Horizontal);
@@ -1805,8 +1802,8 @@ struct Builder {
         work.range = range_of(slider);
     }
 
-    // A LineEdit's theme items and its text shaped as it shows.
-    void start_line_edit(Node& node, const world::LineEdit& edit, const Resolver& theme) {
+    // A TextField's theme items and its text shaped as it shows.
+    void start_line_edit(Node& node, const world::TextField& edit, const Resolver& theme) {
         auto view = std::make_unique<LineEditView>();
         view->normal = theme.style("normal");
         view->read_only = theme.style("read_only");
@@ -1830,7 +1827,7 @@ struct Builder {
             std::string error;
             view->right_icon = texture_size(edit.right_icon, &error);
             if (!view->right_icon) {
-                problem(node.entity, "/components/LineEdit/right_icon", error);
+                problem(node.entity, "/components/TextField/right_icon", error);
             }
         }
         node.line_edit = edit;
@@ -1850,9 +1847,9 @@ struct Builder {
         }
     }
 
-    // A TextEdit's theme items, its scroll bars' from the VScrollBar and HScrollBar types (they
+    // A TextArea's theme items, its scroll bars' from the VScrollBar and HScrollBar types (they
     // are its children in Godot, so its own overrides don't reach them).
-    void start_text_edit(Node& node, const world::TextEdit& edit, const Resolver& theme) {
+    void start_text_edit(Node& node, const world::TextArea& edit, const Resolver& theme) {
         auto view = std::make_unique<TextEditView>();
         view->normal = theme.style("normal");
         view->read_only = theme.style("read_only");
@@ -1876,7 +1873,7 @@ struct Builder {
         view->outline_size = theme.constant("outline_size");
         view->caret_width = theme.constant("caret_width");
         view->wrap_offset = theme.constant("wrap_offset");
-        static const world::Control kNoOverrides;
+        static const world::Widget kNoOverrides;
         auto bars = std::make_unique<std::array<BarTheme, 2>>();
         bars->at(0) = bar_theme(Resolver(node.themes, kNoOverrides, "HScrollBar"), false);
         bars->at(1) = bar_theme(Resolver(node.themes, kNoOverrides, "VScrollBar"), true);
@@ -1895,16 +1892,16 @@ struct Builder {
         node.text_bars = std::move(bars);
         node.text_bar_looks = {bar_look(world, node.entity, Bar::Horizontal),
                                bar_look(world, node.entity, Bar::Vertical)};
-        node.highlighter = world.ecs().try_get<world::CodeHighlighter>(node.entity);
+        node.highlighter = world.ecs().try_get<world::SyntaxColors>(node.entity);
         node.text_state = text_edit_state(world, node.entity);
         if (edit.scroll_fit_content_height && edit.wrap_mode == "boundary") {
             node.depends = Depends::Width;
         }
     }
 
-    // A TextEdit's gutters: a CodeEdit's main gutter and line numbers, as CodeEdit's
+    // A TextArea's gutters: a CodeEditor's main gutter and line numbers, as CodeEditor's
     // constructor adds them, then its own, with the icons they show.
-    void start_gutters(const Node& node, const world::TextEdit& edit, const Resolver& theme,
+    void start_gutters(const Node& node, const world::TextArea& edit, const Resolver& theme,
                        TextEditView& view) {
         using GutterKind = TextEditGutterView::Kind;
         const auto icon_size = [&](const std::string& path, const std::string& at) {
@@ -1915,7 +1912,8 @@ struct Builder {
                 problem(node.entity, at, error);
             }
         };
-        if (const auto* code = world.ecs().try_get<world::CodeEdit>(node.entity); code != nullptr) {
+        if (const auto* code = world.ecs().try_get<world::CodeEditor>(node.entity);
+            code != nullptr) {
             CodeEditView& look = view.code.emplace();
             look.breakpoint_icon = theme.icon("breakpoint");
             look.bookmark_icon = theme.icon("bookmark");
@@ -1955,7 +1953,7 @@ struct Builder {
             for (std::size_t j = 0; j < gutter.lines.size(); ++j) {
                 if (!gutter.lines[j].icon.empty() &&
                     !view.icon_sizes.contains(gutter.lines[j].icon)) {
-                    icon_size(gutter.lines[j].icon, "/components/TextEdit/gutters/" +
+                    icon_size(gutter.lines[j].icon, "/components/TextArea/gutters/" +
                                                         std::to_string(i) + "/lines/" +
                                                         std::to_string(j) + "/icon");
                 }
@@ -1963,7 +1961,7 @@ struct Builder {
         }
     }
 
-    // The state a TextEdit shows: the gui system's, or a new one.
+    // The state a TextArea shows: the gui system's, or a new one.
     [[nodiscard]] static const TextEditState& text_state_of(const Node& node) {
         static const TextEditState kFresh;
         return node.text_state != nullptr ? *node.text_state : kFresh;
@@ -2012,7 +2010,7 @@ struct Builder {
 
     // ---- Minimum sizes ----
 
-    // A FlowContainer's lines at a length along it, as the first pass of FlowContainer::_resort;
+    // A FlowBox's lines at a length along it, as the first pass of FlowContainer::_resort;
     // returns the length across it, its cached_size.
     int flow_lines(const Node& node, int length, std::vector<FlowLine>* lines) const {
         const bool vertical = node.flow->vertical;
@@ -2248,15 +2246,15 @@ struct Builder {
             minimum = max(minimum, node.field->minimum_size(*node.line_edit));
         }
         if (node.text_edit != nullptr) {
-            const world::TextEdit& edit = *node.text_edit;
+            const world::TextArea& edit = *node.text_edit;
             if (edit.scroll_fit_content_height || edit.scroll_fit_content_width) {
                 // Fitting its height, it is measured with room for every row, the size Godot's
-                // TextEdit settles on a frame or two after its minimum size changes.
+                // TextArea settles on a frame or two after its minimum size changes.
                 Vec2 at = size.value_or(Vec2{});
                 if (edit.scroll_fit_content_height) {
                     at.y = kRoomForAll;
                 }
-                const TextArea area =
+                const EditArea area =
                     text_area_for(fonts, *node.text_view, at, edit, text_state_of(node));
                 minimum = max(minimum, area.minimum_size());
             } else {
@@ -2290,7 +2288,7 @@ struct Builder {
             }
         }
         if (node.nine_patch != nullptr) {
-            const world::NinePatchRect& patch = *node.nine_patch;
+            const world::NineSlice& patch = *node.nine_patch;
             minimum = max(minimum,
                           {static_cast<float>(patch.patch_margin_left + patch.patch_margin_right),
                            static_cast<float>(patch.patch_margin_top + patch.patch_margin_bottom)});
@@ -2578,7 +2576,7 @@ struct Builder {
         }
     }
 
-    // Where a FlowContainer line's first child starts, as FlowContainer's alignment and
+    // Where a FlowBox line's first child starts, as FlowBox's alignment and
     // last_wrap_alignment put what its children leave of the line.
     static float flow_offset(int alignment, std::string_view last_wrap, bool last_line, float avail,
                              float prior) {
@@ -2747,7 +2745,7 @@ struct Builder {
     // children at their minimum sizes, or the visible size on an axis they expand on, moved back
     // by the scroll.
     void sort_scroll(Node& node, ScrollWork& work, Vec2 size) {
-        const world::ScrollContainer& scroll = *work.scroll;
+        const world::ScrollBox& scroll = *work.scroll;
         const bool rtl = node.rtl;
         const std::array<float, 4> margins = scroll_margins(work);
         const Vec2 inner{size.x - margins[kLeft] - margins[kRight],
@@ -2873,7 +2871,7 @@ struct Builder {
     // ---- Placing ----
 
     void place(Node& node) {
-        const world::Control& control = *node.control;
+        const world::Widget& control = *node.control;
         const Node* up = node.parent != kNone ? &nodes[node.parent] : nullptr;
         // A top_level control hangs from its canvas, as Godot's get_parent_item: it is placed in
         // the viewport and takes none of its parent's transform, tint, z_index, texture filter
@@ -2938,7 +2936,7 @@ struct Builder {
         if (parent != nullptr) {
             placed.transform = parent->placed.transform * local;
         } else if (const std::optional<Transform> canvas = canvas_transform(node.canvas)) {
-            // A root of a CanvasLayer's is in the layer's space, as Godot's
+            // A root of a ScreenLayer's is in the layer's space, as Godot's
             // get_global_transform_with_canvas.
             placed.transform = *canvas * local;
         } else {
@@ -2993,9 +2991,9 @@ struct Builder {
 
     // ---- What controls draw ----
 
-    // A TextureRect's texture in its rect, as TextureRect's NOTIFICATION_DRAW.
+    // A Picture's texture in its rect, as Picture's NOTIFICATION_DRAW.
     static Box texture_box(const Node& node, Vec2 texture, Vec2 size) {
-        const world::TextureRect& rect = *node.texture_rect;
+        const world::Picture& rect = *node.texture_rect;
         Box box;
         box.style.type = StyleBox::Type::Texture;
         box.style.texture = rect.texture;
@@ -3141,7 +3139,7 @@ struct Builder {
         if (node.texture_rect != nullptr && node.texture_size) {
             boxes.push_back(texture_box(node, *node.texture_size, size));
         }
-        // VideoStreamPlayer's NOTIFICATION_DRAW: its frame at the rect's size when it expands,
+        // Video's NOTIFICATION_DRAW: its frame at the rect's size when it expands,
         // else at its own.
         if (node.video != nullptr && node.video_size && node.video_shown) {
             Box box{.style = {},
@@ -3154,7 +3152,7 @@ struct Builder {
             boxes.push_back(box);
         }
         if (node.nine_patch != nullptr && node.patch_texture_size) {
-            const world::NinePatchRect& patch = *node.nine_patch;
+            const world::NineSlice& patch = *node.nine_patch;
             Box box{.style = {},
                     .position = {},
                     .size = size,
@@ -3255,7 +3253,7 @@ struct Builder {
         }
     }
 
-    // What a LineEdit draws, scrolled to show its caret at the size it got.
+    // What a TextField draws, scrolled to show its caret at the size it got.
     void finish_line_edit(Node& node, Vec2 size, std::vector<Box>& boxes) {
         if (!node.field || !node.line_edit) {
             return;
@@ -3276,24 +3274,24 @@ struct Builder {
         out.line_edits.emplace(node.entity, std::move(view));
     }
 
-    // What a TextEdit draws at the size it got.
+    // What a TextArea draws at the size it got.
     void finish_text_edit(Node& node, Vec2 size, std::vector<Box>& boxes) {
-        const world::TextEdit& edit = *node.text_edit;
-        const TextArea area =
+        const world::TextArea& edit = *node.text_edit;
+        const EditArea area =
             text_area_for(fonts, *node.text_view, size, edit, text_state_of(node));
         TextEditState fallback;
         const TextEditState& shown = shown_state(edit, node.text_state, area, fallback);
-        TextArea::Draw draw;
+        EditArea::Draw draw;
         TextEditView view = *node.text_view;
-        const TextArea::Extras extras{.highlighter = node.highlighter,
-                                      .code = world.ecs().try_get<world::CodeEdit>(node.entity),
+        const EditArea::Extras extras{.highlighter = node.highlighter,
+                                      .code = world.ecs().try_get<world::CodeEditor>(node.entity),
                                       .hovered = hovered(world) == node.entity,
                                       .shift = input::is_key_pressed(world, input::Key::Shift)};
         area.draw(edit, shown, has_focus(world, node.entity), extras, draw, view);
         view.error = area.error();
         // Its scroll bars over the rest, as children of its own.
         for (const bool vertical : {true, false}) {
-            const TextArea::BarPlace place = area.bar_place(vertical);
+            const EditArea::BarPlace place = area.bar_place(vertical);
             if (!place.visible) {
                 continue;
             }
@@ -3337,7 +3335,7 @@ struct Builder {
         }
     }
 
-    // A CheckBox's or CheckButton's icon, as its NOTIFICATION_DRAW draws it after Button's.
+    // A CheckBox's or ToggleSwitch's icon, as its NOTIFICATION_DRAW draws it after Button's.
     static void check_box(const ButtonWork& work, const CheckWork& check, Vec2 size,
                           std::vector<Box>& boxes) {
         if (!check.size) {
@@ -3345,11 +3343,11 @@ struct Builder {
         }
         const Vec2 largest = check.largest;
         Vec2 at;
-        // A CheckBox's icon starts the button, a CheckButton's ends it; laid out right to left,
+        // A CheckBox's icon starts the button, a ToggleSwitch's ends it; laid out right to left,
         // the other way round.
         const bool right = check.end != work.rtl;
         at.x = right ? size.x - check.normal_right - largest.x : check.normal_left;
-        // CheckBox rounds down to a whole pixel; CheckButton doesn't.
+        // CheckBox rounds down to a whole pixel; ToggleSwitch doesn't.
         const float y = (size.y - largest.y) / 2.0F;
         at.y = (check.end ? y : std::trunc(y)) + static_cast<float>(check.v_offset);
         Box box{.style = {},
@@ -3620,13 +3618,13 @@ struct Builder {
         icon(work.grabber_icon, work.grabber_size, at, grabber);
     }
 
-    // A TextureButton's texture for its state and its focused texture over it, as its
+    // A ImageButton's texture for its state and its focused texture over it, as its
     // NOTIFICATION_DRAW.
     void texture_button_boxes(const Node& node, Vec2 size, std::vector<Box>& boxes) const {
         if (!node.button_state) {
             return;
         }
-        const world::TextureButton& button = *node.texture_button;
+        const world::ImageButton& button = *node.texture_button;
         const auto& textures = node.button_textures;
         const std::array<const std::string*, 5> paths{
             &button.texture_normal, &button.texture_pressed, &button.texture_hover,
@@ -3737,8 +3735,8 @@ struct Builder {
 
     // PopupMenus' themes and icons that don't load, open or not.
     void check_popup_menus() {
-        std::vector<std::pair<entt::entity, const world::PopupMenu*>> menus;
-        for (const auto [entity, menu] : world.ecs().view<world::PopupMenu>().each()) {
+        std::vector<std::pair<entt::entity, const world::PopupList*>> menus;
+        for (const auto [entity, menu] : world.ecs().view<world::PopupList>().each()) {
             menus.emplace_back(entity, &menu);
         }
         std::ranges::sort(menus, [](const auto& a, const auto& b) {
@@ -3747,13 +3745,13 @@ struct Builder {
         for (const auto& [entity, menu] : menus) {
             std::string error;
             if (!menu->theme.empty() && theme(menu->theme, &error) == nullptr) {
-                problem(entity, "/components/PopupMenu/theme", error);
+                problem(entity, "/components/PopupList/theme", error);
             }
-            check_item_icons(entity, "PopupMenu", menu->items);
+            check_item_icons(entity, "PopupList", menu->items);
         }
     }
 
-    // A popup menu's theme items, as PopupMenu's theme cache holds them.
+    // A popup menu's theme items, as PopupList's theme cache holds them.
     struct PopupTheme {
         StyleBox panel;
         StyleBox hover;
@@ -3857,18 +3855,18 @@ struct Builder {
         return std::max(separator, std::max(text, icon));
     }
 
-    // An open popup menu, as PopupMenu lays out and draws its window: its contents' minimum
-    // size (_get_contents_minimum_size); its rect, as OptionButton's and MenuButton's show_popup
+    // An open popup menu, as PopupList lays out and draws its window: its contents' minimum
+    // size (_get_contents_minimum_size); its rect, as Dropdown's and MenuButton's show_popup
     // and Popup::_popup_adjust_rect place it, in whole pixels as a window's; its list scrolled
     // inside the panel (scroll_to_item); and its items (_draw_items).
-    // The themes a control's own items come from: its node's, or a PopupMenu's own theme over
+    // The themes a control's own items come from: its node's, or a PopupList's own theme over
     // the project's.
     const ThemeLink* themes_of(entt::entity entity) {
         if (const auto node = std::ranges::find(nodes, entity, &Node::entity);
             node != nodes.end()) {
             return node->themes;
         }
-        if (const auto* menu = world.ecs().try_get<world::PopupMenu>(entity);
+        if (const auto* menu = world.ecs().try_get<world::PopupList>(entity);
             menu != nullptr && !menu->theme.empty()) {
             if (const Theme* loaded = theme(menu->theme, nullptr); loaded != nullptr) {
                 return &links.emplace_back(
@@ -3939,8 +3937,8 @@ struct Builder {
     }
 
     // The drag going on: its preview control was placed at the pointer; a text field's text is
-    // a Label in the field's font, colors and outline with no margins, as LineEdit's and
-    // TextEdit's get_drag_data make it.
+    // a Label in the field's font, colors and outline with no margins, as TextField's and
+    // TextArea's get_drag_data make it.
     void drag_view(const Drag& going) {
         DragView& view = out.drag.emplace();
         view.from = going.from;
@@ -3959,11 +3957,11 @@ struct Builder {
         if (node == nodes.end()) {
             return;
         }
-        std::string_view type = "TextEdit";
-        if (world.ecs().all_of<world::LineEdit>(going.from)) {
-            type = "LineEdit";
-        } else if (world.ecs().all_of<world::CodeEdit>(going.from)) {
-            type = "CodeEdit";
+        std::string_view type = "TextArea";
+        if (world.ecs().all_of<world::TextField>(going.from)) {
+            type = "TextField";
+        } else if (world.ecs().all_of<world::CodeEditor>(going.from)) {
+            type = "CodeEditor";
         }
         const Resolver source(node->themes, *node->control, type);
         world::Label label;
@@ -3990,9 +3988,9 @@ struct Builder {
         From from = From::Popup;
         const ThemeLink* link = project_link;
         bool rtl = false;
-        Vec2 origin; // where it opens: a PopupMenu's position, or its button's top left
+        Vec2 origin; // where it opens: a PopupList's position, or its button's top left
         Vec2 button; // the button's size in the viewport
-        if (const auto* menu = ecs.try_get<world::PopupMenu>(owner); menu != nullptr) {
+        if (const auto* menu = ecs.try_get<world::PopupList>(owner); menu != nullptr) {
             if (!menu->theme.empty()) {
                 if (const Theme* loaded = theme(menu->theme, nullptr); loaded != nullptr) {
                     link = &links.emplace_back(
@@ -4006,7 +4004,7 @@ struct Builder {
             if (node == nodes.end() || !node->placed.visible) {
                 return;
             }
-            from = ecs.all_of<world::OptionButton>(owner) ? From::Option : From::Menu;
+            from = ecs.all_of<world::Dropdown>(owner) ? From::Option : From::Menu;
             link = node->themes;
             rtl = node->rtl;
             // Control::get_screen_rect.
@@ -4015,8 +4013,8 @@ struct Builder {
             button = {node->placed.size.x * std::hypot(t.a, t.b),
                       node->placed.size.y * std::hypot(t.c, t.d)};
         }
-        const PopupTheme look = popup_theme(Resolver(link, kDefaultControl, "PopupMenu"));
-        // Items with their text as it shows: a PopupMenu's own translates as one at the root, a
+        const PopupTheme look = popup_theme(Resolver(link, kDefaultControl, "PopupList"));
+        // Items with their text as it shows: a PopupList's own translates as one at the root, a
         // button's as the button.
         std::vector<world::PopupMenuItem> items = popup_items(world, owner);
         {
@@ -4078,7 +4076,7 @@ struct Builder {
         }
         minimum.y = std::ceil(std::min(minimum.y, std::trunc(out.viewport.y)));
 
-        // Its rect, in whole pixels: an OptionButton's list is at least as wide as the button.
+        // Its rect, in whole pixels: an Dropdown's list is at least as wide as the button.
         const Vec2 least{std::trunc(minimum.x), std::trunc(minimum.y)};
         Vec2 size = least;
         Vec2 position{std::trunc(origin.x), std::trunc(origin.y)};
@@ -4098,7 +4096,7 @@ struct Builder {
         }
 
         // The list scrolls inside the panel's margins, beside a scroll bar when it is taller
-        // than its room, as the ScrollContainer in PopupMenu's window.
+        // than its room, as the ScrollBox in PopupList's window.
         PopupView& view = out.popups.emplace_back();
         view.owner = owner;
         view.position = position;
@@ -4411,7 +4409,7 @@ void build(Builder& builder, const std::vector<entt::entity>& controls) {
                 themes = &builder.links.emplace_back(
                     ThemeLink{.theme = theme, .path = path, .parent = themes});
             } else {
-                builder.problem(entity, "/components/Control/theme", error);
+                builder.problem(entity, "/components/Widget/theme", error);
             }
         }
         builder.nodes[index].themes = themes;

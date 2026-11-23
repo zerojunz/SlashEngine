@@ -53,7 +53,7 @@ namespace slash::physics3d::detail {
 // Godot's CMP_EPSILON.
 inline constexpr float kEpsilon = 0.00001F;
 
-// Bone is a PhysicalBone3D: a rigid, kinematic or static body as its link says.
+// Bone is a SimulatedBone3D: a rigid, kinematic or static body as its link says.
 enum class Kind : std::uint8_t { Rigid, Character, Animatable, Static, Area, Bone };
 
 // The broad phase layers: Godot's JoltBroadPhaseLayer, with its two static layers as one and
@@ -202,7 +202,7 @@ struct Unscaled {
 // The same with its origin a place in the world (to_jolt_place).
 [[nodiscard]] JPH::RMat44 place_matrix_of(const world::Affine3D& transform);
 
-// A CollisionShape3D's Jolt shape, unscaled and in its own space, as Godot's JoltShape3D
+// A Collider3D's Jolt shape, unscaled and in its own space, as Godot's JoltShape3D
 // subclasses build them; an error for a shape that can't be made, such as a hull of too few
 // points.
 struct BuiltShape {
@@ -210,9 +210,8 @@ struct BuiltShape {
     std::string error;
 };
 // settings gives the margins, mesh edges and world boundaries' size.
-[[nodiscard]] BuiltShape build_shape(const world::CollisionShape3D& shape,
-                                     const Settings& settings = {});
-// An HTerrain's heights as a Jolt height field in its entity's space, as Godot's
+[[nodiscard]] BuiltShape build_shape(const world::Collider3D& shape, const Settings& settings = {});
+// An Terrain3D's heights as a Jolt height field in its entity's space, as Godot's
 // JoltHeightMapShape3D builds a height map shape (mirrored along z, so Jolt splits each quad as
 // Godot does): cell (x, z) at map_scale * (x, height, z), moved back half the terrain when
 // centered. Holes don't collide.
@@ -222,11 +221,11 @@ struct BuiltShape {
 // scales the same along every axis).
 [[nodiscard]] JPH::RefConst<JPH::Shape> scaled(const JPH::Shape* shape, Vec3 scale);
 
-// One shape of a body: the CollisionShape3D of the body's entity or of an entity under it,
+// One shape of a body: the Collider3D of the body's entity or of an entity under it,
 // placed in the body's scaled space, as Godot's JoltShapeInstance3D.
 struct Part {
-    entt::entity entity = entt::null; // whose CollisionShape3D it is
-    world::CollisionShape3D shape;
+    entt::entity entity = entt::null; // whose Collider3D it is
+    world::Collider3D shape;
     world::Affine3D local; // the shape's transform in the body's scaled space, scale and all
 
     friend bool operator==(const Part&, const Part&) = default;
@@ -238,16 +237,16 @@ struct ShapeKey {
     Vec3 scale{1.0F, 1.0F, 1.0F};
     // A CSG root's triangles, as scene3d keeps them: a new mesh is a new pointer.
     std::shared_ptr<const std::vector<Vec3>> csg;
-    // A GridMap's cells' shapes, the same way.
+    // A BlockMap3D's cells' shapes, the same way.
     std::shared_ptr<const std::vector<scene3d::GridShape>> grid;
-    // An HTerrain's heights, the same way, and how they are placed.
+    // An Terrain3D's heights, the same way, and how they are placed.
     std::shared_ptr<const scene3d::TerrainData> terrain;
     Vec3 terrain_scale{1.0F, 1.0F, 1.0F};
     bool terrain_centered = false;
     // The collision of models the body's entity and the entities under it draw, as scene3d
     // keeps it, each placed in the body's scaled space as those entities are.
     struct Model {
-        std::shared_ptr<const std::vector<world::CollisionShape3D>> shapes;
+        std::shared_ptr<const std::vector<world::Collider3D>> shapes;
         world::Affine3D local;
 
         friend bool operator==(const Model&, const Model&) = default;
@@ -284,7 +283,7 @@ struct Body {
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
     // A CSG root with use_collision, a static body of its triangles as Godot's CSGShape3D's, a
-    // GridMap, a static body of its cells' shapes as its octants' bodies, an HTerrain, a
+    // BlockMap3D, a static body of its cells' shapes as its octants' bodies, an Terrain3D, a
     // static height field as its collider, or a model with collision, a static body as the one
     // Godot's importer adds: what scene3d makes.
     bool generated = false;
@@ -295,7 +294,7 @@ struct Body {
     // Each built part's own shape, unscaled, with its index in shape_key.parts: motion tests
     // cast the convex ones one by one, as Godot's do.
     std::vector<std::pair<std::size_t, JPH::RefConst<JPH::Shape>>> parts;
-    // A GridMap with one shape: its index in shape_key.grid. With more, each is a sub-shape of
+    // A BlockMap3D with one shape: its index in shape_key.grid. With more, each is a sub-shape of
     // the compound whose user data is its index.
     std::optional<std::size_t> grid_part;
     ShapeKey shape_key;
@@ -384,8 +383,8 @@ struct MotionParameters {
 };
 
 // The joint components, as a joint was made from one.
-using JointKey = std::variant<world::PinJoint3D, world::HingeJoint3D, world::SliderJoint3D,
-                              world::ConeTwistJoint3D, world::Generic6DOFJoint3D>;
+using JointKey = std::variant<world::PinJoint3D, world::HingeJoint3D, world::SlideJoint3D,
+                              world::ConeJoint3D, world::SixAxisJoint3D>;
 
 // A joint's Jolt constraint, as Godot's JoltJoint3D: made where its entity was then, it stays
 // there when a parent carries the entity away; moving the entity's own Transform3D or naming
@@ -416,7 +415,7 @@ struct Joint {
 // body offset or bodies change.
 struct BoneJoint {
     Joint joint;
-    world::PhysicalBone3D made; // the component when its frames were made
+    world::SimulatedBone3D made; // the component when its frames were made
 };
 
 // What a wheel's Transform3D was made from, so the next step tells the physics' own writes from
@@ -487,7 +486,7 @@ struct KeptPoint {
     JPH::Vec3 velocity;
 };
 
-// An Area3D's wind, as Godot's Area3D::_initialize_wind leaves it: wind_force_magnitude along
+// An Zone3D's wind, as Godot's Area3D::_initialize_wind leaves it: wind_force_magnitude along
 // wind_source_path's global -Z from its origin.
 struct AreaWind {
     const Body* area = nullptr;
@@ -529,7 +528,7 @@ private:
     Space* space_;
 };
 
-// A HairInstance3D's guide strands as the space steps them (hair.cpp): the groom grown over its
+// A Hair3D's guide strands as the space steps them (hair.cpp): the groom grown over its
 // model and the strands' points.
 struct Hair3DBody {
     std::string name;
@@ -597,7 +596,7 @@ public:
     [[nodiscard]] std::optional<world::PhysicsMaterial> material(const world::World& world,
                                                                  const std::string& path);
 
-    // The cell of a GridMap's body a sub-shape is in; nothing for other bodies.
+    // The cell of a BlockMap3D's body a sub-shape is in; nothing for other bodies.
     [[nodiscard]] static std::optional<Vec3i> grid_cell(const Body& body,
                                                         const JPH::SubShapeID& id);
 
@@ -648,8 +647,8 @@ public:
     [[nodiscard]] world::MemoryPart memory() const;
 
 private:
-    // A static body scene3d makes: a CSG root's triangles, a GridMap's cells' shapes, an
-    // HTerrain's heights or a model's collision, with their collision layer and mask and physics
+    // A static body scene3d makes: a CSG root's triangles, a BlockMap3D's cells' shapes, an
+    // Terrain3D's heights or a model's collision, with their collision layer and mask and physics
     // material.
     struct MadeShape {
         std::uint32_t layer = 1;
@@ -661,7 +660,7 @@ private:
         std::shared_ptr<const scene3d::TerrainData> terrain;
         Vec3 terrain_scale{1.0F, 1.0F, 1.0F};
         bool terrain_centered = false;
-        std::shared_ptr<const std::vector<world::CollisionShape3D>> model;
+        std::shared_ptr<const std::vector<world::Collider3D>> model;
     };
 
     void create_system();
@@ -682,7 +681,7 @@ private:
     void apply_fields(const world::World& world, const world::Tree3D& tree, float seconds);
     // Floats and drags rigid bodies in the world's Water3Ds, before a step (src/water.cpp).
     void apply_water(world::World& world, float seconds);
-    // What PhysicalBone3D drives do this step: simulating bones turned (and, in the world,
+    // What SimulatedBone3D drives do this step: simulating bones turned (and, in the world,
     // moved) toward where the animated pose puts them (drives.cpp).
     void apply_drives(const world::World& world, float seconds);
     // A rigid body's or bone's mass: its material's density times its shape's volume, or its
@@ -726,11 +725,11 @@ private:
     void pre_step_cloths(const world::World& world, const world::Tree3D& tree, float seconds);
     // Notes where each cloth's surfaces are after the step, in its model's space.
     void read_cloths(world::World& world, const world::Tree3D& tree);
-    // Steps every HairInstance3D's guides (hair.cpp), after the bodies moved.
+    // Steps every Hair3D's guides (hair.cpp), after the bodies moved.
     void step_hair(world::World& world, float seconds);
 
 public:
-    // Where a HairInstance3D's guides are after the last step and the one before, or nullptr.
+    // Where a Hair3D's guides are after the last step and the one before, or nullptr.
     [[nodiscard]] const world::HairStrands* hair_strands(entt::entity entity) const;
 
 private:
@@ -802,7 +801,7 @@ private:
 [[nodiscard]] const Space* find_space(const world::World& world);
 
 // What a moving body's own component says of its gravity and damping: a RigidBody3D's or a
-// PhysicalBone3D's; nothing for other kinds.
+// SimulatedBone3D's; nothing for other kinds.
 struct OwnForces {
     float gravity_scale = 1.0F;
     std::string_view linear_damp_mode;
@@ -828,7 +827,7 @@ void set_up_jolt();
 // Moves a character one tick, as Godot's CharacterBody3D::move_and_slide (character.cpp):
 // transform is its global transform, which it moves.
 void move_character(const Space& space, Body& body, world::Affine3D& transform,
-                    world::CharacterBody3D& character, float seconds);
+                    world::CharacterMover3D& character, float seconds);
 
 // After a step (destruction.cpp): breaks the Destructible3Ds the step's impacts reached, and
 // takes away pieces whose lifetime ran out.

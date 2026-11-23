@@ -19,7 +19,7 @@ entity.get {"components":["Transform2D"],"id":"flag"}
   the rock covers the cannon. A parent's `z_index`, `visible` and `modulate` pass down: lifting
   the boat lifts its children over the rock.
 - Bodies in a parent are where it puts them. A child with a shape and no body of its own is a
-  shape of its parent's body, as a Godot `CollisionShape2D` node is: the ray finds the boat by
+  shape of its parent's body, as a Godot `Collider2D` node is: the ray finds the boat by
   its deck where the boat is now. The barrel, a body of its own, falls in the world while its
   own position stays in the boat's space.
 - A child with `top_level` is placed in the world rather than its parent's space, as Godot's

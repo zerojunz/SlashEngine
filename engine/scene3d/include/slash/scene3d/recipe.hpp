@@ -15,7 +15,7 @@
 // cylinder, torus, polygon pushed, spun or swept along a path, and closed primitive meshes),
 // added to, cut from or intersected with each other in order, with bevels and arrays. Numbers
 // can be expressions ("=width / 2") over the parameters, in Godot's Expression syntax. The engine
-// builds the model when it loads the file, so a MeshInstance3D draws a recipe as it draws a glTF
+// builds the model when it loads the file, so a Model3D draws a recipe as it draws a glTF
 // file, and refining a model means changing a number.
 namespace slash::scene3d {
 

@@ -4,7 +4,7 @@ A research spike of Nanite-style streaming for virtualized geometry
 ([docs/reference/virtualized-geometry.md](../../docs/reference/virtualized-geometry.md#streaming)).
 Godot has nothing like it. [props/moon.model.json](props/moon.model.json) is the cratered moon of
 [virtualized-geometry](../virtualized-geometry/), 41,018 triangles, drawn with
-`MeshInstance3D.virtualized`. [project.json](project.json) gives each virtualized surface a pool of
+`Model3D.virtualized`. [project.json](project.json) gives each virtualized surface a pool of
 256 KB for its cluster pages and lets it load two pages a frame:
 
 ```json

@@ -1043,7 +1043,7 @@ int cmd_run(const std::vector<std::string>& args) {
             if (engine.session->playing()) {
                 game.step(tick_seconds);
             }
-            // The input method and on-screen keyboard follow the LineEdit being edited.
+            // The input method and on-screen keyboard follow the TextField being edited.
             if (!config.headless) {
                 input_reader.set_text_input(platform.value().window(), slash::ui::text_input(game));
             }
@@ -1194,7 +1194,7 @@ std::string project_path(const std::string& file) {
     return relative.empty() ? file : relative.generic_string();
 }
 
-// Checks a model as MeshInstance3D's mesh loads it, and counts what it holds.
+// Checks a model as Model3D's mesh loads it, and counts what it holds.
 int validate_model(const std::string& path, std::string_view file) {
     const std::string in_project = project_path(path);
     const auto read = prefab_reader(path);

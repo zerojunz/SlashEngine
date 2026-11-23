@@ -232,9 +232,9 @@ Look::Look(command::Session& session_)
     // The body the current camera hangs from.
     for (const entt::entity camera : {camera3d_, camera2d_}) {
         for (entt::entity e = camera; e != entt::null && player_ == entt::null; e = parent(e)) {
-            if (has_any<world::CharacterBody3D, world::RigidBody3D, world::AnimatableBody3D,
-                        world::CharacterBody2D, world::RigidBody2D, world::AnimatableBody2D>(world,
-                                                                                             e)) {
+            if (has_any<world::CharacterMover3D, world::RigidBody3D, world::MovingBody3D,
+                        world::CharacterMover2D, world::RigidBody2D, world::MovingBody2D>(world,
+                                                                                          e)) {
                 player_ = e;
             }
         }
@@ -250,13 +250,13 @@ Look::Look(command::Session& session_)
         }
     }
     for (const entt::entity e : entities_) {
-        if (world.ecs().all_of<world::CharacterBody3D>(e)) {
+        if (world.ecs().all_of<world::CharacterMover3D>(e)) {
             player_ = e;
             return;
         }
     }
     for (const entt::entity e : entities_) {
-        if (world.ecs().all_of<world::CharacterBody2D>(e)) {
+        if (world.ecs().all_of<world::CharacterMover2D>(e)) {
             player_ = e;
             return;
         }
@@ -288,10 +288,9 @@ bool Look::is2d(entt::entity entity) const {
 }
 
 bool Look::is_body(entt::entity entity) const {
-    return has_any<world::StaticBody3D, world::AnimatableBody3D, world::RigidBody3D,
-                   world::CharacterBody3D, world::Area3D, world::StaticBody2D,
-                   world::AnimatableBody2D, world::RigidBody2D, world::CharacterBody2D,
-                   world::Area2D>(world, entity);
+    return has_any<world::StaticBody3D, world::MovingBody3D, world::RigidBody3D,
+                   world::CharacterMover3D, world::Zone3D, world::StaticBody2D, world::MovingBody2D,
+                   world::RigidBody2D, world::CharacterMover2D, world::Zone2D>(world, entity);
 }
 
 entt::entity Look::parent(entt::entity entity) const {
@@ -376,7 +375,7 @@ world::Affine2D Look::global2(entt::entity entity) const {
 }
 
 Vec3 Look::velocity3(entt::entity entity) const {
-    if (const auto* body = world.ecs().try_get<world::CharacterBody3D>(entity)) {
+    if (const auto* body = world.ecs().try_get<world::CharacterMover3D>(entity)) {
         return body->velocity;
     }
     if (const auto* body = world.ecs().try_get<world::RigidBody3D>(entity)) {
@@ -386,7 +385,7 @@ Vec3 Look::velocity3(entt::entity entity) const {
 }
 
 Vec2 Look::velocity2(entt::entity entity) const {
-    if (const auto* body = world.ecs().try_get<world::CharacterBody2D>(entity)) {
+    if (const auto* body = world.ecs().try_get<world::CharacterMover2D>(entity)) {
         return body->velocity;
     }
     if (const auto* body = world.ecs().try_get<world::RigidBody2D>(entity)) {
@@ -414,7 +413,7 @@ std::vector<entt::entity> Look::subtree(entt::entity root) const {
 namespace {
 
 // A collision shape's box in its entity's space.
-Box3 shape_box(const world::CollisionShape3D& shape) {
+Box3 shape_box(const world::Collider3D& shape) {
     Box3 box;
     if (shape.disabled) {
         return box;
@@ -447,7 +446,7 @@ Box3 shape_box(const world::CollisionShape3D& shape) {
     return box.placed(world::affine(local));
 }
 
-Rect2 shape_rect(const world::CollisionShape2D& shape, const world::Affine2D& global) {
+Rect2 shape_rect(const world::Collider2D& shape, const world::Affine2D& global) {
     Rect2 local;
     if (shape.disabled) {
         return local;
@@ -491,7 +490,7 @@ Box3 Look::mesh_bounds(entt::entity entity) const {
         return cached->second;
     }
     Box3 local;
-    if (const auto* instance = world.ecs().try_get<world::MeshInstance3D>(entity)) {
+    if (const auto* instance = world.ecs().try_get<world::Model3D>(entity)) {
         if (!instance->mesh.empty()) {
             if (auto model = session.assets().load<scene3d::Model>(instance->mesh); model) {
                 const scene3d::Bounds b = scene3d::bounds(*model.value());
@@ -517,7 +516,7 @@ Box3 Look::bounds3(entt::entity entity) const {
     const std::vector<entt::entity> under = subtree(entity);
     Box3 box;
     for (const entt::entity e : under) {
-        if (world.ecs().all_of<world::MeshInstance3D>(e) && tree3.visible(e)) {
+        if (world.ecs().all_of<world::Model3D>(e) && tree3.visible(e)) {
             box.merge(mesh_bounds(e));
         }
     }
@@ -525,7 +524,7 @@ Box3 Look::bounds3(entt::entity entity) const {
         return box;
     }
     for (const entt::entity e : under) {
-        if (const auto* shape = world.ecs().try_get<world::CollisionShape3D>(e)) {
+        if (const auto* shape = world.ecs().try_get<world::Collider3D>(e)) {
             box.merge(shape_box(*shape).placed(global3(e)));
         }
     }
@@ -538,7 +537,7 @@ Box3 Look::bounds3(entt::entity entity) const {
 Rect2 Look::bounds2(entt::entity entity) const {
     Rect2 rect;
     for (const entt::entity e : subtree(entity)) {
-        if (const auto* shape = world.ecs().try_get<world::CollisionShape2D>(e)) {
+        if (const auto* shape = world.ecs().try_get<world::Collider2D>(e)) {
             rect.merge(shape_rect(*shape, global2(e)));
         }
     }
@@ -551,7 +550,7 @@ Rect2 Look::bounds2(entt::entity entity) const {
 Look::Body Look::body3(entt::entity entity) const {
     Body body;
     body.center = position3(entity);
-    const auto from = [&](entt::entity e, const world::CollisionShape3D& shape) {
+    const auto from = [&](entt::entity e, const world::Collider3D& shape) {
         body.has_shape = true;
         body.shape = shape.shape;
         body.center = global3(e).apply(shape.position);
@@ -566,14 +565,14 @@ Look::Body Look::body3(entt::entity entity) const {
             body.radius = std::max(shape.size.x, shape.size.z) * 0.5F;
         }
     };
-    if (const auto* own = world.ecs().try_get<world::CollisionShape3D>(entity);
+    if (const auto* own = world.ecs().try_get<world::Collider3D>(entity);
         own != nullptr && !own->disabled) {
         from(entity, *own);
         return body;
     }
     if (const auto found = children_.find(entity); found != children_.end()) {
         for (const entt::entity child : found->second) {
-            const auto* shape = world.ecs().try_get<world::CollisionShape3D>(child);
+            const auto* shape = world.ecs().try_get<world::Collider3D>(child);
             if (shape != nullptr && !shape->disabled && !is_body(child)) {
                 from(child, *shape);
                 return body;
@@ -587,7 +586,7 @@ Look::Body Look::body2(entt::entity entity) const {
     Body body;
     const Vec2 at = position2(entity);
     body.center = {at.x, at.y, 0.0F};
-    const auto from = [&](entt::entity e, const world::CollisionShape2D& shape) {
+    const auto from = [&](entt::entity e, const world::Collider2D& shape) {
         body.has_shape = true;
         body.shape = shape.shape;
         const Vec2 c = global2(e).apply(shape.position);
@@ -603,14 +602,14 @@ Look::Body Look::body2(entt::entity entity) const {
             body.radius = shape.radius;
         }
     };
-    if (const auto* own = world.ecs().try_get<world::CollisionShape2D>(entity);
+    if (const auto* own = world.ecs().try_get<world::Collider2D>(entity);
         own != nullptr && !own->disabled) {
         from(entity, *own);
         return body;
     }
     if (const auto found = children_.find(entity); found != children_.end()) {
         for (const entt::entity child : found->second) {
-            const auto* shape = world.ecs().try_get<world::CollisionShape2D>(child);
+            const auto* shape = world.ecs().try_get<world::Collider2D>(child);
             if (shape != nullptr && !shape->disabled && !is_body(child)) {
                 from(child, *shape);
                 return body;
@@ -730,7 +729,7 @@ Answer pose(const Look& look) {
         out["yaw"] = r2(yaw_of(basis));
         out["pitch"] = r2(pitch_of(basis));
         out["velocity"] = kit(look.velocity3(p));
-        const auto* character = look.world.ecs().try_get<world::CharacterBody3D>(p);
+        const auto* character = look.world.ecs().try_get<world::CharacterMover3D>(p);
         out["on_ground"] = character != nullptr ? json::Value(character->on_floor) : json::Value();
         return Answer::success(std::move(out));
     }
@@ -746,7 +745,7 @@ Answer pose(const Look& look) {
     out["yaw"] = 0.0;
     out["pitch"] = 0.0;
     out["velocity"] = kit2d(look.velocity2(p));
-    const auto* character = look.world.ecs().try_get<world::CharacterBody2D>(p);
+    const auto* character = look.world.ecs().try_get<world::CharacterMover2D>(p);
     out["on_ground"] = character != nullptr ? json::Value(character->on_floor) : json::Value();
     return Answer::success(std::move(out));
 }
@@ -826,10 +825,10 @@ Answer movement(const Look& look) {
         out["radius"] = r2(body.radius * scale);
         sources["half_height"] = "CollisionShape " + body.shape;
     }
-    if (const auto* character = look.world.ecs().try_get<world::CharacterBody3D>(p)) {
+    if (const auto* character = look.world.ecs().try_get<world::CharacterMover3D>(p)) {
         out["max_slope"] = r2(character->floor_max_angle * kDegrees);
         sources["step"] = "CharacterBody3D has no step-up (step is null)";
-    } else if (const auto* character2 = look.world.ecs().try_get<world::CharacterBody2D>(p)) {
+    } else if (const auto* character2 = look.world.ecs().try_get<world::CharacterMover2D>(p)) {
         out["max_slope"] = r2(character2->floor_max_angle * kDegrees);
         sources["step"] = "CharacterBody2D has no step-up (step is null)";
     }
@@ -867,11 +866,11 @@ json::Value look_of(const Look& look, entt::entity thing) {
     std::string animation;
     for (const entt::entity e : look.subtree(thing)) {
         const bool shown = look.tree3.visible(e);
-        if (look.world.ecs().all_of<world::MeshInstance3D>(e) && shown && e != thing) {
+        if (look.world.ecs().all_of<world::Model3D>(e) && shown && e != thing) {
             parts.emplace_back(look.name(e));
         }
         float energy = -1.0F;
-        if (const auto* omni = look.world.ecs().try_get<world::OmniLight3D>(e)) {
+        if (const auto* omni = look.world.ecs().try_get<world::PointLight3D>(e)) {
             energy = omni->light_energy;
         } else if (const auto* spot = look.world.ecs().try_get<world::SpotLight3D>(e)) {
             energy = spot->light_energy;
@@ -880,7 +879,7 @@ json::Value look_of(const Look& look, entt::entity thing) {
             ++lights;
             brightest = std::max(brightest, energy);
         }
-        if (const auto* player = look.world.ecs().try_get<world::AnimationPlayer>(e);
+        if (const auto* player = look.world.ecs().try_get<world::Animator>(e);
             player != nullptr && player->playing && !player->animation.empty() &&
             animation.empty()) {
             animation = player->animation;
@@ -980,7 +979,7 @@ Answer view3d(Look& look, const json::Value& args) {
         body["velocity"] = kit(look.velocity3(p));
         body["feet_z"] = r2(feet_y * kScale);
         body["crouched"] = false;
-        if (const auto* character = look.world.ecs().try_get<world::CharacterBody3D>(p)) {
+        if (const auto* character = look.world.ecs().try_get<world::CharacterMover3D>(p)) {
             body["on_ground"] = character->on_floor;
             body["falling"] = !character->on_floor;
             if (character->on_floor) {
@@ -1025,7 +1024,7 @@ Answer view3d(Look& look, const json::Value& args) {
     std::vector<entt::entity> order;
     std::unordered_map<entt::entity, Box3> boxes;
     for (const entt::entity e : look.entities()) {
-        if (!look.world.ecs().all_of<world::MeshInstance3D>(e) || !look.tree3.visible(e)) {
+        if (!look.world.ecs().all_of<world::Model3D>(e) || !look.tree3.visible(e)) {
             continue;
         }
         if (p != entt::null && look.is_ancestor(p, e)) {
@@ -1172,7 +1171,7 @@ Answer view2d(Look& look, const json::Value& args) {
     std::vector<entt::entity> order;
     std::unordered_map<entt::entity, Rect2> rects;
     for (const entt::entity e : look.entities()) {
-        if (!look.world.ecs().any_of<world::Sprite2D, world::AnimatedSprite2D>(e)) {
+        if (!look.world.ecs().any_of<world::Sprite2D, world::Flipbook2D>(e)) {
             continue;
         }
         const auto* sprite = look.world.ecs().try_get<world::Sprite2D>(e);
@@ -1243,7 +1242,7 @@ Answer view2d(Look& look, const json::Value& args) {
     if (p != entt::null && look.is2d(p)) {
         body["velocity"] = kit2d(look.velocity2(p));
         body["crouched"] = false;
-        if (const auto* character = look.world.ecs().try_get<world::CharacterBody2D>(p)) {
+        if (const auto* character = look.world.ecs().try_get<world::CharacterMover2D>(p)) {
             body["on_ground"] = character->on_floor;
             body["falling"] = !character->on_floor;
         }
@@ -1321,7 +1320,7 @@ std::optional<Sample> sample(const Look& look, const Watch::Entry& entry) {
                       {t2->position.x, t2->position.y, 0.0F},
                       {t2->scale.x, t2->scale.y, 1.0F}};
     }
-    if (const auto* control = look.world.ecs().try_get<world::Control>(entry.entity)) {
+    if (const auto* control = look.world.ecs().try_get<world::Widget>(entry.entity)) {
         return Sample{world::quaternion({0.0F, 0.0F, -control->rotation}),
                       {control->offset_left, control->offset_top, 0.0F},
                       {control->scale.x, control->scale.y, 1.0F}};
@@ -1359,7 +1358,7 @@ Watch watch_start(const Look& look, const json::Value& args) {
         const std::string& path = item.as_string();
         const entt::entity e = look.resolve(path);
         if (e == entt::null ||
-            !look.world.ecs().any_of<world::Transform3D, world::Transform2D, world::Control>(e)) {
+            !look.world.ecs().any_of<world::Transform3D, world::Transform2D, world::Widget>(e)) {
             continue;
         }
         watch.entries.emplace_back();
@@ -1368,8 +1367,7 @@ Watch watch_start(const Look& look, const json::Value& args) {
         if (watch.drawn && look.is3d(e)) {
             std::vector<std::pair<float, entt::entity>> meshes;
             for (const entt::entity m : look.subtree(e)) {
-                if (m != e && look.world.ecs().all_of<world::MeshInstance3D>(m) &&
-                    look.tree3.visible(m)) {
+                if (m != e && look.world.ecs().all_of<world::Model3D>(m) && look.tree3.visible(m)) {
                     meshes.emplace_back(length(look.mesh_bounds(m).size()), m);
                 }
             }

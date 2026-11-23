@@ -36,15 +36,15 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-using world::AnimatableBody3D;
-using world::Area3D;
-using world::CharacterBody3D;
-using world::CollisionShape3D;
+using world::CharacterMover3D;
+using world::Collider3D;
 using world::Destructible3D;
-using world::PhysicalBone3D;
+using world::MovingBody3D;
 using world::RigidBody3D;
+using world::SimulatedBone3D;
 using world::StaticBody3D;
 using world::Transform3D;
+using world::Zone3D;
 
 // Godot optimizes the broad phase before a query once this many bodies were added since.
 constexpr int kOptimizeAfter = 128;
@@ -138,19 +138,19 @@ std::optional<Kind> kind_of(const entt::registry& registry, entt::entity entity)
     if (registry.all_of<RigidBody3D>(entity)) {
         return Kind::Rigid;
     }
-    if (registry.all_of<CharacterBody3D>(entity)) {
+    if (registry.all_of<CharacterMover3D>(entity)) {
         return Kind::Character;
     }
-    if (registry.all_of<AnimatableBody3D>(entity)) {
+    if (registry.all_of<MovingBody3D>(entity)) {
         return Kind::Animatable;
     }
     if (registry.all_of<StaticBody3D>(entity)) {
         return Kind::Static;
     }
-    if (registry.all_of<Area3D>(entity)) {
+    if (registry.all_of<Zone3D>(entity)) {
         return Kind::Area;
     }
-    if (registry.all_of<PhysicalBone3D>(entity)) {
+    if (registry.all_of<SimulatedBone3D>(entity)) {
         return Kind::Bone;
     }
     return std::nullopt;
@@ -180,7 +180,7 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
             body.physics_material_override};
     }
     case Kind::Animatable: {
-        const auto& body = registry.get<AnimatableBody3D>(entity);
+        const auto& body = registry.get<MovingBody3D>(entity);
         return {body.collision_layer,
                 body.collision_mask,
                 body.friction,
@@ -200,15 +200,15 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
                 body.physics_material_override};
     }
     case Kind::Character: {
-        const auto& body = registry.get<CharacterBody3D>(entity);
+        const auto& body = registry.get<CharacterMover3D>(entity);
         return {body.collision_layer, body.collision_mask, 0.0F, 0.0F, {}, {}, {}};
     }
     case Kind::Area: {
-        const auto& area = registry.get<Area3D>(entity);
+        const auto& area = registry.get<Zone3D>(entity);
         return {area.collision_layer, area.collision_mask, 0.0F, 0.0F, {}, {}, {}};
     }
     case Kind::Bone: {
-        const auto& bone = registry.get<PhysicalBone3D>(entity);
+        const auto& bone = registry.get<SimulatedBone3D>(entity);
         return {
             bone.collision_layer,          bone.collision_mask, bone.friction, bone.bounce, {}, {},
             bone.physics_material_override};
@@ -218,7 +218,7 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
 }
 
 // Whether an area changes the gravity or damping of the bodies in it.
-bool overrides_space(const Area3D& area) {
+bool overrides_space(const Zone3D& area) {
     return area.gravity_space_override != "disabled" ||
            area.linear_damp_space_override != "disabled" ||
            area.angular_damp_space_override != "disabled";
@@ -240,7 +240,7 @@ Vec3 scale_of(const entt::registry& registry, const world::Tree3D& tree, entt::e
     return scale;
 }
 
-world::Affine3D shape_transform(const CollisionShape3D& shape) {
+world::Affine3D shape_transform(const Collider3D& shape) {
     Transform3D transform;
     transform.position = shape.position;
     transform.rotation = shape.rotation;
@@ -255,15 +255,15 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree3D& tree,
         rigid != nullptr && rigid->center_of_mass_mode == "custom") {
         key.center_of_mass = rigid->center_of_mass;
     }
-    if (const auto* shape = registry.try_get<CollisionShape3D>(entity); shape != nullptr) {
+    if (const auto* shape = registry.try_get<Collider3D>(entity); shape != nullptr) {
         key.parts.push_back({.entity = entity, .shape = *shape, .local = shape_transform(*shape)});
     }
-    // As a Godot CollisionObject3D takes the shapes of its CollisionShape3D children: child
+    // As a Godot CollisionObject3D takes the shapes of its Collider3D children: child
     // entities with shapes and no body of their own, placed by their own transforms.
     if (const auto* transform = registry.try_get<Transform3D>(entity); transform != nullptr) {
         for (const entt::entity child : transform->children) {
             const auto* shape =
-                registry.valid(child) ? registry.try_get<CollisionShape3D>(child) : nullptr;
+                registry.valid(child) ? registry.try_get<Collider3D>(child) : nullptr;
             if (shape == nullptr || tree.transform_parent(child) != entity ||
                 kind_of(registry, child).has_value()) {
                 continue;
@@ -343,7 +343,7 @@ RigidKey rigid_key_of(const RigidBody3D& rigid) {
 
 // A physical bone's body as Godot's PhysicalBone3D sets it up: rigid while it simulates,
 // kinematic while it follows its bone and static otherwise, with no inertia of its own.
-RigidKey bone_key_of(const PhysicalBone3D& bone, world::PhysicalBoneMode mode) {
+RigidKey bone_key_of(const SimulatedBone3D& bone, world::PhysicalBoneMode mode) {
     JPH::EMotionType motion = JPH::EMotionType::Static;
     if (mode == world::PhysicalBoneMode::Simulate) {
         motion = JPH::EMotionType::Dynamic;
@@ -448,7 +448,7 @@ public:
         if (other->kind != Kind::Area) {
             return true;
         }
-        const auto* area = world_->ecs().try_get<Area3D>(other->entity);
+        const auto* area = world_->ecs().try_get<Zone3D>(other->entity);
         return area != nullptr && area->monitorable;
     }
 
@@ -476,7 +476,7 @@ std::optional<OwnForces> own_forces(const entt::registry& registry, entt::entity
                          .constant_torque = rigid.constant_torque};
     }
     if (kind == Kind::Bone) {
-        const auto& bone = registry.get<PhysicalBone3D>(entity);
+        const auto& bone = registry.get<SimulatedBone3D>(entity);
         return OwnForces{.gravity_scale = bone.gravity_scale,
                          .linear_damp_mode = bone.linear_damp_mode,
                          .linear_damp = bone.linear_damp,
@@ -979,7 +979,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
     }
     // A CSG root's triangles, as Godot's ConcavePolygonShape3D of them, in the root's space.
     if (key.csg != nullptr && !key.csg->empty()) {
-        world::CollisionShape3D faces;
+        world::Collider3D faces;
         faces.shape = "concave_polygon";
         faces.faces = *key.csg;
         const BuiltShape made = detail::build_shape(faces, settings_);
@@ -992,10 +992,10 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             ++built;
         }
     }
-    // A GridMap's cells' shapes, as Godot's GridMap adds each to its octant's body: cells of
+    // A BlockMap3D's cells' shapes, as Godot's GridMap adds each to its octant's body: cells of
     // the same item share each built shape.
     if (key.grid != nullptr) {
-        std::vector<std::pair<const world::CollisionShape3D*, JPH::RefConst<JPH::Shape>>> shapes;
+        std::vector<std::pair<const world::Collider3D*, JPH::RefConst<JPH::Shape>>> shapes;
         for (std::size_t i = 0; i < key.grid->size(); ++i) {
             const scene3d::GridShape& part = (*key.grid)[i];
             JPH::RefConst<JPH::Shape> unscaled;
@@ -1027,7 +1027,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
     // Models' collision, as the shapes of the static body Godot's importer adds, placed where
     // the entities drawing them are.
     for (const ShapeKey::Model& model : key.models) {
-        for (const world::CollisionShape3D& part : *model.shapes) {
+        for (const world::Collider3D& part : *model.shapes) {
             const BuiltShape made = detail::build_shape(part, settings_);
             if (!made.error.empty()) {
                 warn_shape(world, body.entity, made.error);
@@ -1044,7 +1044,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             ++built;
         }
     }
-    // An HTerrain's heights, as a height field.
+    // An Terrain3D's heights, as a height field.
     if (key.terrain != nullptr) {
         const BuiltShape made = detail::build_terrain_shape(*key.terrain, key.terrain_scale,
                                                             key.terrain_centered, settings_);
@@ -1139,7 +1139,7 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
                 capped(to_jolt(rigid.angular_velocity), settings_.max_angular_velocity);
             awake = motion == JPH::EMotionType::Dynamic && !rigid.sleeping;
         } else if (body.kind == Kind::Bone) {
-            const auto& bone = registry.get<PhysicalBone3D>(body.entity);
+            const auto& bone = registry.get<SimulatedBone3D>(body.entity);
             mass = mass_of(body, bone.mass);
             settings.mAllowSleeping = body.rigid_key.can_sleep;
             settings.mLinearVelocity =
@@ -1243,7 +1243,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
             made->angular_velocity = rigid.angular_velocity;
             made->sleeping = rigid.sleeping;
         } else if (kind == Kind::Bone) {
-            const auto& bone = registry.get<PhysicalBone3D>(entity);
+            const auto& bone = registry.get<SimulatedBone3D>(entity);
             made->rigid_key = bone_key_of(bone, bone_mode);
             made->linear_velocity = bone.linear_velocity;
             made->angular_velocity = bone.angular_velocity;
@@ -1354,7 +1354,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
             body.sleeping = rigid.sleeping;
         }
     } else if (kind == Kind::Bone) {
-        const auto& bone = registry.get<PhysicalBone3D>(entity);
+        const auto& bone = registry.get<SimulatedBone3D>(entity);
         body.bone_mode = bone_mode;
         RigidKey key = bone_key_of(bone, bone_mode);
         key.mass = mass_of(body, key.mass);
@@ -1369,7 +1369,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     }
     const Unscaled placed = unscale(global);
     body.placed = global;
-    if ((kind == Kind::Animatable && registry.get<AnimatableBody3D>(entity).sync_to_physics) ||
+    if ((kind == Kind::Animatable && registry.get<MovingBody3D>(entity).sync_to_physics) ||
         (kind == Kind::Bone && bone_mode == world::PhysicalBoneMode::Follow)) {
         // Moved during the step, so it pushes what is in its way.
         body.target = placed.transform;
@@ -1397,7 +1397,7 @@ void Space::sync(world::World& world) {
 void Space::sync(world::World& world, const world::Tree3D& tree) {
     entt::registry& registry = world.ecs();
     // CSG roots with use_collision and GridMaps with shapes, unless the entity is a body of its
-    // own; a GridMap that is a CSG root too is left to the CSG.
+    // own; a BlockMap3D that is a CSG root too is left to the CSG.
     std::vector<scene3d::CsgBody> csg = scene3d::csg_bodies(world, tree);
     std::erase_if(csg, [&](const scene3d::CsgBody& body) {
         return kind_of(registry, body.entity).has_value();
@@ -1438,14 +1438,14 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     });
     if (system_ == nullptr) {
         if (csg.empty() && grids.empty() && terrains.empty() && models.empty() &&
-            !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
-                     PhysicalBone3D, world::SoftBody3D, world::Cloth3D>(registry)) {
+            !has_any<RigidBody3D, CharacterMover3D, MovingBody3D, StaticBody3D, Zone3D,
+                     SimulatedBone3D, world::SoftBody3D, world::Cloth3D>(registry)) {
             return;
         }
         create_system();
     }
     bone_links_.clear();
-    if (!registry.view<PhysicalBone3D>().empty()) {
+    if (!registry.view<SimulatedBone3D>().empty()) {
         for (auto& [entity, link] : world::physical_bone_links(world)) {
             bone_links_.insert_or_assign(entity, std::move(link));
         }
@@ -1467,7 +1467,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     remove_stale(world, made);
     // New bodies are made in the same order on every machine: by kind, then in each
     // component's storage order, then CSG roots in tree order, then GridMaps and HTerrains in
-    // the order they were made, then models in MeshInstance3D's storage order.
+    // the order they were made, then models in Model3D's storage order.
     const auto each = [&]<typename Component>(Kind kind) {
         for (const entt::entity entity : registry.view<Component>()) {
             if (kind_of(registry, entity) == kind) {
@@ -1476,11 +1476,11 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
         }
     };
     each.template operator()<RigidBody3D>(Kind::Rigid);
-    each.template operator()<CharacterBody3D>(Kind::Character);
-    each.template operator()<AnimatableBody3D>(Kind::Animatable);
+    each.template operator()<CharacterMover3D>(Kind::Character);
+    each.template operator()<MovingBody3D>(Kind::Animatable);
     each.template operator()<StaticBody3D>(Kind::Static);
-    each.template operator()<Area3D>(Kind::Area);
-    each.template operator()<PhysicalBone3D>(Kind::Bone);
+    each.template operator()<Zone3D>(Kind::Area);
+    each.template operator()<SimulatedBone3D>(Kind::Bone);
     // A CSG root collides as a static body with no physics material: friction 1, no bounce.
     for (scene3d::CsgBody& body : csg) {
         const MadeShape shape{.layer = body.layer,
@@ -1508,7 +1508,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .model = nullptr};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
-    // An HTerrain collides as a static body of its heights, as HTerrainCollider's.
+    // An Terrain3D collides as a static body of its heights, as HTerrainCollider's.
     for (scene3d::TerrainBody& body : terrains) {
         const MadeShape shape{.layer = body.layer,
                               .mask = body.mask,
@@ -1552,7 +1552,7 @@ std::vector<const Body*> Space::override_areas(const world::World& world, const 
         if (area->kind != Kind::Area) {
             continue;
         }
-        const auto* component = world.ecs().try_get<Area3D>(entity);
+        const auto* component = world.ecs().try_get<Zone3D>(entity);
         if (component == nullptr || !overrides_space(*component)) {
             continue;
         }
@@ -1563,7 +1563,7 @@ std::vector<const Body*> Space::override_areas(const world::World& world, const 
         }
     }
     std::ranges::stable_sort(areas, std::greater<>(), [&](const Body* area) {
-        return world.ecs().get<Area3D>(area->entity).priority;
+        return world.ecs().get<Zone3D>(area->entity).priority;
     });
     return areas;
 }
@@ -1575,7 +1575,7 @@ AreaForces Space::forces(const world::World& world, const Body& body, Vec3 posit
     bool linear_done = false;
     bool angular_done = false;
     for (const Body* area : areas) {
-        const auto& component = world.ecs().get<Area3D>(area->entity);
+        const auto& component = world.ecs().get<Zone3D>(area->entity);
         out.areas.push_back(area->entity);
         if (!gravity_done) {
             // Godot's JoltArea3D::compute_gravity.
@@ -1758,7 +1758,7 @@ void Space::read_back(world::World& world, const world::Tree3D& tree) {
             rigid.angular_velocity = body->angular_velocity;
             rigid.sleeping = body->sleeping;
         } else {
-            auto& bone = registry.get<PhysicalBone3D>(body->entity);
+            auto& bone = registry.get<SimulatedBone3D>(body->entity);
             bone.linear_velocity = body->linear_velocity;
             bone.angular_velocity = body->angular_velocity;
         }
@@ -1770,7 +1770,7 @@ void Space::read_back(world::World& world, const world::Tree3D& tree) {
 
 void Space::move_characters(world::World& world, const world::Tree3D& tree, float seconds) {
     entt::registry& registry = world.ecs();
-    for (const entt::entity entity : registry.view<CharacterBody3D>()) {
+    for (const entt::entity entity : registry.view<CharacterMover3D>()) {
         Body* found = body(entity);
         if (found == nullptr || found->kind != Kind::Character || found->id.IsInvalid()) {
             continue;
@@ -1778,7 +1778,7 @@ void Space::move_characters(world::World& world, const world::Tree3D& tree, floa
         Body& character_body = *found;
         world::Affine3D global = tree.global(entity);
         const Vec3 before = global.origin;
-        auto& character = registry.get<CharacterBody3D>(entity);
+        auto& character = registry.get<CharacterMover3D>(entity);
         move_character(*this, character_body, global, character, seconds);
         if (global.origin != before) {
             auto& transform = registry.get_or_emplace<Transform3D>(entity);
@@ -1803,7 +1803,7 @@ void Space::find_overlaps(const world::World& world) {
             continue;
         }
         area->overlaps.clear();
-        const auto& component = registry.get<Area3D>(entity);
+        const auto& component = registry.get<Zone3D>(entity);
         if ((!component.monitoring && !overrides_space(component)) || area->id.IsInvalid() ||
             area->parts.empty()) {
             continue;
@@ -1939,7 +1939,7 @@ void Space::emit_events(world::World& world) {
                     now.emplace(id, other_id, false);
                 }
             }
-        } else if (body->kind == Kind::Area && registry.get<Area3D>(entity).monitoring) {
+        } else if (body->kind == Kind::Area && registry.get<Zone3D>(entity).monitoring) {
             for (const auto& [other, is_area] : body->overlaps) {
                 if (const std::string_view other_id = world.id_of(other); !other_id.empty()) {
                     now.emplace(id, other_id, is_area);

@@ -114,7 +114,7 @@ struct ParticleProcess3D {
 using ParticleTransform = std::array<float, 12>;
 inline constexpr ParticleTransform kParticleIdentity{1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
 
-// A vector field's texels, as a GPUParticlesAttractorVectorField3D's Texture3D holds them: width by
+// A vector field's texels, as a ParticleFlowField3D's Texture3D holds them: width by
 // height by depth, x fastest, then y, then z, each from 0 to 1 (RGBA8 texels over 255).
 struct ParticleField3D {
     std::uint32_t width = 0;
@@ -144,7 +144,7 @@ struct ParticleAttractor3D {
     bool operator==(const ParticleAttractor3D&) const = default;
 };
 
-// A GPUParticlesCollisionSDF3D's signed distance field, as its baked Texture3D holds it: width by
+// A ParticleColliderSdf3D's signed distance field, as its baked Texture3D holds it: width by
 // height by depth cells over its box, x fastest, then y, then z, each the distance from the
 // cell's center to the nearest surface in meters of the collider's unscaled space (less than 0
 // inside one) as a half float's bits, as Godot's RH texels.
@@ -157,7 +157,7 @@ struct ParticleSdf3D {
     bool operator==(const ParticleSdf3D&) const = default;
 };
 
-// A GPUParticlesCollisionHeightField3D's heights, as Godot draws its depth texture from above:
+// A ParticleColliderHeight3D's heights, as Godot draws its depth texture from above:
 // width by height texels over its box's x and z, x fastest, from its -x -z corner, each the
 // height of the highest surface over the texel's center, from 0 at the box's bottom (or nothing
 // there) to 1 at its top.
@@ -256,7 +256,7 @@ struct ParticleStep3D {
     // What pushes the particles in this step (Godot's FrameParams attractors).
     std::vector<ParticleAttractor3D> attractors;
     // What the particles collide with in this step (Godot's FrameParams colliders), and how
-    // near a particle comes to one before it touches, in meters (GPUParticles3D's
+    // near a particle comes to one before it touches, in meters (GpuEmitter3D's
     // collision_base_size).
     std::vector<ParticleCollider3D> colliders;
     float collision_size = 0.01F;
@@ -335,11 +335,11 @@ enum class ParticleAlign : std::uint8_t {
     ZBillboardYToVelocity, // both: y along its velocity as the camera sees it
 };
 
-// How a draw pass's material faces the camera, as a StandardMaterial3D's billboard_mode.
+// How a draw pass's material faces the camera, as a Surface3D's billboard_mode.
 enum class ParticleBillboard : std::uint8_t { Disabled, Enabled, FixedY, Particles };
 
 // How a system's particles place a draw pass's mesh (fill_particle_mesh), as Godot's particles
-// copy shader and StandardMaterial3D's vertex code do: each particle in draw order takes as many
+// copy shader and Surface3D's vertex code do: each particle in draw order takes as many
 // vertices as the pass has, placed by its transform (turned as align says and moved on along its
 // velocity by remainder seconds), then by transform, then faced to the camera as billboard
 // says, colored by its color, its texture coordinates showing its frame of

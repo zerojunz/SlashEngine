@@ -145,10 +145,10 @@ void keep_body(entt::registry& ecs, entt::entity entity, const VehicleRecipe& re
     if (changed) {
         ecs.replace<world::RigidBody3D>(entity, body);
     }
-    if (!ecs.all_of<world::MeshInstance3D>(entity)) {
-        world::MeshInstance3D instance;
+    if (!ecs.all_of<world::Model3D>(entity)) {
+        world::Model3D instance;
         instance.mesh = ecs.get<world::Vehicle3D>(entity).recipe;
-        ecs.emplace<world::MeshInstance3D>(entity, instance);
+        ecs.emplace<world::Model3D>(entity, instance);
     }
 }
 
@@ -160,8 +160,8 @@ real_t gravity_strength(const world::World& world) {
     return length(settings.gravity_vector * settings.gravity);
 }
 
-world::VehicleWheel3D wheel_settings(world::VehicleWheel3D wheel, const VehicleRecipe& recipe,
-                                     const world::VehicleWheel& made, real_t gravity) {
+world::Wheel3D wheel_settings(world::Wheel3D wheel, const VehicleRecipe& recipe,
+                              const world::VehicleWheel& made, real_t gravity) {
     const world::VehiclePhysics& p = recipe.physics;
     const auto count = static_cast<float>(std::max<std::size_t>(recipe.wheels.size(), 1));
     wheel.use_as_traction = made.drive;
@@ -179,7 +179,7 @@ world::VehicleWheel3D wheel_settings(world::VehicleWheel3D wheel, const VehicleR
     return wheel;
 }
 
-bool same_settings(const world::VehicleWheel3D& a, const world::VehicleWheel3D& b) {
+bool same_settings(const world::Wheel3D& a, const world::Wheel3D& b) {
     return a.use_as_traction == b.use_as_traction && a.use_as_steering == b.use_as_steering &&
            a.wheel_radius == b.wheel_radius && a.wheel_rest_length == b.wheel_rest_length &&
            a.suspension_travel == b.suspension_travel &&
@@ -200,47 +200,47 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
     if (!world::vehicle_rolls(recipe)) {
         return wheels;
     }
-    if (!ecs.all_of<world::VehicleBody3D>(entity)) {
-        ecs.emplace<world::VehicleBody3D>(entity);
+    if (!ecs.all_of<world::WheeledBody3D>(entity)) {
+        ecs.emplace<world::WheeledBody3D>(entity);
     }
     const std::string id(world.id_of(entity));
     for (std::size_t i = 0; i < recipe.wheels.size(); ++i) {
         const world::VehicleWheel& made = recipe.wheels[i];
         const std::string name = id.empty() ? std::string{} : id + "_wheel_" + std::to_string(i);
         entt::entity wheel = name.empty() ? entt::null : world.find(name);
-        if (wheel == entt::null || !ecs.all_of<world::VehicleWheel3D>(wheel)) {
+        if (wheel == entt::null || !ecs.all_of<world::Wheel3D>(wheel)) {
             if (wheel == entt::null) {
                 wheel = create_named(world, name);
             }
             world::Transform3D place;
             place.position = made.position + Vec3{0.0F, recipe.physics.suspension_rest, 0.0F};
             ecs.emplace_or_replace<world::Transform3D>(wheel, place);
-            ecs.emplace_or_replace<world::VehicleWheel3D>(
-                wheel, wheel_settings({}, recipe, made, gravity));
+            ecs.emplace_or_replace<world::Wheel3D>(wheel,
+                                                   wheel_settings({}, recipe, made, gravity));
             ecs.get<world::Transform3D>(entity).children.push_back(wheel);
             // The tire turned so the cylinder's axis is the axle.
             const entt::entity tire = create_named(world, name.empty() ? name : name + "_tire");
             world::Transform3D turned;
             turned.rotation = {0.0F, 0.0F, static_cast<real_t>(1.5707963F)};
             ecs.emplace<world::Transform3D>(tire, turned);
-            world::CylinderMesh cylinder;
+            world::CylinderGeometry cylinder;
             cylinder.top_radius = made.radius;
             cylinder.bottom_radius = made.radius;
             cylinder.height = made.width;
             cylinder.radial_segments = 16;
             cylinder.rings = 1;
-            ecs.emplace<world::CylinderMesh>(tire, cylinder);
-            ecs.emplace<world::MeshInstance3D>(tire);
-            world::StandardMaterial3D rubber;
+            ecs.emplace<world::CylinderGeometry>(tire, cylinder);
+            ecs.emplace<world::Model3D>(tire);
+            world::Surface3D rubber;
             rubber.albedo_color = recipe.body.trim;
             rubber.roughness = 0.9F;
-            ecs.emplace<world::StandardMaterial3D>(tire, rubber);
+            ecs.emplace<world::Surface3D>(tire, rubber);
             ecs.get<world::Transform3D>(wheel).children.push_back(tire);
         } else {
-            const auto& old = ecs.get<world::VehicleWheel3D>(wheel);
-            if (const world::VehicleWheel3D fresh = wheel_settings(old, recipe, made, gravity);
+            const auto& old = ecs.get<world::Wheel3D>(wheel);
+            if (const world::Wheel3D fresh = wheel_settings(old, recipe, made, gravity);
                 !same_settings(fresh, old)) {
-                ecs.replace<world::VehicleWheel3D>(wheel, fresh);
+                ecs.replace<world::Wheel3D>(wheel, fresh);
             }
         }
         wheels.push_back(wheel);
@@ -421,7 +421,7 @@ void hit_people(world::World& world, const world::Tree3D& tree, entt::entity veh
     std::vector<entt::entity> targets;
     for (const entt::entity e : ecs.view<world::Transform3D>()) {
         if (e != vehicle &&
-            (ecs.any_of<world::CharacterBody3D, world::Creature3D, world::Ragdoll3D>(e)) &&
+            (ecs.any_of<world::CharacterMover3D, world::Creature3D, world::Ragdoll3D>(e)) &&
             !ecs.all_of<world::VehicleRider>(e) && !kept.hits.contains(e)) {
             targets.push_back(e);
         }
@@ -439,7 +439,7 @@ void hit_people(world::World& world, const world::Tree3D& tree, entt::entity veh
             continue;
         }
         Vec3 target_velocity;
-        if (const auto* body = ecs.try_get<world::CharacterBody3D>(target); body != nullptr) {
+        if (const auto* body = ecs.try_get<world::CharacterMover3D>(target); body != nullptr) {
             target_velocity = body->velocity;
         }
         Vec3 away = place.origin - global.origin;
@@ -457,10 +457,10 @@ void hit_people(world::World& world, const world::Tree3D& tree, entt::entity veh
         const real_t hurt = impulse * damage.per_impulse;
         kept.hits[target] = kHitCooldown;
         const Vec3 shove = (away + Vec3{0.0F, 0.3F, 0.0F}) * (impulse / mass);
-        if (auto* body = ecs.try_get<world::CharacterBody3D>(target); body != nullptr) {
-            world::CharacterBody3D pushed = *body;
+        if (auto* body = ecs.try_get<world::CharacterMover3D>(target); body != nullptr) {
+            world::CharacterMover3D pushed = *body;
             pushed.velocity = pushed.velocity + shove;
-            ecs.replace<world::CharacterBody3D>(target, pushed);
+            ecs.replace<world::CharacterMover3D>(target, pushed);
         }
         if (auto* creature = ecs.try_get<world::Creature3D>(target); creature != nullptr) {
             world::Creature3D scared = *creature;
@@ -525,7 +525,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
     int driven = 0;
     for (std::size_t i = 0; i < wheels.size(); ++i) {
         if (recipe.wheels[i].drive) {
-            const auto& wheel = ecs.get<world::VehicleWheel3D>(wheels[i]);
+            const auto& wheel = ecs.get<world::Wheel3D>(wheels[i]);
             wheel_rpm += std::abs(wheel.rpm);
             radius = recipe.wheels[i].radius;
             ++driven;
@@ -561,7 +561,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
 
     // Each wheel's share: the differential splits the force (a tracked vehicle's wheels don't
     // steer; its tracks slew it, below), and brakes are impulses a step, as Godot's
-    // VehicleWheel3D takes them.
+    // Wheel3D takes them.
     const bool tracked = recipe.kind == "tracked";
     int front_driven = 0;
     for (const world::VehicleWheel& w : recipe.wheels) {
@@ -574,7 +574,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
                                  : 0.0F;
     for (std::size_t i = 0; i < wheels.size(); ++i) {
         const world::VehicleWheel& made = recipe.wheels[i];
-        world::VehicleWheel3D wheel = ecs.get<world::VehicleWheel3D>(wheels[i]);
+        world::Wheel3D wheel = ecs.get<world::Wheel3D>(wheels[i]);
         float force = 0.0F;
         if (made.drive && driven > 0) {
             if (recipe.physics.differential == "all" && front_driven > 0 && rear_driven > 0) {
@@ -598,7 +598,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
             wheel.engine_force = force;
             wheel.brake = brake;
             wheel.steering = steering;
-            ecs.replace<world::VehicleWheel3D>(wheels[i], wheel);
+            ecs.replace<world::Wheel3D>(wheels[i], wheel);
         }
     }
 
@@ -642,14 +642,14 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
         Affine3D at = ahead;
         at.origin = ahead.apply(seat->position);
         place_at(world, tree, rider, at);
-        if (auto* character = ecs.try_get<world::CharacterBody3D>(rider); character != nullptr) {
+        if (auto* character = ecs.try_get<world::CharacterMover3D>(rider); character != nullptr) {
             if (!(character->velocity == Vec3{}) || character->collision_layer != 0 ||
                 character->collision_mask != 0) {
-                world::CharacterBody3D still = *character;
+                world::CharacterMover3D still = *character;
                 still.velocity = {};
                 still.collision_layer = 0;
                 still.collision_mask = 0;
-                ecs.replace<world::CharacterBody3D>(rider, still);
+                ecs.replace<world::CharacterMover3D>(rider, still);
             }
         }
     }
@@ -739,14 +739,14 @@ Result<std::string> enter_vehicle(world::World& world, entt::entity rider, entt:
         }
     }
     world::VehicleRider ride{.vehicle = vehicle, .seat = chosen};
-    if (auto* body = ecs.try_get<world::CharacterBody3D>(rider); body != nullptr) {
+    if (auto* body = ecs.try_get<world::CharacterMover3D>(rider); body != nullptr) {
         ride.collision_layer = body->collision_layer;
         ride.collision_mask = body->collision_mask;
-        world::CharacterBody3D quiet = *body;
+        world::CharacterMover3D quiet = *body;
         quiet.collision_layer = 0;
         quiet.collision_mask = 0;
         quiet.velocity = {};
-        ecs.replace<world::CharacterBody3D>(rider, quiet);
+        ecs.replace<world::CharacterMover3D>(rider, quiet);
     }
     ecs.emplace<world::VehicleRider>(rider, ride);
     const world::Tree3D tree(world);
@@ -771,11 +771,11 @@ Result<void> exit_vehicle(world::World& world, entt::entity rider) {
     }
     const world::VehicleRider was = *ride;
     ecs.remove<world::VehicleRider>(rider);
-    if (auto* body = ecs.try_get<world::CharacterBody3D>(rider); body != nullptr) {
-        world::CharacterBody3D back = *body;
+    if (auto* body = ecs.try_get<world::CharacterMover3D>(rider); body != nullptr) {
+        world::CharacterMover3D back = *body;
         back.collision_layer = was.collision_layer;
         back.collision_mask = was.collision_mask;
-        ecs.replace<world::CharacterBody3D>(rider, back);
+        ecs.replace<world::CharacterMover3D>(rider, back);
     }
     if (ecs.valid(was.vehicle) && ecs.all_of<world::Vehicle3D, world::Transform3D>(was.vehicle)) {
         if (auto recipe = vehicle_recipe(world, was.vehicle); recipe) {

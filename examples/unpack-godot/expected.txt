@@ -214,7 +214,7 @@ godot/sfx/jump.wav is the game's sound: yes
   "entities": {
     "collision_shape2d": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [320.0, 16.0]
         },
         "Transform2D": {}
@@ -231,7 +231,7 @@ godot/sfx/jump.wav is the game's sound: yes
     },
     "jump_sound": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "stream": "godot/sfx/jump.wav",
           "volume_db": -6.0
         }
@@ -246,7 +246,7 @@ godot/sfx/jump.wav is the game's sound: yes
     },
     "player": {
       "components": {
-        "CharacterBody2D": {},
+        "CharacterMover2D": {},
         "Player": {
           "jump_velocity": -300.0
         },
@@ -258,7 +258,7 @@ godot/sfx/jump.wav is the game's sound: yes
     },
     "player_collision_shape2d": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [12.0, 16.0]
         },
         "Transform2D": {}

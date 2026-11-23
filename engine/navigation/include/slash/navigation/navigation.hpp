@@ -17,22 +17,22 @@
 
 // Navigation, as Godot 4.6's NavigationServer2D and NavigationServer3D: each world has a 2D and a
 // 3D map, made of the regions of navigation mesh and the links that the components in
-// slash/world/components.hpp place on them (NavigationRegion2D and 3D, NavigationLink2D and 3D).
+// slash/world/components.hpp place on them (NavArea2D and 3D, NavLink2D and 3D).
 // Regions join where their polygons share edges, or where edges of different regions come
 // within the map's edge_connection_margin; links join the polygons closest to their ends.
 //
 // query_path finds a path over a map with Godot's A* and shapes it with its funnel, closest_point
-// and random_point ask where the map is. A NavigationAgent2D or 3D follows a path to its
+// and random_point ask where the map is. A NavAgent2D or 3D follows a path to its
 // target_position, as Godot's NavigationAgent nodes: the "navigation" system rebuilds the maps
 // whose regions and links changed, then updates each agent's path and progress and emits its
 // path_changed, waypoint_reached, link_reached, target_reached and navigation_finished events.
 // Agents move nothing; gameplay code moves them toward next_path_position.
 //
-// A TileMapLayer with navigation_enabled puts a region on the 2D map for each cell, in each of its
+// A TileLayer2D with navigation_enabled puts a region on the 2D map for each cell, in each of its
 // tile set's navigation layers that the cell's tile has outlines in, as Godot's TileMapLayer does
 // (slash/canvas/tilemap.hpp).
 //
-// Agents with avoidance_enabled and NavigationObstacle2D and 3D avoid each other as Godot's do,
+// Agents with avoidance_enabled and NavObstacle2D and 3D avoid each other as Godot's do,
 // with ORCA from RVO2 (src/rvo2.hpp): last in each tick, each agent's velocity becomes a safe
 // velocity, emitted as velocity_computed and returned by safe_velocity_2d and 3d, which gameplay
 // code moves it at. Obstacles with affect_navigation_mesh are cut out of bakes.
@@ -156,10 +156,10 @@ struct SourceGeometry2D {
 };
 
 // The geometry under a region entity, as Godot's parse_source_geometry_data with the region as
-// its root node: the entity and those under it in Transform3D children, each MeshInstance3D's
+// its root node: the entity and those under it in Transform3D children, each Model3D's
 // primitive mesh or model file (with geometry_parsed_geometry_type mesh_instances or both) and
-// the shapes of each StaticBody3D and AnimatableBody3D whose collision_layer shares a bit with
-// geometry_collision_mask (static_colliders or both), and each NavigationObstacle3D with
+// the shapes of each StaticBody3D and MovingBody3D whose collision_layer shares a bit with
+// geometry_collision_mask (static_colliders or both), and each NavObstacle3D with
 // affect_navigation_mesh as a projected obstruction. Model files load through assets; a mesh
 // that doesn't load is left out with a warning naming its entity.
 [[nodiscard]] SourceGeometry3D parse_source_geometry(const world::World& world,
@@ -177,10 +177,10 @@ struct EntityGeometry {
 [[nodiscard]] std::vector<EntityGeometry>
 world_geometry(const world::World& world, asset::Assets& assets, const NavigationMesh& settings,
                std::vector<std::string>* warnings = nullptr);
-// The same in 2D: the shapes of each StaticBody2D and AnimatableBody2D under the region whose
+// The same in 2D: the shapes of each StaticBody2D and MovingBody2D under the region whose
 // collision_layer shares a bit with parsed_collision_mask, as obstructions, each
-// NavigationObstacle2D with affect_navigation_mesh as a projected obstruction, and each
-// TileMapLayer's tiles: their navigation outlines as traversable outlines, and their collision
+// NavObstacle2D with affect_navigation_mesh as a projected obstruction, and each
+// TileLayer2D's tiles: their navigation outlines as traversable outlines, and their collision
 // polygons in physics layers whose collision_layer shares a bit with parsed_collision_mask as
 // obstructions (with parsed_geometry_type static_colliders or both). Tile sets load through
 // assets; a layer whose set doesn't load, or whose cells don't decode, is left out with a warning
@@ -333,7 +333,7 @@ struct MapInfo {
 // Queries call it themselves.
 void sync(world::World& world);
 
-// ---- Agents, as Godot's NavigationAgent2D and NavigationAgent3D methods. Each takes an entity
+// ---- Agents, as Godot's NavigationAgent2D and NavAgent3D methods. Each takes an entity
 // with an agent component.
 
 // Sets target_position and asks for a path to it, even if it is the same, as Godot's

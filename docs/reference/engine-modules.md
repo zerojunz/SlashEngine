@@ -15,7 +15,7 @@ Moved from AGENTS.md, Conventions.
   lookups and pseudo-localization), `audio` (sound files and streams, the mixer, buses
   and effects, players, videos' sound and SDL's audio output), `video` (AV1 video files in IVF, WebM and Matroska, decoding with dav1d,
   the engine's palette AV1 encoder, lossy encoding with libaom for the tools and the system that
-  plays `VideoStreamPlayer`s), `services` (ads, analytics, in-app
+  plays `Video`s), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles, GPU particles' steps and drawing them, 2D reflections and screen distortion), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`

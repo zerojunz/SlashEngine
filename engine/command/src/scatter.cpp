@@ -29,7 +29,7 @@
 #include <vector>
 
 // scatter.run: places what .scatter.json rules ask for, as entities under one parent or as a
-// MultiMeshInstance3D a layer. The ground is what navigation bakes read in 3D
+// ModelInstances3D a layer. The ground is what navigation bakes read in 3D
 // (navigation::world_geometry) and tile map cells in 2D; procedural::scatter picks the places.
 namespace slash::command {
 namespace {
@@ -151,12 +151,12 @@ Result<std::vector<ScatterTriangle>> ground_2d(Session& session,
     const world::Tree2D tree(world);
     std::vector<ScatterTriangle> out;
     for (std::size_t i = 0; i < on.size(); ++i) {
-        const auto* map = world.ecs().try_get<world::TileMapLayer>(on[i]);
+        const auto* map = world.ecs().try_get<world::TileLayer2D>(on[i]);
         if (map == nullptr) {
             return make_error(ErrorCode::InvalidArgument,
                               path + "/on/" + std::to_string(i) + ": " +
                                   quoted(world.id_of(on[i])) +
-                                  " has no TileMapLayer: 2D layers scatter over tile maps' cells");
+                                  " has no TileLayer2D: 2D layers scatter over tile maps' cells");
         }
         auto set = session.assets().load<canvas::TileSet>(map->tile_set);
         if (!set) {
@@ -396,14 +396,14 @@ Reply scatter_run(Session& session, const json::Value& params) {
         if (layer.as == "multimesh") {
             const entt::entity entity = world.create(prefix).value();
             ecs.emplace<world::Transform3D>(entity);
-            world::MultiMeshInstance3D multimesh;
+            world::ModelInstances3D multimesh;
             multimesh.mesh = layer.mesh;
             for (const ScatterPlace& place : result.places) {
                 const world::Transform3D local = local_3d(to_local_3d, place);
                 multimesh.instances.push_back(
                     {.position = local.position, .rotation = local.rotation, .scale = local.scale});
             }
-            ecs.emplace<world::MultiMeshInstance3D>(entity, std::move(multimesh));
+            ecs.emplace<world::ModelInstances3D>(entity, std::move(multimesh));
             children.push_back(entity);
         } else {
             for (std::size_t k = 0; k < result.places.size(); ++k) {
@@ -428,7 +428,7 @@ Reply scatter_run(Session& session, const json::Value& params) {
                     transform.rotation = local.rotation;
                     transform.scale = local.scale;
                     if (!layer.mesh.empty()) {
-                        ecs.emplace_or_replace<world::MeshInstance3D>(entity).mesh = layer.mesh;
+                        ecs.emplace_or_replace<world::Model3D>(entity).mesh = layer.mesh;
                     }
                 }
                 children.push_back(entity);
@@ -1105,7 +1105,7 @@ void register_scatter_commands(Registry& registry) {
             .name = "scatter.run",
             .description =
                 "Places what scatter rules (a .scatter.json \"path\" or inline \"rules\") ask for "
-                "over the ground: entities <into>_<layer>_<n>, or a MultiMeshInstance3D "
+                "over the ground: entities <into>_<layer>_<n>, or a ModelInstances3D "
                 "<into>_<layer>, under \"into\", replacing what it held. Returns each layer's "
                 "count placed and, when short, why tries failed. $ slash-cli schema scatter.",
             .capabilities = {Edit},

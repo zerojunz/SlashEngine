@@ -1,17 +1,17 @@
 # Face capture
 
 A face that follows a face tracker live, then plays a recorded performance, as Godot's
-`XRFaceTracker` and `XRFaceModifier3D` drive a face. [models/face.gltf](models/face.gltf) is
+`XRFaceTracker` and `XRFace3D` drive a face. [models/face.gltf](models/face.gltf) is
 [blend-shapes](../blend-shapes/)'s face with its morph targets named after face shapes:
 `MouthSmile` (Unified Expressions' name) and `jawOpen` (ARKit's). [main.scene.json](main.scene.json)
-draws it with an `XRFaceModifier3D`, which follows the tracker `/user/face_tracker`:
+draws it with an `XRFace3D`, which follows the tracker `/user/face_tracker`:
 
 ```json
 "face": {
   "components": {
-    "MeshInstance3D": {"mesh": "models/face.gltf"},
+    "Model3D": {"mesh": "models/face.gltf"},
     "Transform3D": {},
-    "XRFaceModifier3D": {}
+    "XRFace3D": {}
   }
 }
 ```
@@ -34,6 +34,6 @@ turn. The jaw opens and closes over half a second while the smile grows.
   the shape count aren't face shapes, so it says it skipped them, and the blinks drive nothing
   on this face. Keys a straight line passes within 0.005 of are dropped, so 31 frames make 22
   keys over the two tracks.
-- With the modifier removed and an `AnimationPlayer` playing `talk`, after 15 ticks (a quarter of
+- With the modifier removed and an `Animator` playing `talk`, after 15 ticks (a quarter of
   a second) the jaw is fully open and the smile at 0.855, the mean of the two sides' 0.9 and
   0.81 at that frame. Every point `frame.capture` reads is lips.

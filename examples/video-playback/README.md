@@ -4,7 +4,7 @@ A video played in a control and on a sprite
 ([docs/reference/scene-format.md](../../docs/reference/scene-format.md#video)).
 [main.cpp](main.cpp) makes `clip.ivf` with the engine's own AV1 encoder (`video::encode_ivf`):
 four colors, a quarter of a second each, with a white bar that moves across. Then it opens
-[main.scene.json](main.scene.json), where the `VideoStreamPlayer` `tv` plays the clip at its own
+[main.scene.json](main.scene.json), where the `Video` `tv` plays the clip at its own
 size in the top left corner and the `Sprite2D` `screen` shows the same frames at half size
 through the texture `video:tv`, and reads the colors `frame.capture` draws:
 

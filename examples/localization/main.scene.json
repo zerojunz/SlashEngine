@@ -2,10 +2,10 @@
   "entities": {
     "menu": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["title", "start", "options", "quit", "version"]
@@ -17,7 +17,7 @@
         "Button": {
           "text": "Options"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quit": {
@@ -25,7 +25,7 @@
         "Button": {
           "text": "Quit"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "start": {
@@ -33,25 +33,25 @@
         "Button": {
           "text": "Start game"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "title": {
       "components": {
-        "Control": {},
         "Label": {
           "text": "Treasure Hunt"
-        }
+        },
+        "Widget": {}
       }
     },
     "version": {
       "components": {
-        "Control": {
-          "auto_translate_mode": "disabled",
-          "size_flags_horizontal": "shrink_begin"
-        },
         "Label": {
           "text": "Version 1.0"
+        },
+        "Widget": {
+          "auto_translate_mode": "disabled",
+          "size_flags_horizontal": "shrink_begin"
         }
       }
     }

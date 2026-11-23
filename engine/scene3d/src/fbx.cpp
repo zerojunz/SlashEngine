@@ -395,7 +395,7 @@ AlphaMode FbxReader::alpha_of(int image) {
 ModelMaterial FbxReader::material(const ufbx_material& in, std::size_t index) {
     ModelMaterial out;
     out.name = in.name.length > 0 ? text_of(in.name) : "material_" + std::to_string(index);
-    world::StandardMaterial3D& standard = out.standard;
+    world::Surface3D& standard = out.standard;
     standard.vertex_color_use_as_albedo = true;
     const ufbx_material_pbr_maps& pbr = in.pbr;
     if (pbr.base_color.has_value) {

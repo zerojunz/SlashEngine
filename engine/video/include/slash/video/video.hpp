@@ -17,7 +17,7 @@ namespace slash::world {
 class World;
 }
 
-// Video playback, as Godot's VideoStream and VideoStreamPlayer, with AV1 in place of Theora:
+// Video playback, as Godot's VideoStream and Video, with AV1 in place of Theora:
 // dav1d decodes the frames, which are the same pixels on every machine.
 namespace slash::video {
 
@@ -210,23 +210,23 @@ private:
 void add_asset_types(asset::Assets& assets);
 
 // Adds the asset type and the "video" system (priority 1140, after particles), which plays
-// each VideoStreamPlayer: autoplay starts it, stream_position advances by the tick times
+// each Video: autoplay starts it, stream_position advances by the tick times
 // speed_scale until the end, where it stops with a "finished" event or loops, and the frame at
 // stream_position is decoded for drawing; the audio system plays its sound. Assets must outlive
 // the world.
 void install(world::World& world, asset::Assets& assets);
 
-// The frame a VideoStreamPlayer shows: its pixels, and a version that goes up each time they
+// The frame a Video shows: its pixels, and a version that goes up each time they
 // change. Null before the system has decoded one, or for an entity with no stream.
 struct Shown {
     const render::Image* image = nullptr;
     std::uint64_t version = 0;
     std::size_t frame = 0;
     std::string error;   // why its stream couldn't load or decode
-    bool player = false; // the entity is a VideoStreamPlayer
+    bool player = false; // the entity is a Video
 };
 [[nodiscard]] Shown shown(const world::World& world, std::string_view entity);
-// The file a VideoStreamPlayer plays, as the video system loaded it, with a version that goes up
+// The file a Video plays, as the video system loaded it, with a version that goes up
 // when it loads again; null before it loads. The audio system plays its sound from it.
 struct Playing {
     std::shared_ptr<const VideoFile> file;

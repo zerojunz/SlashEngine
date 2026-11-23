@@ -270,7 +270,7 @@ json::Value layer_schema() {
     p["as"]["type"] = "string";
     p["as"]["enum"] = json::Array{"entities", "multimesh"};
     p["as"]["default"] = d.as;
-    p["as"]["description"] = "An entity a place, or one MultiMeshInstance3D drawing mesh at "
+    p["as"]["description"] = "An entity a place, or one ModelInstances3D drawing mesh at "
                              "every place (3D, with mesh).";
     p["on"] = names_field("IDs of the entities to scatter over, with those under them: in 3D "
                           "their meshes, CSG, terrains, grid maps and static bodies' shapes; in 2D "

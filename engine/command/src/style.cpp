@@ -54,21 +54,10 @@ constexpr std::size_t kMaxLookEntities = 32;
 constexpr std::size_t kCreep = 3;
 
 // The components whose fields make a frame's look, kept as a reference's settings.
-constexpr std::array<std::string_view, 15> kLookComponents = {"WorldEnvironment",
-                                                              "CameraAttributesPractical",
-                                                              "DirectionalLight3D",
-                                                              "OmniLight3D",
-                                                              "SpotLight3D",
-                                                              "PointLight2D",
-                                                              "DirectionalLight2D",
-                                                              "CanvasModulate",
-                                                              "Camera3D",
-                                                              "Camera2D",
-                                                              "ReflectionProbe",
-                                                              "LightmapGI",
-                                                              "VoxelGI",
-                                                              "FogVolume",
-                                                              "StandardMaterial3D"};
+constexpr std::array<std::string_view, 15> kLookComponents = {
+    "Environment3D",   "CameraLens",      "SunLight3D",      "PointLight3D", "SpotLight3D",
+    "PointLight2D",    "SunLight2D",      "AmbientTint2D",   "Camera3D",     "Camera2D",
+    "ReflectionProbe", "BakedLighting3D", "VoxelLighting3D", "FogVolume",    "Surface3D"};
 
 json::Value property(std::string_view type, std::string_view description) {
     json::Value schema;
@@ -306,21 +295,20 @@ Result<void> build_stage(Session& stage, const Plan& plan, Vec3 center, double r
                       {"Transform3D", json::Object{{"position", vec3(eye)},
                                                    {"rotation", vec3(looking(eye, center))}}}}},
         {"key",
-         json::Object{{"DirectionalLight3D", json::Object{}},
+         json::Object{{"SunLight3D", json::Object{}},
                       {"Transform3D", json::Object{{"rotation", json::Array{-0.8, 0.6, 0.0}}}}}},
         {"environment",
-         json::Object{{"WorldEnvironment",
+         json::Object{{"Environment3D",
                        json::Object{{"background_mode", "color"},
                                     {"background_color", json::Array{0.5, 0.5, 0.5, 1.0}},
                                     {"ambient_light_source", "color"},
                                     {"ambient_light_color", json::Array{0.4, 0.4, 0.4, 1.0}}}}}},
-        {"subject",
-         plan.what == "model"
-             ? json::Object{{"MeshInstance3D", json::Object{{"mesh", plan.path}}},
-                            {"Transform3D", json::Object{}}}
-             : json::Object{{"MeshInstance3D", json::Object{{"material_override", plan.path}}},
-                            {"SphereMesh", json::Object{}},
-                            {"Transform3D", json::Object{}}}},
+        {"subject", plan.what == "model"
+                        ? json::Object{{"Model3D", json::Object{{"mesh", plan.path}}},
+                                       {"Transform3D", json::Object{}}}
+                        : json::Object{{"Model3D", json::Object{{"material_override", plan.path}}},
+                                       {"SphereGeometry", json::Object{}},
+                                       {"Transform3D", json::Object{}}}},
     }};
     for (const auto& [id, components] : entities) {
         json::Value params;
@@ -429,7 +417,7 @@ Result<Shot> shoot(Session& host, const Plan& plan) {
             return made.error();
         }
     } else {
-        // A material's sphere is SphereMesh's default, half a meter round.
+        // A material's sphere is SphereGeometry's default, half a meter round.
         Vec3 center;
         double radius = 0.5;
         if (plan.what == "model") {

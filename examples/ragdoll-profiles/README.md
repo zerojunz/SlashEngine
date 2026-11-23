@@ -13,7 +13,7 @@ foot under `kid`, and the skinned arm of [skinned-meshes](../skinned-meshes/).
   from each bone to its child, a rectangle round the pelvis's two, circles at the tips, hinges
   between them and balance on the pelvis) and gives `kid` a `Ragdoll2D`; for the arm it fits
   capsules to the bones its skin moves most and gives it a `Ragdoll3D`.
-- Each bone becomes a `RigidBody2D` with a `CollisionShape2D`, frozen while the ragdoll is
+- Each bone becomes a `RigidBody2D` with a `Collider2D`, frozen while the ragdoll is
   `animated`, and a `PinJoint2D` (`arm_joint`) holds the arm to the chest.
 - `ragdoll.hit` on the arm weakens it fully and the hand under it half as much; the kid reacts,
   `active`, its muscles driving its bodies toward its pose, and back `animated` once they

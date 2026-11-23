@@ -3,8 +3,8 @@
 The sky's own light on meshes, as Godot's sky radiance in its Compatibility renderer.
 [main.scene.json](main.scene.json) is three balls on a gray plain under a procedural sky, seen
 through a `Camera3D` in a 320x180 window: chrome (`metallic` 1, `roughness` 0.05), satin gold
-(`metallic` 1, `roughness` 0.45) and chalk (`StandardMaterial3D`'s defaults: not metallic, fully
-rough). The `environment` entity's `WorldEnvironment` has a `"sky"` background and leaves
+(`metallic` 1, `roughness` 0.45) and chalk (`Surface3D`'s defaults: not metallic, fully
+rough). The `environment` entity's `Environment3D` has a `"sky"` background and leaves
 `ambient_light_source` and `reflected_light_source` at `"background"`, so the sky behind the
 balls also lights them and shines in them.
 

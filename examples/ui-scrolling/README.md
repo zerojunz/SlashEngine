@@ -2,7 +2,7 @@
 
 Scroll containers, scroll bars and clipping, as Godot's `ScrollContainer`, `HScrollBar` and
 `clip_contents`. [main.scene.json](main.scene.json) is a quest log in a 320x180 window
-([project.json](project.json)): ten quest buttons in a `ScrollContainer` with `follow_focus`, a
+([project.json](project.json)): ten quest buttons in a `ScrollBox` with `follow_focus`, a
 map `Panel` with `clip_contents` and an island that sticks out of it, and a zoom `ScrollBar`.
 [calls.jsonl](calls.jsonl) works it the way an agent does over MCP (tools `input_inject`,
 `ui_focus`, `ui_layout`, `events_read`, `frame_summary`) or JSON-RPC, and

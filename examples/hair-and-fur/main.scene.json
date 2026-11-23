@@ -25,10 +25,10 @@
     },
     "creature": {
       "components": {
-        "HairInstance3D": {
+        "Hair3D": {
           "groom": "fur.groom.json"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "creature.model.json"
         },
         "Transform3D": {
@@ -63,15 +63,15 @@
     },
     "head": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "radius": 0.12,
           "shape": "sphere"
         },
-        "HairInstance3D": {
+        "Hair3D": {
           "groom": "long.groom.json",
           "section": "scalp"
         },
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "head.model.json"
         },
         "StaticBody3D": {},
@@ -82,7 +82,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.6, 0.4, 0.0]
         }

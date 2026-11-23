@@ -48,7 +48,7 @@ Vec4 darkened(Vec4 c, float amount) {
 }
 
 // An icon stretched over a rect, modulated, as Texture2D::draw_rect draws it. Icons drawn only
-// partly inside the TextEdit's rect, which its text canvas item would cut, aren't drawn.
+// partly inside the TextArea's rect, which its text canvas item would cut, aren't drawn.
 void push_icon(std::vector<Box>& out, Vec2 size, const TextEditView& view, const std::string& icon,
                Vec2 position, Vec2 extent, Vec4 color) {
     const auto found = view.icon_sizes.find(icon);
@@ -83,7 +83,7 @@ Box rect_box(Vec2 position, Vec2 size, Vec4 color) {
     return box;
 }
 
-// Draws a rect cut to the TextEdit's rect, as its text canvas item clips what it draws.
+// Draws a rect cut to the TextArea's rect, as its text canvas item clips what it draws.
 void push_clipped(std::vector<Box>& out, Vec2 size, Vec2 position, Vec2 extent, Vec4 color) {
     if (extent.x < 0.0F) {
         position.x += extent.x;
@@ -124,7 +124,7 @@ void push_unfilled(std::vector<Box>& out, Vec2 size, Vec2 position, Vec2 extent,
     push_clipped(out, size, {at.x + extent.x, at.y + 1.0F}, {1.0F, extent.y - 1.0F}, color);
 }
 
-// What a TextEdit shows for a character of its text: control characters hidden (Godot's
+// What a TextArea shows for a character of its text: control characters hidden (Godot's
 // preserve_control off), and line and paragraph separators as spaces so a line stays one line
 // until it wraps; the placeholder breaks at line breaks as a paragraph does.
 char32_t shown_character(char32_t c, bool placeholder) {
@@ -140,14 +140,14 @@ char32_t shown_character(char32_t c, bool placeholder) {
     return c;
 }
 
-text::Direction direction_of(const world::TextEdit& edit, bool rtl) {
+text::Direction direction_of(const world::TextArea& edit, bool rtl) {
     if (edit.text_direction == "inherited") {
         return rtl ? text::Direction::Rtl : text::Direction::Ltr;
     }
     return text::parse_direction(edit.text_direction).value_or(text::Direction::Auto);
 }
 
-text::Autowrap autowrap_of(const world::TextEdit& edit) {
+text::Autowrap autowrap_of(const world::TextArea& edit) {
     if (edit.autowrap_mode == "arbitrary") {
         return text::Autowrap::Arbitrary;
     }
@@ -445,10 +445,10 @@ SelectionRange selection_range(const TextEditState::Caret& caret) {
     return range;
 }
 
-// ---- TextArea ----
+// ---- EditArea ----
 
 // One line shaped as it shows, Godot's Text::Line with its TextParagraph.
-struct TextArea::LineData {
+struct EditArea::LineData {
     std::string utf8; // what it shows
     text::TextLayout layout;
     std::vector<text::ShapedLine> rows;
@@ -458,23 +458,23 @@ struct TextArea::LineData {
     int height = 0;                          // its tallest row, at least the font's, Line::height
 };
 
-void TextArea::Bar::set_value(double to) {
+void EditArea::Bar::set_value(double to) {
     value = std::max(std::min(to, max - page), 0.0);
 }
 
-void TextArea::Bar::set_max(double to) {
+void EditArea::Bar::set_max(double to) {
     max = std::max(to, 0.0);
     page = std::clamp(page, 0.0, max);
     set_value(value);
 }
 
-void TextArea::Bar::set_page(double to) {
+void EditArea::Bar::set_page(double to) {
     page = std::clamp(to, 0.0, max);
     set_value(value);
 }
 
-TextArea::TextArea(text::Fonts& fonts, const TextEditView& view, Vec2 size,
-                   const world::TextEdit& edit, std::vector<std::u32string> lines)
+EditArea::EditArea(text::Fonts& fonts, const TextEditView& view, Vec2 size,
+                   const world::TextArea& edit, std::vector<std::u32string> lines)
     : fonts_(&fonts), view_(&view), size_(size), editable_(edit.editable),
       wrapping_(edit.wrap_mode == "boundary"), autowrap_(autowrap_of(edit)),
       direction_(direction_of(edit, view.rtl)), language_(view.language.value_or(edit.language)),
@@ -517,15 +517,15 @@ TextArea::TextArea(text::Fonts& fonts, const TextEditView& view, Vec2 size,
     set_h_scroll(edit.scroll_horizontal);
 }
 
-TextArea::~TextArea() = default;
-TextArea::TextArea(TextArea&&) noexcept = default;
+EditArea::~EditArea() = default;
+EditArea::EditArea(EditArea&&) noexcept = default;
 
-const std::u32string& TextArea::line(int line) const {
+const std::u32string& EditArea::line(int line) const {
     static const std::u32string kNone;
     return line >= 0 && line < line_count() ? lines_[static_cast<std::size_t>(line)] : kNone;
 }
 
-const std::u32string& TextArea::shown(int line) const {
+const std::u32string& EditArea::shown(int line) const {
     if (line < 0 || line >= line_count()) {
         return this->line(line);
     }
@@ -533,7 +533,7 @@ const std::u32string& TextArea::shown(int line) const {
     return ime.empty() ? lines_[static_cast<std::size_t>(line)] : ime;
 }
 
-void TextArea::shape(LineData& data, std::u32string_view source, bool placeholder) const {
+void EditArea::shape(LineData& data, std::u32string_view source, bool placeholder) const {
     std::u32string shown(source);
     std::ranges::transform(shown, shown.begin(),
                            [placeholder](char32_t c) { return shown_character(c, placeholder); });
@@ -574,7 +574,7 @@ void TextArea::shape(LineData& data, std::u32string_view source, bool placeholde
     data.breaks = text::character_breaks(shown);
 }
 
-const TextArea::LineData& TextArea::data(int line) const {
+const EditArea::LineData& EditArea::data(int line) const {
     const auto at = static_cast<std::size_t>(std::clamp(line, 0, line_count() - 1));
     if (!data_[at]) {
         data_[at] = std::make_unique<LineData>();
@@ -583,7 +583,7 @@ const TextArea::LineData& TextArea::data(int line) const {
     return *data_[at];
 }
 
-const TextArea::LineData& TextArea::placeholder_data() const {
+const EditArea::LineData& EditArea::placeholder_data() const {
     if (!placeholder_data_) {
         placeholder_data_ = std::make_unique<LineData>();
         shape(*placeholder_data_, placeholder_, true);
@@ -591,13 +591,13 @@ const TextArea::LineData& TextArea::placeholder_data() const {
     return *placeholder_data_;
 }
 
-void TextArea::invalidate(int line) {
+void EditArea::invalidate(int line) {
     if (line >= 0 && line < line_count()) {
         data_[static_cast<std::size_t>(line)].reset();
     }
 }
 
-std::pair<int, int> TextArea::insert(int line, int column, std::u32string_view inserted) {
+std::pair<int, int> EditArea::insert(int line, int column, std::u32string_view inserted) {
     line = std::clamp(line, 0, line_count() - 1);
     column = std::max(column, 0);
     std::vector<std::u32string> parts(1);
@@ -636,7 +636,7 @@ std::pair<int, int> TextArea::insert(int line, int column, std::u32string_view i
     return {end_line, length(end_line) - static_cast<int>(post.size())};
 }
 
-void TextArea::remove(int from_line, int from_column, int to_line, int to_column) {
+void EditArea::remove(int from_line, int from_column, int to_line, int to_column) {
     from_line = std::clamp(from_line, 0, line_count() - 1);
     to_line = std::clamp(to_line, from_line, line_count() - 1);
     const std::u32string& first = lines_[static_cast<std::size_t>(from_line)];
@@ -654,7 +654,7 @@ void TextArea::remove(int from_line, int from_column, int to_line, int to_column
     invalidate(from_line);
 }
 
-void TextArea::set_lines(std::vector<std::u32string> lines) {
+void EditArea::set_lines(std::vector<std::u32string> lines) {
     lines_ = std::move(lines);
     if (lines_.empty()) {
         lines_.emplace_back();
@@ -665,7 +665,7 @@ void TextArea::set_lines(std::vector<std::u32string> lines) {
     origins_.resize(lines_.size(), -1);
 }
 
-void TextArea::mark_lines() {
+void EditArea::mark_lines() {
     origins_.resize(lines_.size());
     for (std::size_t i = 0; i < origins_.size(); ++i) {
         origins_[i] = static_cast<int>(i);
@@ -673,7 +673,7 @@ void TextArea::mark_lines() {
     marked_ = line_count();
 }
 
-std::vector<int> TextArea::moved_lines() const {
+std::vector<int> EditArea::moved_lines() const {
     std::vector<int> to(static_cast<std::size_t>(marked_), -1);
     for (std::size_t i = 0; i < origins_.size(); ++i) {
         if (origins_[i] >= 0 && origins_[i] < marked_) {
@@ -683,7 +683,7 @@ std::vector<int> TextArea::moved_lines() const {
     return to;
 }
 
-std::u32string TextArea::get(int from_line, int from_column, int to_line, int to_column) const {
+std::u32string EditArea::get(int from_line, int from_column, int to_line, int to_column) const {
     std::u32string out;
     from_line = std::clamp(from_line, 0, line_count() - 1);
     to_line = std::clamp(to_line, from_line, line_count() - 1);
@@ -699,7 +699,7 @@ std::u32string TextArea::get(int from_line, int from_column, int to_line, int to
     return out;
 }
 
-void TextArea::set_ime(int line, std::u32string shown) {
+void EditArea::set_ime(int line, std::u32string shown) {
     if (line < 0 || line >= line_count()) {
         return;
     }
@@ -707,7 +707,7 @@ void TextArea::set_ime(int line, std::u32string shown) {
     invalidate(line);
 }
 
-void TextArea::clear_ime() {
+void EditArea::clear_ime() {
     for (int i = 0; i < line_count(); ++i) {
         if (!ime_[static_cast<std::size_t>(i)].empty()) {
             ime_[static_cast<std::size_t>(i)].clear();
@@ -716,13 +716,13 @@ void TextArea::clear_ime() {
     }
 }
 
-bool TextArea::using_placeholder() const {
+bool EditArea::using_placeholder() const {
     return lines_.size() == 1 && lines_.front().empty() && ime_.front().empty();
 }
 
 // ---- Characters and words ----
 
-std::vector<int> TextArea::word_breaks(int line) const {
+std::vector<int> EditArea::word_breaks(int line) const {
     std::vector<int> words;
     const LineData& d = data(line);
     for (std::size_t r = 0; r < d.rows.size(); ++r) {
@@ -742,7 +742,7 @@ std::vector<int> TextArea::word_breaks(int line) const {
     return words;
 }
 
-int TextArea::next_character(int line, int column) const {
+int EditArea::next_character(int line, int column) const {
     for (const std::uint32_t each : data(line).breaks) {
         if (std::cmp_greater(each, column)) {
             return static_cast<int>(each);
@@ -751,7 +751,7 @@ int TextArea::next_character(int line, int column) const {
     return column;
 }
 
-int TextArea::previous_character(int line, int column) const {
+int EditArea::previous_character(int line, int column) const {
     int previous = 0;
     for (const std::uint32_t each : data(line).breaks) {
         if (std::cmp_greater_equal(each, column)) {
@@ -762,7 +762,7 @@ int TextArea::previous_character(int line, int column) const {
     return previous;
 }
 
-bool TextArea::at_character_break(int line, int column) const {
+bool EditArea::at_character_break(int line, int column) const {
     if (column <= 0) {
         return true;
     }
@@ -770,7 +770,7 @@ bool TextArea::at_character_break(int line, int column) const {
     return std::ranges::binary_search(breaks, static_cast<std::uint32_t>(column));
 }
 
-text::Direction TextArea::dominant_direction(int line, int from, int to) const {
+text::Direction EditArea::dominant_direction(int line, int from, int to) const {
     if (from == to) {
         return text::Direction::Auto;
     }
@@ -793,14 +793,14 @@ text::Direction TextArea::dominant_direction(int line, int from, int to) const {
 
 // ---- Wrapping ----
 
-int TextArea::wrap_count(int line) const {
+int EditArea::wrap_count(int line) const {
     if (line < 0 || line >= line_count()) {
         return 0;
     }
     return static_cast<int>(data(line).rows.size()) - 1;
 }
 
-int TextArea::wrap_index_at_column(int line, int column) const {
+int EditArea::wrap_index_at_column(int line, int column) const {
     if (line < 0 || line >= line_count() || column < 0 ||
         std::cmp_greater(column, shown(line).size()) || wrap_count(line) == 0) {
         return 0;
@@ -814,17 +814,17 @@ int TextArea::wrap_index_at_column(int line, int column) const {
     return ranges.empty() ? 0 : static_cast<int>(ranges.size()) - 1;
 }
 
-const std::vector<std::pair<int, int>>& TextArea::wrap_ranges(int line) const {
+const std::vector<std::pair<int, int>>& EditArea::wrap_ranges(int line) const {
     return data(line).ranges;
 }
 
-const text::ShapedLine& TextArea::row(int line, int wrap_index) const {
+const text::ShapedLine& EditArea::row(int line, int wrap_index) const {
     const LineData& d = data(line);
     return d.rows[static_cast<std::size_t>(
         std::clamp(wrap_index, 0, static_cast<int>(d.rows.size()) - 1))];
 }
 
-int TextArea::total_rows() const {
+int EditArea::total_rows() const {
     int total = 0;
     for (int i = 0; i < line_count(); ++i) {
         total += 1 + wrap_count(i);
@@ -832,12 +832,12 @@ int TextArea::total_rows() const {
     return total;
 }
 
-int TextArea::row_count(int line) const {
+int EditArea::row_count(int line) const {
     return using_placeholder() ? static_cast<int>(placeholder_data().rows.size())
                                : 1 + wrap_count(line);
 }
 
-int TextArea::max_width() const {
+int EditArea::max_width() const {
     int width = 0;
     for (int i = 0; i < line_count(); ++i) {
         width = std::max(width, data(i).width);
@@ -845,7 +845,7 @@ int TextArea::max_width() const {
     return width;
 }
 
-bool TextArea::update_wrap_at_column() {
+bool EditArea::update_wrap_at_column() {
     int wrap_at = to_int(size_.x - style().minimum_size().x) - gutters_room();
     if (v_.visible) {
         wrap_at = to_int(static_cast<float>(wrap_at) - v_scroll_min().x);
@@ -871,7 +871,7 @@ bool TextArea::update_wrap_at_column() {
 
 // ---- Viewport ----
 
-int TextArea::line_height() const {
+int EditArea::line_height() const {
     int height = 0;
     for (int i = 0; i < line_count(); ++i) {
         height = std::max(height, data(i).height);
@@ -879,7 +879,7 @@ int TextArea::line_height() const {
     return std::max(height + view_->line_spacing, 1);
 }
 
-int TextArea::control_height() const {
+int EditArea::control_height() const {
     int height = to_int(size_.y - style().minimum_size().y);
     if (h_.visible) {
         height = to_int(static_cast<float>(height) - h_scroll_min().y);
@@ -887,19 +887,19 @@ int TextArea::control_height() const {
     return height;
 }
 
-int TextArea::visible_line_count() const {
+int EditArea::visible_line_count() const {
     return control_height() / line_height();
 }
 
-int TextArea::first_visible_line() const {
+int EditArea::first_visible_line() const {
     return std::clamp(first_visible_line_, 0, line_count() - 1);
 }
 
-double TextArea::v_scroll_offset() const {
+double EditArea::v_scroll_offset() const {
     return std::clamp(v_.value - std::floor(v_.value), 0.0, 1.0);
 }
 
-double TextArea::visible_lines_offset() const {
+double EditArea::visible_lines_offset() const {
     double total = static_cast<double>(control_height()) / static_cast<double>(line_height());
     total -= std::floor(total);
     // Whole rows filling the height exactly give 1, where Godot's clamp gives 0.999 and
@@ -910,25 +910,25 @@ double TextArea::visible_lines_offset() const {
     return 1.0 - std::clamp(total, 0.001, 1.0);
 }
 
-Vec2 TextArea::v_scroll_min() const {
+Vec2 EditArea::v_scroll_min() const {
     return view_->v_bar_minimum;
 }
 
-Vec2 TextArea::h_scroll_min() const {
+Vec2 EditArea::h_scroll_min() const {
     return view_->h_bar_minimum;
 }
 
-void TextArea::set_v_scroll(double value) {
+void EditArea::set_v_scroll(double value) {
     v_.set_value(value);
     scroll_moved();
 }
 
-void TextArea::set_h_scroll(double value) {
+void EditArea::set_h_scroll(double value) {
     h_.set_value(value);
     scroll_moved();
 }
 
-void TextArea::update_scrollbars() {
+void EditArea::update_scrollbars() {
     const bool placeholder = using_placeholder();
     const int visible_rows = visible_line_count();
     int total = placeholder ? static_cast<int>(placeholder_data().rows.size()) : total_rows();
@@ -964,7 +964,7 @@ void TextArea::update_scrollbars() {
     scroll_moved();
 }
 
-void TextArea::refresh() {
+void EditArea::refresh() {
     update_gutter_width();
     for (int pass = 0; pass < 4; ++pass) {
         const bool v = v_.visible;
@@ -982,7 +982,7 @@ void TextArea::refresh() {
 
 // _scroll_moved: the first visible line, its first visible row and the first visible column
 // from the scroll bars' values.
-void TextArea::scroll_moved() {
+void EditArea::scroll_moved() {
     first_visible_col_ = h_.visible ? to_int(h_.value) : 0;
     if (!v_.visible) {
         first_visible_line_ = 0;
@@ -1004,7 +1004,7 @@ void TextArea::scroll_moved() {
     first_visible_wrap_ = std::clamp(amount - (sc - v_i - 1), 0, amount);
 }
 
-std::pair<int, int> TextArea::next_visible_line_index_offset_from(int line_from,
+std::pair<int, int> EditArea::next_visible_line_index_offset_from(int line_from,
                                                                   int wrap_index_from,
                                                                   int visible_amount) const {
     if (line_from < 0 || line_from >= line_count() || !wrapping_) {
@@ -1040,7 +1040,7 @@ std::pair<int, int> TextArea::next_visible_line_index_offset_from(int line_from,
     return {num_total, std::max(wrap_index, 0)};
 }
 
-double TextArea::scroll_pos_for_line(int line, int wrap_index) const {
+double EditArea::scroll_pos_for_line(int line, int wrap_index) const {
     if (line < 0 || line >= line_count() || wrap_index < 0 || wrap_index > wrap_count(line)) {
         return 0.0;
     }
@@ -1054,7 +1054,7 @@ double TextArea::scroll_pos_for_line(int line, int wrap_index) const {
     return pos + wrap_index;
 }
 
-int TextArea::visible_line_count_in_range(int from_line, int to_line) const {
+int EditArea::visible_line_count_in_range(int from_line, int to_line) const {
     if (from_line < 0 || from_line >= line_count() || to_line < 0 || to_line >= line_count()) {
         return 0;
     }
@@ -1071,7 +1071,7 @@ int TextArea::visible_line_count_in_range(int from_line, int to_line) const {
     return total;
 }
 
-int TextArea::last_full_visible_line() const {
+int EditArea::last_full_visible_line() const {
     const int first = first_visible_line();
     const int last =
         first +
@@ -1081,20 +1081,20 @@ int TextArea::last_full_visible_line() const {
     return std::clamp(last, 0, line_count() - 1);
 }
 
-int TextArea::last_full_visible_line_wrap_index() const {
+int EditArea::last_full_visible_line_wrap_index() const {
     const int first = first_visible_line();
     return next_visible_line_index_offset_from(first, first_visible_wrap_, visible_line_count())
         .second;
 }
 
-void TextArea::set_line_as_first_visible(int line, int wrap_index) {
+void EditArea::set_line_as_first_visible(int line, int wrap_index) {
     if (line < 0 || line >= line_count() || wrap_index < 0 || wrap_index > wrap_count(line)) {
         return;
     }
     set_v_scroll(scroll_pos_for_line(line, wrap_index));
 }
 
-void TextArea::set_line_as_last_visible(int line, int wrap_index) {
+void EditArea::set_line_as_last_visible(int line, int wrap_index) {
     if (line < 0 || line >= line_count() || wrap_index < 0 || wrap_index > wrap_count(line)) {
         return;
     }
@@ -1109,7 +1109,7 @@ void TextArea::set_line_as_last_visible(int line, int wrap_index) {
     set_v_scroll(scroll_pos_for_line(first, next.second) + visible_lines_offset());
 }
 
-void TextArea::adjust_viewport_to_caret(const TextEditState& state, bool maximize_selection) {
+void EditArea::adjust_viewport_to_caret(const TextEditState& state, bool maximize_selection) {
     const TextEditState::Caret& caret = state.caret;
     const int cur_line = caret.line;
     const int cur_wrap = wrap_index_at_column(caret.line, caret.column);
@@ -1179,7 +1179,7 @@ void TextArea::adjust_viewport_to_caret(const TextEditState& state, bool maximiz
 
 // ---- Gutters ----
 
-int TextArea::gutter_width(std::size_t gutter) const {
+int EditArea::gutter_width(std::size_t gutter) const {
     const TextEditGutterView& g = view_->gutters.at(gutter);
     switch (g.kind) {
     case TextEditGutterView::Kind::Main: {
@@ -1203,7 +1203,7 @@ int TextArea::gutter_width(std::size_t gutter) const {
     return std::max(g.width, 0);
 }
 
-void TextArea::update_gutter_width() {
+void EditArea::update_gutter_width() {
     int width = 0;
     for (std::size_t i = 0; i < view_->gutters.size(); ++i) {
         if (view_->gutters[i].draw) {
@@ -1214,11 +1214,11 @@ void TextArea::update_gutter_width() {
     gutter_padding_ = width > 0 ? 2 : 0;
 }
 
-int TextArea::text_start() const {
+int EditArea::text_start() const {
     return to_int(std::ceil(style().margin(0))) + gutters_room();
 }
 
-std::pair<int, int> TextArea::gutter_at(Vec2 point) const {
+std::pair<int, int> EditArea::gutter_at(Vec2 point) const {
     int left_margin = to_int(std::ceil(style().margin(0)));
     if (point.x > static_cast<float>(left_margin + gutters_room())) {
         return {-1, -1};
@@ -1241,7 +1241,7 @@ std::pair<int, int> TextArea::gutter_at(Vec2 point) const {
     return {-1, -1};
 }
 
-int TextArea::line_number_digits() const {
+int EditArea::line_number_digits() const {
     int digits = 1;
     for (int count = line_count(); count >= 10; count /= 10) {
         ++digits;
@@ -1251,7 +1251,7 @@ int TextArea::line_number_digits() const {
 
 // ---- Positions ----
 
-std::pair<int, int> TextArea::line_column_at(Vec2 point, bool clamp_line, bool clamp_column,
+std::pair<int, int> EditArea::line_column_at(Vec2 point, bool clamp_line, bool clamp_column,
                                              bool mid_grapheme) const {
     const int px = to_int(point.x);
     const int py = to_int(point.y);
@@ -1294,7 +1294,7 @@ std::pair<int, int> TextArea::line_column_at(Vec2 point, bool clamp_line, bool c
     return {static_cast<int>(col), row};
 }
 
-int TextArea::column_x_offset(int line, int column, text::Direction input_direction) const {
+int EditArea::column_x_offset(int line, int column, text::Direction input_direction) const {
     if (line < 0 || line >= line_count()) {
         return 0;
     }
@@ -1318,7 +1318,7 @@ int TextArea::column_x_offset(int line, int column, text::Direction input_direct
     return to_int(carets.trailing.x);
 }
 
-int TextArea::char_pos_for_line(int x, int line, int wrap_index, bool mid_grapheme) const {
+int EditArea::char_pos_for_line(int x, int line, int wrap_index, bool mid_grapheme) const {
     if (line < 0 || line >= line_count()) {
         return 0;
     }
@@ -1333,11 +1333,11 @@ int TextArea::char_pos_for_line(int x, int line, int wrap_index, bool mid_graphe
     return static_cast<int>(column);
 }
 
-const StyleBox& TextArea::style() const {
+const StyleBox& EditArea::style() const {
     return editable_ ? view_->normal : view_->read_only;
 }
 
-Vec2 TextArea::minimum_size() const {
+Vec2 EditArea::minimum_size() const {
     Vec2 size = style().minimum_size();
     if (fit_content_height_) {
         size.y += content_size_.y;
@@ -1352,7 +1352,7 @@ Vec2 TextArea::minimum_size() const {
 
 // Where _update_scrollbars puts one of its scroll bars: the vertical one down its right side
 // inside its style's top margin, the horizontal one along its bottom beside the vertical one.
-TextArea::BarPlace TextArea::bar_place(bool vertical) const {
+EditArea::BarPlace EditArea::bar_place(bool vertical) const {
     const Vec2 vmin = v_scroll_min();
     const Vec2 hmin = h_scroll_min();
     const StyleBox& st = style();
@@ -1377,7 +1377,7 @@ TextArea::BarPlace TextArea::bar_place(bool vertical) const {
     return place;
 }
 
-void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, bool focused,
+void EditArea::draw(const world::TextArea& edit, const TextEditState& state, bool focused,
                     const Extras& extras, Draw& out, TextEditView& view) const {
     const TextEditView& theme = *view_;
     const StyleBox& st = style();
@@ -2015,7 +2015,7 @@ void TextArea::draw(const world::TextEdit& edit, const TextEditState& state, boo
     view.placeholder = placeholder && !placeholder_.empty();
 }
 
-std::optional<TextArea::GutterText> TextArea::gutter_text(std::string utf8, Vec4 color) const {
+std::optional<EditArea::GutterText> EditArea::gutter_text(std::string utf8, Vec4 color) const {
     auto laid = fonts_->layout(utf8, {.font = font_, .font_size = view_->font_size});
     if (!laid || laid.value().lines.empty()) {
         return std::nullopt;
@@ -2024,7 +2024,7 @@ std::optional<TextArea::GutterText> TextArea::gutter_text(std::string utf8, Vec4
         .utf8 = std::move(utf8), .layout = std::move(laid.value()), .pen = {}, .color = color};
 }
 
-void TextArea::draw_guidelines(const world::CodeEdit& code, const CodeEditView& look,
+void EditArea::draw_guidelines(const world::CodeEditor& code, const CodeEditView& look,
                                std::vector<Box>& out) const {
     const StyleBox& st = style();
     const int xmargin_beg = to_int(st.margin(0)) + gutters_room();
@@ -2047,12 +2047,12 @@ void TextArea::draw_guidelines(const world::CodeEdit& code, const CodeEditView& 
     }
 }
 
-void TextArea::draw_gutters(const world::TextEdit& edit, const TextEditState& state,
+void EditArea::draw_gutters(const world::TextArea& edit, const TextEditState& state,
                             const Extras& extras, int line, int ofs_y, int row_height, Draw& out,
                             std::vector<GutterText>& texts) const {
     using Kind = TextEditGutterView::Kind;
     const bool rtl = view_->rtl;
-    const std::size_t own = view_->code ? 2 : 0; // the TextEdit's first gutter
+    const std::size_t own = view_->code ? 2 : 0; // the TextArea's first gutter
     std::pair<int, int> hovered{-1, -1};
     if (extras.hovered) {
         hovered = gutter_at(state.mouse);
@@ -2125,7 +2125,7 @@ void TextArea::draw_gutters(const world::TextEdit& edit, const TextEditState& st
                 break;
             }
             const CodeEditView& look = *view_->code;
-            const world::CodeEdit& code = *extras.code;
+            const world::CodeEditor& code = *extras.code;
             const bool hovering = hovered.first == static_cast<int>(g) && hovered.second == line;
             const bool shift = extras.shift;
             if (look.draw_breakpoints) {
@@ -2194,9 +2194,9 @@ void TextArea::draw_gutters(const world::TextEdit& edit, const TextEditState& st
     }
 }
 
-TextArea text_area_for(text::Fonts& fonts, const TextEditView& view, Vec2 size,
-                       const world::TextEdit& edit, const TextEditState& state) {
-    TextArea area(fonts, view, size, edit, split_lines(edit.text));
+EditArea text_area_for(text::Fonts& fonts, const TextEditView& view, Vec2 size,
+                       const world::TextArea& edit, const TextEditState& state) {
+    EditArea area(fonts, view, size, edit, split_lines(edit.text));
     if (state.known && state.known_text == edit.text && !state.ime_text.empty()) {
         const int line = std::clamp(state.caret.line, 0, area.line_count() - 1);
         const std::u32string& text = area.line(line);
@@ -2210,8 +2210,8 @@ TextArea text_area_for(text::Fonts& fonts, const TextEditView& view, Vec2 size,
     return area;
 }
 
-const TextEditState& shown_state(const world::TextEdit& edit, const TextEditState* state,
-                                 const TextArea& area, TextEditState& fallback) {
+const TextEditState& shown_state(const world::TextArea& edit, const TextEditState* state,
+                                 const EditArea& area, TextEditState& fallback) {
     if (state != nullptr && state->known && state->known_text == edit.text &&
         state->caret.line == edit.caret_line && state->caret.column == edit.caret_column) {
         return *state;

@@ -9,7 +9,7 @@ system that, each time a ground's `seed` changes:
   height, two clockwise triangles a cell by `add_index`, then `generate_normals` and
   `generate_tangents`, committed with a material that takes the vertex colors,
 - makes the hills a mesh with `scene3d::make_mesh(world, "ground", ...)`, which the entity's
-  `MeshInstance3D` draws as `"made:ground"`,
+  `Model3D` draws as `"made:ground"`,
 - paints the same heights into an image and makes it a texture with
   `procedural::make_texture(world, "minimap", ...)`, which a `Sprite2D` shows as
   `"made:minimap"`.

@@ -1,6 +1,6 @@
 // Plays a video in a control and on a sprite. The clip is made here with the engine's own AV1
 // encoder: four colors, a quarter of a second each, with a white bar that moves across. The
-// VideoStreamPlayer "tv" plays it at its own size in the top left corner, and the sprite
+// Video "tv" plays it at its own size in the top left corner, and the sprite
 // "screen" shows the same frames at half size through the texture "video:tv". The output is
 // the colors frame.capture sees as it plays, pauses, seeks, finishes and loops.
 #include "slash/command/builtin.hpp"
@@ -91,7 +91,7 @@ struct Game {
 
     void show(const char* what) const {
         const json::Value got = ok("entity.get", R"({"id": "tv"})");
-        const json::Value& player = *got.find("components")->find("VideoStreamPlayer");
+        const json::Value& player = *got.find("components")->find("Video");
         const json::Value* position = player.find("stream_position");
         const json::Value* playing = player.find("playing");
         // The bar is in one of four places along the bottom of the video.
@@ -135,13 +135,12 @@ int main() {
     game.step(5);
     game.show("tick 6: a quarter second on, the second frame");
 
-    (void)game.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)game.ok("component.set", R"({"id": "tv", "components": {"Video":
                                     {"paused": true, "stream_position": 0.75}}})");
     game.step(4);
     game.show("paused and seeked to 0.75 s: the last frame, held");
 
-    (void)game.ok("component.set",
-                  R"({"id": "tv", "components": {"VideoStreamPlayer": {"paused": false}}})");
+    (void)game.ok("component.set", R"({"id": "tv", "components": {"Video": {"paused": false}}})");
     const std::string subscription =
         game.ok("events.subscribe", R"({"kinds": ["finished"]})").find("subscription")->as_string();
     game.step(6);
@@ -152,7 +151,7 @@ int main() {
                                               json::Style::Compact)
                                       .c_str());
 
-    (void)game.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)game.ok("component.set", R"({"id": "tv", "components": {"Video":
                                     {"loop": true, "playing": true, "stream_position": 0.5}}})");
     game.step(11);
     game.show("looping from 0.5 s, 11 ticks later: round again to the first frame");

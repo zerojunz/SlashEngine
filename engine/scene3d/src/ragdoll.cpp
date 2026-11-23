@@ -26,7 +26,7 @@
 // Ragdoll3D: SlashEngine's own profiles and states, after Unreal's physics assets (PhAT's bodies
 // fitted to bones), its Physical Animation component (muscles as drives toward the animated pose)
 // and the usual hit reaction, fall and get-up loop of games built on them, made of Godot 4.6's
-// PhysicalBoneSimulator3D and PhysicalBone3D.
+// BoneSimulation3D and SimulatedBone3D.
 namespace slash::scene3d {
 
 namespace {
@@ -117,11 +117,11 @@ Result<entt::entity> create_bone(world::World& world, std::string_view owner,
     }
 }
 
-// The body a profile bone makes: its PhysicalBone3D (keeping what physics writes) and shape.
-world::PhysicalBone3D physical_bone(const world::PhysicalBone3D& old, const std::string& name,
-                                    const world::RagdollBone& bone,
-                                    const world::RagdollProfile& profile) {
-    world::PhysicalBone3D out = old;
+// The body a profile bone makes: its SimulatedBone3D (keeping what physics writes) and shape.
+world::SimulatedBone3D physical_bone(const world::SimulatedBone3D& old, const std::string& name,
+                                     const world::RagdollBone& bone,
+                                     const world::RagdollProfile& profile) {
+    world::SimulatedBone3D out = old;
     out.bone_name = name;
     out.body_offset_position = bone.offset;
     out.body_offset_rotation = bone.rotation;
@@ -141,9 +141,8 @@ world::PhysicalBone3D physical_bone(const world::PhysicalBone3D& old, const std:
     return out;
 }
 
-world::CollisionShape3D shape_of(const world::CollisionShape3D& old,
-                                 const world::RagdollBone& bone) {
-    world::CollisionShape3D out = old;
+world::Collider3D shape_of(const world::Collider3D& old, const world::RagdollBone& bone) {
+    world::Collider3D out = old;
     out.shape = bone.shape == "circle" ? "sphere" : bone.shape;
     out.radius = bone.radius;
     out.height = std::max(bone.height, (2.0F * bone.radius) + 0.001F);
@@ -180,7 +179,7 @@ world::PhysicalBoneDrive drive_of(const world::Ragdoll3D& ragdoll, const std::st
 
 std::shared_ptr<const Model> model_of(const world::World& world, entt::entity entity,
                                       const ModelLoader& load) {
-    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<const world::Model3D>(entity);
     if (instance == nullptr || instance->mesh.empty() || !load) {
         return nullptr;
     }
@@ -221,7 +220,7 @@ std::string start_getting_up(world::World& world, entt::entity entity,
     }
     const world::Affine3D body = tree.global(root);
     const world::Affine3D bone =
-        body * body_offset(ecs.get<const world::PhysicalBone3D>(root)).inverse();
+        body * body_offset(ecs.get<const world::SimulatedBone3D>(root)).inverse();
     const Vec3 forward = normalized(bone.basis(profile.get_up.forward));
     const bool face_up = forward.y >= 0.0F;
     Vec3 spine = bone.basis({0.0F, 1.0F, 0.0F});
@@ -240,8 +239,7 @@ std::string start_getting_up(world::World& world, entt::entity entity,
     for (const auto& [name, part] : bones) {
         const world::Affine3D placed = tree.global(part);
         float reach = 0.0F;
-        if (const auto* shape = ecs.try_get<const world::CollisionShape3D>(part);
-            shape != nullptr) {
+        if (const auto* shape = ecs.try_get<const world::Collider3D>(part); shape != nullptr) {
             reach = shape->shape == "box"
                         ? 0.5F * static_cast<float>(
                                      std::max({shape->size.x, shape->size.y, shape->size.z}))
@@ -254,7 +252,7 @@ std::string start_getting_up(world::World& world, entt::entity entity,
     standing.rotation = {0.0F, static_cast<real_t>(yaw), 0.0F};
     set_global_transform(world, tree, entity, world::affine(standing));
     const std::string& animation = face_up ? profile.get_up.face_up : profile.get_up.face_down;
-    if (auto* player = ecs.try_get<world::AnimationPlayer>(entity);
+    if (auto* player = ecs.try_get<world::Animator>(entity);
         player != nullptr && !animation.empty()) {
         player->animation = animation;
         player->time = 0.0;
@@ -304,15 +302,15 @@ void run_ragdoll(world::World& world, entt::entity entity, const ModelLoader& lo
             continue;
         }
         const entt::entity child = made.value();
-        world::PhysicalBone3D physical = physical_bone({}, name, bone, profile.value());
+        world::SimulatedBone3D physical = physical_bone({}, name, bone, profile.value());
         const world::Affine3D placed =
             unscaled(rest[static_cast<std::size_t>(node)] * body_offset(physical));
         world::Transform3D transform;
         transform.position = placed.origin;
         transform.rotation = world::euler(placed);
         ecs.emplace<world::Transform3D>(child, transform);
-        ecs.emplace<world::PhysicalBone3D>(child, std::move(physical));
-        ecs.emplace<world::CollisionShape3D>(child, shape_of({}, bone));
+        ecs.emplace<world::SimulatedBone3D>(child, std::move(physical));
+        ecs.emplace<world::Collider3D>(child, shape_of({}, bone));
         ecs.get<world::Transform3D>(entity).children.push_back(child);
         bones.emplace(name, child);
     }
@@ -355,7 +353,7 @@ void run_ragdoll(world::World& world, entt::entity entity, const ModelLoader& lo
         float fastest = 0.0F;
         for (const auto& [name, part] : bones) {
             fastest = std::max(fastest,
-                               length(ecs.get<const world::PhysicalBone3D>(part).linear_velocity));
+                               length(ecs.get<const world::SimulatedBone3D>(part).linear_velocity));
         }
         ragdoll.still = fastest < p.get_up.settle_speed ? ragdoll.still + seconds : 0.0F;
         if (ragdoll.still >= p.get_up.settle_time) {
@@ -395,7 +393,7 @@ void run_ragdoll(world::World& world, entt::entity entity, const ModelLoader& lo
             exceptions.push_back(part);
         }
     }
-    auto& simulator = ecs.get_or_emplace<world::PhysicalBoneSimulator3D>(entity);
+    auto& simulator = ecs.get_or_emplace<world::BoneSimulation3D>(entity);
     if (simulator.simulating != simulating || simulator.influence != influence ||
         !simulator.active || !simulator.simulated_bones.empty() ||
         simulator.collision_exceptions != exceptions) {
@@ -410,17 +408,17 @@ void run_ragdoll(world::World& world, entt::entity entity, const ModelLoader& lo
         if (found == p.bones.end()) {
             continue;
         }
-        const auto& old = ecs.get<const world::PhysicalBone3D>(part);
-        world::PhysicalBone3D next = physical_bone(old, name, found->second, p);
+        const auto& old = ecs.get<const world::SimulatedBone3D>(part);
+        world::SimulatedBone3D next = physical_bone(old, name, found->second, p);
         next.drive = drive_of(ragdoll, name, found->second, p);
         if (!(next == old)) {
-            ecs.replace<world::PhysicalBone3D>(part, std::move(next));
+            ecs.replace<world::SimulatedBone3D>(part, std::move(next));
         }
-        const auto* shape = ecs.try_get<const world::CollisionShape3D>(part);
-        const world::CollisionShape3D wanted =
-            shape_of(shape != nullptr ? *shape : world::CollisionShape3D{}, found->second);
+        const auto* shape = ecs.try_get<const world::Collider3D>(part);
+        const world::Collider3D wanted =
+            shape_of(shape != nullptr ? *shape : world::Collider3D{}, found->second);
         if (shape == nullptr || !(*shape == wanted)) {
-            ecs.emplace_or_replace<world::CollisionShape3D>(part, wanted);
+            ecs.emplace_or_replace<world::Collider3D>(part, wanted);
         }
     }
 }
@@ -546,7 +544,7 @@ std::map<std::string, entt::entity> ragdoll_bones(const world::World& world, ent
     }
     for (const entt::entity child : transform->children) {
         if (child != entt::null && world.valid(child)) {
-            if (const auto* bone = ecs.try_get<const world::PhysicalBone3D>(child);
+            if (const auto* bone = ecs.try_get<const world::SimulatedBone3D>(child);
                 bone != nullptr) {
                 out.emplace(bone->bone_name, child);
             }
@@ -604,7 +602,7 @@ Result<RagdollHitReport> hit_ragdoll(world::World& world, entt::entity entity,
         return make_error(ErrorCode::NotFound, std::move(message));
     }
     auto& ecs = world.ecs();
-    auto& physical = ecs.get<world::PhysicalBone3D>(part->second);
+    auto& physical = ecs.get<world::SimulatedBone3D>(part->second);
     physical.linear_velocity =
         physical.linear_velocity + (impulse * static_cast<real_t>(1.0F / physical.mass));
     const float size = length(impulse);
@@ -617,7 +615,7 @@ Result<RagdollHitReport> hit_ragdoll(world::World& world, entt::entity entity,
     };
     weaken(std::string(bone), size * p.hit.weaken);
     asset::Assets* assets = asset::assets_of(ecs);
-    const auto* instance = ecs.try_get<const world::MeshInstance3D>(entity);
+    const auto* instance = ecs.try_get<const world::Model3D>(entity);
     if (assets != nullptr && instance != nullptr && p.hit.spread > 0.0F) {
         if (auto loaded = assets->load<Model>(instance->mesh); loaded) {
             const Model& model = *loaded.value();
@@ -988,7 +986,7 @@ std::vector<RagdollProblem> check_ragdoll(const world::World& world, entt::entit
     }
     if (model == nullptr) {
         out.push_back({"/components/Ragdoll3D",
-                       "the entity's MeshInstance3D draws no model: set its mesh to a model "
+                       "the entity's Model3D draws no model: set its mesh to a model "
                        "file with a skeleton"});
         return out;
     }

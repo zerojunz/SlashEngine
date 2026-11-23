@@ -84,17 +84,17 @@ void make_menu(Session& s) {
             "Label": {"text": "Paused"}}}},
         {"command": "entity.create", "params": {"id": "resume", "components": {
             "Button": {"text": "Resume"},
-            "Control": {"tooltip_text": "Back to it",
+            "Widget": {"tooltip_text": "Back to it",
                         "accessibility_description": "Back to the game"}}}},
         {"command": "entity.create", "params": {"id": "music", "components": {
             "CheckBox": {"text": "Music", "button_pressed": true}}}},
         {"command": "entity.create", "params": {"id": "volume", "components": {
             "Slider": {"value": 50, "step": 5},
-            "Control": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
+            "Widget": {"accessibility_name": "Volume", "custom_minimum_size": [100, 0],
                         "accessibility_labeled_by_nodes": ["title"]}}}},
         {"command": "entity.create", "params": {"id": "menu", "components": {
-            "BoxContainer": {"vertical": true},
-            "Control": {"children": ["title", "resume", "music", "volume"],
+            "StackBox": {"vertical": true},
+            "Widget": {"children": ["title", "resume", "music", "volume"],
                         "accessibility_live": "polite"}}}}
     ]})");
 }
@@ -181,7 +181,7 @@ TEST_CASE("An update sends only the nodes that changed") {
         {"command": "entity.create", "params": {"id": "quit", "components": {
             "Button": {"text": "Quit"}}}},
         {"command": "component.set", "params": {"id": "menu", "components": {
-            "Control": {"children": ["title", "resume", "music", "volume", "quit"]}}}}
+            "Widget": {"children": ["title", "resume", "music", "volume", "quit"]}}}}
     ]})");
     const accessibility::Snapshot grown = accessibility::snapshot(s.world(), "Pause");
     std::vector<std::uint64_t> sent;
@@ -300,7 +300,7 @@ TEST_CASE("AccessKit's action requests become ours") {
     request.data.value.numeric_value = 0.25;
     CHECK(accessibility::request_of(request)->data.as_double() == 0.25);
 
-    // Scrolling by an item, as a ScrollContainer's "item" data.
+    // Scrolling by an item, as a ScrollBox's "item" data.
     request.action = ACCESSKIT_ACTION_SCROLL_DOWN;
     request.data.value.tag = ACCESSKIT_ACTION_DATA_SCROLL_UNIT;
     request.data.value.scroll_unit = ACCESSKIT_SCROLL_UNIT_ITEM;

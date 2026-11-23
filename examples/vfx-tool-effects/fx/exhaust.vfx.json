@@ -16,7 +16,7 @@
     },
     {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 8,
           "lifetime": 0.8
         }

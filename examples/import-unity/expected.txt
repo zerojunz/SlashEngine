@@ -194,7 +194,7 @@ project.import {"source":"unity"}
   "entities": {
     "bank": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "B": "bank_slope",
             "a": "bank_slope:h",
@@ -226,7 +226,7 @@ project.import {"source":"unity"}
     },
     "coin_2": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "disabled": true
         },
         "Sprite2D": {
@@ -240,8 +240,8 @@ project.import {"source":"unity"}
     },
     "coins": {
       "components": {
-        "BoxContainer": {},
-        "Control": {
+        "StackBox": {},
+        "Widget": {
           "children": ["icon", "count"],
           "offset_bottom": 32.0,
           "offset_left": 8.0,
@@ -255,7 +255,12 @@ project.import {"source":"unity"}
     },
     "count": {
       "components": {
-        "Control": {
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "text": "0",
+          "vertical_alignment": "center"
+        },
+        "Widget": {
           "custom_minimum_size": [64.0, 24.0],
           "grow_horizontal": "both",
           "grow_vertical": "both",
@@ -269,11 +274,6 @@ project.import {"source":"unity"}
           "theme_override_font_sizes": {
             "font_size": 18
           }
-        },
-        "Label": {
-          "autowrap_mode": "word_smart",
-          "text": "0",
-          "vertical_alignment": "center"
         }
       }
     },
@@ -297,7 +297,7 @@ project.import {"source":"unity"}
     },
     "global_light_2d": {
       "components": {
-        "CanvasModulate": {
+        "AmbientTint2D": {
           "color": [0.36, 0.4, 0.6, 1.0]
         },
         "Transform2D": {}
@@ -321,7 +321,7 @@ project.import {"source":"unity"}
     },
     "ground": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [640.0, 32.0]
         },
         "StaticBody2D": {
@@ -336,7 +336,7 @@ project.import {"source":"unity"}
     },
     "ground_shape_2": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "position": [-312.0, -96.0],
           "size": [16.0, 160.0]
         },
@@ -365,7 +365,14 @@ project.import {"source":"unity"}
     },
     "hint": {
       "components": {
-        "Control": {
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "clip_text": true,
+          "horizontal_alignment": "center",
+          "text": "Arrows to move, Space to hop",
+          "vertical_alignment": "bottom"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_left": 0.5,
           "anchor_right": 0.5,
@@ -387,32 +394,29 @@ project.import {"source":"unity"}
           "theme_override_font_sizes": {
             "font_size": 14
           }
-        },
-        "Label": {
-          "autowrap_mode": "word_smart",
-          "clip_text": true,
-          "horizontal_alignment": "center",
-          "text": "Arrows to move, Space to hop",
-          "vertical_alignment": "bottom"
         }
       }
     },
     "hud": {
       "components": {
-        "Control": {
+        "Hud": {
+          "frog": "frog"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["coins", "pause", "hint"],
           "z_index": 10
-        },
-        "Hud": {
-          "frog": "frog"
         }
       }
     },
     "icon": {
       "components": {
-        "Control": {
+        "NineSlice": {
+          "region_rect": [0.0, 0.0, 16.0, 16.0],
+          "texture": "unity/Assets/Sprites/coins.png"
+        },
+        "Widget": {
           "custom_minimum_size": [16.0, 16.0],
           "grow_horizontal": "both",
           "grow_vertical": "both",
@@ -421,16 +425,12 @@ project.import {"source":"unity"}
           "offset_right": 16.0,
           "offset_top": 4.0,
           "size_flags_vertical": "shrink_center"
-        },
-        "NinePatchRect": {
-          "region_rect": [0.0, 0.0, 16.0, 16.0],
-          "texture": "unity/Assets/Sprites/coins.png"
         }
       }
     },
     "lantern": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [16.0, 16.0]
         },
         "PointLight2D": {
@@ -469,12 +469,12 @@ project.import {"source":"unity"}
     },
     "lily_pad": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "one_way_collision": true,
           "position": [0.0, -4.0],
           "size": [64.0, 8.0]
         },
-        "LightOccluder2D": {
+        "Occluder2D": {
           "polygon": [
             [-32.0, 0.0],
             [32.0, 0.0],
@@ -498,20 +498,20 @@ project.import {"source":"unity"}
     },
     "main_camera": {
       "components": {
-        "AudioListener2D": {
-          "current": true
-        },
         "Camera2D": {},
         "CameraFollow": {
           "smoothing": 0.2,
           "target": "frog"
+        },
+        "Listener2D": {
+          "current": true
         },
         "Transform2D": {}
       }
     },
     "music": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "bus": "Music",
           "stream": "unity/Assets/Audio/pond.loop.audio.json",
@@ -523,7 +523,7 @@ project.import {"source":"unity"}
     "pause": {
       "components": {
         "Button": {},
-        "Control": {
+        "Widget": {
           "anchor_left": 1.0,
           "anchor_right": 1.0,
           "children": ["text"],
@@ -579,7 +579,14 @@ project.import {"source":"unity"}
     },
     "text": {
       "components": {
-        "Control": {
+        "Label": {
+          "autowrap_mode": "word_smart",
+          "clip_text": true,
+          "horizontal_alignment": "center",
+          "text": "II",
+          "vertical_alignment": "center"
+        },
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "grow_horizontal": "both",
@@ -590,13 +597,6 @@ project.import {"source":"unity"}
           "theme_override_font_sizes": {
             "font_size": 16
           }
-        },
-        "Label": {
-          "autowrap_mode": "word_smart",
-          "clip_text": true,
-          "horizontal_alignment": "center",
-          "text": "II",
-          "vertical_alignment": "center"
         }
       }
     }
@@ -608,21 +608,21 @@ project.import {"source":"unity"}
   "entities": {
     "feet": {
       "components": {
-        "Area2D": {
-          "collision_layer": 64,
-          "collision_mask": 4294967295
-        },
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [16.0, 4.0]
         },
         "Transform2D": {
           "position": [0.0, 16.0]
+        },
+        "Zone2D": {
+          "collision_layer": 64,
+          "collision_mask": 4294967295
         }
       }
     },
     "frog": {
       "components": {
-        "AnimationTree": {
+        "AnimationGraph": {
           "deterministic": false,
           "libraries": {
             "": "unity/Assets/Animations/Frog.anim.json"
@@ -633,12 +633,7 @@ project.import {"source":"unity"}
           },
           "tree_root": "unity/Assets/Animations/Frog.animtree.json"
         },
-        "AudioStreamPlayer2D": {
-          "bus": "SFX",
-          "max_distance": 640.0,
-          "stream": "unity/Assets/Audio/croak.wav"
-        },
-        "CollisionShape2D": {
+        "Collider2D": {
           "height": 32.0,
           "radius": 12.0,
           "shape": "capsule"
@@ -656,6 +651,11 @@ project.import {"source":"unity"}
           "continuous_cd": "cast_shape",
           "friction": 0.4,
           "lock_rotation": true
+        },
+        "SoundPlayer2D": {
+          "bus": "SFX",
+          "max_distance": 640.0,
+          "stream": "unity/Assets/Audio/croak.wav"
         },
         "Transform2D": {
           "children": ["frog_sprite", "feet"]
@@ -1306,7 +1306,7 @@ ui.layout {"ids":["coins","icon","count","pause","hint"]}
 entity.get {"components":["CanvasModulate"],"id":"global_light_2d"}
 {
   "components": {
-    "CanvasModulate": {
+    "AmbientTint2D": {
       "color": [0.36, 0.4, 0.6, 1.0]
     }
   },

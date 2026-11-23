@@ -12,7 +12,7 @@
         "entities": [
           {
             "components": {
-              "CollisionShape2D": {
+              "Collider2D": {
                 "radius": 9
               }
             },
@@ -20,7 +20,7 @@
           },
           {
             "components": {
-              "CollisionShape2D": {
+              "Collider2D": {
                 "radius": 9
               },
               "Transform2D": {
@@ -30,7 +30,7 @@
           },
           {
             "components": {
-              "CollisionShape2D": {
+              "Collider2D": {
                 "radius": 9
               },
               "Transform2D": {
@@ -41,8 +41,8 @@
         ]
       },
       "params": {
-        "include": ["Transform2D", "CollisionShape2D"],
-        "with": ["CharacterBody2D"]
+        "include": ["Transform2D", "Collider2D"],
+        "with": ["CharacterMover2D"]
       }
     }
   ],

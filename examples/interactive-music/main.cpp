@@ -89,7 +89,7 @@ int main() {
     // The fight starts. Explore to combat waits for explore's next bar, two seconds in...
     call(
         session, "component.set",
-        R"({"id": "score", "components": {"AudioStreamPlayer": {"parameters": {"switch_to_clip": "combat"}}}})");
+        R"({"id": "score", "components": {"SoundPlayer": {"parameters": {"switch_to_clip": "combat"}}}})");
     call(session, "step", R"({"ticks": 30})");
     call(session, "audio.state", R"({"ids": ["score"]})");
     // ...then crossfades over a beat, and combat plays at -6 dB.
@@ -100,10 +100,10 @@ int main() {
     // sting goes back to explore at its end, so switch_to_clip already names explore.
     call(
         session, "component.set",
-        R"({"id": "score", "components": {"AudioStreamPlayer": {"parameters": {"switch_to_clip": "victory"}}}})");
+        R"({"id": "score", "components": {"SoundPlayer": {"parameters": {"switch_to_clip": "victory"}}}})");
     call(session, "step", R"({"ticks": 45})");
     call(session, "audio.state", R"({"ids": ["score"]})");
-    call(session, "entity.get", R"({"id": "score", "components": ["AudioStreamPlayer"]})");
+    call(session, "entity.get", R"({"id": "score", "components": ["SoundPlayer"]})");
     // A second later explore fades in over half a second, as the transition to it says.
     call(session, "step", R"({"ticks": 75})");
     call(session, "audio.state", R"({"ids": ["score"]})");
@@ -116,7 +116,7 @@ int main() {
     call(session, "audio.state", R"({"ids": ["layers"]})");
     call(
         session, "component.set",
-        R"({"id": "layers", "components": {"AudioStreamPlayer": {"parameters": {"stream_1_volume_db": 0}}}})");
+        R"({"id": "layers", "components": {"SoundPlayer": {"parameters": {"stream_1_volume_db": 0}}}})");
     call(session, "step", R"({"ticks": 10})");
     call(session, "audio.state", R"({"ids": ["layers"]})");
     call(session, "audio.stop", R"({"id": "layers"})");

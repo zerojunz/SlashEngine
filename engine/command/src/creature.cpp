@@ -179,13 +179,13 @@ json::Array make_creature(world::World& world, entt::entity entity, const Placin
     transform.position = placing.at;
     transform.rotation.y = placing.yaw;
     ecs.emplace<world::Transform3D>(entity, transform);
-    world::MeshInstance3D instance;
+    world::Model3D instance;
     instance.mesh = placing.recipe;
-    ecs.emplace<world::MeshInstance3D>(entity, instance);
-    world::AnimationPlayer player;
+    ecs.emplace<world::Model3D>(entity, instance);
+    world::Animator player;
     player.library = placing.recipe;
     player.animation = "idle";
-    ecs.emplace<world::AnimationPlayer>(entity, player);
+    ecs.emplace<world::Animator>(entity, player);
     world::Creature3D creature;
     creature.recipe = placing.recipe;
     creature.motion = placing.motion;
@@ -195,7 +195,7 @@ json::Array make_creature(world::World& world, entt::entity entity, const Placin
             tree->children.push_back(entity);
         }
     }
-    return {"Transform3D", "MeshInstance3D", "AnimationPlayer", "Creature3D"};
+    return {"Transform3D", "Model3D", "Animator", "Creature3D"};
 }
 
 Result<entt::entity> parent_param(world::World& world, const json::Value& params) {
@@ -916,7 +916,7 @@ Result<json::Value> filmstrip(Session& session, const MotionTarget& target,
         world::Transform3D sun_place;
         sun_place.rotation = {-0.9F, 0.6F, 0.0F};
         ecs.emplace<world::Transform3D>(sun, sun_place);
-        ecs.emplace<world::DirectionalLight3D>(sun);
+        ecs.emplace<world::SunLight3D>(sun);
     }
     // One step makes the 2D cut-out's bones.
     world.step(1.0 / 60.0);
@@ -938,7 +938,7 @@ Result<json::Value> filmstrip(Session& session, const MotionTarget& target,
         if (flat) {
             npc::pose_creature_cutout(world, creature, tuned, animation, share * length);
         } else {
-            auto& player = ecs.get<world::AnimationPlayer>(creature);
+            auto& player = ecs.get<world::Animator>(creature);
             player.animation = std::string(animation);
             player.playing = false;
             player.time = share * library;
@@ -1305,8 +1305,8 @@ void register_creature_commands(Registry& registry) {
     ppm["exclusiveMinimum"] = 0;
     registry.add({
         .name = "creature.place",
-        .description = "Makes an animal of a .creature.json recipe: in 3D a MeshInstance3D "
-                       "drawing its rigged model, an AnimationPlayer of its animations and a "
+        .description = "Makes an animal of a .creature.json recipe: in 3D a Model3D "
+                       "drawing its rigged model, an Animator of its animations and a "
                        "Creature3D; in 2D a Creature2D, its cut-out kept as <id>_<bone> "
                        "children. The fauna system then runs it.",
         .capabilities = {Read, Edit},

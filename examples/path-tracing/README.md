@@ -3,14 +3,14 @@
 A reference still of a 3D world, path traced on the CPU: light bounced from surface to surface
 and shadows traced by ray, for checking what the real-time renderer only estimates.
 [main.scene.json](main.scene.json) is the room of [lightmaps-3d](../lightmaps-3d/) without its
-`LightmapGI`: a floor, a red wall, a crate and a ball seen through a `Camera3D` in a 160x90
+`BakedLighting3D`: a floor, a red wall, a crate and a ball seen through a `Camera3D` in a 160x90
 window, lit by a sun with shadows and a blue-grey ambient light.
 
 `frame.capture`'s `path_trace` traces `samples` paths through each pixel. Each path meets the
 nearest surface, shades it with the same material and light code the renderer draws with
-(`StandardMaterial3D`'s albedo, metallic, roughness and emission, and every light), then
+(`Surface3D`'s albedo, metallic, roughness and emission, and every light), then
 bounces `bounces` times more, each bounce taking the light that reaches the point it meets.
-A bounce that meets nothing takes the `WorldEnvironment`'s ambient light, or its sky's when
+A bounce that meets nothing takes the `Environment3D`'s ambient light, or its sky's when
 meshes are lit by the sky, so the sky lights the room from every side it can reach. The frame is
 post-processed as the live frame is.
 

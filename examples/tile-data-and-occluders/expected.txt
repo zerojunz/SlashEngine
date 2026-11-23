@@ -20,7 +20,7 @@ light.sample {"points":[[40,8],[100,16],[100,56],[56,56]]}
 frame.capture {"points":[[40,8],[100,16],[100,56],[56,56]]}
 {"colors":[[0.482,0.396,0.31,1],[0.043,0.043,0.071,1],[0.125,0.11,0.114,1],[0.102,0.047,0,1]],"drawn":{"lights":1,"tiles":35},"height":64,"width":128}
 -- with the wall layer's occlusion off, its tiles cast no shadows
-component.set {"components":{"TileMapLayer":{"occlusion_enabled":false}},"id":"walls"}
-{"changed":{"TileMapLayer":{"occlusion_enabled":false}},"id":"walls"}
+component.set {"components":{"TileLayer2D":{"occlusion_enabled":false}},"id":"walls"}
+{"changed":{"TileLayer2D":{"occlusion_enabled":false}},"id":"walls"}
 light.sample {"points":[[100,16],[56,56]]}
 {"ambient":[0.1,0.1,0.15],"lit":true,"points":[{"color":[0.349,0.299,0.275],"lights":[{"color":[0.249,0.199,0.125],"id":"torch"}]},{"color":[0.733,0.606,0.466],"lights":[{"color":[0.633,0.506,0.316],"id":"torch"}]}]}

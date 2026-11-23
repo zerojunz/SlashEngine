@@ -1,6 +1,6 @@
 # 3D particles
 
-Particles in 3D, as Godot 4.6's `CPUParticles3D`. In [main.scene.json](main.scene.json), a
+Particles in 3D, as Godot 4.6's `Emitter3D`. In [main.scene.json](main.scene.json), a
 fountain sprays small spheres that arc up and fall back, a fire's quads always face the camera
 and burn from yellow to a dark red as they rise, and snow made of little boxes drifts down
 through the whole view, already falling when the scene opens. [calls.jsonl](calls.jsonl) checks
@@ -15,10 +15,10 @@ particles.eval {"id":"fountain","list":true,"max_results":2}
 ```
 
 - Each particle is drawn as the emitter's own mesh: a primitive mesh component on the entity
-  (the fountain's `SphereMesh`, the fire's `QuadMesh`, the snow's `BoxMesh`) or a model file in
-  `mesh`, with its `StandardMaterial3D`. An emitter with neither is a problem in `frame.summary`
+  (the fountain's `SphereGeometry`, the fire's `QuadGeometry`, the snow's `BoxGeometry`) or a model file in
+  `mesh`, with its `Surface3D`. An emitter with neither is a problem in `frame.summary`
   and `scene validate`, as the last call shows.
-- Emission works as `CPUParticles2D`'s: `amount` slots, each emitted once every `lifetime`,
+- Emission works as `Emitter2D`'s: `amount` slots, each emitted once every `lifetime`,
   with `explosiveness`, `randomness` and `preprocess`. Shapes are 3D (`point`, `sphere`,
   `sphere_surface`, `box`, `points`, `directed_points` and `ring` with its axis, height and cone
   angle), `spread` is a cone round `direction` that `flatness` squashes, and `gravity` is a

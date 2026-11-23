@@ -16,7 +16,7 @@ namespace slash::world {
 class World;
 }
 
-// Occlusion culling, as Godot 4.6's: OccluderInstance3D's shapes (scene/3d/
+// Occlusion culling, as Godot 4.6's: Occluder3D's shapes (scene/3d/
 // occluder_instance_3d.cpp) and its raycasting culler (modules/raycast/raycast_occlusion_cull.cpp
 // over servers/rendering/renderer_scene_occlusion_cull.h). Each frame a ray is cast from the camera
 // through each texel of a small depth buffer into the occluders' triangles; a mesh whose bounds lie
@@ -33,18 +33,18 @@ struct OccluderMesh {
     std::vector<int> indices;
 };
 
-// The triangles of an OccluderInstance3D's shape in its own space, as Godot's _update_arrays:
+// The triangles of an Occluder3D's shape in its own space, as Godot's _update_arrays:
 // QuadOccluder3D's and BoxOccluder3D's (size), SphereOccluder3D's rings (radius),
 // PolygonOccluder3D's polygon turned clockwise and cut into triangles, or ArrayOccluder3D's
 // vertices and indices. An error for a polygon that can't be cut or indices out of range.
-[[nodiscard]] Result<OccluderMesh> occluder_mesh(const world::OccluderInstance3D& occluder);
+[[nodiscard]] Result<OccluderMesh> occluder_mesh(const world::Occluder3D& occluder);
 
-// Each OccluderInstance3D that can't be used, for scene validate: as Godot's configuration
+// Each Occluder3D that can't be used, for scene validate: as Godot's configuration
 // warnings, a shape with fewer than three points or indices, a polygon that can't be cut into
 // triangles and indices out of range.
 [[nodiscard]] std::vector<Problem> check_occluders(const world::World& world);
 
-// The triangles of every visible OccluderInstance3D, placed in the world by tree.
+// The triangles of every visible Occluder3D, placed in the world by tree.
 [[nodiscard]] std::vector<std::array<Vec3, 3>> occluder_triangles(const world::World& world,
                                                                   const world::Tree3D& tree);
 
@@ -131,8 +131,8 @@ private:
     bool jitter_ = false;
 };
 
-// An OccluderInstance3D's shape baked from the meshes around it, as Godot's
-// OccluderInstance3D::bake_scene: every visible MeshInstance3D whose layers meet its bake_mask and
+// An Occluder3D's shape baked from the meshes around it, as Godot's
+// OccluderInstance3D::bake_scene: every visible Model3D whose layers meet its bake_mask and
 // whose material is opaque, read through models, placed in the occluder's space, each surface
 // simplified by meshoptimizer to bake_simplification_distance (Godot's _bake_surface) and its
 // repeated points and triangles merged away (SurfaceTool::strip_mesh_arrays). What can't be read

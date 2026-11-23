@@ -443,10 +443,10 @@ TEST_CASE("flesh: a character's model forms show its skeleton and its muscles on
 
     Project project("flesh_forms_project");
     project.ok("entity.create", R"({"id": "body", "components": {"Transform3D": {},
-        "MeshInstance3D": {"mesh": "characters/athlete.character.json::muscles"}}})");
+        "Model3D": {"mesh": "characters/athlete.character.json::muscles"}}})");
     CHECK(scene3d::check_meshes(project.session->world()).empty());
     project.ok("entity.create", R"({"id": "bad", "components": {
-        "Transform3D": {}, "MeshInstance3D": {"mesh": "characters/athlete.character.json::x"}}})");
+        "Transform3D": {}, "Model3D": {"mesh": "characters/athlete.character.json::x"}}})");
     CHECK_FALSE(scene3d::check_meshes(project.session->world()).empty());
 }
 

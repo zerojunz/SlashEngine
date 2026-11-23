@@ -52,10 +52,10 @@ struct Project {
             "version": "1.0.0", "window": {"width": 320, "height": 180}})");
         write("main.scene.json", R"({"format": 1, "entities": {
             "crate": {"components": {"Transform2D": {"position": [160, 40]}, "RigidBody2D": {},
-                                     "CollisionShape2D": {"size": [16, 16]}}},
+                                     "Collider2D": {"size": [16, 16]}}},
             "floor": {"components": {"Transform2D": {"position": [160, 170]},
                                      "StaticBody2D": {},
-                                     "CollisionShape2D": {"size": [320, 20]}}}}})");
+                                     "Collider2D": {"size": [320, 20]}}}}})");
         write("other.scene.json", R"({"format": 1, "entities": {"other": {}}})");
         world::register_builtin_components(components);
         command::register_builtin_commands(commands);
@@ -226,7 +226,7 @@ TEST_CASE("a warning or an error logged while a test runs fails it") {
                             {"command": "step"}]},
         "warning": {"steps": [
             {"command": "entity.create", "params": {"id": "torch", "components": {
-                "AnimatedSprite2D": {"sprite_frames": "torch.frames.json"}}}},
+                "Flipbook2D": {"sprite_frames": "torch.frames.json"}}}},
             {"command": "step", "params": {"ticks": 3}}]},
         "quiet": {"steps": [{"command": "step", "params": {"ticks": 3}}]}}})");
 
@@ -246,14 +246,13 @@ TEST_CASE("a warning or an error logged while a test runs fails it") {
           R"("msg":"the crate fell out of the world"},)"
           R"("message":"logged an error: the crate fell out of the world",)"
           R"("path":"/tests/error/steps/1","test":"error","tick":1})");
-    CHECK(failed[1].find("message")->as_string() ==
-          "logged a warning: an AnimatedSprite2D can't play");
+    CHECK(failed[1].find("message")->as_string() == "logged a warning: an Flipbook2D can't play");
     CHECK(failed[1].find("path")->as_string() == "/tests/warning/steps/1");
     CHECK(failed[1].find("log")->find("id")->as_string() == "torch");
     CHECK(failed[1].find("tick")->as_int() == 3); // when the step ended
     REQUIRE(lines.size() >= 3);
     CHECK(lines[lines.size() - 3].find("the crate fell out of the world") != std::string::npos);
-    CHECK(lines[lines.size() - 2].find("an AnimatedSprite2D can't play") != std::string::npos);
+    CHECK(lines[lines.size() - 2].find("an Flipbook2D can't play") != std::string::npos);
     CHECK(lines.back().find("after the tests") != std::string::npos);
 }
 

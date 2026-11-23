@@ -2,7 +2,7 @@
   "entities": {
     "dunes": {
       "components": {
-        "HTerrain": {
+        "Terrain3D": {
           "heightmap": "dunes.height.png",
           "resolution": 65
         },
@@ -11,7 +11,7 @@
     },
     "sea": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "texture_filter": "nearest",
           "tile_set": "ground.tileset.json"
         },

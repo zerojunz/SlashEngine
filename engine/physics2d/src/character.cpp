@@ -21,9 +21,9 @@ namespace slash::physics2d::detail {
 
 namespace {
 
-using world::CharacterBody2D;
-using world::CollisionPolygon2D;
-using world::CollisionShape2D;
+using world::CharacterMover2D;
+using world::Collider2D;
+using world::PolygonCollider2D;
 using world::Transform2D;
 
 // Godot's CMP_EPSILON.
@@ -134,11 +134,11 @@ std::optional<MoverShape> polygon_mover(std::span<const b2Vec2> points) {
     return mover;
 }
 
-// One source's shape to move as: its CollisionShape2D, else the convex hull of its
-// CollisionPolygon2D; none if it has neither.
+// One source's shape to move as: its Collider2D, else the convex hull of its
+// PolygonCollider2D; none if it has neither.
 std::optional<MoverShape> mover_shape(const ShapeSource& source, const Transform2D& transform) {
     const b2Rot turn = b2MakeRot(transform.rotation);
-    const std::optional<CollisionShape2D>& shape = source.shape;
+    const std::optional<Collider2D>& shape = source.shape;
     if (shape && !shape->disabled) {
         const ShapePlacement place{.rotation = b2MakeRot(shape->rotation),
                                    .position = shape->position,
@@ -184,7 +184,7 @@ std::optional<MoverShape> mover_shape(const ShapeSource& source, const Transform
         }
         return polygon_mover(points);
     }
-    const std::optional<CollisionPolygon2D>& polygon = source.polygon;
+    const std::optional<PolygonCollider2D>& polygon = source.polygon;
     if (polygon && !polygon->disabled) {
         const ShapePlacement place{.rotation = b2Rot_identity,
                                    .position = {},
@@ -205,7 +205,7 @@ std::optional<MoverShape> mover_shape(const ShapeSource& source, const Transform
 }
 
 // The shape a character moves as: the first of its shapes (its own, then its children's) that
-// isn't disabled, a CollisionPolygon2D as its convex hull; none if it has none.
+// isn't disabled, a PolygonCollider2D as its convex hull; none if it has none.
 std::optional<MoverShape> mover_shape(const ShapeKey& key, const Transform2D& transform) {
     for (const ShapeSource& source : key.sources) {
         if (auto mover = mover_shape(source, transform)) {
@@ -542,7 +542,7 @@ private:
 // One move_and_slide: Godot's algorithm (scene/2d/physics/character_body_2d.cpp), step for step.
 class Slide {
 public:
-    Slide(Mover& mover, const CharacterBody2D& character, float seconds)
+    Slide(Mover& mover, const CharacterMover2D& character, float seconds)
         : mover_(mover), character_(character), delta_(seconds), margin_(character.safe_margin),
           velocity_(to_b2(character.velocity)), up_(b2Normalize(to_b2(character.up_direction))),
           grounded_(character.motion_mode != "floating" && !zero_approx(up_)),
@@ -588,7 +588,7 @@ public:
         }
     }
 
-    void write(world::Transform2D& transform, CharacterBody2D& character, Body& body) const {
+    void write(world::Transform2D& transform, CharacterMover2D& character, Body& body) const {
         transform.position = from_b2(mover_.position);
         character.velocity = from_b2(velocity_);
         character.on_floor = floor_;
@@ -866,7 +866,7 @@ private:
     }
 
     Mover& mover_;
-    const CharacterBody2D& character_;
+    const CharacterMover2D& character_;
     float delta_;
     float margin_;
     b2Vec2 velocity_;
@@ -890,8 +890,8 @@ private:
 
 } // namespace
 
-void move_character(b2WorldId space, Body& body, Transform2D& transform, CharacterBody2D& character,
-                    float seconds) {
+void move_character(b2WorldId space, Body& body, Transform2D& transform,
+                    CharacterMover2D& character, float seconds) {
     const std::optional<MoverShape> shape = mover_shape(body.shape_key, transform);
     if (!shape) {
         // With no shape it hits nothing.

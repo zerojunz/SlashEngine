@@ -20,7 +20,7 @@ constexpr std::array<std::string_view, render::kEffectCallbacks> kCallbackNames{
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine pipeline",
-  "description": "A frame's passes and compositor effects, as Godot 4.3's Compositor and CompositorEffect, named by a WorldEnvironment's or a Camera3D's compositor. Forward+ only: Compatibility draws no effects.",
+  "description": "A frame's passes and compositor effects, as Godot 4.3's Compositor and CompositorEffect, named by a Environment3D's or a Camera3D's compositor. Forward+ only: Compatibility draws no effects.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -201,9 +201,9 @@ PipelineChoice pipeline_of(const world::World& world, entt::entity camera) {
                     .at = "/components/Camera3D/compositor"};
         }
     }
-    // The first WorldEnvironment made, as the environment's other settings take it.
+    // The first Environment3D made, as the environment's other settings take it.
     entt::entity first = entt::null;
-    for (const entt::entity entity : ecs.view<const world::WorldEnvironment>()) {
+    for (const entt::entity entity : ecs.view<const world::Environment3D>()) {
         if (first == entt::null || entt::to_entity(entity) < entt::to_entity(first)) {
             first = entity;
         }
@@ -211,13 +211,13 @@ PipelineChoice pipeline_of(const world::World& world, entt::entity camera) {
     if (first == entt::null) {
         return {};
     }
-    const auto& environment = ecs.get<const world::WorldEnvironment>(first);
+    const auto& environment = ecs.get<const world::Environment3D>(first);
     if (environment.compositor.empty()) {
         return {};
     }
     return {.entity = first,
             .path = environment.compositor,
-            .at = "/components/WorldEnvironment/compositor"};
+            .at = "/components/Environment3D/compositor"};
 }
 
 void apply_pipeline_passes(const std::map<std::string, bool>& passes, render::Scene3D& scene) {

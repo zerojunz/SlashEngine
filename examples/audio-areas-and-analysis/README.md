@@ -4,7 +4,7 @@ Areas that change a sound's bus, and effects that measure and keep what plays, a
 [audio/default.bus_layout.json](audio/default.bus_layout.json) puts a `spectrum_analyzer`, a
 `capture` and a `record` effect on Master, a `pitch_shift` an octave up on Voice and a `reverb`
 on Cave. In [main.scene.json](main.scene.json) a hum plays on Voice, a bat's chirp is an
-`AudioStreamPlayer2D`, and the cave is an `Area2D` with `audio_bus_override` that sends 2D sounds
+`SoundPlayer2D`, and the cave is an `Zone2D` with `audio_bus_override` that sends 2D sounds
 inside it to Cave. [main.cpp](main.cpp) writes the sound files (no audio files are committed),
 then plays the game the way an agent does over MCP (tools `audio_spectrum`, `audio_record`,
 `audio_state`) or JSON-RPC. `expected.txt` holds each call and its reply.

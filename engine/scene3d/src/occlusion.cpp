@@ -175,7 +175,7 @@ float hit(const std::array<Vec3, 3>& triangle, Vec3 origin, Vec3 dir) {
 }
 
 // Godot's StandardMaterial3D check in OccluderInstance3D::_bake_material_check.
-bool bakes(const world::StandardMaterial3D* material) {
+bool bakes(const world::Surface3D* material) {
     return material == nullptr || material->transparency == "disabled";
 }
 
@@ -274,7 +274,7 @@ void bake_surface(const world::Affine3D& transform, const std::vector<render::Ve
 
 } // namespace
 
-Result<OccluderMesh> occluder_mesh(const world::OccluderInstance3D& occluder) {
+Result<OccluderMesh> occluder_mesh(const world::Occluder3D& occluder) {
     OccluderMesh out;
     if (occluder.shape == "quad") {
         // QuadOccluder3D::_update_arrays.
@@ -352,9 +352,9 @@ Result<OccluderMesh> occluder_mesh(const world::OccluderInstance3D& occluder) {
 
 std::vector<Problem> check_occluders(const world::World& world) {
     std::vector<Problem> out;
-    const std::string path = "/components/OccluderInstance3D";
-    for (const entt::entity entity : made<world::OccluderInstance3D>(world)) {
-        const auto& occluder = world.ecs().get<const world::OccluderInstance3D>(entity);
+    const std::string path = "/components/Occluder3D";
+    for (const entt::entity entity : made<world::Occluder3D>(world)) {
+        const auto& occluder = world.ecs().get<const world::Occluder3D>(entity);
         if (occluder.shape == "polygon" && occluder.polygon.size() < 3) {
             out.push_back({entity, path + "/polygon",
                            "a polygon occluder needs at least 3 points to hide anything"});
@@ -377,11 +377,11 @@ std::vector<Problem> check_occluders(const world::World& world) {
 std::vector<std::array<Vec3, 3>> occluder_triangles(const world::World& world,
                                                     const world::Tree3D& tree) {
     std::vector<std::array<Vec3, 3>> out;
-    for (const entt::entity entity : made<world::OccluderInstance3D>(world)) {
+    for (const entt::entity entity : made<world::Occluder3D>(world)) {
         if (!tree.visible(entity)) {
             continue;
         }
-        auto mesh = occluder_mesh(world.ecs().get<const world::OccluderInstance3D>(entity));
+        auto mesh = occluder_mesh(world.ecs().get<const world::Occluder3D>(entity));
         if (!mesh) {
             continue;
         }
@@ -742,21 +742,21 @@ OccluderMesh bake_occluder(const world::World& world, entt::entity occluder,
                            const ModelLoader& models, std::vector<Problem>& problems) {
     OccluderMesh out;
     const auto& ecs = world.ecs();
-    const auto* component = ecs.try_get<const world::OccluderInstance3D>(occluder);
+    const auto* component = ecs.try_get<const world::Occluder3D>(occluder);
     if (component == nullptr) {
         return out;
     }
     const world::Tree3D tree(world);
     const world::Affine3D to_local = tree.global(occluder).inverse();
     const float simplification = component->bake_simplification_distance;
-    const std::string field = "/components/MeshInstance3D/mesh";
-    // OccluderInstance3D::_bake_node, over every MeshInstance3D in the world.
-    for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
-        const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+    const std::string field = "/components/Model3D/mesh";
+    // OccluderInstance3D::_bake_node, over every Model3D in the world.
+    for (const entt::entity entity : made<world::Model3D>(world)) {
+        const auto& instance = ecs.get<const world::Model3D>(entity);
         if (!tree.visible(entity) || (instance.layers & component->bake_mask) == 0) {
             continue;
         }
-        const auto* override_material = ecs.try_get<const world::StandardMaterial3D>(entity);
+        const auto* override_material = ecs.try_get<const world::Surface3D>(entity);
         if (!bakes(override_material)) {
             continue;
         }
@@ -791,7 +791,7 @@ OccluderMesh bake_occluder(const world::World& world, entt::entity occluder,
             const world::Affine3D part_place = place * part.transform;
             for (const ModelSurface& surface : model.meshes.at(part.mesh).surfaces) {
                 // Its active material: the entity's override, else the surface's.
-                const world::StandardMaterial3D* material = override_material;
+                const world::Surface3D* material = override_material;
                 if (material == nullptr && surface.material >= 0 &&
                     static_cast<std::size_t>(surface.material) < model.materials.size()) {
                     material =

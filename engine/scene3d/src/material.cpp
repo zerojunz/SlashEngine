@@ -28,13 +28,13 @@ const world::ComponentRegistry& components() {
 
 json::Value make_schema() {
     world::SchemaBuilder builder;
-    (void)components().find("StandardMaterial3D")->schema(builder);
-    json::Value schema = builder.definition("StandardMaterial3D");
+    (void)components().find("Surface3D")->schema(builder);
+    json::Value schema = builder.definition("Surface3D");
     schema["$defs"] = builder.definitions();
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine material";
     schema["description"] =
-        "A StandardMaterial3D in a file of its own, as Godot saves one as a resource, which model "
+        "A Surface3D in a file of its own, as Godot saves one as a resource, which model "
         "recipes' materials name so models share it. Texture paths are the project's.";
     schema["required"] = json::Array{"format"};
     schema["properties"]["format"]["const"] = 1;
@@ -55,7 +55,7 @@ std::vector<json::ValidationError> validate_standard_material(const json::Value&
         return errors;
     }
     world::World scratch{components()};
-    world::StandardMaterial3D standard;
+    world::Surface3D standard;
     std::string path;
     if (auto read = world::from_json(scratch, standard_material_fields(doc), standard, path);
         !read) {
@@ -64,7 +64,7 @@ std::vector<json::ValidationError> validate_standard_material(const json::Value&
     return errors;
 }
 
-Result<world::StandardMaterial3D> parse_standard_material(const json::Value& doc) {
+Result<world::Surface3D> parse_standard_material(const json::Value& doc) {
     const std::vector<json::ValidationError> errors = validate_standard_material(doc);
     if (!errors.empty()) {
         return make_error(ErrorCode::InvalidArgument,
@@ -72,7 +72,7 @@ Result<world::StandardMaterial3D> parse_standard_material(const json::Value& doc
                               errors.front().message);
     }
     world::World scratch{components()};
-    world::StandardMaterial3D standard;
+    world::Surface3D standard;
     std::string path;
     if (auto read = world::from_json(scratch, standard_material_fields(doc), standard, path);
         !read) {

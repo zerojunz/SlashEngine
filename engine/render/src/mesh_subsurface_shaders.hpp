@@ -8716,7 +8716,7 @@ struct fog_froxels
     float4 _data[1];
 };
 
-struct VoxelGI
+struct VoxelLighting3D
 {
     float4 rows[3];
     float4 size;
@@ -8737,7 +8737,7 @@ struct Surface
     float4 lightmap;
     float4 capture[9];
     float4 voxel_gi;
-    VoxelGI voxel_gis[2];
+    VoxelLighting3D voxel_gis[2];
     float4 sss_params;
     float4 sss_transmittance;
 };
@@ -10661,7 +10661,7 @@ struct fog_froxels {
 
 @group(0u) @binding(5u) var<storage, read> fog_froxels_1 : fog_froxels;
 
-struct VoxelGI {
+struct VoxelLighting3D {
   rows : array<vec4<f32>, 3u>,
   size : vec4<f32>,
   params : vec4<f32>,
@@ -10680,7 +10680,7 @@ struct Surface {
   lightmap : vec4<f32>,
   capture : array<vec4<f32>, 9u>,
   voxel_gi : vec4<f32>,
-  voxel_gis : array<VoxelGI, 2u>,
+  voxel_gis : array<VoxelLighting3D, 2u>,
   sss_params : vec4<f32>,
   sss_transmittance : vec4<f32>,
 }
@@ -13185,8 +13185,8 @@ R"hlsl(// The 3D shader's fragment stage for Forward+'s subsurface pass, as Godo
 #define CLUSTERED
 #define SUBSURFACE
 // The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
-// (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
-// specular, emission and normal map, or a terrain's splat-mapped ground as the HTerrain plugin's
+// (drivers/gles3/shaders/scene.glsl), with a Surface3D's albedo, metallic, roughness,
+// specular, emission and normal map, or a terrain's splat-mapped ground as the Terrain3D plugin's
 // Classic4 shader blends it, shadowed by the lights' shadow maps (shadow.hlsl draws them) and lit
 // by the sky's radiance (radiance.hlsl filters it) or a baked lightmap, then fogged. Colors are worked in linear,
 // tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two, or for
@@ -13201,7 +13201,7 @@ R"hlsl(// The 3D shader's fragment stage for Forward+'s subsurface pass, as Godo
 // the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
 // With GAME_SHADER defined, a game's spatial shader gives each pixel's surface: the shader tools
 // (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
-// game_specular, and its texture params in the StandardMaterial3D's slots. With GAME_VERTEX too,
+// game_specular, and its texture params in the Surface3D's slots. With GAME_VERTEX too,
 // its vertex() places the corners, through GameVertex and game_vertex, with its texture params
 // in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
 // through game_light, with game_albedo the surface's albedo, and may change ALPHA.
@@ -13444,9 +13444,9 @@ R"hlsl(float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_s
 }
 #endif
 
-// A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
+// A VoxelLighting3D a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
 // level's z slices side by side.
-struct VoxelGI {
+struct VoxelLighting3D {
     float4 rows[3]; // the world to its cells' space, a row each: a unit a texel of level 0
     float4 size;    // texels along x, y and z at level 0, then how many levels
     float4 params;  // energy, bias, normal bias, 1 to blend with the ambient light
@@ -13470,7 +13470,7 @@ cbuffer Surface : register(b0, space3) {
     float4 capture[9]; // the light probes' spherical harmonics, RGB
     // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
     float4 voxel_gi;
-    VoxelGI voxel_gis[2];
+    VoxelLighting3D voxel_gis[2];
     // Forward+'s subsurface scattering: its strength (below 0 for skin's profile), the
     // transmittance's depth and boost, and 1 when the transmittance is on; then the
     // transmittance's color, linear.
@@ -13874,7 +13874,7 @@ float v_ggx_anisotropic(float alpha_x, float alpha_y, float t_dot_v, float t_dot
     return saturate(0.5 / (lambda_v + lambda_l));
 }
 
-// StandardMaterial3D's rim, clearcoat and anisotropy (0 where they are off), and what they
+// Surface3D's rim, clearcoat and anisotropy (0 where they are off), and what they
 // shade with: the albedo the rim is tinted toward, the geometry's normal the clearcoat takes in
 // place of the normal map's, and the tangent and binormal the highlight stretches along.
 struct Layers {
@@ -14211,7 +14211,7 @@ R"hlsl(    // The light's transmittance bias is in the last row of its matrix, w
 }
 #endif
 
-// get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
+// get_depth_blended_weights in Terrain3D's shader: the splat map's weights, sharpened where one
 // layer's bump stands above the others.
 float4 depth_blended_weights(float4 splat, float4 bumps) {
     float dh = 0.2;
@@ -14225,7 +14225,7 @@ float4 depth_blended_weights(float4 splat, float4 bumps) {
     return saturate(d);
 }
 
-// unpack_normal in HTerrain's shader: an OpenGL-style normal map's texel, its green along the
+// unpack_normal in Terrain3D's shader: an OpenGL-style normal map's texel, its green along the
 // terrain's -Z and its blue along +Y.
 float3 unpack_ground_normal(float4 texel) {
     float3 n = texel.xzy * 2.0 - 1.0;
@@ -14664,11 +14664,11 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
 #endif
 
 #ifdef CLUSTERED
-// Godot 4.6's VoxelGI cone tracing (gi.glsl's voxel_gi_compute and its cone traces), through each
-// VoxelGI's 3D texture kept as tiles of the atlas in ground_texture_2. trace_voxel_gis in
+// Godot 4.6's VoxelLighting3D cone tracing (gi.glsl's voxel_gi_compute and its cone traces), through each
+// VoxelLighting3D's 3D texture kept as tiles of the atlas in ground_texture_2. trace_voxel_gis in
 // src/voxel_gi.cpp is its CPU twin.
 
-// A VoxelGI's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
+// A VoxelLighting3D's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
 // in the two slices around uvw, each read inside its own tile, then between them.
 float4 voxel_gi_level(uint index, uint level, float3 uvw) {
     float3 extent = max(floor(voxel_gis[index].size.xyz / (float)(1u << level)), 1.0);
@@ -14761,12 +14761,12 @@ static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.
                                  float3(-0.707107, 0.0, 0.707107),
                                  float3(0.0, -0.707107, 0.707107)};
 
-// voxel_gi_compute: one VoxelGI's cones from a point, weighed by how far inside its box it is. A
+// voxel_gi_compute: one VoxelLighting3D's cones from a point, weighed by how far inside its box it is. A
 // cone about +z turns to about the normal by tangent, bitangent and normal.
 void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection, float3 tangent,
                       float3 bitangent, float roughness, inout float4 ambient_accum,
                       inout float4 reflection_accum, inout float blend_accum) {
-    VoxelGI gi = voxel_gis[index];
+    VoxelLighting3D gi = voxel_gis[index];
     float3 position = float3(dot(gi.rows[0], float4(world, 1.0)),
                              dot(gi.rows[1], float4(world, 1.0)),
                              dot(gi.rows[2], float4(world, 1.0)));
@@ -15147,7 +15147,7 @@ PrepassOutput fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
 #endif
 #ifdef GAME_SHADER
-    // A game's spatial shader gives the surface in place of the StandardMaterial3D's, as Godot's
+    // A game's spatial shader gives the surface in place of the Surface3D's, as Godot's
     // ShaderMaterial: game_surface, which the shader tools write around its fragment()
     // (tools/shader_compiler), and its ALPHA cut by its ALPHA_SCISSOR_THRESHOLD.
     uint flags = options.x;
@@ -15216,7 +15216,7 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
     float3 shape = (float3)0.0;
     float3 ground = (float3)0.0;
     if (terrain) {
-        // HTerrain's Classic4 shader: each layer tinted by the color map, weighed by the splat
+        // Terrain3D's Classic4 shader: each layer tinted by the color map, weighed by the splat
         // map (depth-blended by the bumps), its normal added to the terrain's.
         uint terrain_flags = options.w;
         float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};

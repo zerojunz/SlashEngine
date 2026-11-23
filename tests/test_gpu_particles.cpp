@@ -99,7 +99,7 @@ std::vector<ParticleStep> run_steps(int count, float randomness, float explosive
 }
 
 // A sub-emitter's steps beside a system's: the same ticks with its own lifetime and seed, not
-// emitting, as GPUParticles2D runs a sub-emitter with its parent.
+// emitting, as GpuEmitter2D runs a sub-emitter with its parent.
 std::vector<ParticleStep> sub_steps(std::span<const ParticleStep> steps, float lifetime) {
     std::vector<ParticleStep> out(steps.begin(), steps.end());
     for (ParticleStep& step : out) {

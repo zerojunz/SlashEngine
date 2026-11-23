@@ -81,8 +81,8 @@ struct Scene {
 };
 
 constexpr std::string_view kCell = R"({"format": 1, "root": "ground", "entities": {
-    "ground": {"components": {"Transform3D": {"children": ["rock"]}, "BoxMesh": {},
-                              "MeshInstance3D": {}}},
+    "ground": {"components": {"Transform3D": {"children": ["rock"]}, "BoxGeometry": {},
+                              "Model3D": {}}},
     "rock": {"components": {"Transform3D": {"position": [1, 0, 0]}}}}})";
 
 } // namespace

@@ -272,7 +272,7 @@ write `name`, `summary`, `text`, `links` and `tolerances` by hand or through `st
 | Field | Meaning |
 | --- | --- |
 | `capture` | What was captured and how: `what` (`scene`, `world`, `image`, `model` or `material`), `path`, `camera`, `size` (`[width, height]`), `ticks` and `frame` |
-| `settings` | What made the look, so a check can say what changed: the look's components by entity (environment, camera attributes, lights, cameras, probes, GI, fog volumes, `CanvasModulate`, materials, and those entities' transforms), material files with their params, and project.json's `rendering` |
+| `settings` | What made the look, so a check can say what changed: the look's components by entity (environment, camera attributes, lights, cameras, probes, GI, fog volumes, `AmbientTint2D`, materials, and those entities' transforms), material files with their params, and project.json's `rendering` |
 | `fingerprint` | The look in numbers, each rounded to 4 places: `palette` (`"#rrggbb"` to its share of the pixels, at most 8), `value` (luma at the 5th, 50th and 95th percentiles, 0 to 1), `contrast` (RMS), `saturation` (mean HSV), `warmth` (mean red less blue), `edges` (the share of pixels on a Sobel edge), `line_weight` (edges' width in pixels), `flat` (the share of pixels within a step of luma of their right and lower neighbors), `texel_density` (a model's albedo texels a meter) and `pixels` (those at least half opaque) |
 | `tolerances` | The drift each measure may show before a check fails, by measure; the rest keep their defaults |
 

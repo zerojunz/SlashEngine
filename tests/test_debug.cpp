@@ -190,7 +190,7 @@ TEST_CASE("the Shapes button and debug.overlay turn collision shapes on and off"
     game.ok("entity.create", R"({"id": "wall", "components": {
                                    "Transform2D": {"position": [320, 200]},
                                    "StaticBody2D": {},
-                                   "CollisionShape2D": {"size": [40, 40]}}})");
+                                   "Collider2D": {"size": [40, 40]}}})");
     game.overlay->set_visible(true);
     game.tick();
     CHECK_FALSE(game.overlay->collisions());
@@ -222,11 +222,11 @@ TEST_CASE("the debug overlay takes the pointer on its panel and names what is un
     game.ok("entity.create", R"({"id": "wall", "components": {
                                    "Transform2D": {"position": [320, 200]},
                                    "StaticBody2D": {},
-                                   "CollisionShape2D": {"size": [40, 40]}}})");
+                                   "Collider2D": {"size": [40, 40]}}})");
     game.ok("entity.create", R"({"id": "zone", "components": {
                                    "Transform2D": {"position": [330, 200]},
-                                   "Area2D": {},
-                                   "CollisionShape2D": {"shape": "circle", "radius": 30}}})");
+                                   "Zone2D": {},
+                                   "Collider2D": {"shape": "circle", "radius": 30}}})");
     game.overlay->set_visible(true);
     game.tick();
 
@@ -384,7 +384,7 @@ TEST_CASE("a watch view outlines a 3D entity's meshes as the camera sees them") 
     game.ok("entity.create", R"({"id": "camera", "components": {
         "Transform3D": {"position": [0, 0, 5]}, "Camera3D": {"current": true}}})");
     game.ok("entity.create", R"({"id": "leg", "components": {
-        "Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}}})");
+        "Transform3D": {}, "Model3D": {}, "BoxGeometry": {}}})");
     game.ok("entity.create", R"({"id": "table", "components": {
         "Transform3D": {"position": [0, 0, 0], "children": ["leg"]}}})");
     debug::WatchView view(game.session->assets());

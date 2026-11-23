@@ -6,7 +6,7 @@ seen through a `Camera3D` in a 320x180 window: a floor, a back wall and a side w
 against the back wall and a small blue box on the open floor, lit by warm ambient light and a dim
 sun.
 
-The `WorldEnvironment`'s `ssao_enabled` turns SSAO on with Godot's defaults: occlusion from
+The `Environment3D`'s `ssao_enabled` turns SSAO on with Godot's defaults: occlusion from
 within `ssao_radius` 1 meter of each pixel, at `ssao_intensity` 2. [project.json](project.json)
 sets `rendering.environment.ssao`, as Godot's project settings: `high` quality, which takes more
 samples than the default `medium` and reads depth further out at lower resolutions.

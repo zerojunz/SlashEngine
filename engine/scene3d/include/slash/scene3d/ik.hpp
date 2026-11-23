@@ -10,9 +10,9 @@
 #include <vector>
 
 // Skeleton modifiers: bones of a model turned after its animations and Skeleton3D, as Godot 4.6's
-// SkeletonModifier3D children of a Skeleton3D, by TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D
-// components (Godot's IK modifiers; src/ik.cpp follows their code), CopyTransformModifier3D and
-// LookAtModifier3D (src/bone_constraints.cpp) and PhysicalBoneSimulator3D (ragdolls,
+// SkeletonModifier3D children of a Skeleton3D, by TwoBoneIK3D, FabrikIK3D, CcdIK3D and JacobianIK3D
+// components (Godot's IK modifiers; src/ik.cpp follows their code), BoneCopy3D and
+// BoneLookAt3D (src/bone_constraints.cpp) and BoneSimulation3D (ragdolls,
 // physical_bones.hpp):
 //
 //   std::vector<scene3d::NodePose> pose = scene3d::pose_of(model, clips, skeleton, load);
@@ -29,15 +29,15 @@ namespace slash::scene3d {
 // ticks.
 using Placer = std::function<world::Affine3D(entt::entity)>;
 
-// Whether modifiers turn the bones of an entity's model: a TwoBoneIK3D, FABRIK3D, CCDIK3D,
-// JacobianIK3D, CopyTransformModifier3D, LookAtModifier3D or PhysicalBoneSimulator3D on it or on
+// Whether modifiers turn the bones of an entity's model: a TwoBoneIK3D, FabrikIK3D, CcdIK3D,
+// JacobianIK3D, BoneCopy3D, BoneLookAt3D or BoneSimulation3D on it or on
 // an entity in its Transform3D children.
 [[nodiscard]] bool has_modifiers(const world::World& world, entt::entity entity);
 
 // Runs the modifiers of an entity, placed at place, on a pose of the model it draws, in the order
 // Godot runs a Skeleton3D's modifier children: those on the entity, then those on each entity in
-// its Transform3D children, in list order; on each, TwoBoneIK3D, FABRIK3D, CCDIK3D, JacobianIK3D,
-// CopyTransformModifier3D, LookAtModifier3D, then PhysicalBoneSimulator3D. Targets, poles and the
+// its Transform3D children, in list order; on each, TwoBoneIK3D, FabrikIK3D, CcdIK3D, JacobianIK3D,
+// BoneCopy3D, BoneLookAt3D, then BoneSimulation3D. Targets, poles and the
 // bodies of simulated bones are where global puts them.
 void apply_modifiers(const world::World& world, entt::entity entity, const Model& model,
                      const world::Affine3D& place, const Placer& global,
@@ -45,8 +45,8 @@ void apply_modifiers(const world::World& world, entt::entity entity, const Model
 
 // Adds the skeleton_modifiers system (priority 920, after the animation systems and before
 // physics), which steps each iterating modifier that isn't deterministic and each
-// LookAtModifier3D with a duration once a tick, on a pose
-// of the model load gives for its entity's MeshInstance3D, makes simulated physical bones
+// BoneLookAt3D with a duration once a tick, on a pose
+// of the model load gives for its entity's Model3D, makes simulated physical bones
 // top_level and puts the others where the pose has their bones, then puts bone attachments where
 // their bones are (bone_attachment.hpp). It also sets the world's physical bone linker
 // (physical_bones.hpp) on the same models.

@@ -2,11 +2,11 @@
   "entities": {
     "boathouse": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [4.0, 2.4, 0.6]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.68, 0.52, 0.42, 1.0]
         },
         "Transform3D": {
@@ -27,11 +27,11 @@
     },
     "deck": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [20.0, 20.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.5, 0.4, 0.32, 1.0]
         },
         "Transform3D": {}
@@ -39,7 +39,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.4, 0.4, 0.5, 1.0],
           "ambient_light_source": "color",
           "background_color": [0.35, 0.4, 0.55, 1.0],
@@ -49,13 +49,13 @@
     },
     "post": {
       "components": {
-        "CylinderMesh": {
+        "CylinderGeometry": {
           "bottom_radius": 0.35,
           "height": 0.8,
           "top_radius": 0.35
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.5, 0.35, 0.25, 1.0]
         },
         "Transform3D": {
@@ -65,7 +65,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_color": [1.0, 0.75, 0.55, 1.0],
           "light_energy": 1.2
         },

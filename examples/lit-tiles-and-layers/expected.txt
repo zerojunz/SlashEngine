@@ -1,6 +1,6 @@
 scene.open {"path":"main.scene.json"}
 {"entities":7,"path":"main.scene.json"}
--- the panel is in the HUD: dimmed by the HUD's CanvasModulate, lit by the lantern and not the torch
+-- the panel is in the HUD: dimmed by the HUD's AmbientTint2D, lit by the lantern and not the torch
 light.sample {"id":"panel"}
 {"ambient":[0.35,0.35,0.35],"layer":"hud","lit":true,"points":[{"color":[1.131,1.014,0.741],"lights":[{"color":[0.781,0.664,0.391],"id":"lantern"}]}]}
 -- a block's left edge faces the torch and is bright, its right edge faces away, the far corner is dark, and the panel is lit by the lantern

@@ -64,7 +64,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `text` | Fonts and text layout: FreeType, HarfBuzz, bidirectional text, distance field fonts and glyph atlases |
 | `ui` | UI, as Godot's Control nodes: layout, containers, themes, buttons, menus, text fields and their draw calls |
 | `accessibility` | Screen readers through AccessKit, and the web's and phones' own |
-| `animation` | Keyframe animation and animation trees, as Godot's AnimationPlayer and AnimationTree |
+| `animation` | Keyframe animation and animation trees, as Godot's AnimationPlayer and AnimationGraph |
 | `scene3d` | 3D nodes, as Godot's: meshes, models, CSG, grid maps, terrain, materials, cameras, lights, skeletons and IK, and characters, creatures and vehicles built into models |
 | `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints, queries, and vehicles, ragdolls, cloth, hair and destruction |
 | `physics3d` | 3D physics on Jolt, as Godot's Jolt module: bodies, areas, characters, joints, queries, and vehicles, soft bodies, cloth, hair and destruction |
@@ -124,12 +124,12 @@ optional doc string and priority. Systems run in order of priority, lowest first
 `process_priority`, and in the order they were added when priorities are equal. `engine.describe`
 lists them in that order. The built-in systems apply input, play animations, step physics,
 move the camera, run particles and play sound: `input` applies the input events queued since
-the last tick, first, `gui` sends them to controls, `animation_player` runs `AnimationPlayer`
+the last tick, first, `gui` sends them to controls, `animation_player` runs `Animator`
 components, `physics2d` moves bodies and reports contacts, `animated_sprite_2d` runs
-`AnimatedSprite2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag margins and
+`Flipbook2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag margins and
 smoothing on, `parallax_2d` scrolls each `Parallax2D` with it, `cpu_particles_2d` emits and moves
-`CPUParticles2D` particles, `gpu_particles_2d` works out the steps the renderer runs on each
-`GPUParticles2D`'s particles, then `audio` mixes the tick's sound.
+`Emitter2D` particles, `gpu_particles_2d` works out the steps the renderer runs on each
+`GpuEmitter2D`'s particles, then `audio` mixes the tick's sound.
 
 **Threaded systems** run on the job system, as Godot's `WorkerThreadPool` and its sub-thread
 process groups. A system added with `.threaded = true` names what it `reads` and `writes`:
@@ -306,15 +306,15 @@ player with WASD, a stick and taps.
 
 Sound follows Godot's AudioServer. **Sounds** are `.wav`, `.ogg` and `.mp3` files; a
 `.audio.json` file loops one, or picks one of several at random each time it plays, as footsteps
-want. **Players** are components: an `AudioStreamPlayer` plays everywhere at once, as music
-does, and an `AudioStreamPlayer2D` fades with distance from the `AudioListener2D` and pans left
-or right by where it is. An `AudioStreamPlayer3D` does the same in 3D from the `AudioListener3D`
+want. **Players** are components: an `SoundPlayer` plays everywhere at once, as music
+does, and an `SoundPlayer2D` fades with distance from the `Listener2D` and pans left
+or right by where it is. An `SoundPlayer3D` does the same in 3D from the `Listener3D`
 or camera, muffled with distance and pitched by the Doppler effect, on two speakers or up to
 7.1. Each player mixes into a **bus**, and each bus runs its **effects**
 (filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
 down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
-buses, so music and sound effects get their own volumes, as in an options menu. An `Area2D` or
-`Area3D` can send the sounds inside it to a bus of its own, so a cave echoes. Music can be a playlist, layers
+buses, so music and sound effects get their own volumes, as in an options menu. An `Zone2D` or
+`Zone3D` can send the sounds inside it to a bus of its own, so a cave echoes. Music can be a playlist, layers
 that play together, or **interactive music**: clips such as explore and combat that switch on
 the next beat or bar when the game sets the player's `switch_to_clip`, as Godot's.
 
@@ -360,7 +360,7 @@ which is how tests check what a game draws.
 
 2D drawing follows Godot's canvas. A **sprite** (`Sprite2D`) draws a texture, or one frame of a
 sprite sheet, at its entity's `Transform2D`: positions are pixels with y down, and sprites draw in
-`z_index` order, then in the order their entities were made. An `AnimatedSprite2D` plays a
+`z_index` order, then in the order their entities were made. An `Flipbook2D` plays a
 **flipbook** from a `.frames.json` file (Godot's SpriteFrames) on the sprite, frame by frame at
 the animation's frames per second, and emits `animation_finished` when one that doesn't loop
 ends. Textures are `.png` or `.bmp` files loaded as assets, so an edited image shows up at once.
@@ -379,7 +379,7 @@ without a screenshot. The [materials example](../examples/materials/) has three.
 name, each a length, a loop mode and **tracks**. A value track sets one component field, or one
 part of it such as `Sprite2D/modulate/a`, from **keys** at times, eased between them (linear,
 cubic, with Godot's easing curves); an event track emits an event as playback passes each key.
-An entity's `AnimationPlayer` plays one animation on its own components, so the same file
+An entity's `Animator` plays one animation on its own components, so the same file
 animates any field of any component, a game's own included. `animation.eval` returns the values
 an animation sets at any times, so an agent checks it without stepping the game. The
 [keyframe animation example](../examples/keyframe-animation/) plays a walk cycle and a hit.
@@ -388,7 +388,7 @@ an animation sets at any times, so an agent checks it without stepping the game.
 animations, blends, one-shots that fade in and out, transitions, blend spaces and **state
 machines**, which play one state at a time and move between states through transitions, on
 their own or along the cheapest way to a state a game asks for. An entity's
-`AnimationTree` plays it with the animations of its libraries, mixing them by weight into the
+`AnimationGraph` plays it with the animations of its libraries, mixing them by weight into the
 entity's components and its model's skeleton as Godot's `AnimationMixer` does, and games steer
 it by its **parameters** (`"shot/request": "fire"`, `"move/travel": "run"`, a blend position).
 `animation.tree` lists the
@@ -397,12 +397,12 @@ nodes. The [animation tree example](../examples/animation-tree/) points a waving
 
 **IK** (inverse kinematics) follows Godot 4.6's IK modifiers: instead of saying how each bone
 turns, a game says where a hand or foot should be, and a `TwoBoneIK3D` bends an arm or leg to
-reach a **target** entity with its elbow or knee toward a **pole**, while a `FABRIK3D`,
-`CCDIK3D` or `JacobianIK3D` turns a whole chain of bones, a tail or a spine, toward one. They
+reach a **target** entity with its elbow or knee toward a **pole**, while a `FabrikIK3D`,
+`CcdIK3D` or `JacobianIK3D` turns a whole chain of bones, a tail or a spine, toward one. They
 turn the bones after the animations, so a character can walk and reach at once, and joints can
 be limited to an axis or a **cone**. The [IK example](../examples/ik/) reaches with an arm.
 
-**Ragdolls** follow Godot 4.6's `PhysicalBoneSimulator3D`: each `PhysicalBone3D` is a physics
+**Ragdolls** follow Godot 4.6's `BoneSimulation3D`: each `SimulatedBone3D` is a physics
 body for one bone of a model, held by a **joint** to the body of the bone above. While the
 simulator doesn't simulate, the bodies follow the animated bones, so they push things and things
 land on them; once it **simulates**, physics moves the bodies and the bones follow them, the
@@ -421,24 +421,24 @@ draws, collides when `use_collision` is on and bakes into navigation meshes, so 
 block out a level, cut doors in it and walk it without a modeling tool. The
 [CSG example](../examples/csg-shapes/) builds a hamlet.
 
-**Paths** are Godot's `Path2D` and `Path3D`: a curve through points with Bézier handles,
-baked into points about `bake_interval` apart. An entity with a `PathFollow2D` or
-`PathFollow3D` among a path's children sits `progress` along its curve, turned to face the way
+**Paths** are Godot's `Path2D` and `Spline3D`: a curve through points with Bézier handles,
+baked into points about `bake_interval` apart. An entity with a `SplineFollower2D` or
+`SplineFollower3D` among a path's children sits `progress` along its curve, turned to face the way
 it goes, so moving something along a route is a matter of changing one number, by gameplay code
-or an animation track. A `CSGPolygon3D` in **path mode** pushes its polygon along a `Path3D`,
+or an animation track. A `SolidExtrusion3D` in **path mode** pushes its polygon along a `Spline3D`,
 which makes rails, pipes, roads and walls from a curve. The [paths example](../examples/paths/)
 laps a cart round a rail over a hill.
 
 **Grid maps** are Godot's `GridMap`: a level built from blocks placed in a 3D grid of cells.
 A **mesh library** (a `.meshlib.json` file) holds the blocks by name, each a mesh with the
-shapes it collides as and the navigation mesh it is walked on, and the GridMap writes which
+shapes it collides as and the navigation mesh it is walked on, and the BlockMap3D writes which
 block is in each cell, and which of 24 ways it is turned, as rows of short keys, floor by
 floor, like a tile map. Cells are drawn and collide in blocks of cells called **octants**, and
 each cell's navigation mesh joins its neighbors', so laying out a level is writing a few rows
-of text, and changing it is `gridmap.set`. The [GridMap example](../examples/gridmap/) lays out
+of text, and changing it is `gridmap.set`. The [BlockMap3D example](../examples/gridmap/) lays out
 a room with a ramp up to a platform.
 
-**Terrains** follow the HTerrain plugin for Godot, as Godot has none of its own: an `HTerrain`
+**Terrains** follow the Terrain3D plugin for Godot, as Godot has none of its own: an `Terrain3D`
 is a grid of heights read from a 16-bit `.height.png` heightmap, with a **splat map** weighing
 up to four ground textures and a **color map** tinting them and cutting holes. It draws in
 chunks that get coarser with distance, collides as a height field and is walked on by navigation
@@ -451,7 +451,7 @@ points, and `terrain.get` reads the height, slope and textures at points. The
 made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
 files) that join where their edges meet, and **links** between places the regions don't join,
 such as a jump or a hatch. Paths are the cheapest way over the polygons on a path's **layers**,
-pulled tight round corners. An **agent** (`NavigationAgent3D`, `NavigationAgent2D`) finds a path
+pulled tight round corners. An **agent** (`NavAgent3D`, `NavAgent2D`) finds a path
 to its target and follows the entity's progress along it, emitting events at each point, but
 moves nothing: gameplay code moves it toward its next path position. `navigation.path`,
 `navigation.closest` and `navigation.random` ask where the maps go, and `navigation.agent` how an
@@ -461,13 +461,13 @@ takes the meshes and static bodies under the region (in 2D, the outlines in its 
 static bodies in the way), keeps agents their radius from walls and writes the walkable area
 into the region's file. The [baking example](../examples/navigation-baking/) bakes a courtyard
 and a garden. With **avoidance**, agents steer round each other and round **obstacles**
-(`NavigationObstacle2D`, `NavigationObstacle3D`): gameplay code sets the velocity an agent wants
+(`NavObstacle2D`, `NavObstacle3D`): gameplay code sets the velocity an agent wants
 and moves it at the safe velocity avoidance gives back. The
 [avoidance example](../examples/navigation-avoidance/) has walkers weaving through a plaza.
 
-**Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
+**Tile maps** follow Godot's TileSet and TileLayer2D. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
-tile's **peering** says which terrain its sides and corners must touch. A `TileMapLayer` keeps
+tile's **peering** says which terrain its sides and corners must touch. A `TileLayer2D` keeps
 its cells as text, rows of one-letter **legend** keys, so an agent reads a whole map in one call.
 `tilemap.paint` paints a terrain and picks, for each cell and the cells around it, the tile whose
 peering fits its neighbors, so shores and corners draw themselves (**autotiling**);
@@ -478,15 +478,15 @@ cell is and which cell a point is in. The [tile maps example](../examples/tilema
 island with a pond, and the [isometric and hex example](../examples/isometric-and-hex-tiles/)
 paints one on diamonds.
 
-**2D lights** follow Godot's. Once a scene has a light or a `CanvasModulate`, sprites and tile
-layers are lit: the `CanvasModulate` color is the **ambient** light, a `PointLight2D` shines from
-its entity through a texture (a soft round one by default), and a `DirectionalLight2D` lights
+**2D lights** follow Godot's. Once a scene has a light or a `AmbientTint2D`, sprites and tile
+layers are lit: the `AmbientTint2D` color is the **ambient** light, a `PointLight2D` shines from
+its entity through a texture (a soft round one by default), and a `SunLight2D` lights
 everything from one direction, like the sun. Each light adds, subtracts or mixes its color into
 what it reaches, and **light masks**, z ranges and layer ranges pick what that is: a light
 reaches the canvases whose layer its range holds, so a HUD layer can have lights of its own, and
-each canvas has its own `CanvasModulate`. A sprite's or a tile set's **normal map** gives each
+each canvas has its own `AmbientTint2D`. A sprite's or a tile set's **normal map** gives each
 pixel its own facing, so light falls on bumps and bevels by their angle. A
-`LightOccluder2D` polygon casts **shadows** from lights that have them on: the CPU casts each
+`Occluder2D` polygon casts **shadows** from lights that have them on: the CPU casts each
 shadowed light's occluders into one row of a **shadow map**, and the material shader reads it.
 A material's `light_mode` keeps a sprite unshaded, for glowing signs, or shows it only where light
 falls. `light.sample` returns how lit points are and which lights reach them, computed as the GPU
@@ -496,7 +496,7 @@ shades them, so an agent checks lighting without a screenshot. The
 **UI** follows Godot's Control nodes. A `Control` places a rect in its parent's by **anchors**
 (where each edge sits in the parent, from 0 to 1) and offsets in pixels, so a panel can stay
 centered or a score stay in a corner on any window, and grows to fit its content. `Label` draws
-text in the rect, wrapped, aligned and cut with an ellipsis as Godot's does, and `ColorRect`
+text in the rect, wrapped, aligned and cut with an ellipsis as Godot's does, and `ColorFill`
 fills it. **Containers** place their children instead of anchors: a box container stacks them
 in a row or column, a grid puts them in columns, a flow container wraps them onto lines, and
 others keep a margin round them, center them or draw a panel behind them. Each child's **size
@@ -516,7 +516,7 @@ and `text.measure` sizes text, so an agent checks a screen without a screenshot.
 **Buttons** follow Godot's too. The `gui` system hands each tick's input events to controls as
 Godot's viewport does: the pointer goes to the control drawn on top under it, and on to its
 parents as each one's **mouse filter** says (stop, pass or ignore). A `Button` or
-`TextureButton` is pressed by a click or tap that ends over it, by `ui_accept` while it has
+`ImageButton` is pressed by a click or tap that ends over it, by `ui_accept` while it has
 **focus**, or by its **shortcut**; toggle buttons switch on and off, and a **button group** keeps
 at most one of them on. One control has focus: a click gives it quietly, and the arrow keys,
 Tab and a gamepad move it to the closest button that way and show it. Controls report what
@@ -527,7 +527,7 @@ which gameplay code reads each tick and agents subscribe to. An agent clicks and
 disabled) and which control has focus and which is hovered. The
 [UI buttons example](../examples/ui-buttons/) is a title menu worked by mouse, keys and touch.
 
-**Check boxes** (`CheckBox`) and **check buttons** (`CheckButton`, a switch) are toggle buttons
+**Check boxes** (`CheckBox`) and **check buttons** (`ToggleSwitch`, a switch) are toggle buttons
 that draw an **icon** beside their text instead of a box; check boxes in a button group draw as
 radio buttons. A **slider** (`Slider`, Godot's `HSlider` or `VSlider` with `vertical`) holds a
 value between a minimum and a maximum, always a multiple of its **step**: a click moves its
@@ -537,7 +537,7 @@ ones are drawn by the engine, named `builtin:checked`, `builtin:toggle_on` and s
 needs no image files for them. The [UI settings example](../examples/ui-settings/) is a
 settings screen.
 
-A **scroll container** (`ScrollContainer`) shows its children through its rect, **scrolled**,
+A **scroll container** (`ScrollBox`) shows its children through its rect, **scrolled**,
 with a **scroll bar** on each side they don't fit; the wheel, dragging the bars and a finger
 scroll it, and with `follow_focus` it scrolls a control that gets focus into view. A
 `ScrollBar` also works on its own, holding a value like a slider whose grabber is a page of the
@@ -546,9 +546,9 @@ scroll container always does: what is cut off neither draws nor takes clicks, an
 and `frame.summary` say what shows. The [UI scrolling example](../examples/ui-scrolling/) is a
 quest log.
 
-A **popup menu** (`PopupMenu`) is a list of **items** shown over everything, picked with a
+A **popup menu** (`PopupList`) is a list of **items** shown over everything, picked with a
 click, the arrow keys or by typing the start of one; an item can be a check box, a radio button
-or a **separator**, and picking one emits `id_pressed`. An **option button** (`OptionButton`)
+or a **separator**, and picking one emits `id_pressed`. An **option button** (`Dropdown`)
 shows the option picked and opens a list of its options below it, and a **menu button**
 (`MenuButton`) opens a menu, as in a menu bar. Only one list is open at a time, and a click
 outside closes it. An agent opens one with `ui.popup` and picks an item with `ui.select`, and
@@ -805,9 +805,9 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Term | Meaning |
 | --- | --- |
 | Action | A named thing a game does, such as `jump`, and the input bindings that press it, as Godot's input map |
-| Ambient light | The color lit draws start from where no light reaches: the `CanvasModulate` color |
+| Ambient light | The color lit draws start from where no light reaches: the `AmbientTint2D` color |
 | Anchor | Where a control's edge sits in its parent's rect, from 0 (left or top) to 1 (right or bottom) |
-| Animation | A `.anim.json` file's named set of tracks, which an `AnimationPlayer` plays on its entity's fields |
+| Animation | A `.anim.json` file's named set of tracks, which an `Animator` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
 | Audio effect | What a bus does to its sound before sending it on: a filter, EQ, delay, reverb, compressor and the rest of Godot's |
@@ -818,8 +818,8 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Blend mode | How a sprite's color combines with what is under it: `mix`, `add`, `sub`, `mul` or `premul_alpha` |
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
-| Check box | A toggle button drawn with a box beside its text (`CheckBox`), or a switch (`CheckButton`); in a button group, a radio button |
-| Clip | Cutting a control's children off at its rect, in drawing and for the pointer (`clip_contents`, and every `ScrollContainer`) |
+| Check box | A toggle button drawn with a box beside its text (`CheckBox`), or a switch (`ToggleSwitch`); in a button group, a radio button |
+| Clip | Cutting a control's children off at its rect, in drawing and for the pointer (`clip_contents`, and every `ScrollBox`) |
 | Command | A named action with a params schema, capabilities and an effect |
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |
@@ -856,11 +856,11 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Main scene | The scene a game loads at startup, named in `project.json` |
 | Material | A `.material.json` node graph that colors a sprite's pixels, with params each sprite sets |
 | Normal map | A texture whose colors give each pixel of a sprite its own facing, so light falls on it by angle |
-| Occluder | A polygon that casts shadows from 2D lights (`LightOccluder2D`) |
-| Option button | A button that shows the option picked and opens a list of the options below it (`OptionButton`) |
+| Occluder | A polygon that casts shadows from 2D lights (`Occluder2D`) |
+| Option button | A button that shows the option picked and opens a list of the options below it (`Dropdown`) |
 | Parent | The entity whose `Transform2D` lists another in its `children`, placing it in its space |
 | Peering | The terrain a tile's side or corner must touch for the tile to fit, as Godot's terrain peering bits |
-| Popup menu | A list of items shown over everything until one is picked or a click lands outside (`PopupMenu`); option buttons and menu buttons open one |
+| Popup menu | A list of items shown over everything until one is picked or a click lands outside (`PopupList`); option buttons and menu buttons open one |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
 | Project folder | The folder all command paths are relative to |
@@ -869,7 +869,7 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Resource | Read-only data an MCP client can fetch: the scene, its schema or the logs |
 | Scene | A world saved as a `.scene.json` file |
 | Scroll bar | A bar whose grabber shows which part of a range is in view and moves it (`ScrollBar`, and a scroll container's own) |
-| Scroll container | A control that shows its children scrolled through its rect, with scroll bars when they don't fit (`ScrollContainer`) |
+| Scroll container | A control that shows its children scrolled through its rect, with scroll bars when they don't fit (`ScrollBox`) |
 | Session | One world with its open scene path, undo history and recent logs |
 | Shadow map | A texture with one row per shadowed light, holding how far away the nearest occluder is in each direction |
 | Shortcut | A binding or action that presses a button from anywhere, such as Escape for Quit |
@@ -888,7 +888,7 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Theme item | A named color, constant, font, font size, icon or style box a control draws with, set by its `theme_override_*` fields or a theme |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
-| Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileMapLayer`) |
+| Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileLayer2D`) |
 | Tool name | A command's MCP name, with `_` in place of `.` |
 | UI event | Something a control did, as Godot's signals: `pressed`, `toggled`, `button_down`, `button_up`, `mouse_entered`, `mouse_exited`, `focus_entered` or `focus_exited` |
 | Track | One field an animation sets, or one kind of event it emits, over time, as keys |

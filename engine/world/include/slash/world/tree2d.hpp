@@ -72,8 +72,8 @@ private:
     std::unordered_map<entt::entity, std::uint64_t> keys_; // nested entities' draw keys
 };
 
-// A mistake in the entities' Transform2D or CanvasLayer children, for scene validate: path is
-// the JSON Pointer of the bad entry in the scene. An entity in a CanvasLayer's children has no
+// A mistake in the entities' Transform2D or ScreenLayer children, for scene validate: path is
+// the JSON Pointer of the bad entry in the scene. An entity in a ScreenLayer's children has no
 // parent and is in no other layer.
 struct TreeProblem {
     std::string path;

@@ -24,7 +24,7 @@ namespace {
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine vehicle",
-  "description": "A vehicle built from a recipe, after Unreal's Chaos Vehicles: its body, seats, wheels or hull or wings, and its own physics. A MeshInstance3D draws it; a Vehicle3D or Vehicle2D drives it. Lengths are meters in its space (facing +z, y up, the ground at 0), speeds meters a second, forces newtons, colors [r, g, b] or [r, g, b, a] from 0 to 1. What is left out follows its kind.",
+  "description": "A vehicle built from a recipe, after Unreal's Chaos Vehicles: its body, seats, wheels or hull or wings, and its own physics. A Model3D draws it; a Vehicle3D or Vehicle2D drives it. Lengths are meters in its space (facing +z, y up, the ground at 0), speeds meters a second, forces newtons, colors [r, g, b] or [r, g, b, a] from 0 to 1. What is left out follows its kind.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format"],

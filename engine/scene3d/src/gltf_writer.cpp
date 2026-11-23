@@ -263,7 +263,7 @@ struct Writer {
     }
 
     // Godot's GLTFTextureSampler: the material's filter and repeat, as glTF's sampler.
-    int sampler(const world::StandardMaterial3D& standard) {
+    int sampler(const world::Surface3D& standard) {
         const std::string& filter = standard.texture_filter;
         const bool nearest = filter.starts_with("nearest");
         const int mag = nearest ? 9728 : 9729;
@@ -291,7 +291,7 @@ struct Writer {
     // A texture of one of the model's images, or of a file a material names, sampled as the
     // material says; nullopt for neither.
     Result<std::optional<int>> texture(int model_image, const std::string& path,
-                                       const world::StandardMaterial3D& standard) {
+                                       const world::Surface3D& standard) {
         Result<int> source = -1;
         if (const auto it = model_images.find(model_image); it != model_images.end()) {
             source = it->second;
@@ -324,7 +324,7 @@ struct Writer {
 
     // Godot's GLTFDocument::_serialize_materials, undoing what material_of reads.
     Result<json::Value> material(const ModelMaterial& in) {
-        const world::StandardMaterial3D& standard = in.standard;
+        const world::Surface3D& standard = in.standard;
         json::Value out = json::Object{};
         out["name"] = in.name;
         json::Value pbr = json::Object{};

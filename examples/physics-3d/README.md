@@ -3,7 +3,7 @@
 Bodies, shapes, areas and character movement on Jolt Physics, as Godot 4.4's Jolt module.
 [main.scene.json](main.scene.json) has a floor, a step, a ramp and a conveyor belt
 (`StaticBody3D`), a ball, a parcel and three stacked crates (`RigidBody3D`), three coins
-(`Area3D`) and the hero (`CharacterBody3D`). [main.cpp](main.cpp) adds the hero's controls as
+(`Zone3D`) and the hero (`CharacterMover3D`). [main.cpp](main.cpp) adds the hero's controls as
 plain C++ systems, runs six seconds, then asks the physics commands what is where, as an agent
 would. [expected.txt](expected.txt) holds its output.
 
@@ -18,16 +18,16 @@ would. [expected.txt](expected.txt) holds its output.
 - Collision layers and masks follow Godot: two bodies collide when either one's
   `collision_mask` has the other's `collision_layer`. The hero is on layer 2 and the coins
   watch only layer 2, so the crates and the ball don't take coins.
-- `CollisionShape3D` is a box unless `shape` says `sphere`, `capsule`, `cylinder`,
+- `Collider3D` is a box unless `shape` says `sphere`, `capsule`, `cylinder`,
   `convex_polygon`, `concave_polygon` or `world_boundary`. A body takes the shapes of child
-  entities with no body of their own, as a Godot body takes its CollisionShape3D children.
+  entities with no body of their own, as a Godot body takes its Collider3D children.
 - The belt's `constant_linear_velocity` carries what touches it without moving the belt, as
   Godot's: the parcel rides it to the far end and drops onto the floor. The parcel has
   `contact_monitor`, so it reports `body_entered` when it lands on the belt and on the floor.
 - `take_coins` asks `physics3d::contacts` what each coin touches, as Godot's
   `get_overlapping_bodies`. Areas also emit `body_entered` and `body_exited` events.
 - `physics.raycast`, `physics.overlap`, `physics.contacts` and `physics.gravity` are the 2D
-  commands: points of three numbers, a `CollisionShape3D` shape or a 3D body make them ask 3D
+  commands: points of three numbers, a `Collider3D` shape or a 3D body make them ask 3D
   physics.
 - Jolt is built cross-platform deterministic and steps on one thread, so this output is checked
   exactly on macOS, Windows and Linux.

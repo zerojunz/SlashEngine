@@ -38,13 +38,13 @@
     },
     "ground": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [8.0, 0.5, 4.0]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [8.0, 0.5, 4.0]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "StaticBody3D": {},
         "Transform3D": {
           "position": [0.0, -0.25, 0.0]
@@ -53,8 +53,8 @@
     },
     "hammock": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [1.0, 1.0],
           "subdivide_depth": 3,
           "subdivide_width": 3
@@ -90,7 +90,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, 0.4, 0.0]
         }

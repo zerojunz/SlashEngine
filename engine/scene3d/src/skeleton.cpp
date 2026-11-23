@@ -516,7 +516,7 @@ std::vector<NodePose> pose_of(const Model& model, std::span<const ClipSample> cl
 std::vector<SkeletonProblem> check_skeleton(const world::Skeleton3D& skeleton, const Model* model) {
     std::vector<SkeletonProblem> out;
     if (model == nullptr) {
-        out.push_back({"", "poses bones, but the entity's MeshInstance3D draws no model: set its "
+        out.push_back({"", "poses bones, but the entity's Model3D draws no model: set its "
                            "mesh to a model file with a skeleton"});
         return out;
     }

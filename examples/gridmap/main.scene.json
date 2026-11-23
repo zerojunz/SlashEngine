@@ -14,7 +14,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
           "ambient_light_energy": 0.5,
           "ambient_light_source": "color",
@@ -25,7 +25,7 @@
     },
     "level": {
       "components": {
-        "GridMap": {
+        "BlockMap3D": {
           "bake_navigation": true,
           "floors": [
             {
@@ -45,7 +45,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "shadow_enabled": true
         },
         "Transform3D": {

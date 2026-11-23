@@ -1,12 +1,12 @@
 # Terrain
 
-An island made on a heightmap terrain, as the HTerrain plugin for Godot (Godot has no terrain
-node of its own). The `land` entity in [main.scene.json](main.scene.json) has an `HTerrain`
+An island made on a heightmap terrain, as the Terrain3D plugin for Godot (Godot has no terrain
+node of its own). The `land` entity in [main.scene.json](main.scene.json) has an `Terrain3D`
 naming three maps that don't exist yet, so it starts as flat ground at the low end of its
 `height_range`:
 
 ```json
-"HTerrain": {
+"Terrain3D": {
   "heightmap": "terrain/land.height.png",
   "splatmap": "terrain/land.splat.png",
   "colormap": "terrain/land.color.png",
@@ -28,7 +28,7 @@ project commits no images:
 
 - `terrain.get` with no points returns the flat terrain's bounds.
 - `terrain.generate` makes heights from fractal noise shaped into an island (`island_weight`),
-  as HTerrain's generator does, and writes the heightmap.
+  as Terrain3D's generator does, and writes the heightmap.
 - `terrain.brush` in `flatten` mode levels a plot at 5 meters for a house.
 - Two `color` dabs as wide as the island paint it green, then rock gray where it slopes more
   than 25 degrees; a `splat` dab with the same slope paints texture 1 there.
@@ -42,4 +42,4 @@ project commits no images:
 
 The terrain is drawn in chunks of 16 x 16 cells whose detail falls off with distance from the
 camera, stitched where a fine chunk meets a coarser one. `slash-cli scene validate` reports a
-resolution, chunk size or map HTerrain refuses.
+resolution, chunk size or map Terrain3D refuses.

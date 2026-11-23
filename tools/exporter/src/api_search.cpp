@@ -284,7 +284,7 @@ std::string stem(std::string word) {
 }
 
 // The words in text, lower case and stemmed unless asked not to be: identifiers split at
-// underscores and changes of case ("is_action_pressed", "AnimatedSprite2D"), stop words left
+// underscores and changes of case ("is_action_pressed", "Flipbook2D"), stop words left
 // out.
 std::vector<std::string> words_of(std::string_view text, bool stemmed = true) {
     std::vector<std::string> words;

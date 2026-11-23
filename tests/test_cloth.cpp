@@ -132,7 +132,7 @@ struct Project {
         REQUIRE(slash::platform::write_file(root + "/main.scene.json",
                                             R"({"format": 1, "entities": {
               "hero": {"components": {"Transform3D": {},
-                                      "MeshInstance3D": {"mesh": "hero.glb"},
+                                      "Model3D": {"mesh": "hero.glb"},
                                       "Cloth3D": )" +
                                                 std::string(cloth) + R"(}}}})")
                     .ok());
@@ -444,7 +444,7 @@ TEST_CASE("cloth 2D: the wind lifts a cape and the ground stops it") {
                           "damping_coefficient": 2})",
                       R"(, "floor": {"components": {"Transform2D": {"position": [100, 130]},
                            "StaticBody2D": {},
-                           "CollisionShape2D": {"shape": "rectangle", "size": [400, 20]}}})");
+                           "Collider2D": {"shape": "rectangle", "size": [400, 20]}}})");
     floored.steps(120);
     for (const Vec2 point : floored.points()) {
         // The floor's top is at y 120; each point keeps its radius from it.

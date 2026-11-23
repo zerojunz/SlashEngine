@@ -10,7 +10,7 @@
       "command": "entity.get",
       "expect": {
         "components": {
-          "CollisionShape2D": {
+          "Collider2D": {
             "radius": 12,
             "shape": "circle"
           },
@@ -20,7 +20,7 @@
         }
       },
       "params": {
-        "components": ["Transform2D", "CollisionShape2D"],
+        "components": ["Transform2D", "Collider2D"],
         "id": "bat"
       }
     }
@@ -37,8 +37,8 @@
     {
       "arguments": {
         "components": {
-          "CharacterBody2D": {},
-          "CollisionShape2D": {
+          "CharacterMover2D": {},
+          "Collider2D": {
             "radius": 12,
             "shape": "circle"
           },

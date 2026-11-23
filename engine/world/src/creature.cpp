@@ -27,7 +27,7 @@ namespace {
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine creature",
-  "description": "An animal built from a recipe, after Unreal's Mutable and its animal AI: its body plan, look, parts and behavior. A MeshInstance3D draws it as a rigged, animated model; a Creature2D as a cut-out of Polygon2Ds; the fauna system moves either as its behavior says. Colors are [r, g, b] or [r, g, b, a] from 0 to 1, lengths meters, speeds meters a second.",
+  "description": "An animal built from a recipe, after Unreal's Mutable and its animal AI: its body plan, look, parts and behavior. A Model3D draws it as a rigged, animated model; a Creature2D as a cut-out of Polygon2Ds; the fauna system moves either as its behavior says. Colors are [r, g, b] or [r, g, b, a] from 0 to 1, lengths meters, speeds meters a second.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format"],

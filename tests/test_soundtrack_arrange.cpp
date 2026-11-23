@@ -182,7 +182,7 @@ TEST_CASE("soundtrack.arrange writes music a player switches through on the bar"
     REQUIRE(reply.value["clips"].as_array().size() == 4);
 
     // A game plays it and switches clips by name.
-    reply = call("entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+    reply = call("entity.create", R"({"id": "music", "components": {"SoundPlayer":
         {"stream": "music/soundtrack.audio.json", "autoplay": true}}})");
     REQUIRE_MESSAGE(reply.ok, reply.message);
     const auto clip = [&] {
@@ -203,7 +203,7 @@ TEST_CASE("soundtrack.arrange writes music a player switches through on the bar"
     };
     const auto switch_to = [&](std::string_view name) {
         const slash::command::Reply set =
-            call("component.set", R"({"id": "music", "components": {"AudioStreamPlayer":
+            call("component.set", R"({"id": "music", "components": {"SoundPlayer":
             {"parameters": {"switch_to_clip": ")" +
                                       std::string(name) + R"("}}}})");
         REQUIRE_MESSAGE(set.ok, set.message);

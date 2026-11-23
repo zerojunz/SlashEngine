@@ -408,25 +408,25 @@ TEST_CASE("an Unreal project imports through its editor into scenes, settings an
     CHECK(triple(*crate.find("position")) == std::array<double, 3>{2.0, 3.0, 1.0});
     CHECK(triple(*crate.find("rotation"))[1] == doctest::Approx(-1.570796));
     CHECK(component(scene, "crate", "RigidBody3D").find("mass")->as_double() == 40.0);
-    CHECK(component(scene, "crate", "MeshInstance3D").find("mesh")->as_string() ==
+    CHECK(component(scene, "crate", "Model3D").find("mesh")->as_string() ==
           "unreal/Content/SM_Crate.glb");
-    CHECK(component(scene, "floor", "MeshInstance3D").find("mesh")->as_string() ==
+    CHECK(component(scene, "floor", "Model3D").find("mesh")->as_string() ==
           "unreal/Content/SM_Floor.glb");
     // 1000 lumens are 1000 / 4π candelas, Unreal's 8 cd being energy 1.
-    const json::Value& lamp = component(scene, "lamp", "OmniLight3D");
+    const json::Value& lamp = component(scene, "lamp", "PointLight3D");
     CHECK(lamp.find("light_energy")->as_double() ==
           doctest::Approx(1000.0 / (4.0 * std::numbers::pi) / 8.0));
     CHECK(lamp.find("omni_range")->as_double() == doctest::Approx(15.0));
     CHECK(triple(*component(scene, "lamp", "Transform3D").find("position")) ==
           std::array<double, 3>{0.0, 4.0, -2.0});
     // The sun points down Unreal's x, pitched 90 degrees: straight down.
-    CHECK(component(scene, "sun", "DirectionalLight3D").find("light_energy")->as_double() ==
+    CHECK(component(scene, "sun", "SunLight3D").find("light_energy")->as_double() ==
           doctest::Approx(0.5));
     CHECK(triple(*component(scene, "sun", "Transform3D").find("rotation"))[0] ==
           doctest::Approx(-1.570796));
     // A trigger box is an area, as big as Unreal's extent twice.
-    CHECK(component(scene, "bin", "Area3D").is_object());
-    CHECK(triple(*component(scene, "bin", "CollisionShape3D").find("size")) ==
+    CHECK(component(scene, "bin", "Zone3D").is_object());
+    CHECK(triple(*component(scene, "bin", "Collider3D").find("size")) ==
           std::array<double, 3>{1.0, 1.0, 2.0});
     // The player's pawn had no camera, so one is added where its eyes would be; its arrow
     // shows only in Unreal's editor.
@@ -672,7 +672,7 @@ TEST_CASE("an Unreal C++ class reads as a script's skeleton") {
           std::string::npos);
     CHECK(code.find("                construct(world, entity, *self);\n"
                     "                begin_play(world, entity, *self);\n") != std::string::npos);
-    CHECK(code.find("ecs.all_of<slash::world::Area3D>(first)") != std::string::npos);
+    CHECK(code.find("ecs.all_of<slash::world::Zone3D>(first)") != std::string::npos);
     CHECK(code.find("notify_actor_begin_overlap(world, entity, *self, other);") !=
           std::string::npos);
     CHECK(code.find("notify_hit(world, entity, *self, other);") != std::string::npos);
@@ -781,9 +781,9 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
 
     // The red crate draws a copy of the crate's mesh with M_Red in M_Wood's place.
-    CHECK(component(scene, "crate", "MeshInstance3D").find("mesh")->as_string() ==
+    CHECK(component(scene, "crate", "Model3D").find("mesh")->as_string() ==
           "unreal/Content/SM_Crate.glb");
-    CHECK(component(scene, "red_crate", "MeshInstance3D").find("mesh")->as_string() ==
+    CHECK(component(scene, "red_crate", "Model3D").find("mesh")->as_string() ==
           "unreal/Content/SM_Crate_M_Red.glb");
     const scene3d::ModelReader none = [](std::string_view) -> slash::Result<std::string> {
         return slash::make_error(slash::ErrorCode::NotFound, "no files");
@@ -799,7 +799,7 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     CHECK_FALSE(red.value().collision.empty());
 
     // The figure plays its sequence from where Unreal left it, looping, at twice the speed.
-    const json::Value& player = component(scene, "figure", "AnimationPlayer");
+    const json::Value& player = component(scene, "figure", "Animator");
     CHECK(player.find("library")->as_string() == "unreal/Content/A_Wave.anim.json");
     CHECK(player.find("animation")->as_string() == "Wave");
     CHECK(player.find("speed_scale")->as_double() == doctest::Approx(2.0));
@@ -812,7 +812,7 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     CHECK_FALSE(file("unreal/Content/A_Wave.glb").empty());
     // An Animation Blueprint's sequences are an AnimationTree's states, starting at the idle, for
     // its task to join.
-    const json::Value& tree = component(scene, "statue", "AnimationTree");
+    const json::Value& tree = component(scene, "statue", "AnimationGraph");
     CHECK(tree.find("tree_root")->as_string() == "unreal/Content/ABP_Figure.animtree.json");
     CHECK(tree.find("libraries")->find("")->as_string() == "unreal/Content/ABP_Figure.anim.json");
     const json::Value machine = file_json(plan, "unreal/Content/ABP_Figure.animtree.json");
@@ -907,7 +907,7 @@ TEST_CASE("an Unreal landscape becomes an HTerrain") {
     const importer::ImportPlan plan = landscape_import(fs::absolute("import_unreal_land"), {});
     const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
     CHECK(scene.find("entities")->find("hills_part") == nullptr); // in the landscape's heights
-    const json::Value& terrain = component(scene, "hills", "HTerrain");
+    const json::Value& terrain = component(scene, "hills", "Terrain3D");
     CHECK(terrain.find("heightmap")->as_string() == "unreal/Content/Maps/Drop_hills.height.png");
     CHECK(terrain.find("resolution")->as_int() == 65);
     CHECK(terrain.find("height_range")->as_array().at(0).as_double() == -256.0);
@@ -1197,7 +1197,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
 
     // The GPU emitter: a one-shot burst of 40 with its system's seed, warmup and bounds, drawing
     // camera-facing quads.
-    const json::Value& burst = component(scene, "sparks_burst", "GPUParticles3D");
+    const json::Value& burst = component(scene, "sparks_burst", "GpuEmitter3D");
     CHECK(burst.find("amount")->as_int() == 40);
     CHECK(burst.find("explosiveness")->as_double() == 1.0);
     CHECK(burst.find("one_shot")->as_bool());
@@ -1207,10 +1207,9 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(burst.find("preprocess")->as_double() == 0.5);
     CHECK(*burst.find("visibility_aabb_position") == parse("[-1.0, 0.0, -1.0]"));
     CHECK(*burst.find("visibility_aabb_size") == parse("[2.0, 3.0, 2.0]"));
-    CHECK(component(scene, "sparks_burst", "StandardMaterial3D")
-              .find("billboard_mode")
-              ->as_string() == "particles");
-    (void)component(scene, "sparks_burst", "QuadMesh");
+    CHECK(component(scene, "sparks_burst", "Surface3D").find("billboard_mode")->as_string() ==
+          "particles");
+    (void)component(scene, "sparks_burst", "QuadGeometry");
     const std::string material = burst.find("process_material")->as_string();
     CHECK(material == "unreal/Content/FX/NS_Sparks_burst.process_material.json");
     const json::Value process = file_json(plan, material);
@@ -1228,7 +1227,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
 
     // The CPU emitter: a rate read from its user parameter, a random velocity as a cone, local
     // space, a mesh and no gravity.
-    const json::Value& smoke = component(scene, "sparks_smoke", "CPUParticles3D");
+    const json::Value& smoke = component(scene, "sparks_smoke", "Emitter3D");
     CHECK(smoke.find("amount")->as_int() == 20);
     CHECK(smoke.find("lifetime")->as_double() == 2.0);
     CHECK(*smoke.find("direction") == parse("[0.0, 1.0, 0.0]"));
@@ -1242,8 +1241,7 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(scene.find("entities")->find("sparks_off") == nullptr);
 
     // A system an older editor couldn't read leaves its entity, and the export's report.
-    CHECK(scene.find("entities")->find("embers")->find("components")->find("CPUParticles3D") ==
-          nullptr);
+    CHECK(scene.find("entities")->find("embers")->find("components")->find("Emitter3D") == nullptr);
     const auto reported = [&](std::string_view what) {
         for (const json::Value& entry : plan.report.find("unsupported")->as_array()) {
             if (entry.find("what")->as_string() == what) {
@@ -1443,7 +1441,7 @@ TEST_CASE("an Unreal import reads Niagara systems from the text Unreal writes of
     REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
     const importer::ImportPlan& plan = planned.value();
     const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
-    const json::Value& water = component(scene, "fountain", "CPUParticles3D");
+    const json::Value& water = component(scene, "fountain", "Emitter3D");
     // 25 a second living one to two seconds: the random lifetime, not the direct one.
     CHECK(water.find("lifetime")->as_double() == 2.0);
     CHECK(water.find("amount")->as_int() == 50);
@@ -1532,7 +1530,7 @@ TEST_CASE("an Unreal import keeps what a hidden component holds and black fog's 
           std::map<std::string, bool>{{"hero", true}, {"hero_body", true}, {"hero_marker", false}});
     bool aerial = false;
     for (const auto& [id, entity] : scene.find("entities")->as_object()) {
-        if (const json::Value* environment = entity.find("components")->find("WorldEnvironment")) {
+        if (const json::Value* environment = entity.find("components")->find("Environment3D")) {
             aerial = environment->find("fog_aerial_perspective") != nullptr &&
                      environment->find("fog_aerial_perspective")->as_double() == 1.0;
             CHECK(environment->find("fog_light_color") == nullptr);
@@ -1583,12 +1581,12 @@ r.DefaultFeature.AutoExposure.Bias=2.0
                                           .unreal_editor = SLASH_FAKE_UNREAL});
     REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
     const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
-    const json::Value& environment = component(scene, "environment", "WorldEnvironment");
+    const json::Value& environment = component(scene, "environment", "Environment3D");
     CHECK(environment.find("tonemap_mode")->as_string() == "aces");
     CHECK(environment.find("background_mode")->as_string() == "sky");
 
     // Unreal's air, made linear and as bright as Godot's default blue, and twice the haze.
-    const json::Value& physical = component(scene, "environment", "PhysicalSkyMaterial");
+    const json::Value& physical = component(scene, "environment", "SkyScattering");
     INFO(json::write(physical));
     const json::Array& rayleigh = physical.find("rayleigh_color")->as_array();
     CHECK(rayleigh[0].as_double() == doctest::Approx(0.436).epsilon(0.01));
@@ -1603,7 +1601,7 @@ r.DefaultFeature.AutoExposure.Bias=2.0
     CHECK(multiplier < 10.0);
 
     // Auto exposure over the extended range, two stops over Godot's default scale's one.
-    const json::Value& exposure = component(scene, "environment", "CameraAttributesPractical");
+    const json::Value& exposure = component(scene, "environment", "CameraLens");
     CHECK(exposure.find("auto_exposure_enabled")->as_bool());
     CHECK(exposure.find("auto_exposure_scale")->as_double() == doctest::Approx(0.8));
     CHECK(exposure.find("auto_exposure_min_sensitivity")->as_double() ==
@@ -1643,8 +1641,8 @@ r.DefaultFeature.AutoExposure=False
     const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
     const json::Value* entity = scene.find("entities")->find("environment");
     REQUIRE(entity != nullptr);
-    CHECK(entity->find("components")->find("CameraAttributesPractical") == nullptr);
-    CHECK(entity->find("components")->find("WorldEnvironment")->find("tonemap_mode")->as_string() ==
+    CHECK(entity->find("components")->find("CameraLens") == nullptr);
+    CHECK(entity->find("components")->find("Environment3D")->find("tonemap_mode")->as_string() ==
           "aces");
     fs::remove_all(project);
 }

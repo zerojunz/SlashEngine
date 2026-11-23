@@ -11,7 +11,7 @@
 
 // trace_voxel_gis, the CPU twin of trace_voxel_gis in shaders/mesh.hlsl: Godot 4.6's
 // voxel_gi_compute and its cone traces (servers/rendering/renderer_rd/shaders/environment/gi.glsl,
-// MIT), over a VoxelGI's 3D texture laid out as tiles of a 2D atlas (VoxelGIShading).
+// MIT), over a VoxelLighting3D's 3D texture laid out as tiles of a 2D atlas (VoxelGIShading).
 namespace slash::render::detail {
 
 namespace {
@@ -49,7 +49,7 @@ Float4 lerp(const Float4& a, const Float4& b, float t) {
     return out;
 }
 
-// What a VoxelGI's cone traces read.
+// What a VoxelLighting3D's cone traces read.
 struct Volume {
     const Image& atlas;
     const MeshVoxelGIUniforms& gi;
@@ -180,7 +180,8 @@ struct Accumulated {
     float blend = 0.0F;
 };
 
-// voxel_gi_compute: one VoxelGI's cones from a point, weighed by how far inside its box it is.
+// voxel_gi_compute: one VoxelLighting3D's cones from a point, weighed by how far inside its box it
+// is.
 void compute(const Image& atlas, const MeshVoxelGIUniforms& gi, bool high_quality,
              const Float3& world, const Float3& normal, const Float3& reflection,
              const std::array<Float3, 3>& normal_mat, float roughness, Accumulated& out) {

@@ -1,7 +1,7 @@
 #pragma once
 
 // Hair and fur over a model's skin, as Unreal's Groom component (slash/world/hair.hpp has the
-// groom files and the strand solver): a HairInstance3D's groom grown over the surfaces of its
+// groom files and the strand solver): a Hair3D's groom grown over the surfaces of its
 // model that its section names, its guide strands where the skin puts them each tick, and the
 // meshes its strands, cards or shells draw as.
 
@@ -65,7 +65,7 @@ struct HairGrowth3D {
 // their versions; "" when it can't be grown. A change means the growth changed.
 [[nodiscard]] std::string hair_key(const world::World& world, entt::entity entity);
 
-// The groom a HairInstance3D names grown over its model: guides spread over the section by
+// The groom a Hair3D names grown over its model: guides spread over the section by
 // area, the strands drawn by the groom's density, each kept where its density map says, sized
 // by its length map and tinted by its color map; an error when it can't be.
 [[nodiscard]] Result<std::shared_ptr<const HairGrowth3D>> hair_growth(const world::World& world,
@@ -104,7 +104,7 @@ void hair_shell(const HairGrowth3D& growth, std::span<const Vec3> positions,
 // height (a shell at h of the fur's length shows those taller than h), none in the rest.
 [[nodiscard]] render::Image hair_shell_image();
 
-// What keeps each HairInstance3D from growing: a groom file that can't be read or is 2D, no
+// What keeps each Hair3D from growing: a groom file that can't be read or is 2D, no
 // model to grow on, or a section with no triangles.
 [[nodiscard]] std::vector<Problem> check_hair(const world::World& world);
 

@@ -1,6 +1,7 @@
 #include "slash/scene3d/gridmap.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/legend.hpp"
 #include "slash/world/serialize.hpp"
@@ -78,7 +79,7 @@ json::Value make_schema() {
     primitive["minProperties"] = 1;
     primitive["maxProperties"] = 1;
     primitive["description"] =
-        R"(One primitive mesh by its component's name, such as {"BoxMesh": {"size": [2, 2, 2]}}.)";
+        R"(One primitive mesh by its component's name, such as {"BoxGeometry": {"size": [2, 2, 2]}}.)";
     for (const std::string_view name : kPrimitiveNames) {
         primitive["properties"][name] = ref(name);
     }
@@ -93,21 +94,21 @@ json::Value make_schema() {
     properties["mesh"]["description"] = "A .gltf, .glb, .obj, .fbx, .blend or .model.json file's "
                                         "meshes, at rest; or use primitive.";
     properties["primitive"] = std::move(primitive);
-    properties["material"] = ref("StandardMaterial3D");
+    properties["material"] = ref("Surface3D");
     properties["material"]["description"] =
         "Takes the place of the model's materials, or colors the primitive.";
     properties["mesh_transform"] = transform_schema("Places the mesh in the cell.");
     properties["mesh_cast_shadow"]["enum"] =
         json::Array{"off", "on", "double_sided", "shadows_only"};
     properties["mesh_cast_shadow"]["default"] = "on";
-    properties["mesh_cast_shadow"]["description"] = "As MeshInstance3D's cast_shadow.";
+    properties["mesh_cast_shadow"]["description"] = "As Model3D's cast_shadow.";
     properties["shapes"]["type"] = "array";
-    properties["shapes"]["items"] = ref("CollisionShape3D");
+    properties["shapes"]["items"] = ref("Collider3D");
     properties["shapes"]["description"] =
         "What the cell collides as, each placed by its position and rotation.";
     properties["navigation_mesh"]["type"] = "string";
     properties["navigation_mesh"]["description"] =
-        "A .navmesh.json file: a navigation region in each cell when the GridMap bakes "
+        "A .navmesh.json file: a navigation region in each cell when the BlockMap3D bakes "
         "navigation.";
     properties["navigation_mesh_transform"] =
         transform_schema("Places the navigation mesh in the cell.");
@@ -124,7 +125,8 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine mesh library";
-    schema["description"] = "Items a GridMap places in its cells, by name, as Godot's MeshLibrary.";
+    schema["description"] =
+        "Items a BlockMap3D places in its cells, by name, as Godot's MeshLibrary.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -201,7 +203,7 @@ void read_items(const json::Value& doc, MeshLibrary* out,
         const std::string at = "/items/" + json::pointer_escape(name);
         if (name.find(':') != std::string::npos) {
             errors.push_back({at, "an item's name has no ':', which comes before an orientation "
-                                  "in a GridMap's legend"});
+                                  "in a BlockMap3D's legend"});
         }
         MeshLibraryItem item;
         if (const json::Value* mesh = value.find("mesh"); mesh != nullptr) {
@@ -229,7 +231,7 @@ void read_items(const json::Value& doc, MeshLibrary* out,
             }
         }
         if (const json::Value* material = value.find("material"); material != nullptr) {
-            world::StandardMaterial3D standard;
+            world::Surface3D standard;
             std::string path;
             if (auto read = world::from_json(scratch, *material, standard, path); !read) {
                 errors.push_back(
@@ -245,7 +247,7 @@ void read_items(const json::Value& doc, MeshLibrary* out,
         if (const json::Value* shapes = value.find("shapes"); shapes != nullptr) {
             const json::Array& list = shapes->as_array();
             for (std::size_t i = 0; i < list.size(); ++i) {
-                world::CollisionShape3D shape;
+                world::Collider3D shape;
                 std::string path;
                 const std::string shape_at =
                     std::string(at).append("/shapes/").append(std::to_string(i));
@@ -281,8 +283,8 @@ std::size_t library_bytes(const MeshLibrary& library) {
     for (const auto& [name, item] : library.items) {
         bytes += world::kMapNodeBytes<decltype(library.items)> + json::heap_bytes(name) +
                  json::heap_bytes(item.mesh) + json::heap_bytes(item.navigation_mesh) +
-                 (item.shapes.size() * sizeof(world::CollisionShape3D));
-        for (const world::CollisionShape3D& shape : item.shapes) {
+                 (item.shapes.size() * sizeof(world::Collider3D));
+        for (const world::Collider3D& shape : item.shapes) {
             bytes += (shape.points.size() + shape.faces.size()) * sizeof(Vec3);
         }
     }
@@ -301,9 +303,9 @@ constexpr std::array<std::array<float, 9>, kOrientations> kOrthoBases = {{
     {0, 1, 0, 0, 0, 1, 1, 0, 0},    {0, 0, -1, 0, 1, 0, 1, 0, 0},  {0, -1, 0, 0, 0, -1, 1, 0, 0},
 }};
 
-// Decodes a GridMap's cells into out, if given, collecting errors; stops at the first if asked.
-void decode(const world::GridMap& map, GridCells* out, std::vector<json::ValidationError>& errors,
-            bool first_only) {
+// Decodes a BlockMap3D's cells into out, if given, collecting errors; stops at the first if asked.
+void decode(const world::BlockMap3D& map, GridCells* out,
+            std::vector<json::ValidationError>& errors, bool first_only) {
     const auto stop = [&] { return first_only && !errors.empty(); };
     std::string_view first_key;
     std::map<std::string, std::optional<GridItem>, std::less<>> keys;
@@ -526,7 +528,7 @@ std::size_t octant_bytes(const GridOctant& octant) {
 // The cells of one octant, in cell order.
 using OctantCells = std::vector<std::pair<Vec3i, GridItem>>;
 
-std::shared_ptr<const GridOctant> make_octant(const world::GridMap& map, Vec3i key,
+std::shared_ptr<const GridOctant> make_octant(const world::BlockMap3D& map, Vec3i key,
                                               const OctantCells& cells, const ItemMeshes& meshes,
                                               entt::entity entity) {
     auto octant = std::make_shared<GridOctant>();
@@ -568,7 +570,7 @@ struct Vec3iOrder {
     }
 };
 
-// What a GridMap's meshes are made from besides its component.
+// What a BlockMap3D's meshes are made from besides its component.
 struct Sources {
     std::shared_ptr<const MeshLibrary> library;
     std::string library_error;
@@ -577,7 +579,7 @@ struct Sources {
     friend bool operator==(const Sources&, const Sources&) = default;
 };
 
-Sources sources_of(const world::GridMap& map, const MeshLibraryLoader& libraries,
+Sources sources_of(const world::BlockMap3D& map, const MeshLibraryLoader& libraries,
                    const ModelLoader& models) {
     Sources out;
     if (map.mesh_library.empty()) {
@@ -605,10 +607,10 @@ Sources sources_of(const world::GridMap& map, const MeshLibraryLoader& libraries
     return out;
 }
 
-// What a GridMap made last, kept to tell what changed: the octants whose cells are the same and
+// What a BlockMap3D made last, kept to tell what changed: the octants whose cells are the same and
 // the item meshes, when its library and models are.
 struct Made {
-    world::GridMap map;
+    world::BlockMap3D map;
     Sources sources;
     std::shared_ptr<const ItemMeshes> items;
     std::map<Vec3i, std::pair<OctantCells, std::shared_ptr<const GridOctant>>, Vec3iOrder> octants;
@@ -617,16 +619,16 @@ struct Made {
 
 // Whether two GridMaps place items in cells the same way, so octants with the same cells are
 // the same.
-bool same_placement(const world::GridMap& a, const world::GridMap& b) {
+bool same_placement(const world::BlockMap3D& a, const world::BlockMap3D& b) {
     return a.cell_size == b.cell_size && a.cell_octant_size == b.cell_octant_size &&
            a.cell_center_x == b.cell_center_x && a.cell_center_y == b.cell_center_y &&
            a.cell_center_z == b.cell_center_z && a.cell_scale == b.cell_scale;
 }
 
-constexpr std::string_view kField = "/components/GridMap";
+constexpr std::string_view kField = "/components/BlockMap3D";
 
-// Makes a GridMap's meshes, reusing what the last make (if any) holds where it can.
-Made make(const world::GridMap& map, entt::entity entity, Sources sources, const Made* last) {
+// Makes a BlockMap3D's meshes, reusing what the last make (if any) holds where it can.
+Made make(const world::BlockMap3D& map, entt::entity entity, Sources sources, const Made* last) {
     Made made;
     made.map = map;
     made.sources = std::move(sources);
@@ -707,7 +709,7 @@ Made make(const world::GridMap& map, entt::entity entity, Sources sources, const
             continue;
         }
         const world::Affine3D transform = cell_transform(map, cell, held.orientation);
-        for (const world::CollisionShape3D& shape : item->second.shapes) {
+        for (const world::Collider3D& shape : item->second.shapes) {
             if (shape.disabled) {
                 continue;
             }
@@ -839,7 +841,7 @@ std::shared_ptr<const GridMesh> empty_mesh() {
 
 std::vector<entt::entity> gridmaps(const world::World& world) {
     std::vector<entt::entity> out;
-    for (const entt::entity entity : world.ecs().view<const world::GridMap>()) {
+    for (const entt::entity entity : world.ecs().view<const world::BlockMap3D>()) {
         out.push_back(entity);
     }
     std::ranges::sort(out, {}, [](entt::entity entity) { return entt::to_entity(entity); });
@@ -852,7 +854,39 @@ json::Value mesh_library_schema() {
     return library_schema();
 }
 
-std::vector<json::ValidationError> validate_mesh_library(const json::Value& doc) {
+namespace {
+
+// The library with its items' primitives named by their components' current names: `doc` itself
+// when none has an old one, else `copy`, which this fills.
+const json::Value& current_primitives(const json::Value& doc, json::Value& copy) {
+    const json::Value* items = doc.find("items");
+    if (items == nullptr || !items->is_object()) {
+        return doc;
+    }
+    const bool old = std::ranges::any_of(items->as_object(), [](const auto& item) {
+        const json::Value* primitive = item.second.find("primitive");
+        return primitive != nullptr && primitive->is_object() &&
+               std::ranges::any_of(primitive->as_object(), [](const auto& entry) {
+                   return world::current_component_name(entry.first) != entry.first;
+               });
+    });
+    if (!old) {
+        return doc;
+    }
+    copy = doc;
+    for (auto& [name, item] : copy["items"].as_object()) {
+        if (json::Value* primitive = item.find("primitive"); primitive != nullptr) {
+            world::upgrade_components(*primitive);
+        }
+    }
+    return copy;
+}
+
+} // namespace
+
+std::vector<json::ValidationError> validate_mesh_library(const json::Value& given) {
+    json::Value copy;
+    const json::Value& doc = current_primitives(given, copy);
     std::vector<json::ValidationError> errors = json::validate(doc, library_schema());
     if (!errors.empty()) {
         return errors;
@@ -861,7 +895,9 @@ std::vector<json::ValidationError> validate_mesh_library(const json::Value& doc)
     return errors;
 }
 
-Result<MeshLibrary> parse_mesh_library(const json::Value& doc) {
+Result<MeshLibrary> parse_mesh_library(const json::Value& given) {
+    json::Value copy;
+    const json::Value& doc = current_primitives(given, copy);
     std::vector<json::ValidationError> errors = json::validate(doc, library_schema());
     if (!errors.empty()) {
         return first_error(errors);
@@ -947,7 +983,7 @@ Result<GridItem> parse_grid_item(std::string_view text) {
     return out;
 }
 
-Result<GridCells> decode_grid_cells(const world::GridMap& map) {
+Result<GridCells> decode_grid_cells(const world::BlockMap3D& map) {
     GridCells cells;
     std::vector<json::ValidationError> errors;
     decode(map, &cells, errors, true);
@@ -958,13 +994,13 @@ Result<GridCells> decode_grid_cells(const world::GridMap& map) {
     return cells;
 }
 
-std::vector<json::ValidationError> validate_grid_cells(const world::GridMap& map) {
+std::vector<json::ValidationError> validate_grid_cells(const world::BlockMap3D& map) {
     std::vector<json::ValidationError> errors;
     decode(map, nullptr, errors, false);
     return errors;
 }
 
-void encode_grid_cells(const GridCells& cells, world::GridMap& map) {
+void encode_grid_cells(const GridCells& cells, world::BlockMap3D& map) {
     if (cells.empty()) {
         map.legend.clear();
         map.floors.clear();
@@ -1037,7 +1073,7 @@ void encode_grid_cells(const GridCells& cells, world::GridMap& map) {
     }
 }
 
-Vec3 map_to_local(const world::GridMap& map, Vec3i cell) {
+Vec3 map_to_local(const world::BlockMap3D& map, Vec3i cell) {
     const Vec3 size = map.cell_size;
     const Vec3 offset{map.cell_center_x ? size.x * 0.5F : 0.0F,
                       map.cell_center_y ? size.y * 0.5F : 0.0F,
@@ -1047,7 +1083,7 @@ Vec3 map_to_local(const world::GridMap& map, Vec3i cell) {
             (static_cast<float>(cell.z) * size.z) + offset.z};
 }
 
-Vec3i local_to_map(const world::GridMap& map, Vec3 local) {
+Vec3i local_to_map(const world::BlockMap3D& map, Vec3 local) {
     const auto axis = [](float p, float size) {
         const float cell = std::floor(p / size);
         // Cells past what an int holds, as from a cell size of 0, are clamped.
@@ -1057,7 +1093,7 @@ Vec3i local_to_map(const world::GridMap& map, Vec3 local) {
             axis(local.z, map.cell_size.z)};
 }
 
-world::Affine3D cell_transform(const world::GridMap& map, Vec3i cell, int orientation) {
+world::Affine3D cell_transform(const world::BlockMap3D& map, Vec3i cell, int orientation) {
     world::Affine3D transform = orientation_basis(orientation);
     const float s = map.cell_scale;
     transform.x = transform.x * s;
@@ -1067,7 +1103,7 @@ world::Affine3D cell_transform(const world::GridMap& map, Vec3i cell, int orient
     return transform;
 }
 
-Vec3i octant_of(const world::GridMap& map, Vec3i cell) {
+Vec3i octant_of(const world::BlockMap3D& map, Vec3i cell) {
     const int size = std::max(map.cell_octant_size, 1);
     const auto axis = [size](int c) { return c > 0 ? c / size : (c - (size - 1)) / size; };
     return {axis(cell.x), axis(cell.y), axis(cell.z)};
@@ -1075,7 +1111,7 @@ Vec3i octant_of(const world::GridMap& map, Vec3i cell) {
 
 std::shared_ptr<const GridMesh> grid_mesh(const world::World& world, entt::entity entity) {
     const auto* map =
-        world.valid(entity) ? world.ecs().try_get<const world::GridMap>(entity) : nullptr;
+        world.valid(entity) ? world.ecs().try_get<const world::BlockMap3D>(entity) : nullptr;
     if (map == nullptr) {
         return empty_mesh();
     }
@@ -1097,7 +1133,7 @@ std::shared_ptr<const GridMesh> grid_mesh(const world::World& world, entt::entit
     std::shared_ptr<const GridMesh> mesh = made.mesh;
     // GridMaps that are gone go with it.
     std::erase_if(cache->entries, [&](const auto& entry) {
-        return !world.valid(entry.first) || !world.ecs().all_of<world::GridMap>(entry.first);
+        return !world.valid(entry.first) || !world.ecs().all_of<world::BlockMap3D>(entry.first);
     });
     cache->entries.insert_or_assign(entity, std::move(made));
     return mesh;
@@ -1130,7 +1166,7 @@ std::vector<GridBody> grid_bodies(const world::World& world) {
         if (mesh->shapes->empty()) {
             continue;
         }
-        const auto& map = world.ecs().get<const world::GridMap>(entity);
+        const auto& map = world.ecs().get<const world::BlockMap3D>(entity);
         bodies.push_back({.entity = entity,
                           .layer = map.collision_layer,
                           .mask = map.collision_mask,
@@ -1145,11 +1181,11 @@ std::vector<Problem> check_gridmaps(const world::World& world) {
     std::vector<Problem> problems;
     const auto& ecs = world.ecs();
     for (const entt::entity entity : gridmaps(world)) {
-        if (ecs.any_of<world::RigidBody3D, world::CharacterBody3D, world::AnimatableBody3D,
-                       world::StaticBody3D, world::Area3D>(entity)) {
+        if (ecs.any_of<world::RigidBody3D, world::CharacterMover3D, world::MovingBody3D,
+                       world::StaticBody3D, world::Zone3D>(entity)) {
             problems.push_back({entity, std::string(kField),
                                 "is on a physics body, so its cells don't collide: put the "
-                                "GridMap on an entity of its own"});
+                                "BlockMap3D on an entity of its own"});
         }
         const std::shared_ptr<const GridMesh> mesh = grid_mesh(world, entity);
         problems.insert(problems.end(), mesh->problems.begin(), mesh->problems.end());

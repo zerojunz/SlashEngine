@@ -41,8 +41,8 @@ class World;
 }
 
 // The 3D world, as Godot's 3D nodes draw it: Transform3D trees (world/tree3d.hpp), meshes
-// (MeshInstance3D with a primitive mesh and a StandardMaterial3D, or a glTF model), the current
-// Camera3D, the DirectionalLight3D, OmniLight3D and SpotLight3D lights and the WorldEnvironment,
+// (Model3D with a primitive mesh and a Surface3D, or a glTF model), the current
+// Camera3D, the SunLight3D, PointLight3D and SpotLight3D lights and the Environment3D,
 // turned into a frame's render::Scene3D and mesh draws (render/mesh.hpp). canvas::CanvasRenderer
 // draws them under the canvas, as Godot's viewports draw 3D under 2D.
 namespace slash::scene3d {
@@ -76,7 +76,7 @@ struct CameraView {
                                   float right, float down, float up);
 
 // Something that couldn't draw, such as a mesh whose texture is missing: path is the JSON
-// Pointer of the bad value in the entity, e.g. "/components/StandardMaterial3D/albedo_texture".
+// Pointer of the bad value in the entity, e.g. "/components/Surface3D/albedo_texture".
 struct Problem {
     entt::entity entity = entt::null;
     std::string path;
@@ -84,8 +84,8 @@ struct Problem {
 };
 
 // The background a frame clears to, the sky and fog, the light every lit pixel gets and
-// reflects and what happens to colors after, from the first WorldEnvironment made
-// (WorldEnvironment's docs) and the CameraAttributesPractical camera uses (camera_attributes);
+// reflects and what happens to colors after, from the first Environment3D made
+// (Environment3D's docs) and the CameraLens camera uses (camera_attributes);
 // clear is the project's clear color.
 struct Environment {
     render::Color background;
@@ -104,12 +104,12 @@ struct Environment {
     render::PostProcess post;     // with no color correction texture made yet
     std::string color_correction; // its project path, or ""
     // The texture the sky material samples: its project path, or "", how it filters and the
-    // field that names it, e.g. "/components/PanoramaSkyMaterial/panorama".
+    // field that names it, e.g. "/components/SkyPanorama/panorama".
     std::string sky_texture;
     render::Filter sky_filter = render::Filter::Linear;
     std::string sky_texture_field;
-    entt::entity entity = entt::null; // the WorldEnvironment, if there is one
-    // The entity whose CameraAttributesPractical the camera uses, or entt::null, and its
+    entt::entity entity = entt::null; // the Environment3D, if there is one
+    // The entity whose CameraLens the camera uses, or entt::null, and its
     // exposure_multiplier (times its sensitivity's normalization with physical light units), as
     // Godot's exposure normalization: the
     // background, the sky (and so its light) and post's auto exposure have it already, and the
@@ -120,8 +120,8 @@ struct Environment {
 };
 [[nodiscard]] Environment environment(const world::World& world, render::Color clear,
                                       entt::entity camera = entt::null);
-// The environment of the first WorldEnvironment made, before any camera's attributes, as
-// Godot's environment bakes take it (a LightmapGI's).
+// The environment of the first Environment3D made, before any camera's attributes, as
+// Godot's environment bakes take it (a BakedLighting3D's).
 [[nodiscard]] Environment world_environment(const world::World& world, render::Color clear);
 
 // Whether the world's lights, backgrounds and emission use Godot's physical light units: lux,
@@ -130,8 +130,8 @@ struct Environment {
 void set_physical_light_units(world::World& world, bool on);
 [[nodiscard]] bool physical_light_units(const world::World& world);
 
-// The entity whose CameraAttributesPractical a camera uses, as Godot's Camera3D.attributes and
-// WorldEnvironment.camera_attributes: the camera's own, else the first WorldEnvironment's;
+// The entity whose CameraLens a camera uses, as Godot's Camera3D.attributes and
+// Environment3D.camera_attributes: the camera's own, else the first Environment3D's;
 // entt::null when neither has one.
 [[nodiscard]] entt::entity camera_attributes(const world::World& world, entt::entity camera);
 
@@ -171,13 +171,13 @@ struct SourceLightmap {
     std::shared_ptr<const LightmapData> data;
     std::shared_ptr<const render::HdrImage> texels;
 };
-// The lightmaps LightmapGI's light_data names, loaded by project path.
+// The lightmaps BakedLighting3D's light_data names, loaded by project path.
 using LightmapSource = std::function<Result<SourceLightmap>(const std::string& path)>;
 
 struct VoxelGIData;
 
-// The cells a VoxelGI's data names (a .voxelgi.json file, voxel_gi.hpp), loaded by project path:
-// a reload gives new ones, and their light is injected again.
+// The cells a VoxelLighting3D's data names (a .voxelgi.json file, voxel_gi.hpp), loaded by project
+// path: a reload gives new ones, and their light is injected again.
 using VoxelGISource =
     std::function<Result<std::shared_ptr<const VoxelGIData>>(const std::string& path)>;
 
@@ -186,11 +186,11 @@ using VoxelGISource =
 using ImageSource =
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
 
-// The IES profiles OmniLight3D's and SpotLight3D's light_ies names, loaded by project path.
+// The IES profiles PointLight3D's and SpotLight3D's light_ies names, loaded by project path.
 using IesSource =
     std::function<Result<std::shared_ptr<const render::IesProfile>>(const std::string& path)>;
 
-// The Gaussian splats a GaussianSplat3D's splats names, loaded by project path (splats.hpp).
+// The Gaussian splats a Splat3D's splats names, loaded by project path (splats.hpp).
 using SplatSource =
     std::function<Result<std::shared_ptr<const render::GaussianSplats>>(const std::string& path)>;
 
@@ -200,11 +200,11 @@ struct SourceModel {
     std::shared_ptr<const Model> model;
     std::uint64_t version = 0;
 };
-// The models MeshInstance3D's mesh names, loaded by project path.
+// The models Model3D's mesh names, loaded by project path.
 using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 
 // The meshes of a world that can't draw, in the order their entities were made: an entity with
-// more than one primitive mesh, a MeshInstance3D with none or with both a model and a primitive
+// more than one primitive mesh, a Model3D with none or with both a model and a primitive
 // mesh, and settings Godot refuses (a torus whose radii are equal). With the world's file reader
 // set, each model is read and checked as check_model does, and the bone names of Skeleton3Ds,
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
@@ -221,12 +221,12 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 check_meshes(const world::ComponentRegistry& components, const json::Value& scene,
              const world::FileReader& reader);
 
-// The material a MeshInstance3D's material_override or a compositor effect names, as
-// ShaderMaterialSource reads it: a StandardMaterial3D's file, or a spatial or compositor material,
+// The material a Model3D's material_override or a compositor effect names, as
+// ShaderMaterialSource reads it: a Surface3D's file, or a spatial or compositor material,
 // Godot's ShaderMaterial, its shader made on the device and its params' values and the time
 // filled in.
 struct OverrideMaterial {
-    std::optional<world::StandardMaterial3D> standard; // a .standard_material.json file's
+    std::optional<world::Surface3D> standard; // a .standard_material.json file's
     render::ShaderType type = render::ShaderType::Spatial;
     render::ShaderId shader = render::ShaderId::None;
     std::array<std::array<float, 4>, 32> constants{};
@@ -247,14 +247,14 @@ struct OverrideMaterial {
     bool shadows_disabled = false;
     render::Transparency transparency = render::Transparency::Disabled;
 };
-// Reads a material_override's file with the MeshInstance3D's material_params, at time seconds of
+// Reads a material_override's file with the Model3D's material_params, at time seconds of
 // game time. Errors about a param name it as "material_params/<name>: ...".
 using ShaderMaterialSource = std::function<Result<OverrideMaterial>(
     const std::string& path, const std::map<std::string, json::Value>& params, double time)>;
 
-// A StandardMaterial3D as the render device takes it, its textures made by textures. A texture
+// A Surface3D as the render device takes it, its textures made by textures. A texture
 // that can't load is left out, with a problem.
-[[nodiscard]] render::Material3D material(const world::StandardMaterial3D& standard,
+[[nodiscard]] render::Material3D material(const world::Surface3D& standard,
                                           const TextureSource& textures,
                                           std::vector<Problem>& problems,
                                           entt::entity entity = entt::null);
@@ -263,7 +263,7 @@ using ShaderMaterialSource = std::function<Result<OverrideMaterial>(
 struct Frame3D {
     entt::entity camera = entt::null;
     render::Scene3D scene;
-    render::Color clear; // the WorldEnvironment's background, or the clear color
+    render::Color clear; // the Environment3D's background, or the clear color
     // The passes the frame's pipeline file turns off, for apply_pipeline_passes once the
     // project's settings are in the scene.
     std::map<std::string, bool> pipeline_passes;
@@ -271,7 +271,7 @@ struct Frame3D {
 
 // Draws a world's meshes through a render device, keeping their meshes on the device between
 // frames: meshes of equal settings share one, each model's meshes and images are made once, and
-// a mesh no entity used last frame goes. Static meshes a LightmapGI baked take their ambient
+// a mesh no entity used last frame goes. Static meshes a BakedLighting3D baked take their ambient
 // light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances, and
 // dynamic ones their ambient light from its light probes, eased as they move. In Forward+, the
 // other meshes take ambient light and reflections from the VoxelGIs their bounds touch, whose
@@ -355,7 +355,7 @@ public:
             const render::VolumetricFogSettings& volumetric_fog = {},
             float mesh_lod_threshold = 1.0F, const render::OcclusionCulling& occlusion = {},
             const render::RayTracing3D& ray_tracing = {});
-    // Where GPUParticles3D's process materials load from, and the seconds a tick lasts, which
+    // Where GpuEmitter3D's process materials load from, and the seconds a tick lasts, which
     // particles drawn between ticks are moved back by.
     void set_particle_processes(ParticleProcessSource processes) {
         processes_ = std::move(processes);
@@ -382,7 +382,7 @@ public:
     [[nodiscard]] std::size_t meshes_kept() const noexcept { return shared_.size(); }
     // How many of the last prepare's draws are at a coarser LOD than their surface's own.
     [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
-    // How many clusters the last prepare's virtualized draws (MeshInstance3D.virtualized) cut
+    // How many clusters the last prepare's virtualized draws (Model3D.virtualized) cut
     // their surfaces into for the camera, and how many triangles those hold.
     [[nodiscard]] std::size_t clusters_drawn() const noexcept { return clusters_drawn_; }
     [[nodiscard]] std::size_t cluster_triangles_drawn() const noexcept {
@@ -436,7 +436,7 @@ private:
         // Where it was drawn in the last frame with TAA, when that was somewhere else.
         std::optional<std::array<float, 16>> previous;
         // A model surface's coarser LODs (kept in its Shared or Skinned), its mesh's bounds in its
-        // own space and its MeshInstance3D's lod_bias, which pick the LOD it is drawn at.
+        // own space and its Model3D's lod_bias, which pick the LOD it is drawn at.
         const std::vector<SurfaceLod>* lods = nullptr;
         Bounds box;
         float lod_bias = 1.0F;
@@ -482,7 +482,7 @@ private:
         std::size_t seen_triangles = 0;
         render::MeshId seen_id = render::MeshId::None;
         // Each cluster's occlusion jitter timeout, as draws keep theirs, and whether its
-        // MeshInstance3D ignores occlusion culling.
+        // Model3D ignores occlusion culling.
         std::unordered_map<std::uint32_t, std::uint64_t> timeouts;
         bool ignore_occlusion = false;
     };
@@ -572,7 +572,7 @@ private:
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
                                     const Primitive& primitive);
-    // A model's surface, a CSG root's or a GridMap octant's, as a mesh on the device, made once
+    // A model's surface, a CSG root's or a BlockMap3D octant's, as a mesh on the device, made once
     // per key.
     // A model surface's LODs come with it, and are kept in its Shared.
     Result<render::MeshId> kept_mesh(const std::string& key,
@@ -582,26 +582,25 @@ private:
     // A texture a model's material samples: a file through textures_, or an image inside it.
     // What can't be made is a problem at the entity's field.
     render::MaterialTexture model_texture(const std::string& path, const SourceModel& source,
-                                          int image, const world::StandardMaterial3D& standard,
+                                          int image, const world::Surface3D& standard,
                                           entt::entity entity, const std::string& field);
     // place is where the entity is drawn, and global where others are, for its skeleton
     // modifiers' targets.
-    void add_model(const world::World& world, entt::entity entity,
-                   const world::MeshInstance3D& instance, const world::Affine3D& place,
+    void add_model(const world::World& world, entt::entity entity, const world::Model3D& instance,
+                   const world::Affine3D& place,
                    const std::function<world::Affine3D(entt::entity)>& global,
                    render::ShadowCasting casting, float interpolation);
-    // What a made mesh's surface is drawn with: its StandardMaterial3D, or its model's own
+    // What a made mesh's surface is drawn with: its Surface3D, or its model's own
     // material, whose images that can't load are problems at the entity's model_field.
     render::Material3D surface_material(const SurfaceMaterial& from, entt::entity entity,
                                         const std::string& model_field);
     // A CSG root's result, drawn as Godot draws its root shape's mesh.
     // A FracturePiece3D's piece of its mesh, or a damaged Destructible3D's mesh.
-    void add_piece(const world::World& world, entt::entity entity,
-                   const world::MeshInstance3D& instance, const world::Affine3D& place,
-                   render::ShadowCasting casting);
+    void add_piece(const world::World& world, entt::entity entity, const world::Model3D& instance,
+                   const world::Affine3D& place, render::ShadowCasting casting);
     void add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                  const world::Affine3D& place, std::uint32_t cull_mask);
-    // A MultiMeshInstance3D's model at each instance, as Godot draws a MultiMesh.
+    // A ModelInstances3D's model at each instance, as Godot draws a MultiMesh.
     void add_multimesh(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const std::function<world::Affine3D(entt::entity)>& global,
                        std::uint32_t cull_mask, float interpolation);
@@ -613,12 +612,12 @@ private:
     void add_impostor(entt::entity entity, const world::FoliageType& type, const Bounds& box,
                       const world::Affine3D& placed, const world::Affine3D& camera,
                       std::uint32_t layers, render::ShadowCasting casting);
-    // A GridMap's octants, drawn as Godot draws their MultiMeshes.
+    // A BlockMap3D's octants, drawn as Godot draws their MultiMeshes.
     void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      std::uint32_t cull_mask);
     // Turns a draw placed at place to face the camera when standard is a billboard, as Godot's
     // BaseMaterial3D's billboard_mode.
-    void face_camera(const world::StandardMaterial3D& standard, const world::Affine3D& place,
+    void face_camera(const world::Surface3D& standard, const world::Affine3D& place,
                      Draw& draw) const;
     // A mesh drawn at each particle: one of its surfaces, where its part puts it, with what it is
     // made of.
@@ -629,18 +628,18 @@ private:
         SurfaceMaterial material;
     };
     // The pieces of the mesh path names (a model file) or, for "", the entity's primitive mesh;
-    // the entity's StandardMaterial3D takes the place of a model's materials. False, with a
+    // the entity's Surface3D takes the place of a model's materials. False, with a
     // problem at field (no_mesh where there is no mesh), when it can't draw.
     bool particle_pieces(const world::World& world, entt::entity entity, const std::string& path,
                          std::string_view field, std::vector<ParticlePiece>& pieces,
                          std::shared_ptr<const Model>& model, std::string_view no_mesh);
-    // A CPUParticles3D's mesh at each of its particles, part of the way (interpolation) from
+    // A Emitter3D's mesh at each of its particles, part of the way (interpolation) from
     // where they were before the last tick, placed by place with local_coords and turned toward
     // a camera at camera by a billboard material, as Godot draws its MultiMesh: one mesh per
     // surface on the device, its vertices made again each frame.
     void add_particles(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const world::Affine3D& camera, std::uint32_t cull_mask, float interpolation);
-    // A HairInstance3D's groom: its strands as ribbons facing the camera, its cards as ribbons
+    // A Hair3D's groom: its strands as ribbons facing the camera, its cards as ribbons
     // facing the skin, or its fur as layers of shells over the skin, from where physics put its
     // guides (interpolation of the way from the step before) or, before physics steps them,
     // where the groom puts them; one mesh each on the device, made again each frame.
@@ -652,7 +651,7 @@ private:
                    std::span<const render::Vertex3D> vertices,
                    std::span<const std::uint32_t> indices, const render::Material3D& material,
                    std::uint32_t layers, render::ShadowCasting casting,
-                   std::string_view where = "/components/HairInstance3D/groom");
+                   std::string_view where = "/components/Hair3D/groom");
     // A Fluid3D: a liquid as the surface the camera sees (fluid_surface) with its spray as
     // discs, or every particle as a disc when its look's surface is off; a gas as discs blended
     // over what is behind, lit by the scene's first directional light through the smoke between
@@ -662,7 +661,7 @@ private:
     // A body of water: its surface as a grid over its area (round the camera on an ocean) or a
     // strip along its river, each corner moved by its waves and ripples at time.
     void add_water(const world::WaterBody& body, std::uint32_t cull_mask, double time);
-    // A GPUParticles3D: its system on the device runs the steps it hasn't (or is made again from
+    // A GpuEmitter3D: its system on the device runs the steps it hasn't (or is made again from
     // those kept), then each draw pass's mesh is filled with a copy at every particle, drawn
     // between ticks interpolation of the way along, placed by place with local_coords and turned
     // toward the camera of view as transform_align and a billboard material say. None draws when
@@ -670,7 +669,7 @@ private:
     void add_gpu_particles(const world::World& world, entt::entity entity,
                            const world::Affine3D& place, const CameraView& view,
                            std::uint32_t cull_mask, float interpolation);
-    // An HTerrain's chunks for a camera at camera, as HTerrain draws them.
+    // An Terrain3D's chunks for a camera at camera, as Terrain3D draws them.
     void add_terrain(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      const world::Affine3D& camera, const world::Camera3D& lens);
     // An image the renderer makes, such as a terrain's normal map, as a texture on the device,
@@ -712,8 +711,8 @@ private:
         render::LightmapShading shading;
         bool reported = false; // that its mesh changed since, this frame
     };
-    // A lightmap whose light probes light moving meshes this frame: its LightmapGI's place, and
-    // the camera's exposure over the one it was baked with.
+    // A lightmap whose light probes light moving meshes this frame: its BakedLighting3D's place,
+    // and the camera's exposure over the one it was baked with.
     struct ProbeSource {
         std::shared_ptr<const LightmapData> data;
         world::Affine3D transform;
@@ -764,7 +763,7 @@ private:
                     const std::function<world::Affine3D(entt::entity)>& global,
                     std::uint32_t cull_mask, render::Splats3D& out);
     // The FogVolumes the camera's cull_mask sees, in the order they were made, each with the
-    // FogMaterial on its entity; past render::kMaxFogVolumes they are left out and reported.
+    // FogVolumeLook on its entity; past render::kMaxFogVolumes they are left out and reported.
     void add_fog_volumes(const world::World& world, const world::Tree3D& tree,
                          const std::function<world::Affine3D(entt::entity)>& global,
                          std::uint32_t cull_mask, std::vector<render::FogVolume3D>& out);
@@ -782,9 +781,9 @@ private:
                                                const std::vector<SurfaceLod>** lods = nullptr);
     void destroy_lightmaps(bool unused_only);
 
-    // A VoxelGI's cells and the light injected into them, as an atlas (voxel_gi.cpp).
+    // A VoxelLighting3D's cells and the light injected into them, as an atlas (voxel_gi.cpp).
     struct KeptVoxelGI;
-    // The meshes a dynamic MeshInstance3D plots into the VoxelGIs it touches, and what they were
+    // The meshes a dynamic Model3D plots into the VoxelGIs it touches, and what they were
     // read from.
     struct VoxelObject;
     // Loads the cells of the world's VoxelGIs, injects the lights into those whose lights or
@@ -828,7 +827,7 @@ private:
     std::unordered_map<entt::entity, PoseKey> before_poses_;
     std::unordered_map<std::string, Skinned> skinned_;
     std::vector<render::Vertex3D> skinned_vertices_;
-    // A CPUParticles3D surface's mesh on the device, its vertex count and the last frame that drew
+    // A Emitter3D surface's mesh on the device, its vertex count and the last frame that drew
     // it, by entity and surface; and the primitive meshes particles draw, by their settings.
     struct ParticleMesh {
         render::MeshId id = render::MeshId::None;
@@ -836,7 +835,7 @@ private:
         std::uint64_t used = 0;
     };
     std::unordered_map<std::string, ParticleMesh> particle_meshes_;
-    // A GPUParticles3D's system on the device: the emitter's serial and amount it was made for,
+    // A GpuEmitter3D's system on the device: the emitter's serial and amount it was made for,
     // the step it runs next and the last frame that drew it.
     struct GpuParticles3D {
         render::Particles3DId id = render::Particles3DId::None;
@@ -871,11 +870,11 @@ private:
     void add_projectors(const world::World& world, const std::vector<entt::entity>& entities,
                         double time, std::vector<render::Light3D>& lights);
     // The material in place of an entity's surfaces': its material_override's, else its
-    // StandardMaterial3D's; nullopt for neither, or for an override that can't load, with a
+    // Surface3D's; nullopt for neither, or for an override that can't load, with a
     // problem. shadows_disabled says its material casts none.
     std::optional<render::Material3D> override_material(const world::World& world,
                                                         entt::entity entity,
-                                                        const world::MeshInstance3D& instance,
+                                                        const world::Model3D& instance,
                                                         bool& shadows_disabled);
     double tick_seconds_ = 1.0 / 60.0;
     world::Affine3D camera_place_; // where the current camera is, for billboards

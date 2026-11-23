@@ -12,7 +12,7 @@ through the game's session, then shows the frame stats, the tick, what `CanvasRe
 drew and the bodies under the mouse (`physics2d::overlap_point`). `CanvasOptions::overlay`
 draws its controls last, laid out with the game's fonts so the glyph pages stay put. Collision
 shapes are `canvas::collision_shapes` (`engine/canvas/src/debug_draw.cpp`), ports of Godot's
-`CollisionShape2D` and `CollisionPolygon2D` debug drawing placed as `physics2d` places shapes;
+`Collider2D` and `PolygonCollider2D` debug drawing placed as `physics2d` places shapes;
 `CanvasOptions::collisions` and `frame.capture`'s `collisions` draw them. `--debug-overlay`,
 `--debug-collisions` and the `debug.overlay` command turn them on. `examples/debug-overlay`
 captures the shapes and works the panel.

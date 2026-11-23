@@ -11,14 +11,14 @@
 #include <string>
 #include <vector>
 
-// Meshes made from other meshes, as CSG roots and GridMap blocks are: their surfaces and what
+// Meshes made from other meshes, as CSG roots and BlockMap3D blocks are: their surfaces and what
 // each is drawn with.
 namespace slash::scene3d {
 
-// What a surface is drawn with: a StandardMaterial3D, such as a CSG shape's or a mesh library
+// What a surface is drawn with: a Surface3D, such as a CSG shape's or a mesh library
 // item's, or a model's own material; neither for Godot's default material.
 struct SurfaceMaterial {
-    std::optional<world::StandardMaterial3D> standard;
+    std::optional<world::Surface3D> standard;
     std::string model_path;             // the model whose material it is, or ""
     std::shared_ptr<const Model> model; // that model
     int model_material = -1;            // into its materials

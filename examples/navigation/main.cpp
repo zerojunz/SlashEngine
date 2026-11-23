@@ -1,6 +1,6 @@
 // Navigation, as Godot's NavigationServer: main.scene.json has a house of two rooms joined the
-// long way round by a corridor and the short way by a hatch (a NavigationLink3D), with a guard
-// (a NavigationAgent3D) sent across it, and a yard on the 2D map with a cat (a NavigationAgent2D).
+// long way round by a corridor and the short way by a hatch (a NavLink3D), with a guard
+// (a NavAgent3D) sent across it, and a yard on the 2D map with a cat (a NavAgent2D).
 //
 // Agents move nothing themselves: a plain C++ system walks each one toward its next path
 // position, as a game's would. Then the program asks the navigation commands about the maps, as
@@ -42,7 +42,7 @@ Vec3 toward(Vec3 from, Vec3 to, float step) {
 // script calling get_next_path_position in _physics_process would.
 void walk_agents(world::World& world, double seconds) {
     const auto step = static_cast<float>(seconds);
-    for (const entt::entity guard : world.ecs().view<world::NavigationAgent3D>()) {
+    for (const entt::entity guard : world.ecs().view<world::NavAgent3D>()) {
         if (!navigation::is_navigation_finished(world, guard)) {
             auto& transform = world.ecs().get<world::Transform3D>(guard);
             transform.position =
@@ -50,7 +50,7 @@ void walk_agents(world::World& world, double seconds) {
                        kGuardSpeed * step);
         }
     }
-    for (const entt::entity cat : world.ecs().view<world::NavigationAgent2D>()) {
+    for (const entt::entity cat : world.ecs().view<world::NavAgent2D>()) {
         if (!navigation::is_navigation_finished(world, cat)) {
             auto& transform = world.ecs().get<world::Transform2D>(cat);
             const Vec2 next = navigation::next_path_position_2d(world, cat);
@@ -116,7 +116,7 @@ int main() {
     // ... and with the hatch off layer 1, the long way round: pulled tight round the corners,
     // then through the middle of each edge.
     call(session, "component.set",
-         R"({"id": "hatch", "components": {"NavigationLink3D": {"navigation_layers": 2}}})");
+         R"({"id": "hatch", "components": {"NavLink3D": {"navigation_layers": 2}}})");
     call(session, "navigation.path", R"({"from": [1, 0, 1], "to": [10, 0, 2]})");
     call(session, "navigation.path",
          R"({"from": [1, 0, 1], "to": [10, 0, 2], "postprocessing": "edgecentered"})");

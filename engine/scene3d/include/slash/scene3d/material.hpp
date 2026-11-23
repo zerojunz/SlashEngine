@@ -11,19 +11,19 @@
 #include <string_view>
 #include <vector>
 
-// Material files: a StandardMaterial3D kept in a .standard_material.json file of its own, as Godot
+// Material files: a Surface3D kept in a .standard_material.json file of its own, as Godot
 // saves one as a resource, so many models share one material and its textures instead of each
 // carrying its own. A model recipe's material can name one, alone or with fields over it.
 namespace slash::scene3d {
 
 inline constexpr std::string_view kStandardMaterialSuffix = ".standard_material.json";
 
-// The StandardMaterial3D fields that name texture files, by project path.
+// The Surface3D fields that name texture files, by project path.
 inline constexpr std::array<std::string_view, 5> kMaterialTextureFields{
     "albedo_texture", "metallic_texture", "roughness_texture", "normal_texture",
     "emission_texture"};
 
-// The JSON Schema of .standard_material.json files: "format": 1 and StandardMaterial3D's fields,
+// The JSON Schema of .standard_material.json files: "format": 1 and Surface3D's fields,
 // for `slash-cli schema standard_material`.
 [[nodiscard]] json::Value standard_material_schema();
 
@@ -31,9 +31,9 @@ inline constexpr std::array<std::string_view, 5> kMaterialTextureFields{
 [[nodiscard]] std::vector<json::ValidationError> validate_standard_material(const json::Value& doc);
 
 // The material a file holds. Fails with the first error validate_standard_material finds.
-[[nodiscard]] Result<world::StandardMaterial3D> parse_standard_material(const json::Value& doc);
+[[nodiscard]] Result<world::Surface3D> parse_standard_material(const json::Value& doc);
 
-// The file's StandardMaterial3D fields as JSON, without its format.
+// The file's Surface3D fields as JSON, without its format.
 [[nodiscard]] json::Value standard_material_fields(const json::Value& doc);
 
 // Each texture the material's fields name that read can't read or that doesn't decode, at "at"

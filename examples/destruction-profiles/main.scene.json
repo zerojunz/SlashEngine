@@ -14,13 +14,13 @@
     },
     "floor": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [20.0, 0.2, 20.0]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [20.0, 0.2, 20.0]
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "StaticBody3D": {},
         "Transform3D": {
           "position": [0.0, -0.1, 0.0]
@@ -29,20 +29,20 @@
     },
     "pane": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [1.0, 1.0, 0.02]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [1.0, 1.0, 0.02]
         },
         "Destructible3D": {
           "profile": "profiles/glass.damage.json"
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "StaticBody3D": {},
+        "Surface3D": {
           "albedo_color": [0.7, 0.8, 0.9, 1.0]
         },
-        "StaticBody3D": {},
         "Transform3D": {
           "position": [2.0, 1.2, 0.0]
         }
@@ -50,7 +50,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, 0.5, 0.0]
         }
@@ -58,20 +58,20 @@
     },
     "wall": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [3.0, 2.0, 0.3]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [3.0, 2.0, 0.3]
         },
         "Destructible3D": {
           "profile": "profiles/brick.damage.json"
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "StaticBody3D": {},
+        "Surface3D": {
           "albedo_color": [0.7, 0.35, 0.25, 1.0]
         },
-        "StaticBody3D": {},
         "Transform3D": {
           "position": [-0.5, 1.0, 0.0]
         }

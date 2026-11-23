@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-// LineEdit, as Godot's (scene/gui/line_edit.cpp): the events, carets, selections and undo
+// TextField, as Godot's (scene/gui/line_edit.cpp): the events, carets, selections and undo
 // steps expected here follow it. Text is drawn in a box font, every character 12 pixels wide at
 // 20 pixels and a space 5, so where clicks land is easy to work out.
 
@@ -142,16 +142,16 @@ struct Fields {
         }
     }
 
-    // A LineEdit at [x, y, w, h] drawn in the box font at 20 pixels.
+    // A TextField at [x, y, w, h] drawn in the box font at 20 pixels.
     entt::entity field(std::string_view id, std::array<int, 4> rect,
                        std::string_view line_edit_fields = "") {
         const entt::entity entity = world.create(id).value();
-        set(id, "{\"Control\": {\"offset_left\": " + std::to_string(rect[0]) +
+        set(id, "{\"Widget\": {\"offset_left\": " + std::to_string(rect[0]) +
                     ", \"offset_top\": " + std::to_string(rect[1]) +
                     ", \"offset_right\": " + std::to_string(rect[0] + rect[2]) +
                     ", \"offset_bottom\": " + std::to_string(rect[1] + rect[3]) +
                     R"(, "theme_override_fonts": {"font": "boxes.ttf"},)" +
-                    R"( "theme_override_font_sizes": {"font_size": 20}}, "LineEdit": {)" +
+                    R"( "theme_override_font_sizes": {"font_size": 20}}, "TextField": {)" +
                     std::string(line_edit_fields) + "}}");
         return entity;
     }
@@ -195,8 +195,8 @@ struct Fields {
         return out;
     }
 
-    [[nodiscard]] const world::LineEdit& edit(std::string_view id) const {
-        return world.ecs().get<world::LineEdit>(world.find(id));
+    [[nodiscard]] const world::TextField& edit(std::string_view id) const {
+        return world.ecs().get<world::TextField>(world.find(id));
     }
     [[nodiscard]] std::string text(std::string_view id) const { return edit(id).text; }
     [[nodiscard]] int caret(std::string_view id) const { return edit(id).caret_column; }
@@ -222,7 +222,7 @@ using Selection = std::optional<std::pair<int, int>>;
 
 } // namespace
 
-TEST_CASE("a click starts editing a LineEdit, and typing emits text_changed once a tick") {
+TEST_CASE("a click starts editing a TextField, and typing emits text_changed once a tick") {
     Fields f;
     f.field("name", {20, 20, 300, 40}, R"("placeholder_text": "Your name")");
     CHECK_FALSE(f.editing("name"));
@@ -325,7 +325,7 @@ TEST_CASE("characters made of several code points are one step for the caret") {
     f.tap("End");
     f.tap("Backspace");
     CHECK(slash::to_utf32(f.text("word")).size() == 4);
-    f.set("word", R"({"LineEdit": {"text": "aé", "caret_column": 3,
+    f.set("word", R"({"TextField": {"text": "aé", "caret_column": 3,
                                     "backspace_deletes_composite_character_enabled": true}})");
     f.tap("Backspace");
     CHECK(f.text("word") == "a");
@@ -352,10 +352,10 @@ TEST_CASE("undo and redo step through what each tick typed") {
     CHECK(f.tap("Z", kCtrl) == R"(text_changed line "ab")");
 
     // Text set from outside starts the history again, from the text it had.
-    f.set("line", R"({"LineEdit": {"text": "fresh", "caret_column": 5}})");
+    f.set("line", R"({"TextField": {"text": "fresh", "caret_column": 5}})");
     f.tap("A", kCtrl);
     CHECK(f.selection("line") == Selection{{0, 5}});
-    f.set("line", R"({"LineEdit": {"text": "newer"}})");
+    f.set("line", R"({"TextField": {"text": "newer"}})");
     CHECK(f.selection("line") == Selection{});
     CHECK(f.tap("Z", kCtrl) == R"(text_changed line "fresh")");
     CHECK(f.tap("Z", kCtrl).empty());
@@ -429,24 +429,24 @@ TEST_CASE("Enter submits and stops editing, Escape stops editing, Enter starts a
     CHECK(f.tap("Escape") == "editing_toggled chat off");
     CHECK(f.tap("Kp Enter") == "editing_toggled chat on");
 
-    f.set("chat", R"({"LineEdit": {"keep_editing_on_text_submit": true}})");
+    f.set("chat", R"({"TextField": {"keep_editing_on_text_submit": true}})");
     CHECK(f.tap("Enter") == R"(text_submitted chat "hi")");
     CHECK(f.editing("chat"));
     // Made read only, it stops editing.
-    f.set("chat", R"({"LineEdit": {"editable": false}})");
+    f.set("chat", R"({"TextField": {"editable": false}})");
     CHECK(f.step() == "editing_toggled chat off");
     CHECK(f.tap("Enter").empty());
 }
 
-TEST_CASE("Tab starts editing the LineEdit it focuses; arrow keys only focus it") {
+TEST_CASE("Tab starts editing the TextField it focuses; arrow keys only focus it") {
     Fields f;
     REQUIRE(f.world.create("ok"));
-    f.set("ok", R"({"Control": {"offset_left": 20, "offset_top": 80, "offset_right": 120,
+    f.set("ok", R"({"Widget": {"offset_left": 20, "offset_top": 80, "offset_right": 120,
                                 "offset_bottom": 120}, "Button": {"text": "OK"}})");
     f.field("name", {20, 20, 300, 40});
     // Focus moves between the controls of one tree.
     REQUIRE(f.world.create("form"));
-    f.set("form", R"({"Control": {"children": ["name", "ok"]}})");
+    f.set("form", R"({"Widget": {"children": ["name", "ok"]}})");
     ui::grab_focus(f.world, f.world.find("ok"));
     f.step();
     CHECK(f.tap("Up") == "focus_exited ok, focus_entered name");
@@ -569,14 +569,14 @@ TEST_CASE("long text scrolls to keep the caret in view") {
     CHECK(f.view("long").scroll_offset == 0.0F);
 }
 
-TEST_CASE("a LineEdit draws its box, focus, selection, text, caret and blinking caret") {
+TEST_CASE("a TextField draws its box, focus, selection, text, caret and blinking caret") {
     Fields f;
     f.field("line", {20, 20, 360, 40}, R"("text": "hello", "caret_blink": true)");
     const entt::entity line = f.world.find("line");
     ui::Layout placed = f.layout();
     CHECK(placed.boxes.at(line).size() == 1);
     CHECK_FALSE(placed.overlays.contains(line));
-    CHECK(placed.label(line)->font_color == ui::default_theme("LineEdit").colors.at("font_color"));
+    CHECK(placed.label(line)->font_color == ui::default_theme("TextField").colors.at("font_color"));
 
     ui::grab_focus(f.world, line);
     f.step();
@@ -603,36 +603,36 @@ TEST_CASE("a LineEdit draws its box, focus, selection, text, caret and blinking 
     CHECK(f.layout().overlays.contains(line));
 
     // Empty, it shows its placeholder in its color; read only, its text greyed.
-    f.set("line", R"({"LineEdit": {"text": "", "placeholder_text": "Name"}})");
+    f.set("line", R"({"TextField": {"text": "", "placeholder_text": "Name"}})");
     placed = f.layout();
     CHECK(placed.label(line)->source == "Name");
     CHECK(placed.label(line)->font_color ==
-          ui::default_theme("LineEdit").colors.at("font_placeholder_color"));
-    f.set("line", R"({"LineEdit": {"text": "x", "editable": false}})");
+          ui::default_theme("TextField").colors.at("font_placeholder_color"));
+    f.set("line", R"({"TextField": {"text": "x", "editable": false}})");
     placed = f.layout();
     CHECK(placed.label(line)->font_color ==
-          ui::default_theme("LineEdit").colors.at("font_uneditable_color"));
+          ui::default_theme("TextField").colors.at("font_uneditable_color"));
 }
 
-TEST_CASE("a LineEdit's minimum size is its style, four W's and its icons") {
+TEST_CASE("a TextField's minimum size is its style, four W's and its icons") {
     Fields f;
     REQUIRE(f.world.create("auto"));
-    f.set("auto", R"({"Control": {"theme_override_fonts": {"font": "boxes.ttf"},
+    f.set("auto", R"({"Widget": {"theme_override_fonts": {"font": "boxes.ttf"},
                                   "theme_override_font_sizes": {"font_size": 20}},
-                      "LineEdit": {}})");
+                      "TextField": {}})");
     ui::Layout placed = f.layout();
     CHECK(placed.find(f.world.find("auto"))->size == Vec2{8.0F + (4.0F * kBox), 8.0F + 20.0F});
-    f.set("auto", R"({"LineEdit": {"clear_button_enabled": true}})");
+    f.set("auto", R"({"TextField": {"clear_button_enabled": true}})");
     placed = f.layout();
     CHECK(placed.find(f.world.find("auto"))->size ==
           Vec2{8.0F + (4.0F * kBox) + 16.0F, 8.0F + 20.0F});
-    f.set("auto", R"({"LineEdit": {"clear_button_enabled": false, "expand_to_text_length": true,
+    f.set("auto", R"({"TextField": {"clear_button_enabled": false, "expand_to_text_length": true,
                                    "text": "abcdefgh"}})");
     placed = f.layout();
     CHECK(placed.find(f.world.find("auto"))->size == Vec2{8.0F + (8.0F * kBox) + 1.0F, 28.0F});
 }
 
-TEST_CASE("check finds secret characters that are too long and a Label on a LineEdit") {
+TEST_CASE("check finds secret characters that are too long and a Label on a TextField") {
     Fields f;
     f.field("pin", {20, 20, 100, 40}, R"("secret": true, "secret_character": "**")");
     f.set("pin", R"({"Label": {"text": "x"}})");
@@ -641,9 +641,9 @@ TEST_CASE("check finds secret characters that are too long and a Label on a Line
         lines.push_back(problem.id + problem.path + ": " + problem.message);
     }
     CHECK(lines == std::vector<std::string>{
-                       "pin/components/LineEdit/secret_character: a secret character is one "
+                       "pin/components/TextField/secret_character: a secret character is one "
                        "character; the others are left out",
-                       "pin/components/LineEdit: a LineEdit draws its own text and takes its own "
+                       "pin/components/TextField: a TextField draws its own text and takes its own "
                        "input; put the Label or button in another control",
                    });
 }
@@ -674,12 +674,12 @@ struct Session {
 
 } // namespace
 
-TEST_CASE("input.inject types into a LineEdit, and ui.layout and ui.clipboard report it") {
+TEST_CASE("input.inject types into a TextField, and ui.layout and ui.clipboard report it") {
     Session s;
     s.ok("entity.create", R"({"id": "name", "components": {
-        "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
+        "Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
                     "offset_bottom": 60},
-        "LineEdit": {"placeholder_text": "Your name"}}})");
+        "TextField": {"placeholder_text": "Your name"}}})");
     CHECK(s.ok("ui.layout", R"({"ids": ["name"]})") ==
           parse(R"({"viewport": [1280, 720], "controls": [
               {"id": "name", "rect": [20, 20, 300, 40],
@@ -701,8 +701,8 @@ TEST_CASE("input.inject types into a LineEdit, and ui.layout and ui.clipboard re
                                        {"type": "action", "action": "ui_paste",
                                         "pressed": true}]})");
     s.ok("step");
-    json::Value got = s.ok("entity.get", R"({"id": "name", "components": ["LineEdit"]})");
-    json::Value& edit = got["components"]["LineEdit"];
+    json::Value got = s.ok("entity.get", R"({"id": "name", "components": ["TextField"]})");
+    json::Value& edit = got["components"]["TextField"];
     CHECK(edit["text"] == "KaiMira");
     CHECK(edit["caret_column"] == 3);
 }

@@ -2,10 +2,10 @@
   "entities": {
     "sign": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.95, 0.8, 0.55, 1.0]
         },
-        "Control": {
+        "Widget": {
           "offset_bottom": 42.0,
           "offset_left": 28.0,
           "offset_right": 68.0,
@@ -27,7 +27,7 @@
     },
     "tint": {
       "components": {
-        "CanvasModulate": {
+        "AmbientTint2D": {
           "color": [1.0, 0.95, 0.9, 1.0]
         }
       }

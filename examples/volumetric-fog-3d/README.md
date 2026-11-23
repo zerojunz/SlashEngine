@@ -3,7 +3,7 @@
 A misty courtyard, as Godot 4.6's volumetric fog in its Forward+ renderer, the default
 `rendering.rendering_method`. [main.scene.json](main.scene.json) is a floor, a wall and a pillar
 seen through a `Camera3D` in a 160x90 window under a procedural sky, lit by a shadowed sun and an
-orange lamp. The `WorldEnvironment` turns on `volumetric_fog_enabled` with a `density` of 0.06
+orange lamp. The `Environment3D` turns on `volumetric_fog_enabled` with a `density` of 0.06
 over a `length` of 24 meters, and the lamp's `light_volumetric_fog_energy` of 4 makes it glow in
 the mist. [project.json](project.json) makes the fog's volume 32 froxels across and 32 deep
 (`rendering.environment.volumetric_fog`), smaller than Godot's 64 by 64, so the example draws

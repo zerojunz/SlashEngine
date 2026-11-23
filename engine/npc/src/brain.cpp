@@ -179,7 +179,7 @@ json::Value do_schema() {
     out["maxProperties"] = 2;
     out["properties"]["wait"] = number_property("Seconds it takes.", 0.0, 0.0, false);
     out["properties"]["go_to"] =
-        string_property("The ID of the entity to walk to, along the agent's NavigationAgent3D "
+        string_property("The ID of the entity to walk to, along the agent's NavAgent3D "
                         "or 2D path when it has one.");
     out["properties"]["emit"] = string_property(
         "A world event to emit, about the agent, with the action's name; gameplay code answers "

@@ -1,6 +1,6 @@
 #pragma once
 
-// Vehicles as recipes, after Unreal's Chaos Vehicles (Godot has only VehicleBody3D): a
+// Vehicles as recipes, after Unreal's Chaos Vehicles (Godot has only WheeledBody3D): a
 // .vehicle.json file says what a car, bike, truck, tracked vehicle, boat or aircraft looks like
 // (its body, seats, doors and wheels, tracks, hull or wings) and its own physics to tune: mass
 // and center of mass, the engine's torque curve, gears, the differential, steering, brakes,

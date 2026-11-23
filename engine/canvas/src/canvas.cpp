@@ -48,7 +48,7 @@
 namespace slash::canvas {
 namespace {
 
-// Plays AnimatedSprite2D components. Its state is only a cache of loaded .frames.json files and
+// Plays Flipbook2D components. Its state is only a cache of loaded .frames.json files and
 // the warnings already logged, so a world's snapshot, undo or dry run is never out of step with
 // it.
 struct AnimationState {
@@ -62,7 +62,7 @@ struct AnimationState {
 
     void warn_once(std::string_view id, const std::string& message) {
         if (warned.insert(std::string(id) + "\n" + message).second) {
-            log::warn("an AnimatedSprite2D can't play", {{"id", id}, {"error", message}});
+            log::warn("an Flipbook2D can't play", {{"id", id}, {"error", message}});
         }
     }
 
@@ -87,8 +87,8 @@ struct AnimationState {
             cached.used = false;
         }
         auto& ecs = world.ecs();
-        for (const entt::entity entity : ecs.view<world::AnimatedSprite2D>()) {
-            auto& player = ecs.get<world::AnimatedSprite2D>(entity);
+        for (const entt::entity entity : ecs.view<world::Flipbook2D>()) {
+            auto& player = ecs.get<world::Flipbook2D>(entity);
             auto& sprite = ecs.get_or_emplace<world::Sprite2D>(entity);
             const std::string_view id = world.id_of(entity);
             if (player.sprite_frames.empty()) {
@@ -128,7 +128,7 @@ struct AnimationState {
 
     // Moves the animation on by one tick, as Godot does: frames change each 1 / (fps *
     // speed_scale) seconds, and an animation that doesn't loop stops on its last frame.
-    static void advance(world::World& world, std::string_view id, world::AnimatedSprite2D& player,
+    static void advance(world::World& world, std::string_view id, world::Flipbook2D& player,
                         const Animation& animation, double tick_seconds) {
         const auto count = static_cast<std::int64_t>(animation.frames.size());
         player.frame = static_cast<int>(std::clamp<std::int64_t>(player.frame, 0, count - 1));
@@ -274,7 +274,7 @@ void add_asset_types(asset::Assets& assets) {
         });
 }
 
-// Gives 2D physics each TileMapLayer's shapes, made again only when the layer's cells or its
+// Gives 2D physics each TileLayer2D's shapes, made again only when the layer's cells or its
 // tile set change.
 struct TileShapeCache {
     struct Entry {
@@ -290,7 +290,7 @@ struct TileShapeCache {
     std::unordered_map<entt::entity, Entry> entries;
 
     physics2d::TileShapes shapes(const world::World& world, entt::entity entity) {
-        const auto* layer = world.ecs().try_get<world::TileMapLayer>(entity);
+        const auto* layer = world.ecs().try_get<world::TileLayer2D>(entity);
         if (layer == nullptr || layer->tile_set.empty() || layer->rows.empty()) {
             return nullptr;
         }
@@ -319,11 +319,11 @@ struct TileShapeCache {
                                        tile_shapes(*set, cells.value()))
                                  : std::make_shared<const std::vector<physics2d::TileShape>>()};
         // Entries of layers that are gone.
-        const std::size_t layers = world.ecs().view<const world::TileMapLayer>().size();
+        const std::size_t layers = world.ecs().view<const world::TileLayer2D>().size();
         if (entries.size() > (2 * layers) + 8) {
             std::erase_if(entries, [&](const auto& pair) {
                 return !world.valid(pair.first) ||
-                       !world.ecs().all_of<world::TileMapLayer>(pair.first);
+                       !world.ecs().all_of<world::TileLayer2D>(pair.first);
             });
         }
         return entries[entity].shapes;
@@ -445,7 +445,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     auto foliage = std::make_shared<FoliageShapeCache>();
     physics2d::set_tile_shape_source(world,
                                      [tiles, foliage](const world::World& w, entt::entity entity) {
-                                         if (!w.ecs().all_of<world::TileMapLayer>(entity)) {
+                                         if (!w.ecs().all_of<world::TileLayer2D>(entity)) {
                                              return foliage->shapes(w, entity);
                                          }
                                          return tiles->shapes(w, entity);
@@ -453,7 +453,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     // Blasts carve tile map layers that are Destructible2Ds: the cells whose centers they reach.
     physics2d::set_tile_carver(world, [tiles](world::World& w, entt::entity entity, Vec2 center,
                                               float radius, bool apply) {
-        auto* layer = w.ecs().try_get<world::TileMapLayer>(entity);
+        auto* layer = w.ecs().try_get<world::TileLayer2D>(entity);
         if (layer == nullptr || layer->tile_set.empty() || radius <= 0.0F) {
             return 0;
         }
@@ -487,7 +487,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world.add_system(
         "animated_sprite_2d",
         [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
-        {.doc = "Plays each AnimatedSprite2D's animation on its Sprite2D.", .priority = 1000});
+        {.doc = "Plays each Flipbook2D's animation on its Sprite2D.", .priority = 1000});
     world::add_camera_system(world, [](const world::World& w) { return ui::settings(w).viewport; });
     world::add_parallax_system(world,
                                [](const world::World& w) { return ui::settings(w).viewport; });

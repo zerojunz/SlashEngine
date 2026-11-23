@@ -34,8 +34,8 @@
 #include <utility>
 #include <vector>
 
-// 2D drawing, as Godot's canvas: Sprite2D, AnimatedSprite2D, TileMapLayer, CPUParticles2D and
-// GPUParticles2D
+// 2D drawing, as Godot's canvas: Sprite2D, Flipbook2D, TileLayer2D, Emitter2D and
+// GpuEmitter2D
 // entities drawn through a render device, in world pixels with y down, seen through the current
 // Camera2D (camera2d.hpp) and shaded by 2D lights (light.hpp).
 namespace slash::canvas {
@@ -54,10 +54,10 @@ void add_asset_types(asset::Assets& assets);
 with_texture_forms(const asset::FileSource& files,
                    std::function<bool(render::TextureFormat)> samples);
 
-// The "animated_sprite_2d" system, which plays each AnimatedSprite2D on its Sprite2D, the
+// The "animated_sprite_2d" system, which plays each Flipbook2D on its Sprite2D, the
 // "camera_2d" and "parallax_2d" systems (camera2d.hpp, canvas_layer.hpp), for a screen of
 // ui::settings' viewport size, and the "cpu_particles_2d" system (particles.hpp), and gives 2D
-// physics the shapes of TileMapLayer cells (physics2d::set_tile_shape_source). The first and the
+// physics the shapes of TileLayer2D cells (physics2d::set_tile_shape_source). The first and the
 // last read files through assets, which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
@@ -110,20 +110,20 @@ struct FramePiece {
     std::string_view texture;
 };
 
-// Something a frame drew: a sprite, a tile map layer, a CPUParticles2D's or GPUParticles2D's
+// Something a frame drew: a sprite, a tile map layer, a Emitter2D's or GpuEmitter2D's
 // particles, or a control.
 // A control's pieces are cut to its clip, and what it draws over its children (a
-// ScrollContainer's scroll bars) draws after them.
+// ScrollBox's scroll bars) draws after them.
 struct FrameItem {
-    // Popup is an open popup menu, over every control: its entity is the PopupMenu, OptionButton
+    // Popup is an open popup menu, over every control: its entity is the PopupList, Dropdown
     // or MenuButton that shows it. Tooltip is the tooltip shown, over those: its entity is the
     // control (or popup menu) whose tooltip it is.
     enum class Kind : std::uint8_t {
         Sprite,
         Tiles,
-        Particles, // a CPUParticles2D's
+        Particles, // a Emitter2D's
         GpuParticles,
-        Control,
+        Widget,
         Popup,
         Tooltip,
         Reflection, // a Reflection2D's
@@ -209,7 +209,7 @@ struct CanvasOptions {
 };
 
 // A point on the screen in a canvas's pixels, as Godot's get_canvas_transform().affine_inverse():
-// in the world's, through the current camera, or in those of the CanvasLayer the entity in
+// in the world's, through the current camera, or in those of the ScreenLayer the entity in
 // draws in, for a screen of ui::settings' viewport size (world::screen_transform). Godot's
 // get_global_mouse_position is to_world(world, mouse, entity).
 [[nodiscard]] Vec2 to_world(const world::World& world, Vec2 point, entt::entity in = entt::null);
@@ -240,10 +240,10 @@ public:
     // Draws one frame: the target cleared, the 3D world drawn through its current Camera3D
     // (scene3d.hpp) when it has one, then each canvas in order (world::Canvases), then
     // the popup menus, tooltip and drag preview, then the overlay's controls. The world's
-    // canvas is every visible sprite, tile map layer and particles not in a CanvasLayer, in
+    // canvas is every visible sprite, tile map layer and particles not in a ScreenLayer, in
     // z_index order, then the order entities were made, seen through the current Camera2D,
-    // then the collision shapes if the options ask, then the controls not in a CanvasLayer
-    // (ui.hpp), on the screen. A CanvasLayer's is its own sprites, layers and particles, then
+    // then the collision shapes if the options ask, then the controls not in a ScreenLayer
+    // (ui.hpp), on the screen. A ScreenLayer's is its own sprites, layers and particles, then
     // its controls, all placed by its transform. Controls are laid out in a viewport of the
     // options' width and height, or ui::settings' when they are 0. The children of a
     // Parallax2D with a repeat_size draw again at each repeat, as Godot repeats them. A layer
@@ -251,12 +251,12 @@ public:
     // cells row by row, each tile's region centered on its cell, moved by the entity's
     // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
     // texture's frame (or a white pixel) centered on it, turned, scaled and colored; a
-    // GPUParticles2D's system on the device first runs the steps it hasn't (gpu_particles.hpp). A
+    // GpuEmitter2D's system on the device first runs the steps it hasn't (gpu_particles.hpp). A
     // sprite or tile that can't draw, such as one whose texture or material is missing, or whose
     // material_params name a param the material doesn't have, is left out with one warning in the
     // log. On the null device a window frame checks and counts them but draws nothing.
     //
-    // When the world has a light or a CanvasModulate, every sprite and layer of the world's
+    // When the world has a light or a AmbientTint2D, every sprite and layer of the world's
     // canvas is shaded by them, as its material's light_mode says (normal by default), with its
     // normal and specular textures; those in CanvasLayers are unshaded, as Godot's lights shine
     // on layer 0 unless told otherwise. A light that can't shine, such as one whose texture is
@@ -267,7 +267,7 @@ public:
     [[nodiscard]] std::size_t sprites_drawn() const noexcept { return sprites_drawn_; }
     // Tiles the last frame drew, over every layer.
     [[nodiscard]] std::size_t tiles_drawn() const noexcept { return tiles_drawn_; }
-    // Particles the last frame drew: every CPUParticles2D's live ones, and each GPUParticles2D's
+    // Particles the last frame drew: every Emitter2D's live ones, and each GpuEmitter2D's
     // amount (the device draws each one, those not live with no area).
     [[nodiscard]] std::size_t particles_drawn() const noexcept { return particles_drawn_; }
     // Lights the last frame shaded with, and how many of them cast shadows.
@@ -285,7 +285,7 @@ public:
     [[nodiscard]] std::size_t meshes_drawn() const noexcept { return meshes_drawn_; }
     // Of those, the ones drawn at a coarser LOD than their surface's own.
     [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
-    // The clusters virtualized meshes (MeshInstance3D.virtualized) were cut into.
+    // The clusters virtualized meshes (Model3D.virtualized) were cut into.
     [[nodiscard]] std::size_t clusters_drawn() const noexcept { return clusters_drawn_; }
     // The clusters of those cuts the camera culled: out of view, seen from behind or occluded.
     [[nodiscard]] std::size_t clusters_culled() const noexcept {
@@ -367,14 +367,14 @@ private:
     // WIND filled in, and its light mode.
     Result<render::Material> material(const world::Sprite2D& sprite, render::Filter filter,
                                       double time, render::LightMode* light_mode, Vec2 wind = {});
-    // A GPUParticles2D's process material.
+    // A GpuEmitter2D's process material.
     Result<const render::ParticleProcess*> process_material(const std::string& path);
-    // A MeshInstance3D's material_override, for scene3d::Renderer: a .standard_material.json
+    // A Model3D's material_override, for scene3d::Renderer: a .standard_material.json
     // file's material, or a spatial material's shader on the device and its params' values.
     Result<scene3d::OverrideMaterial>
     override_material(const std::string& path, const std::map<std::string, json::Value>& params,
                       double time);
-    // A GPUParticles2D's particle system on the device, and the steps run on it; and the same
+    // A GpuEmitter2D's particle system on the device, and the steps run on it; and the same
     // on the CPU for FrameContents, run only when a frame asks for them.
     struct GpuSystem {
         render::ParticlesId id = render::ParticlesId::None;
@@ -387,7 +387,7 @@ private:
         std::uint64_t cpu_next = 0;
         bool seen = false;
     };
-    // Steps to run on a GPUParticles2D's system before it draws: the first one, made to clear
+    // Steps to run on a GpuEmitter2D's system before it draws: the first one, made to clear
     // the system for a system made anew, then the rest, which start with history steps it ran
     // already, for trails' copies to run behind. A chain of sub-emitters' root's job runs with
     // the next links - 1 jobs, its sub-emitters'.
@@ -400,7 +400,7 @@ private:
         std::span<const render::ParticleShape> shapes; // that the steps name
         std::size_t links = 1;
     };
-    // The steps a GPUParticles2D's system hasn't run, none if it has run them all. The system is
+    // The steps a GpuEmitter2D's system hasn't run, none if it has run them all. The system is
     // made again when the emitter started over or this renderer missed steps no longer kept;
     // then it runs every step kept, the first clearing it. Fails if it can't be made.
     Result<std::optional<ParticleJob>> particle_job(GpuSystem& system, const ParticleSteps& kept,
@@ -446,7 +446,7 @@ private:
     // A layer's cells, decoded again only when the layer or its tile set changes.
     struct LayerCells {
         std::uint64_t set_version = 0;
-        world::TileMapLayer layer;
+        world::TileLayer2D layer;
         Cells cells;
         std::vector<const Cells::value_type*> order; // the cells as they draw (draw_order)
         std::string error;                           // why the cells don't decode, or ""
@@ -462,7 +462,7 @@ private:
                               const world::Canvases& canvases, double time);
     // The GPU texture of a glyph atlas page, uploaded again when the page changed.
     Result<render::TextureId> atlas_page(const text::Fonts& fonts, std::uint32_t page);
-    const LayerCells& cells(entt::entity entity, const world::TileMapLayer& layer,
+    const LayerCells& cells(entt::entity entity, const world::TileLayer2D& layer,
                             const TileSet& set, std::uint64_t set_version);
     void warn_once(const std::string& key, std::string_view message, std::string_view what,
                    std::string_view event = "a sprite can't draw");
@@ -712,8 +712,7 @@ struct FrameSummary {
     std::vector<std::size_t> offscreen; // items drawn only outside the window
     std::vector<std::size_t> covered;   // items in it but under what was drawn after them
     std::vector<std::size_t> clear;     // items with no pixel that shows: all transparent
-    std::vector<std::size_t>
-        clipped; // controls a clip cut away, as a ScrollContainer scrolled past
+    std::vector<std::size_t> clipped;   // controls a clip cut away, as a ScrollBox scrolled past
     std::vector<std::vector<std::ptrdiff_t>> map; // rows of cells: the place in shown of what
                                                   // shows at each cell's center, or -1
 };

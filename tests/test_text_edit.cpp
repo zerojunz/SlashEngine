@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-// TextEdit, as Godot's (scene/gui/text_edit.cpp): the events, carets, selections, scrolling and
+// TextArea, as Godot's (scene/gui/text_edit.cpp): the events, carets, selections, scrolling and
 // undo steps expected here follow it. Text is drawn in a box font at 20 pixels, every character
 // 12 pixels wide and a space 5, in rows 24 pixels apart (the font's 20 and line_spacing's 4),
 // so where clicks land is easy to work out.
@@ -42,7 +42,7 @@ using slash::Vec2;
 namespace {
 
 constexpr double kTick = 1.0 / 60.0;
-// Where text starts in a TextEdit: the default style's 4-pixel margins.
+// Where text starts in a TextArea: the default style's 4-pixel margins.
 constexpr float kMargin = 4.0F;
 constexpr float kBox = 12.0F;
 constexpr float kRow = 24.0F;
@@ -168,16 +168,16 @@ struct Editors {
         }
     }
 
-    // A TextEdit at [x, y, w, h] drawn in the box font at 20 pixels.
+    // A TextArea at [x, y, w, h] drawn in the box font at 20 pixels.
     entt::entity editor(std::string_view id, std::array<int, 4> rect,
                         std::string_view text_edit_fields = "") {
         const entt::entity entity = world.create(id).value();
-        set(id, "{\"Control\": {\"offset_left\": " + std::to_string(rect[0]) +
+        set(id, "{\"Widget\": {\"offset_left\": " + std::to_string(rect[0]) +
                     ", \"offset_top\": " + std::to_string(rect[1]) +
                     ", \"offset_right\": " + std::to_string(rect[0] + rect[2]) +
                     ", \"offset_bottom\": " + std::to_string(rect[1] + rect[3]) +
                     R"(, "theme_override_fonts": {"font": "boxes.ttf"},)" +
-                    R"( "theme_override_font_sizes": {"font_size": 20}}, "TextEdit": {)" +
+                    R"( "theme_override_font_sizes": {"font_size": 20}}, "TextArea": {)" +
                     std::string(text_edit_fields) + "}}");
         return entity;
     }
@@ -203,9 +203,9 @@ struct Editors {
         return send({key(name, true, modifiers), key(name, false, modifiers)});
     }
     std::string step() { return send({}); }
-    // Where text starts in a TextEdit: after its style's margin and its gutters.
+    // Where text starts in a TextArea: after its style's margin and its gutters.
     float text_start = kMargin;
-    // A click and its release where a line and column of a TextEdit at (20, 20) are.
+    // A click and its release where a line and column of a TextArea at (20, 20) are.
     std::string click_at(int line, int column, std::string_view extra = "") {
         const float x = 20.0F + text_start + (static_cast<float>(column) * kBox) + 2.0F;
         const float y = 20.0F + kMargin + (static_cast<float>(line) * kRow) + (kRow / 2.0F);
@@ -230,8 +230,8 @@ struct Editors {
         return out;
     }
 
-    [[nodiscard]] const world::TextEdit& edit(std::string_view id) const {
-        return world.ecs().get<world::TextEdit>(world.find(id));
+    [[nodiscard]] const world::TextArea& edit(std::string_view id) const {
+        return world.ecs().get<world::TextArea>(world.find(id));
     }
     [[nodiscard]] std::string text(std::string_view id) const { return edit(id).text; }
     [[nodiscard]] Caret caret(std::string_view id) const {
@@ -248,7 +248,7 @@ struct Editors {
         return found->second;
     }
     Selection selection(std::string_view id) { return view(id).selection; }
-    // The rows a TextEdit shows, as ui.layout's lines, or the text its gutters show.
+    // The rows a TextArea shows, as ui.layout's lines, or the text its gutters show.
     std::vector<std::string> rows(std::string_view id, bool gutters = false) {
         const ui::Layout placed = layout();
         const ui::LabelText* label = placed.label(world.find(id));
@@ -271,7 +271,7 @@ Selection range(int from_line, int from_column, int to_line, int to_column) {
 
 } // namespace
 
-TEST_CASE("a click puts the caret in a TextEdit; typing and Enter edit its lines") {
+TEST_CASE("a click puts the caret in a TextArea; typing and Enter edit its lines") {
     Editors f;
     f.editor("notes", {20, 20, 300, 120}, R"("placeholder_text": "Notes")");
     std::vector<world::Event> edited;
@@ -436,7 +436,7 @@ TEST_CASE("undo and redo step through typing, which merges until the typist paus
     CHECK(f.text("notes") == "abcdx!");
 
     // Text set from outside is set as set_text sets it: one step that undoes to what it was.
-    f.set("notes", R"({"TextEdit": {"text": "fresh\ntext", "caret_line": 1, "caret_column": 4}})");
+    f.set("notes", R"({"TextArea": {"text": "fresh\ntext", "caret_line": 1, "caret_column": 4}})");
     // As set_text, it emits text_set, not text_changed.
     CHECK(f.step() == "lines_edited_from notes 0-0, lines_edited_from notes 0-1, text_set notes, "
                       "caret_changed notes");
@@ -507,7 +507,7 @@ TEST_CASE("copy and cut take the caret's line when nothing is selected; paste pu
     CHECK(f.text("notes") == "two\ntwotwo\ntwo");
     CHECK(f.caret("notes") == Caret{2, 3});
     // Without empty_selection_clipboard_enabled, nothing selected copies nothing.
-    f.set("notes", R"({"TextEdit": {"empty_selection_clipboard_enabled": false}})");
+    f.set("notes", R"({"TextArea": {"empty_selection_clipboard_enabled": false}})");
     ui::set_clipboard(f.world, "kept");
     f.tap("C", kCtrl);
     CHECK(ui::clipboard(f.world) == "kept");
@@ -546,7 +546,7 @@ TEST_CASE("clicks place the caret; double clicks select words, triple clicks lin
     f.click_at(1, 9);
     CHECK(f.selection("notes") == Selection{});
     // With selecting_enabled off, a drag only moves the caret.
-    f.set("notes", R"({"TextEdit": {"selecting_enabled": false}})");
+    f.set("notes", R"({"TextArea": {"selecting_enabled": false}})");
     f.send(
         {click(x0, 36, true), drag(x0 + (4.0F * kBox), 60), click(x0 + (4.0F * kBox), 60, false)});
     CHECK(f.selection("notes") == Selection{});
@@ -595,10 +595,10 @@ TEST_CASE("the wheel scrolls, the caret stays in view and a scroll bar shows whe
     f.tap("PageUp");
     CHECK(f.caret("notes").first == 6);
     // A scroll set from outside is kept, within what the text allows.
-    f.set("notes", R"({"TextEdit": {"scroll_vertical": 2}})");
+    f.set("notes", R"({"TextArea": {"scroll_vertical": 2}})");
     CHECK(f.view("notes").first_visible_line == 2);
     // scroll_past_end_of_file lets the last line go up to the top.
-    f.set("notes", R"({"TextEdit": {"scroll_past_end_of_file": true}})");
+    f.set("notes", R"({"TextArea": {"scroll_past_end_of_file": true}})");
     for (int i = 0; i < 5; ++i) {
         f.send(wheel(100, 60, "wheel_down"));
     }
@@ -677,7 +677,7 @@ TEST_CASE("an input method's composition shows at the caret until it commits") {
     CHECK(f.view("notes").ime.empty());
 }
 
-TEST_CASE("a TextEdit that isn't editable moves its caret and copies, but doesn't change") {
+TEST_CASE("a TextArea that isn't editable moves its caret and copies, but doesn't change") {
     Editors f;
     f.editor("notes", {20, 20, 360, 100}, R"("text": "fixed\ntext", "editable": false)");
     ui::grab_focus(f.world, f.world.find("notes"));
@@ -755,7 +755,7 @@ TEST_CASE("Insert types over characters; caret_blink blinks the caret") {
     CHECK(overlays() == 1);
 }
 
-TEST_CASE("a TextEdit draws its box, current line, selection, text, caret and scroll bar") {
+TEST_CASE("a TextArea draws its box, current line, selection, text, caret and scroll bar") {
     Editors f;
     std::string lines;
     for (int i = 0; i < 10; ++i) {
@@ -797,19 +797,19 @@ TEST_CASE("a TextEdit draws its box, current line, selection, text, caret and sc
     CHECK(over[2].size.y < 92.0F);
 }
 
-TEST_CASE("a TextEdit's minimum size is its style, or its text with scroll_fit_content") {
+TEST_CASE("a TextArea's minimum size is its style, or its text with scroll_fit_content") {
     Editors f;
     f.editor("notes", {20, 20, 0, 0}, R"("text": "abc\nde")");
     const auto minimum = [&] { return f.layout().find(f.world.find("notes"))->minimum_size; };
     CHECK(minimum() == Vec2{8.0F, 8.0F});
-    f.set("notes", R"({"TextEdit": {"scroll_fit_content_height": true,
+    f.set("notes", R"({"TextArea": {"scroll_fit_content_height": true,
                                     "scroll_fit_content_width": true}})");
     // The widest line and 10 pixels, as Godot's.
     const Vec2 fit = minimum();
     CHECK(fit.y == 8.0F + (2.0F * kRow));
     CHECK(fit.x == 8.0F + (3.0F * kBox) + 10.0F);
     // It grows with its text.
-    f.set("notes", R"({"TextEdit": {"text": "abc\nde\nf"}})");
+    f.set("notes", R"({"TextArea": {"text": "abc\nde\nf"}})");
     CHECK(minimum().y == 8.0F + (3.0F * kRow));
 }
 
@@ -821,19 +821,19 @@ TEST_CASE("text and carets set from outside show at once and the history keeps u
     f.tap("End", kShift);
     CHECK(f.selection("notes") == range(0, 0, 0, 3));
     // A caret moved from outside drops the selection.
-    f.set("notes", R"({"TextEdit": {"caret_column": 1}})");
+    f.set("notes", R"({"TextArea": {"caret_column": 1}})");
     CHECK(f.view("notes").caret_column == 1);
     f.step();
     CHECK(f.selection("notes") == Selection{});
-    // A caret past the end is drawn at the end, and moved there when the TextEdit next runs.
-    f.set("notes", R"({"TextEdit": {"caret_line": 5, "caret_column": 9}})");
+    // A caret past the end is drawn at the end, and moved there when the TextArea next runs.
+    f.set("notes", R"({"TextArea": {"caret_line": 5, "caret_column": 9}})");
     CHECK(f.view("notes").caret_line == 0);
     CHECK(f.view("notes").caret_column == 3);
     f.step();
     CHECK(f.caret("notes") == Caret{0, 3});
 }
 
-TEST_CASE("check finds a Label on a TextEdit and a language that isn't one") {
+TEST_CASE("check finds a Label on a TextArea and a language that isn't one") {
     Editors f;
     f.editor("notes", {20, 20, 100, 40}, R"("language": "not a tag")");
     f.set("notes", R"({"Label": {"text": "x"}})");
@@ -842,14 +842,14 @@ TEST_CASE("check finds a Label on a TextEdit and a language that isn't one") {
         lines.push_back(problem.id + problem.path + ": " + problem.message);
     }
     CHECK(lines == std::vector<std::string>{
-                       "notes/components/TextEdit/language: \"not a tag\" isn't a BCP 47 "
+                       "notes/components/TextArea/language: \"not a tag\" isn't a BCP 47 "
                        "language tag, such as \"ar\" or \"zh-Hant\"",
-                       "notes/components/TextEdit: a TextEdit draws its own text and takes its "
-                       "own input; put the Label, button or LineEdit in another control",
+                       "notes/components/TextArea: a TextArea draws its own text and takes its "
+                       "own input; put the Label, button or TextField in another control",
                    });
 }
 
-TEST_CASE("a TextEdit's scroll bar pages, drags and takes the wheel, and leaves the caret") {
+TEST_CASE("a TextArea's scroll bar pages, drags and takes the wheel, and leaves the caret") {
     Editors f;
     std::string lines;
     for (int i = 0; i < 10; ++i) {
@@ -864,7 +864,7 @@ TEST_CASE("a TextEdit's scroll bar pages, drags and takes the wheel, and leaves 
     CHECK(view.v_bar.page == 4.0);
     CHECK(view.v_bar.max_value == 10.0);
     // Its grabber is 4 / 10 of the 84 pixels it moves in, and 8: 24 to 65.6 on screen. A
-    // click below it goes down a page; the pointer over the bar has left the TextEdit's text.
+    // click below it goes down a page; the pointer over the bar has left the TextArea's text.
     CHECK(f.send({click(316, 100, true), click(316, 100, false)}).empty());
     CHECK(f.edit("notes").scroll_vertical == 4.0);
     CHECK(f.rows("notes").front() == "line 4");
@@ -880,11 +880,11 @@ TEST_CASE("a TextEdit's scroll bar pages, drags and takes the wheel, and leaves 
     f.send(wheel(316, 60, "wheel_down"));
     CHECK(f.edit("notes").scroll_vertical == doctest::Approx(2.0));
     CHECK(f.caret("notes") == Caret{0, 0});
-    // Back over the text, the pointer enters the TextEdit again.
+    // Back over the text, the pointer enters the TextArea again.
     CHECK(f.send(drag(100, 60)) == "mouse_entered notes");
 }
 
-TEST_CASE("a TextEdit's horizontal scroll bar pages its text sideways") {
+TEST_CASE("a TextArea's horizontal scroll bar pages its text sideways") {
     Editors f;
     f.editor("notes", {20, 20, 200, 80}, R"("text": "abcdefghijklmnopqrstuvwxyzabcdefghij")");
     f.step();
@@ -904,7 +904,7 @@ TEST_CASE("a TextEdit's horizontal scroll bar pages its text sideways") {
     CHECK(f.caret("notes") == Caret{0, 0});
 }
 
-TEST_CASE("a TextEdit's scroll bar grabber lights up under the pointer and while dragged") {
+TEST_CASE("a TextArea's scroll bar grabber lights up under the pointer and while dragged") {
     Editors f;
     std::string lines;
     for (int i = 0; i < 10; ++i) {
@@ -912,7 +912,7 @@ TEST_CASE("a TextEdit's scroll bar grabber lights up under the pointer and while
     }
     f.editor("notes", {20, 20, 300, 104}, "\"text\": \"" + lines + "\"");
     f.step();
-    // The grabber is the last thing drawn over the TextEdit.
+    // The grabber is the last thing drawn over the TextArea.
     const auto grabber = [&] {
         const ui::Layout placed = f.layout();
         return placed.overlays.at(f.world.find("notes")).back().style.bg_color;
@@ -982,11 +982,11 @@ TEST_CASE("search_text draws its matches, and highlight_all_occurrences the sele
     CHECK(under[2].style.bg_color == slash::Vec4{0.3F, 0.3F, 0.3F, 0.4F});
     CHECK(under[6].position == Vec2{kMargin + 82.0F, kMargin});
     // Whole words and matching case leave the first line's two.
-    f.set("notes", R"({"TextEdit": {"search_flags": ["match_case", "whole_words"]}})");
+    f.set("notes", R"({"TextArea": {"search_flags": ["match_case", "whole_words"]}})");
     CHECK(f.view("notes").search_results == std::vector<std::array<int, 2>>{{0, 0}, {0, 8}});
 
     // The selected word's occurrences, matching case and whole words, under the text too.
-    f.set("notes", R"({"TextEdit": {"search_text": "", "highlight_all_occurrences": true}})");
+    f.set("notes", R"({"TextArea": {"search_text": "", "highlight_all_occurrences": true}})");
     ui::grab_focus(f.world, entity);
     f.step();
     f.send({key("Right", true, kShift), key("Right", true, kShift), key("Right", true, kShift)});
@@ -1001,16 +1001,16 @@ TEST_CASE("search_text draws its matches, and highlight_all_occurrences the sele
     CHECK(under[4].size == Vec2{3.0F * kBox, kRow});
     // Selected whitespace highlights nothing.
     f.send({key("Home", true), key("End", true, kShift)});
-    f.set("notes", R"({"TextEdit": {"text": "a  b"}})");
+    f.set("notes", R"({"TextArea": {"text": "a  b"}})");
     f.send({key("Home", true), key("Right", true), key("Right", true, kShift)});
     CHECK(f.selection("notes") == range(0, 1, 0, 2));
     CHECK(f.layout().boxes.at(entity).size() == 3);
 }
 
-TEST_CASE("a CodeHighlighter colors a TextEdit's text, fainter when it can't be edited") {
+TEST_CASE("a SyntaxColors colors a TextArea's text, fainter when it can't be edited") {
     Editors f;
     f.editor("code", {20, 20, 360, 104}, R"("text": "if 1\nx")");
-    f.set("code", R"({"CodeHighlighter": {"number_color": [0, 1, 0, 1],
+    f.set("code", R"({"SyntaxColors": {"number_color": [0, 1, 0, 1],
                                           "symbol_color": [0, 0, 1, 1],
                                           "keyword_colors": {"if": [1, 0, 0, 1]}}})");
     const slash::Vec4 font{0.875F, 0.875F, 0.875F, 1.0F};
@@ -1028,7 +1028,7 @@ TEST_CASE("a CodeHighlighter colors a TextEdit's text, fainter when it can't be 
                              {4, font},
                              {4, font}});
     // Not editable, the text is drawn in font_readonly_color and no color is more opaque.
-    f.set("code", R"({"TextEdit": {"editable": false}})");
+    f.set("code", R"({"TextArea": {"editable": false}})");
     const slash::Vec4 readonly{0.875F, 0.875F, 0.875F, 0.5F};
     CHECK(colors() == Colors{{0, readonly},
                              {0, {1, 0, 0, 0.5F}},
@@ -1051,7 +1051,7 @@ TEST_CASE("a CodeHighlighter colors a TextEdit's text, fainter when it can't be 
 
 namespace {
 
-// The rows down a TextEdit at (20, 20), on screen: the middle of each.
+// The rows down a TextArea at (20, 20), on screen: the middle of each.
 float row_y(int line) {
     return 20.0F + kMargin + (static_cast<float>(line) * kRow) + (kRow / 2.0F);
 }
@@ -1061,7 +1061,7 @@ bool near(slash::Vec4 a, slash::Vec4 b) {
            a.z == doctest::Approx(b.z) && a.w == doctest::Approx(b.w);
 }
 
-// The icons a TextEdit draws under its text.
+// The icons a TextArea draws under its text.
 std::vector<ui::Box> icons(Editors& f, std::string_view id) {
     const ui::Layout placed = f.layout();
     std::vector<ui::Box> out;
@@ -1073,16 +1073,16 @@ std::vector<ui::Box> icons(Editors& f, std::string_view id) {
     return out;
 }
 
-const world::CodeEdit& code_of(Editors& f, std::string_view id) {
-    return f.world.ecs().get<world::CodeEdit>(f.world.find(id));
+const world::CodeEditor& code_of(Editors& f, std::string_view id) {
+    return f.world.ecs().get<world::CodeEditor>(f.world.find(id));
 }
 
 } // namespace
 
-TEST_CASE("a CodeEdit numbers its lines in a gutter before the text") {
+TEST_CASE("a CodeEditor numbers its lines in a gutter before the text") {
     Editors f;
     f.editor("code", {20, 20, 300, 104}, R"("text": "a\nbb\nc")");
-    f.set("code", R"({"CodeEdit": {"gutters_draw_line_numbers": true}})");
+    f.set("code", R"({"CodeEditor": {"gutters_draw_line_numbers": true}})");
     const ui::TextEditView view = f.view("code");
     REQUIRE(view.gutters.size() == 2);
     // The main gutter hides until it has breakpoints, bookmarks or executing lines to show.
@@ -1114,22 +1114,22 @@ TEST_CASE("a CodeEdit numbers its lines in a gutter before the text") {
     f.click_at(1, 1);
     CHECK(f.caret("code") == Caret{1, 1});
 
-    f.set("code", R"({"CodeEdit": {"gutters_zero_pad_line_numbers": true,
+    f.set("code", R"({"CodeEditor": {"gutters_zero_pad_line_numbers": true,
                                    "gutters_line_numbers_min_digits": 2}})");
     CHECK(f.gutter_text("code") == std::vector<std::string>{"01", "02", "03"});
     CHECK(f.view("code").gutters[1].width == 36);
     // More lines than the digits take more.
-    f.set("code", R"({"TextEdit": {"text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9"},
-                      "CodeEdit": {"gutters_zero_pad_line_numbers": false,
+    f.set("code", R"({"TextArea": {"text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9"},
+                      "CodeEditor": {"gutters_zero_pad_line_numbers": false,
                                    "gutters_line_numbers_min_digits": 1}})");
     CHECK(f.gutter_text("code").front() == " 1");
     CHECK(f.view("code").gutters[1].width == 36);
 }
 
-TEST_CASE("clicking a CodeEdit's main gutter toggles breakpoints, and a line number selects") {
+TEST_CASE("clicking a CodeEditor's main gutter toggles breakpoints, and a line number selects") {
     Editors f;
     f.editor("code", {20, 20, 300, 104}, R"("text": "a\nbb\nc")");
-    f.set("code", R"({"CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+    f.set("code", R"({"CodeEditor": {"gutters_draw_breakpoints_gutter": true,
                                    "gutters_draw_bookmarks": true,
                                    "gutters_draw_line_numbers": true}})");
     // The main gutter is a row wide; the line numbers come after it.
@@ -1166,11 +1166,11 @@ TEST_CASE("breakpoints, bookmarks and gutter entries move with the lines they're
     Editors f;
     f.editor("code", {20, 20, 300, 200}, R"("text": "a\nb\nc\nd",
         "gutters": [{"name": "marks", "lines": [{"line": 2, "text": "!"}]}])");
-    f.set("code", R"({"CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+    f.set("code", R"({"CodeEditor": {"gutters_draw_breakpoints_gutter": true,
                                    "breakpointed_lines": [1, 3], "bookmarked_lines": [2],
                                    "executing_lines": [3]}})");
     const auto lines = [&] {
-        const world::CodeEdit& code = code_of(f, "code");
+        const world::CodeEditor& code = code_of(f, "code");
         return std::vector<std::vector<int>>{code.breakpointed_lines,
                                              code.bookmarked_lines,
                                              code.executing_lines,
@@ -1197,7 +1197,7 @@ TEST_CASE("breakpoints, bookmarks and gutter entries move with the lines they're
           "breakpoint_toggled code 4, text_changed code, caret_changed code");
     CHECK(lines() == Lines{{4}, {3}, {4}, {3}});
     // Text set from outside leaves them, and check finds the ones past its end.
-    f.set("code", R"({"TextEdit": {"text": "x"}})");
+    f.set("code", R"({"TextArea": {"text": "x"}})");
     f.step();
     CHECK(lines() == Lines{{4}, {3}, {4}, {3}});
     std::vector<std::string> problems;
@@ -1205,18 +1205,18 @@ TEST_CASE("breakpoints, bookmarks and gutter entries move with the lines they're
         problems.push_back(problem.path + ": " + problem.message);
     }
     CHECK(problems == std::vector<std::string>{
-                          "/components/CodeEdit/breakpointed_lines/0: line 4 is past the text's "
+                          "/components/CodeEditor/breakpointed_lines/0: line 4 is past the text's "
                           "last line, 0",
-                          "/components/CodeEdit/bookmarked_lines/0: line 3 is past the text's "
+                          "/components/CodeEditor/bookmarked_lines/0: line 3 is past the text's "
                           "last line, 0",
-                          "/components/CodeEdit/executing_lines/0: line 4 is past the text's "
+                          "/components/CodeEditor/executing_lines/0: line 4 is past the text's "
                           "last line, 0",
-                          "/components/TextEdit/gutters/0/lines/0/line: line 3 is past the "
+                          "/components/TextArea/gutters/0/lines/0/line: line 3 is past the "
                           "text's last line, 0",
                       });
 }
 
-TEST_CASE("a TextEdit's own gutters show text and icons on the lines they name") {
+TEST_CASE("a TextArea's own gutters show text and icons on the lines they name") {
     Editors f;
     f.editor("notes", {20, 20, 300, 104}, R"("text": "a\nb", "gutters": [
         {"name": "marks", "width": 20, "lines": [{"line": 1, "text": "!", "color": [1, 0, 0, 1]}]},
@@ -1249,7 +1249,7 @@ TEST_CASE("a TextEdit's own gutters show text and icons on the lines they name")
                   click(20.0F + kMargin + 30.0F, row_y(0), false)}) ==
           "mouse_entered notes, focus_entered notes, gutter_clicked notes 0 icons");
     // Right to left, they're at the right, in the same order.
-    f.set("notes", R"({"Control": {"layout_direction": "rtl"}})");
+    f.set("notes", R"({"Widget": {"layout_direction": "rtl"}})");
     CHECK(f.view("notes").gutters[0].x == 300.0F - kMargin - 20.0F);
     CHECK(icons(f, "notes").at(0).position.x == 300.0F - kMargin - 24.0F - 16.0F);
     // The control is mirrored in the viewport too, to 80 from the left.
@@ -1258,10 +1258,10 @@ TEST_CASE("a TextEdit's own gutters show text and icons on the lines they name")
           "gutter_clicked notes 0 icons");
 }
 
-TEST_CASE("a CodeEdit draws its guidelines, and previews a breakpoint under the pointer") {
+TEST_CASE("a CodeEditor draws its guidelines, and previews a breakpoint under the pointer") {
     Editors f;
     f.editor("code", {20, 20, 300, 104}, R"("text": "a\nb")");
-    f.set("code", R"({"CodeEdit": {"line_length_guidelines": [2, 5]}})");
+    f.set("code", R"({"CodeEditor": {"line_length_guidelines": [2, 5]}})");
     const auto guidelines = [&] {
         const ui::Layout placed = f.layout();
         std::vector<ui::Box> out;
@@ -1281,7 +1281,7 @@ TEST_CASE("a CodeEdit draws its guidelines, and previews a breakpoint under the 
     CHECK(lines[1].position.x == kMargin + 60.0F);
     CHECK(near(lines[1].style.bg_color, {0.3F, 0.5F, 0.8F, 0.06F}));
     // After the gutters.
-    f.set("code", R"({"CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+    f.set("code", R"({"CodeEditor": {"gutters_draw_breakpoints_gutter": true,
                                    "breakpointed_lines": [1]}})");
     lines = guidelines();
     REQUIRE(lines.size() == 2);
@@ -1335,12 +1335,12 @@ struct Session {
 
 } // namespace
 
-TEST_CASE("input.inject types into a TextEdit, and ui.layout reports its caret and lines") {
+TEST_CASE("input.inject types into a TextArea, and ui.layout reports its caret and lines") {
     Session s;
     s.ok("entity.create", R"({"id": "notes", "components": {
-        "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
+        "Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
                     "offset_bottom": 120},
-        "TextEdit": {"placeholder_text": "Notes"}}})");
+        "TextArea": {"placeholder_text": "Notes"}}})");
     CHECK(s.ok("ui.layout", R"({"ids": ["notes"]})") ==
           parse(R"({"viewport": [1280, 720], "controls": [
               {"id": "notes", "rect": [20, 20, 300, 100],
@@ -1361,19 +1361,19 @@ TEST_CASE("input.inject types into a TextEdit, and ui.layout reports its caret a
               {"id": "notes", "rect": [20, 20, 300, 100], "focused": true,
                "text_edit": {"caret": [1, 4], "selection": [[1, 4], [1, 7]]},
                "lines": ["Dear Mira,", "See you"]}]})"));
-    json::Value got = s.ok("entity.get", R"({"id": "notes", "components": ["TextEdit"]})");
-    json::Value& edit = got["components"]["TextEdit"];
+    json::Value got = s.ok("entity.get", R"({"id": "notes", "components": ["TextArea"]})");
+    json::Value& edit = got["components"]["TextArea"];
     CHECK(edit["text"] == "Dear Mira,\nSee you");
     CHECK(edit["caret_line"] == 1);
     CHECK(edit["caret_column"] == 4);
 }
 
-TEST_CASE("ui.search finds text in a TextEdit, and ui.layout reports its matches and bars") {
+TEST_CASE("ui.search finds text in a TextArea, and ui.layout reports its matches and bars") {
     Session s;
     s.ok("entity.create", R"({"id": "notes", "components": {
-        "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
+        "Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
                     "offset_bottom": 70},
-        "TextEdit": {"text": "one two one\nOne\ntwone", "caret_line": 0, "caret_column": 1}}})");
+        "TextArea": {"text": "one two one\nOne\ntwone", "caret_line": 0, "caret_column": 1}}})");
     // From the caret, or from where it is told.
     CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one"})") == parse(R"({"found": [0, 8]})"));
     CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one", "from": [1, 1]})") ==
@@ -1386,14 +1386,14 @@ TEST_CASE("ui.search finds text in a TextEdit, and ui.layout reports its matches
           parse(R"({"matches": [[0, 0], [0, 8]], "count": 2})"));
     CHECK(s.ok("ui.search", R"({"id": "notes", "text": "one", "all": true, "max_results": 1})") ==
           parse(R"({"matches": [[0, 0]], "count": 4})"));
-    // With no text, the TextEdit's search_text and search_flags.
-    s.ok("component.set", R"({"id": "notes", "components": {"TextEdit": {
+    // With no text, the TextArea's search_text and search_flags.
+    s.ok("component.set", R"({"id": "notes", "components": {"TextArea": {
         "search_text": "ONE", "search_flags": ["match_case"]}}})");
     CHECK(s.ok("ui.search", R"({"id": "notes", "all": true})") ==
           parse(R"({"matches": [], "count": 0})"));
     // ui.layout reports where search_text shows and each scroll bar's grabber, on screen: the
     // vertical one at the right, between the style's margins.
-    s.ok("component.set", R"({"id": "notes", "components": {"TextEdit": {
+    s.ok("component.set", R"({"id": "notes", "components": {"TextArea": {
         "search_text": "one", "search_flags": []}}})");
     json::Value layout = s.ok("ui.layout", R"({"ids": ["notes"]})");
     json::Value& edit = layout["controls"].as_array()[0]["text_edit"];
@@ -1418,17 +1418,17 @@ TEST_CASE("ui.search finds text in a TextEdit, and ui.layout reports its matches
           "/from/1: line 1 has 3 characters");
     CHECK(fails(R"({"id": "notes", "text": ""})") == "/text: the text to find is empty");
     s.ok("entity.create", R"({"id": "label", "components": {"Label": {}}})");
-    CHECK(fails(R"({"id": "label", "text": "a"})") == "/id: \"label\" has no TextEdit");
+    CHECK(fails(R"({"id": "label", "text": "a"})") == "/id: \"label\" has no TextArea");
 }
 
-TEST_CASE("ui.layout reports a CodeEdit's gutters, and check finds gutters it can't show") {
+TEST_CASE("ui.layout reports a CodeEditor's gutters, and check finds gutters it can't show") {
     Session s;
     s.ok("entity.create", R"({"id": "code", "components": {
-        "Control": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
+        "Widget": {"offset_left": 20, "offset_top": 20, "offset_right": 320,
                     "offset_bottom": 120,
                     "theme_override_colors": {"breakpoint_color": [0, 1, 0, 1]}},
-        "TextEdit": {"text": "a\nb"},
-        "CodeEdit": {"gutters_draw_breakpoints_gutter": true,
+        "TextArea": {"text": "a\nb"},
+        "CodeEditor": {"gutters_draw_breakpoints_gutter": true,
                      "gutters_draw_line_numbers": true}}})");
     json::Value layout = s.ok("ui.layout", R"({"ids": ["code"]})");
     json::Value& control = layout["controls"].as_array()[0];
@@ -1444,11 +1444,11 @@ TEST_CASE("ui.layout reports a CodeEdit's gutters, and check finds gutters it ca
           parse(R"({"name": "main_gutter", "rect": [24, 24, )" + std::to_string(row) + ", 92]}"));
     CHECK(gutters[1]["name"] == "line_numbers");
     CHECK(gutters[1]["rect"].as_array()[0].as_int() == 24 + row);
-    // CodeEdit's theme items are known, so the override is no problem.
+    // CodeEditor's theme items are known, so the override is no problem.
     CHECK(layout.find("problems") == nullptr);
 
-    s.ok("entity.create", R"({"id": "loose", "components": {"CodeEdit": {}}})");
-    s.ok("component.set", R"({"id": "code", "components": {"TextEdit": {"gutters": [
+    s.ok("entity.create", R"({"id": "loose", "components": {"CodeEditor": {}}})");
+    s.ok("component.set", R"({"id": "code", "components": {"TextArea": {"gutters": [
         {"name": "marks", "type": "icons", "width": -1, "lines": [{"line": -1}]}]}}})");
     std::vector<std::string> problems;
     json::Value checked = s.ok("ui.layout");
@@ -1456,13 +1456,14 @@ TEST_CASE("ui.layout reports a CodeEdit's gutters, and check finds gutters it ca
         problems.push_back(std::string(problem["path"].as_string()) + ": " +
                            std::string(problem["message"].as_string()));
     }
-    CHECK(problems ==
-          std::vector<std::string>{
-              "/components/TextEdit/gutters/0/type: a gutter shows \"string\" or \"icon\", not "
-              "\"icons\"; did you mean \"icon\"?",
-              "/components/TextEdit/gutters/0/width: a gutter's width can't be less than 0",
-              "/components/TextEdit/gutters/0/lines/0/line: lines count from 0",
-              "/components/CodeEdit: a CodeEdit makes the TextEdit on its entity a code editor, "
-              "and this one has none",
-          });
+    CHECK(
+        problems ==
+        std::vector<std::string>{
+            "/components/TextArea/gutters/0/type: a gutter shows \"string\" or \"icon\", not "
+            "\"icons\"; did you mean \"icon\"?",
+            "/components/TextArea/gutters/0/width: a gutter's width can't be less than 0",
+            "/components/TextArea/gutters/0/lines/0/line: lines count from 0",
+            "/components/CodeEditor: a CodeEditor makes the TextArea on its entity a code editor, "
+            "and this one has none",
+        });
 }

@@ -89,10 +89,10 @@ struct Scene {
 constexpr std::string_view kWall = R"({
     "Transform3D": {"position": [0, 1, 0]},
     "StaticBody3D": {},
-    "CollisionShape3D": {"shape": "box", "size": [2, 2, 0.3]},
-    "BoxMesh": {"size": [2, 2, 0.3]},
-    "MeshInstance3D": {},
-    "StandardMaterial3D": {"albedo_color": [0.8, 0.4, 0.3, 1]},
+    "Collider3D": {"shape": "box", "size": [2, 2, 0.3]},
+    "BoxGeometry": {"size": [2, 2, 0.3]},
+    "Model3D": {},
+    "Surface3D": {"albedo_color": [0.8, 0.4, 0.3, 1]},
     "Destructible3D": {"pieces": 6, "damage_threshold": 10, "mass": 20}})";
 
 // A ball of 4 kg flying at the wall at speed meters per second.
@@ -100,15 +100,15 @@ std::string ball(float speed) {
     return R"({"Transform3D": {"position": [0, 1, 1.5]},
         "RigidBody3D": {"mass": 4, "gravity_scale": 0, "linear_velocity": [0, 0, -)" +
            std::to_string(speed) + R"(]},
-        "CollisionShape3D": {"shape": "sphere", "radius": 0.3}})";
+        "Collider3D": {"shape": "sphere", "radius": 0.3}})";
 }
 
 } // namespace
 
 TEST_CASE("destruction: a mesh breaks into Voronoi cells that share its volume and repeat") {
     scene3d::CsgTree box;
-    box.shape = world::CSGMesh3D{};
-    box.primitive = world::BoxMesh{.size = {2.0F, 2.0F, 0.3F}};
+    box.shape = world::SolidMesh3D{};
+    box.primitive = world::BoxGeometry{.size = {2.0F, 2.0F, 0.3F}};
     const std::shared_ptr<const scene3d::Fracture> fracture = scene3d::fracture(box, 6, 0);
     REQUIRE(fracture->problems.empty());
     REQUIRE(fracture->pieces.size() >= 2);
@@ -138,8 +138,8 @@ TEST_CASE("destruction: a mesh breaks into Voronoi cells that share its volume a
 
     // A flat mesh has no inside.
     scene3d::CsgTree plane;
-    plane.shape = world::CSGMesh3D{};
-    plane.primitive = world::PlaneMesh{};
+    plane.shape = world::SolidMesh3D{};
+    plane.primitive = world::PlaneGeometry{};
     const auto flat = scene3d::fracture(plane, 4, 0);
     REQUIRE(flat->problems.size() == 1);
     CHECK(flat->problems.front().message.find("doesn't close") != std::string::npos);
@@ -172,8 +172,8 @@ TEST_CASE("destruction: an impact past the damage threshold breaks a body into p
         const entt::entity piece = scene.world.find(id);
         const auto& ecs = scene.world.ecs();
         mass += ecs.get<world::RigidBody3D>(piece).mass;
-        CHECK(ecs.get<world::CollisionShape3D>(piece).shape == "convex_polygon");
-        CHECK(ecs.all_of<world::BoxMesh, world::MeshInstance3D, world::StandardMaterial3D>(piece));
+        CHECK(ecs.get<world::Collider3D>(piece).shape == "convex_polygon");
+        CHECK(ecs.all_of<world::BoxGeometry, world::Model3D, world::Surface3D>(piece));
         CHECK(ecs.get<world::FracturePiece3D>(piece).pieces == 6);
     }
     CHECK(mass == doctest::Approx(20.0F).epsilon(1.0e-4));
@@ -202,9 +202,9 @@ TEST_CASE("destruction: break_body pushes pieces away and keeps a rigid body's m
     const entt::entity crate = scene.create("crate", R"({
         "Transform3D": {"position": [0, 5, 0]},
         "RigidBody3D": {"mass": 8, "gravity_scale": 0, "linear_velocity": [3, 0, 0]},
-        "CollisionShape3D": {"shape": "box"},
-        "BoxMesh": {},
-        "MeshInstance3D": {},
+        "Collider3D": {"shape": "box"},
+        "BoxGeometry": {},
+        "Model3D": {},
         "Destructible3D": {"pieces": 4, "seed": 3, "debris_lifetime": 0.5}})");
     auto broken = physics3d::break_body(scene.world, crate, 2.0F, Vec3{0.0F, 5.0F, 0.0F});
     REQUIRE(broken.ok());
@@ -227,21 +227,21 @@ TEST_CASE("destruction: break_body pushes pieces away and keeps a rigid body's m
 
     // What can't break says why, and changes nothing.
     const entt::entity rock = scene.create("rock", R"({"Transform3D": {}, "StaticBody3D": {},
-        "CollisionShape3D": {"shape": "box"}, "BoxMesh": {}, "MeshInstance3D": {}})");
+        "Collider3D": {"shape": "box"}, "BoxGeometry": {}, "Model3D": {}})");
     auto refused = physics3d::break_body(scene.world, rock);
     REQUIRE_FALSE(refused.ok());
     CHECK(refused.error().message == "has no Destructible3D");
-    const entt::entity ghost = scene.create("ghost", R"({"Transform3D": {}, "BoxMesh": {},
-        "MeshInstance3D": {}, "Destructible3D": {}})");
+    const entt::entity ghost = scene.create("ghost", R"({"Transform3D": {}, "BoxGeometry": {},
+        "Model3D": {}, "Destructible3D": {}})");
     refused = physics3d::break_body(scene.world, ghost);
     REQUIRE_FALSE(refused.ok());
     CHECK(refused.error().message ==
           "is no StaticBody3D or RigidBody3D, so it has no body to break");
     const entt::entity sheet = scene.create("sheet", R"({"Transform3D": {}, "StaticBody3D": {},
-        "PlaneMesh": {}, "MeshInstance3D": {}, "Destructible3D": {}})");
+        "PlaneGeometry": {}, "Model3D": {}, "Destructible3D": {}})");
     refused = physics3d::break_body(scene.world, sheet);
     REQUIRE_FALSE(refused.ok());
-    CHECK(refused.error().message.find("can't break: its PlaneMesh is flat") == 0);
+    CHECK(refused.error().message.find("can't break: its PlaneGeometry is flat") == 0);
     CHECK(scene.world.valid(sheet));
 
     // scene validate reports both, through check_meshes.
@@ -251,8 +251,8 @@ TEST_CASE("destruction: break_body pushes pieces away and keeps a rigid body's m
     CHECK(problems[0].path == "/components/Destructible3D");
     CHECK(problems[0].message == "breaks only a StaticBody3D or RigidBody3D: give it one");
     CHECK(problems[1].entity == sheet);
-    CHECK(problems[1].path == "/components/MeshInstance3D");
-    CHECK(problems[1].message.find("can't break: its PlaneMesh is flat") == 0);
+    CHECK(problems[1].path == "/components/Model3D");
+    CHECK(problems[1].message.find("can't break: its PlaneGeometry is flat") == 0);
 }
 
 TEST_CASE("destruction: each piece draws its own part of the mesh") {

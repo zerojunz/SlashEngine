@@ -21,17 +21,17 @@ The door part is placed at its hinge and its board sits beside it, so turning th
 door on the hinge. Each point is a node of the model with no mesh, as Godot's `Marker3D` in an
 imported scene, placed in its part (or the model) and moving with it. In
 [main.scene.json](main.scene.json) the cabinet's `Skeleton3D` opens the door by its node name, and
-a `BoneAttachment3D` on the `top` point carries a lamp, another recipe:
+a `BoneSocket3D` on the `top` point carries a lamp, another recipe:
 
 ```json
 "cabinet": {"components": {
   "Transform3D": {"children": ["on_top"]},
-  "MeshInstance3D": {"mesh": "props/cabinet.model.json"},
+  "Model3D": {"mesh": "props/cabinet.model.json"},
   "Skeleton3D": {"bone_rotations": {"door": [0, -1.2, 0]}}
 }},
 "on_top": {"components": {
   "Transform3D": {"children": ["lamp"]},
-  "BoneAttachment3D": {"bone_name": "top"}
+  "BoneSocket3D": {"bone_name": "top"}
 }}
 ```
 

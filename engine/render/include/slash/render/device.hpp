@@ -174,7 +174,7 @@ struct Shading {
     std::uint32_t light_mask = 1;
     std::int32_t z_index = 0;
     std::int32_t layer = 0;
-    // Multiplies a Normal draw, as the CanvasModulate of its canvas.
+    // Multiplies a Normal draw, as the AmbientTint2D of its canvas.
     std::array<float, 4> ambient{1.0F, 1.0F, 1.0F, 1.0F};
     // Where the draw's positions are in the coordinates lights use, for a draw in another canvas
     // than theirs: x' = [0] x + [1] y + [2] and y' = [3] x + [4] y + [5]. None takes them as they
@@ -234,7 +234,7 @@ struct Material {
     bool operator==(const Material&) const = default;
 };
 
-// One of a terrain's four ground textures, as the HTerrain plugin's: an albedo with a bump in
+// One of a terrain's four ground textures, as the Terrain3D plugin's: an albedo with a bump in
 // alpha and a normal map (OpenGL style, green up) with roughness in alpha, tiled every uv_scale
 // cells, and how much the color map tints it.
 struct TerrainLayer {
@@ -248,7 +248,7 @@ struct TerrainLayer {
     bool operator==(const TerrainLayer&) const = default;
 };
 
-// Terrain shading, as the HTerrain plugin's Classic4 shader: four ground layers weighed by a
+// Terrain shading, as the Terrain3D plugin's Classic4 shader: four ground layers weighed by a
 // splat map, depth-blended by their bumps, tinted by a color map whose alpha under 0.5 cuts holes,
 // over a normal map of the terrain's shape. The maps cover the mesh's texture coordinates 0..1,
 // a texel a cell of resolution across, and the ground layers tile across them. Normals in the
@@ -282,7 +282,7 @@ struct LightmapShading {
     bool operator==(const LightmapShading&) const = default;
 };
 
-// The light a moving mesh takes from a LightmapGI's light probes, as Godot's lightmap capture:
+// The light a moving mesh takes from a BakedLighting3D's light probes, as Godot's lightmap capture:
 // nine spherical harmonics coefficients in the world's space (l0; l1 for y, z and x; l2 for xy,
 // yz, 3z²-1, xz and x²-y²), linear RGB, already times the camera's exposure over the one they
 // were baked with. With enabled it is the mesh's ambient light, evaluated at each pixel's normal
@@ -300,14 +300,14 @@ struct LightmapCapture {
 // over the sky's by how much their cones cover. Forward+ only; lightmapped, captured and terrain
 // draws take none.
 struct VoxelGIShading {
-    TextureId atlas = TextureId::None; // None: no VoxelGI
+    TextureId atlas = TextureId::None; // None: no VoxelLighting3D
     std::array<VoxelGIProbe, 2> probes{};
     std::uint32_t count = 0; // how many of probes it traces
 
     bool operator==(const VoxelGIShading&) const = default;
 };
 
-// A StandardMaterial3D: what each pixel of a mesh is, with Godot's parameters and defaults.
+// A Surface3D: what each pixel of a mesh is, with Godot's parameters and defaults.
 // Colors are sRGB; textures are sampled at the mesh's texture coordinate times uv1_scale plus
 // uv1_offset, and None samples white.
 struct Material3D {
@@ -343,7 +343,7 @@ struct Material3D {
     std::array<float, 2> uv1_scale{1.0F, 1.0F};
     std::array<float, 2> uv1_offset{0.0F, 0.0F};
     bool disable_fog = false; // the scene's fog leaves it alone
-    // StandardMaterial3D's rim: each light also lights the edges facing away from the camera,
+    // Surface3D's rim: each light also lights the edges facing away from the camera,
     // rim_tint of the way from white to the albedo. 0 for none.
     float rim = 0.0F;
     float rim_tint = 0.0F;

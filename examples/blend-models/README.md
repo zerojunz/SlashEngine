@@ -4,13 +4,13 @@ Blender's `.blend` files, imported as Godot imports them: the engine never reads
 itself. It runs the artist's own Blender in the background, which opens the file and exports it
 as glTF with Godot's default import options, and draws that. No Blender code is linked into the
 engine or shipped with a game, so Blender's GPL stays with Blender.
-[main.scene.json](main.scene.json) stands a toadstool on the grass, with a `MeshInstance3D`
+[main.scene.json](main.scene.json) stands a toadstool on the grass, with a `Model3D`
 whose `mesh` names the file:
 
 ```json
 "toadstool": {
   "components": {
-    "MeshInstance3D": {"mesh": "models/toadstool.blend"},
+    "Model3D": {"mesh": "models/toadstool.blend"},
     "Transform3D": {}
   }
 }
@@ -33,7 +33,7 @@ Blender would make of a toadstool. With Blender installed, put any `.blend` file
 
 The model keeps Blender's objects as nodes: `Toadstool`, an empty, holds the `Stem` and the
 `Cap`, which has two surfaces, the red cap and the gills under it. Each material becomes a
-`StandardMaterial3D` as Godot's glTF importer makes it.
+`Surface3D` as Godot's glTF importer makes it.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -45,4 +45,4 @@ The model keeps Blender's objects as nodes: `Toadstool`, an empty, holds the `St
 - A smaller toadstool further back uses the same converted file; Blender doesn't run again.
 
 `slash-cli scene validate models/toadstool.blend` converts a `.blend` file, if it hasn't been,
-and checks it as `MeshInstance3D` loads it.
+and checks it as `Model3D` loads it.

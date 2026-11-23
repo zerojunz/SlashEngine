@@ -392,7 +392,7 @@ Reply damage_state(Session& session, const json::Value& params) {
             if (!destructible.carves.empty()) {
                 body["carves"] = static_cast<std::int64_t>(destructible.carves.size());
             }
-            if (const auto* terrain = ecs.try_get<const world::HTerrain>(entity);
+            if (const auto* terrain = ecs.try_get<const world::Terrain3D>(entity);
                 terrain != nullptr && !terrain->craters.empty()) {
                 body["craters"] = static_cast<std::int64_t>(terrain->craters.size());
             }
@@ -568,10 +568,10 @@ Reply damage_check(Session& session, const json::Value& params) {
                 }
             }
         }
-        if (!flat && !world.ecs().all_of<world::MeshInstance3D>(entity)) {
+        if (!flat && !world.ecs().all_of<world::Model3D>(entity)) {
             json::Value problem;
             problem["id"] = id;
-            problem["message"] = "a Destructible3D needs a MeshInstance3D to cut";
+            problem["message"] = "a Destructible3D needs a Model3D to cut";
             problems.emplace_back(std::move(problem));
         }
     };

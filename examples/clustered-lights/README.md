@@ -2,7 +2,7 @@
 
 3D lights lit as Godot's Forward+ renderer lights them. [main.scene.json](main.scene.json) is a
 plaza at night under a dim `moon`, seen from above through a `Camera3D` in a 320x180 window, with
-100 `OmniLight3D` lanterns in rows of 10, warm on the left and cool on the right, each reaching
+100 `PointLight3D` lanterns in rows of 10, warm on the left and cool on the right, each reaching
 0.9 meters.
 
 That is more lights than Godot's Compatibility renderer draws: it adds the first 64 to every

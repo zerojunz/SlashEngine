@@ -108,15 +108,15 @@ int main() {
     call(session, "step", R"({"ticks": 30})");
     call(session, "events.read", R"({"subscription": "events_1"})");
     call(session, "entity.get",
-         R"({"id": "sparks", "components": ["CPUParticles2D"], "omit_defaults": true})");
+         R"({"id": "sparks", "components": ["Emitter2D"], "omit_defaults": true})");
     call(session, "component.set",
-         R"({"id": "sparks", "components": {"CPUParticles2D": {"emitting": true}}})");
+         R"({"id": "sparks", "components": {"Emitter2D": {"emitting": true}}})");
     call(session, "step", R"({"ticks": 1})");
     call(session, "particles.eval", R"({"id": "sparks"})");
 
-    // An emission shape CPUParticles2D doesn't have is refused, with the ones it has.
+    // An emission shape Emitter2D doesn't have is refused, with the ones it has.
     call(session, "component.set",
-         R"({"id": "smoke", "components": {"CPUParticles2D": {"emission_shape": "sphear"}}})");
+         R"({"id": "smoke", "components": {"Emitter2D": {"emission_shape": "sphear"}}})");
 
     // Draw into a 320x180 texture. Each particle is a quad of its texture (or a white pixel),
     // scaled, turned and colored; emitters next to each other in draw order with the same

@@ -48,13 +48,13 @@ Hierarchies are built with no fused multiply-adds, so they are the same on every
 
 ## Using it
 
-`MeshInstance3D.virtualized` (default `false`) draws a model's surfaces this way, in place of
+`Model3D.virtualized` (default `false`) draws a model's surfaces this way, in place of
 their [LODs](scene-format.md#mesh-lods):
 
 ```json
 "moon": {"components": {
   "Transform3D": {"position": [0, 0, -40]},
-  "MeshInstance3D": {"mesh": "props/moon.model.json", "virtualized": true}
+  "Model3D": {"mesh": "props/moon.model.json", "virtualized": true}
 }}
 ```
 
@@ -87,7 +87,7 @@ a cut that it can't see:
   nothing.
 - **Behind occluders.** With [occlusion culling](scene-format.md#occlusion-culling) on, a
   cluster whose sphere the occlusion buffer hides is left out, with the same jitter timeouts
-  meshes have, unless the `MeshInstance3D` has `ignore_occlusion_culling`.
+  meshes have, unless the `Model3D` has `ignore_occlusion_culling`.
 
 Culling never changes what the frame shows. A cut with culled clusters draws its visible
 clusters as a second mesh, made again only when they change, and its whole cut into shadow maps

@@ -170,7 +170,7 @@ Result<render::Image> embedded_image(const cgltf_options& options, const cgltf_i
 }
 
 // Godot's GLTFTextureSampler::get_filter_mode and get_wrap_mode, on a material's albedo texture.
-void apply_sampler(const cgltf_sampler* sampler, world::StandardMaterial3D& standard) {
+void apply_sampler(const cgltf_sampler* sampler, world::Surface3D& standard) {
     if (sampler == nullptr) {
         return; // Godot's default sampler: linear with mipmaps, repeating
     }
@@ -206,7 +206,7 @@ ModelMaterial material_of(const cgltf_data& data, std::size_t index) {
     ModelMaterial out;
     out.name =
         in.name != nullptr && *in.name != '\0' ? in.name : "material_" + std::to_string(index);
-    world::StandardMaterial3D& standard = out.standard;
+    world::Surface3D& standard = out.standard;
     if (in.unlit != 0) {
         standard.shading_mode = "unshaded";
     }

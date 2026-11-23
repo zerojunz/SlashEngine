@@ -2,6 +2,7 @@
 
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/world.hpp"
@@ -352,6 +353,7 @@ Result<std::shared_ptr<const json::Value>> resolve(World& world, std::string_vie
     if (!prefab) {
         return invalid(prefab.error().message);
     }
+    upgrade_scene(prefab.value());
     const auto errors = json::validate(prefab.value(), scene ? scene_schema(world.components())
                                                              : prefab_schema(world.components()));
     if (!errors.empty()) {
@@ -884,8 +886,10 @@ json::Value prefab_schema(const ComponentRegistry& components) {
 }
 
 std::vector<json::ValidationError> validate_scene(const ComponentRegistry& components,
-                                                  const json::Value& scene,
+                                                  const json::Value& given,
                                                   const FileReader& reader) {
+    json::Value copy;
+    const json::Value& scene = current_names(given, copy);
     std::vector<json::ValidationError> errors = json::validate(scene, scene_schema(components));
     if (!errors.empty()) {
         return errors;
@@ -922,8 +926,10 @@ std::vector<json::ValidationError> validate_scene(const ComponentRegistry& compo
 }
 
 std::vector<json::ValidationError> validate_prefab(const ComponentRegistry& components,
-                                                   const json::Value& prefab,
+                                                   const json::Value& given,
                                                    const FileReader& reader) {
+    json::Value copy;
+    const json::Value& prefab = current_names(given, copy);
     std::vector<json::ValidationError> errors = json::validate(prefab, prefab_schema(components));
     if (!errors.empty()) {
         return errors;
@@ -931,7 +937,9 @@ std::vector<json::ValidationError> validate_prefab(const ComponentRegistry& comp
     return prefab_errors(validate_scene(components, prefab_as_scene(prefab), reader));
 }
 
-Result<std::size_t> load_scene(World& world, const json::Value& scene, const PrefabLinks& links) {
+Result<std::size_t> load_scene(World& world, const json::Value& given, const PrefabLinks& links) {
+    json::Value copy;
+    const json::Value& scene = current_names(given, copy);
     const std::vector<json::ValidationError> errors =
         json::validate(scene, scene_schema(world.components()));
     if (!errors.empty()) {
@@ -949,8 +957,10 @@ Result<std::size_t> load_scene(World& world, const json::Value& scene, const Pre
     return loaded;
 }
 
-Result<std::size_t> restore_scene(World& world, const json::Value& saved,
+Result<std::size_t> restore_scene(World& world, const json::Value& given,
                                   const PrefabLinks& links) {
+    json::Value copy;
+    const json::Value& saved = current_names(given, copy);
     std::string path;
     auto loaded = load_valid(world, saved, links, path, /*lenient=*/true);
     if (!loaded) {

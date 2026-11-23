@@ -4,4 +4,4 @@
 {"id":4,"jsonrpc":"2.0","result":{"id":"far_lamp"}}
 {"id":5,"jsonrpc":"2.0","result":{"colors":[[0.455,0.373,0.267,1],[0.024,0.027,0.063,1]],"drawn":{"meshes":9},"height":90,"path":"shots/street.png","width":160}}
 {"id":6,"jsonrpc":"2.0","result":{"id":"bench"}}
-{"id":7,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"bench","message":"asset \"models/bench.obj\" could not be read: no such file; did you mean \"models/lamp.obj\"?","path":"/components/MeshInstance3D/mesh"}],"viewport":[160,90]}}
+{"id":7,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"bench","message":"asset \"models/bench.obj\" could not be read: no such file; did you mean \"models/lamp.obj\"?","path":"/components/Model3D/mesh"}],"viewport":[160,90]}}

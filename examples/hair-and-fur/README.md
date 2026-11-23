@@ -14,7 +14,7 @@ drawn as thin strands, [fur.groom.json](fur.groom.json) short fur drawn as shell
  "simulation": {"stiffness": 0.15, "tip_stiffness": 0.02, "damping": 2}}
 ```
 
-A `HairInstance3D` grows its groom over the model its entity's `MeshInstance3D` draws: the
+A `Hair3D` grows its groom over the model its entity's `Model3D` draws: the
 surfaces drawn with its `section` material, here the `scalp` of
 [head.model.json](head.model.json), or all of them, as on the furry ball of
 [creature.model.json](creature.model.json). A few guide strands are spread over the surface
@@ -22,7 +22,7 @@ by area and simulated; the strands drawn follow the nearest guide, clumped and c
 A `Hair2D` grows a 2D groom along its `root_line`, standing to the line's left as drawn, so the
 doll's line, drawn right to left, hangs its mane down.
 
-[main.scene.json](main.scene.json) has the head (with a sphere `CollisionShape3D` its hair
+[main.scene.json](main.scene.json) has the head (with a sphere `Collider3D` its hair
 keeps off), the creature, the doll, a breeze and a 2D draft. [calls.jsonl](calls.jsonl) looks
 at them the way an agent does over MCP or JSON-RPC, and [results.jsonl](results.jsonl) holds
 the replies:

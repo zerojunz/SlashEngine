@@ -1,4 +1,4 @@
-// hair.get: a HairInstance3D's or Hair2D's groom as it grew and where its guides are now
+// hair.get: a Hair3D's or Hair2D's groom as it grew and where its guides are now
 // (slash/world/hair.hpp, slash/scene3d/hair.hpp).
 #include "slash/scene3d/hair.hpp"
 
@@ -107,7 +107,7 @@ void describe_groom(json::Value& out, const std::string& path, const world::Groo
 }
 
 Reply hair_get_3d(world::World& world, entt::entity entity, bool every_point) {
-    const auto& hair = world.ecs().get<const world::HairInstance3D>(entity);
+    const auto& hair = world.ecs().get<const world::Hair3D>(entity);
     auto grown = scene3d::hair_growth(world, entity);
     if (!grown) {
         return param_error(code::kInvalidArgument, "/entity",
@@ -202,14 +202,13 @@ Reply hair_get(Session& session, const json::Value& params) {
     }
     const json::Value* every = params.find("points");
     const bool every_point = every != nullptr && every->as_bool();
-    if (world.ecs().all_of<world::HairInstance3D>(entity)) {
+    if (world.ecs().all_of<world::Hair3D>(entity)) {
         return hair_get_3d(world, entity, every_point);
     }
     if (world.ecs().all_of<world::Hair2D>(entity)) {
         return hair_get_2d(world, entity, every_point);
     }
-    return param_error(code::kInvalidArgument, "/entity",
-                       quoted(id) + " has no HairInstance3D or Hair2D");
+    return param_error(code::kInvalidArgument, "/entity", quoted(id) + " has no Hair3D or Hair2D");
 }
 
 } // namespace
@@ -220,11 +219,11 @@ void register_hair_commands(Registry& registry) {
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"entity"};
     json::Value& p = schema["properties"];
-    p["entity"] = property("string", "ID of the entity with the HairInstance3D or Hair2D.");
+    p["entity"] = property("string", "ID of the entity with the Hair3D or Hair2D.");
     p["points"] = property("boolean", "Also every guide's points, root first.");
     registry.add({
         .name = "hair.get",
-        .description = "A HairInstance3D's or Hair2D's groom as grown (guides, strands, points "
+        .description = "A Hair3D's or Hair2D's groom as grown (guides, strands, points "
                        "each) and its guides now: bounds, tips and how far the tips moved from "
                        "the groomed shape. $ slash-cli schema groom.",
         .capabilities = {Capability::Read},

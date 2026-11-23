@@ -3,6 +3,7 @@ add_library(slash_world
     src/camera2d.cpp
     src/canvas_layer.cpp
     src/cloth2d.cpp
+    src/aliases.cpp
     src/component_registry.cpp
     src/foliage.cpp
     src/components.cpp

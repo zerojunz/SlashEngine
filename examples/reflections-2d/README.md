@@ -27,6 +27,6 @@ blue (`tint`, `opacity`).
 - `frame.summary` lists the pond as a `Reflection2D` with its rect.
 
 The reflection draws into a texture of its own each frame (its target, the rect's size in
-pixels), so it costs one more pass over what draws before it. Draws of a `GPUParticles2D` are
+pixels), so it costs one more pass over what draws before it. Draws of a `GpuEmitter2D` are
 left out of it. In 3D, the environment's screen-space reflections (`ssr_*`) do the same for
 meshes (see `examples/ssr-3d`).

@@ -207,15 +207,15 @@ struct Project {
 
 TEST_CASE("canvases stack as Godot's: by layer, the world first among layer 0") {
     Scene scene;
-    // With no CanvasLayer, there is only the world.
+    // With no ScreenLayer, there is only the world.
     CHECK(scene.canvases().all().size() == 1);
     CHECK_FALSE(scene.canvases().layered());
 
-    const entt::entity top = scene.create("top", R"({"CanvasLayer": {"layer": 2}})");
-    const entt::entity hud = scene.create("hud", R"({"CanvasLayer": {}})");
-    const entt::entity back = scene.create("back", R"({"CanvasLayer": {"layer": -1}})");
-    const entt::entity same = scene.create("same", R"({"CanvasLayer": {"layer": 0}})");
-    const entt::entity menu = scene.create("menu", R"({"CanvasLayer": {}})");
+    const entt::entity top = scene.create("top", R"({"ScreenLayer": {"layer": 2}})");
+    const entt::entity hud = scene.create("hud", R"({"ScreenLayer": {}})");
+    const entt::entity back = scene.create("back", R"({"ScreenLayer": {"layer": -1}})");
+    const entt::entity same = scene.create("same", R"({"ScreenLayer": {"layer": 0}})");
+    const entt::entity menu = scene.create("menu", R"({"ScreenLayer": {}})");
     const world::Canvases canvases = scene.canvases();
     std::vector<entt::entity> order;
     for (const world::Canvas& each : canvases.all()) {
@@ -228,18 +228,18 @@ TEST_CASE("canvases stack as Godot's: by layer, the world first among layer 0") 
     // Holding nothing, they leave everything in the world.
     CHECK_FALSE(canvases.layered());
 
-    // What a layer holds draws in it, with its Transform2D and Control children.
+    // What a layer holds draws in it, with its Transform2D and Widget children.
     scene.create("ship", R"({"Transform2D": {}})");
     scene.create("gun", R"({"Transform2D": {}})");
-    scene.create("panel", R"({"Control": {}})");
-    scene.create("label", R"({"Control": {}, "Label": {}})");
+    scene.create("panel", R"({"Widget": {}})");
+    scene.create("label", R"({"Widget": {}, "Label": {}})");
     scene.create("rock", R"({"Transform2D": {}})");
     scene.get<world::Transform2D>("ship").children = {scene.world.find("gun")};
-    scene.get<world::Control>("panel").children = {scene.world.find("label")};
-    scene.get<world::CanvasLayer>("hud").children = {scene.world.find("ship"),
+    scene.get<world::Widget>("panel").children = {scene.world.find("label")};
+    scene.get<world::ScreenLayer>("hud").children = {scene.world.find("ship"),
                                                      scene.world.find("panel")};
     // An entity two layers hold draws in the first made.
-    scene.get<world::CanvasLayer>("top").children = {scene.world.find("panel")};
+    scene.get<world::ScreenLayer>("top").children = {scene.world.find("panel")};
     const world::Canvases held = scene.canvases();
     CHECK(held.layered());
     CHECK(held.of(scene.world.find("ship")) == 3);
@@ -249,15 +249,15 @@ TEST_CASE("canvases stack as Godot's: by layer, the world first among layer 0") 
     CHECK(held.of(scene.world.find("rock")) == 1);
     CHECK(held.of(entt::null) == 1);
 
-    // A loop of Control children ends.
-    scene.get<world::Control>("label").children = {scene.world.find("panel")};
-    scene.get<world::CanvasLayer>("top").children = {};
-    scene.get<world::CanvasLayer>("hud").children = {scene.world.find("ship")};
+    // A loop of Widget children ends.
+    scene.get<world::Widget>("label").children = {scene.world.find("panel")};
+    scene.get<world::ScreenLayer>("top").children = {};
+    scene.get<world::ScreenLayer>("hud").children = {scene.world.find("ship")};
     CHECK(scene.canvases().of(scene.world.find("label")) == 1);
 }
 
 TEST_CASE("canvas_layer_transform places a layer as Godot's CanvasLayer, following the camera") {
-    world::CanvasLayer layer;
+    world::ScreenLayer layer;
     layer.offset = {10.0F, 20.0F};
     layer.rotation = kPi / 2.0F;
     layer.scale = {2.0F, 2.0F};
@@ -351,16 +351,16 @@ TEST_CASE("canvas layers draw in their order, over the camera's view") {
                             "Sprite2D": {"texture": "blue.png"}})");
     scene.create("heart", R"({"Transform2D": {"position": [20, 20]},
                               "Sprite2D": {"texture": "green.png"}})");
-    scene.create("back", R"({"CanvasLayer": {"layer": -1, "children": ["sky"]}})");
-    scene.create("hud", R"({"CanvasLayer": {"children": ["heart"]}})");
+    scene.create("back", R"({"ScreenLayer": {"layer": -1, "children": ["sky"]}})");
+    scene.create("hud", R"({"ScreenLayer": {"children": ["heart"]}})");
     render::Image image = scene.capture();
     CHECK(pixel(image, 80, 45) == kRed);
     CHECK(pixel(image, 85, 45) == kBlue);
     CHECK(pixel(image, 20, 20) == kGreen);
     CHECK(pixel(image, 40, 20) == kClear);
 
-    // A CanvasModulate darkens only the world's canvas.
-    scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    // A AmbientTint2D darkens only the world's canvas.
+    scene.create("night", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
     image = scene.capture();
     CHECK(pixel(image, 80, 45) == kClear);
     CHECK(pixel(image, 85, 45) == kBlue);
@@ -368,18 +368,18 @@ TEST_CASE("canvas layers draw in their order, over the camera's view") {
     scene.world.destroy(scene.world.find("night"));
 
     // The HUD's offset and scale move what it holds; an invisible layer draws nothing.
-    scene.get<world::CanvasLayer>("hud").offset = {10.0F, 0.0F};
-    scene.get<world::CanvasLayer>("hud").scale = {2.0F, 2.0F};
-    scene.get<world::CanvasLayer>("back").visible = false;
+    scene.get<world::ScreenLayer>("hud").offset = {10.0F, 0.0F};
+    scene.get<world::ScreenLayer>("hud").scale = {2.0F, 2.0F};
+    scene.get<world::ScreenLayer>("back").visible = false;
     image = scene.capture();
     CHECK(pixel(image, 50, 40) == kGreen);
     CHECK(pixel(image, 20, 20) == kClear);
     CHECK(pixel(image, 85, 45) == kClear);
 
     // Following the viewport, the HUD moves with the camera.
-    scene.get<world::CanvasLayer>("hud").offset = {};
-    scene.get<world::CanvasLayer>("hud").scale = {1.0F, 1.0F};
-    scene.get<world::CanvasLayer>("hud").follow_viewport_enabled = true;
+    scene.get<world::ScreenLayer>("hud").offset = {};
+    scene.get<world::ScreenLayer>("hud").scale = {1.0F, 1.0F};
+    scene.get<world::ScreenLayer>("hud").follow_viewport_enabled = true;
     scene.get<world::Transform2D>("heart").position = {1010.0F, 1000.0F};
     image = scene.capture();
     CHECK(pixel(image, 90, 45) == kGreen);
@@ -391,10 +391,10 @@ TEST_CASE("lights shade the canvases their layer range holds, as Godot's") {
     // screen in a dark world; a HUD in layer 1, moved 10 pixels right, is dark too and holds a
     // badge at (20, 20), a chip at (60, 20) and a lamp, an 8x8 square of light, over the chip.
     scene.create("cam", R"({"Transform2D": {"position": [1000, 1000]}, "Camera2D": {}})");
-    scene.create("night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    scene.create("night", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
     scene.create("ground", R"({"Transform2D": {"position": [1000, 1000], "scale": [40, 22.5]},
                                "Sprite2D": {"texture": "white.png"}})");
-    scene.create("hud_night", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+    scene.create("hud_night", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
     scene.create("badge", R"({"Transform2D": {"position": [20, 20]},
                               "Sprite2D": {"texture": "white.png"}})");
     scene.create("chip", R"({"Transform2D": {"position": [60, 20]},
@@ -402,10 +402,10 @@ TEST_CASE("lights shade the canvases their layer range holds, as Godot's") {
     scene.create("lamp", R"({"Transform2D": {"position": [60, 20]},
                              "PointLight2D": {"texture": "white.png", "texture_scale": 2,
                                               "range_layer_min": 1, "range_layer_max": 1}})");
-    scene.create("hud", R"({"CanvasLayer": {"offset": [10, 0],
+    scene.create("hud", R"({"ScreenLayer": {"offset": [10, 0],
                             "children": ["hud_night", "badge", "chip", "lamp"]}})");
 
-    // Each canvas has its own CanvasModulate, and the lamp lights only layer 1: the chip under
+    // Each canvas has its own AmbientTint2D, and the lamp lights only layer 1: the chip under
     // it, not the ground around it.
     render::Image image = scene.capture();
     CHECK(pixel(image, 30, 20) == kClear); // the badge
@@ -431,12 +431,12 @@ TEST_CASE("lights shade the canvases their layer range holds, as Godot's") {
 
     // A hidden layer's lights go out with it.
     scene.get<world::PointLight2D>("torch").enabled = false;
-    scene.get<world::CanvasLayer>("hud").visible = false;
+    scene.get<world::ScreenLayer>("hud").visible = false;
     image = scene.capture();
     CHECK(pixel(image, 73, 17) == kClear);
 
     // collect_lighting says how each canvas is lit, and places the lamp through its canvas.
-    scene.get<world::CanvasLayer>("hud").visible = true;
+    scene.get<world::ScreenLayer>("hud").visible = true;
     std::vector<canvas::LightProblem> problems;
     const world::Canvases canvases = scene.canvases();
     const canvas::SceneLighting lighting = canvas::collect_lighting(
@@ -474,14 +474,14 @@ TEST_CASE("light.sample samples an entity in its canvas") {
         {"command": "entity.create", "params": {"id": "cam", "components": {
             "Transform2D": {"position": [1000, 1000]}, "Camera2D": {}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
-            "DirectionalLight2D": {"color": [0.5, 0.5, 0.5, 1], "range_layer_max": 2}}}},
+            "SunLight2D": {"color": [0.5, 0.5, 0.5, 1], "range_layer_max": 2}}}},
         {"command": "entity.create", "params": {"id": "dusk", "components": {
-            "CanvasModulate": {"color": [0.25, 0.25, 0.25, 1]}}}},
+            "AmbientTint2D": {"color": [0.25, 0.25, 0.25, 1]}}}},
         {"command": "entity.create", "params": {"id": "badge", "components": {
             "Transform2D": {"position": [20, 20]}, "Sprite2D": {"texture": "white.png"}}}},
         {"command": "entity.create", "params": {"id": "hud", "components": {
-            "CanvasLayer": {"layer": 2, "children": ["badge"]}}}}]})");
-    // The world: the sun over the dusk. The badge's canvas has no CanvasModulate.
+            "ScreenLayer": {"layer": 2, "children": ["badge"]}}}}]})");
+    // The world: the sun over the dusk. The badge's canvas has no AmbientTint2D.
     CHECK(project.ok("light.sample", R"({"points": [[0, 0]]})") ==
           parse(R"({"lit": true, "ambient": [0.25, 0.25, 0.25], "points": [
               {"color": [0.75, 0.75, 0.75], "lights": [{"id": "sun", "color": [0.5, 0.5, 0.5]}]}
@@ -492,7 +492,7 @@ TEST_CASE("light.sample samples an entity in its canvas") {
           ]})"));
     // Out of the sun's range, the badge's canvas isn't lit at all.
     project.ok("component.set",
-               R"({"id": "sun", "components": {"DirectionalLight2D": {"range_layer_max": 1}}})");
+               R"({"id": "sun", "components": {"SunLight2D": {"range_layer_max": 1}}})");
     CHECK(project.ok("light.sample", R"({"id": "badge"})") ==
           parse(R"({"lit": false, "layer": "hud", "ambient": [1, 1, 1],
                     "points": [{"color": [1, 1, 1], "lights": []}]})"));
@@ -575,19 +575,19 @@ TEST_CASE("controls in a canvas layer lay out, draw and take input in its canvas
     const Project project("canvas_layer_controls_project");
     project.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "bar", "components": {
-            "Control": {"offset_right": 40, "offset_bottom": 10},
-            "ColorRect": {"color": [0, 0, 1, 1]}}}},
+            "Widget": {"offset_right": 40, "offset_bottom": 10},
+            "ColorFill": {"color": [0, 0, 1, 1]}}}},
         {"command": "entity.create", "params": {"id": "back", "components": {
-            "Control": {"offset_right": 160, "offset_bottom": 90},
-            "ColorRect": {"color": [0.2, 0.2, 0.2, 1]}}}},
+            "Widget": {"offset_right": 160, "offset_bottom": 90},
+            "ColorFill": {"color": [0.2, 0.2, 0.2, 1]}}}},
         {"command": "entity.create", "params": {"id": "ok", "components": {
-            "Control": {"offset_right": 20, "offset_bottom": 10}, "Button": {"text": ""}}}},
+            "Widget": {"offset_right": 20, "offset_bottom": 10}, "Button": {"text": ""}}}},
         {"command": "entity.create", "params": {"id": "rock", "components": {
             "Transform2D": {"position": [100, 60]}, "Sprite2D": {"texture": "white.png"}}}},
         {"command": "entity.create", "params": {"id": "under", "components": {
-            "CanvasLayer": {"layer": -1, "children": ["back"]}}}},
+            "ScreenLayer": {"layer": -1, "children": ["back"]}}}},
         {"command": "entity.create", "params": {"id": "hud", "components": {
-            "CanvasLayer": {"offset": [10, 20], "scale": [2, 2], "children": ["ok"]}}}}]})");
+            "ScreenLayer": {"offset": [10, 20], "scale": [2, 2], "children": ["ok"]}}}}]})");
     // The HUD's button is placed by the layer; the world's bar stays on the screen.
     json::Value layout = project.ok("ui.layout");
     CHECK(compact(layout["controls"]) == compact(parse(R"([
@@ -596,10 +596,10 @@ TEST_CASE("controls in a canvas layer lay out, draw and take input in its canvas
         {"draw_mode": "normal", "id": "ok", "layer": "hud", "rect": [10, 20, 40, 20]}])")));
     // frame.summary lists them in drawing order: under the world, the world, over it.
     CHECK(compact(project.ok("frame.summary")["drawn"]) == compact(parse(R"([
-        {"id": "back", "kind": "ColorRect", "layer": "under", "rect": [0, 0, 160, 90],
+        {"id": "back", "kind": "ColorFill", "layer": "under", "rect": [0, 0, 160, 90],
          "shown": 0.97},
         {"id": "rock", "kind": "Sprite2D", "rect": [98, 58, 4, 4]},
-        {"id": "bar", "kind": "ColorRect", "rect": [0, 0, 40, 10]},
+        {"id": "bar", "kind": "ColorFill", "rect": [0, 0, 40, 10]},
         {"id": "ok", "kind": "Button", "layer": "hud", "rect": [10, 20, 40, 20]}])")));
 
     // The mouse is over the button where the layer shows it, not where it would be unplaced.
@@ -615,7 +615,7 @@ TEST_CASE("controls in a canvas layer lay out, draw and take input in its canvas
 
     // An invisible layer hides its controls.
     project.ok("component.set", R"({"id": "hud", "components": {
-        "CanvasLayer": {"visible": false}}})");
+        "ScreenLayer": {"visible": false}}})");
     json::Value hidden = project.ok("ui.layout", R"({"ids": ["ok"]})");
     CHECK(*hidden["controls"].as_array()[0].find("visible") == json::Value(false));
 }
@@ -628,9 +628,9 @@ TEST_CASE("canvas.convert turns window pixels into the world through the camera,
         {"command": "entity.create", "params": {"id": "heart", "components": {
             "Transform2D": {}}}},
         {"command": "entity.create", "params": {"id": "bar", "components": {
-            "Control": {}}}},
+            "Widget": {}}}},
         {"command": "entity.create", "params": {"id": "hud", "components": {
-            "CanvasLayer": {"offset": [10, 0], "children": ["heart"]}}}}]})");
+            "ScreenLayer": {"offset": [10, 0], "children": ["heart"]}}}}]})");
     CHECK(
         compact(project.ok("canvas.convert", R"({"points": [[80, 45], [0, 0]], "to": "world"})")) ==
         R"({"points":[[1000,500],[960,477.5]]})");
@@ -654,26 +654,26 @@ TEST_CASE("canvas.convert turns window pixels into the world through the camera,
     check_near(canvas::to_world(world, {10.0F, 0.0F}, world.find("heart")), {0.0F, 0.0F});
 }
 
-TEST_CASE("scene validate reports CanvasLayer children that can't draw in it") {
+TEST_CASE("scene validate reports ScreenLayer children that can't draw in it") {
     world::ComponentRegistry components;
     world::register_builtin_components(components);
     const auto errors = world::validate_scene(components, parse(R"({
         "format": 1,
         "entities": {
-            "hud": {"components": {"CanvasLayer": {"children": ["hud", "menu", "gun", "panel",
+            "hud": {"components": {"ScreenLayer": {"children": ["hud", "menu", "gun", "panel",
                                                                 "label", null]}}},
-            "menu": {"components": {"CanvasLayer": {"children": ["panel"]}}},
+            "menu": {"components": {"ScreenLayer": {"children": ["panel"]}}},
             "ship": {"components": {"Transform2D": {"children": ["gun"]}}},
             "gun": {"components": {"Transform2D": {}}},
-            "panel": {"components": {"Control": {"children": ["label"]}}},
-            "label": {"components": {"Control": {}}}
+            "panel": {"components": {"Widget": {"children": ["label"]}}},
+            "label": {"components": {"Widget": {}}}
         }
     })"));
     std::vector<std::string> found;
     for (const json::ValidationError& error : errors) {
         found.push_back(error.path + ": " + error.message);
     }
-    const std::string at = "/entities/hud/components/CanvasLayer/children/";
+    const std::string at = "/entities/hud/components/ScreenLayer/children/";
     CHECK(found ==
           std::vector<std::string>{
               at + "0: a canvas layer can't hold itself",
@@ -681,7 +681,7 @@ TEST_CASE("scene validate reports CanvasLayer children that can't draw in it") {
               at + R"(2: "gun" is already a child of "ship")",
               at + R"(4: "label" is already a child of "panel")",
               at + "5: children can't be null",
-              R"(/entities/menu/components/CanvasLayer/children/0: "panel" is already in "hud")",
+              R"(/entities/menu/components/ScreenLayer/children/0: "panel" is already in "hud")",
           });
 }
 
@@ -690,12 +690,12 @@ TEST_CASE("entity.destroy takes a canvas layer's children and leaves their layer
     project.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "heart", "components": {
             "Transform2D": {}}}},
-        {"command": "entity.create", "params": {"id": "score", "components": {"Control": {}}}},
+        {"command": "entity.create", "params": {"id": "score", "components": {"Widget": {}}}},
         {"command": "entity.create", "params": {"id": "hud", "components": {
-            "CanvasLayer": {"children": ["heart", "score"]}}}}]})");
+            "ScreenLayer": {"children": ["heart", "score"]}}}}]})");
     project.ok("entity.destroy", R"({"id": "heart"})");
     CHECK(compact(project.ok("entity.get",
-                             R"({"id": "hud"})")["components"]["CanvasLayer"]["children"]) ==
+                             R"({"id": "hud"})")["components"]["ScreenLayer"]["children"]) ==
           R"(["score"])");
     project.ok("undo");
     CHECK(compact(project.ok("entity.destroy", R"({"id": "hud"})")) ==

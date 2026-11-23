@@ -2,8 +2,8 @@
   "entities": {
     "bar": {
       "components": {
-        "BoxContainer": {},
-        "Control": {
+        "StackBox": {},
+        "Widget": {
           "anchor_right": 1.0,
           "children": ["game", "view"],
           "offset_bottom": 30.0
@@ -12,7 +12,7 @@
     },
     "context": {
       "components": {
-        "PopupMenu": {
+        "PopupList": {
           "items": [
             {
               "id": 1,
@@ -37,7 +37,6 @@
     },
     "game": {
       "components": {
-        "Control": {},
         "MenuButton": {
           "items": [
             {
@@ -57,16 +56,13 @@
           ],
           "switch_on_hover": true,
           "text": "Game"
-        }
+        },
+        "Widget": {}
       }
     },
     "quality": {
       "components": {
-        "Control": {
-          "offset_left": 96.0,
-          "offset_top": 56.0
-        },
-        "OptionButton": {
+        "Dropdown": {
           "items": [
             {
               "text": "Low"
@@ -79,23 +75,26 @@
             }
           ],
           "selected": 1
+        },
+        "Widget": {
+          "offset_left": 96.0,
+          "offset_top": 56.0
         }
       }
     },
     "quality_label": {
       "components": {
-        "Control": {
-          "offset_left": 16.0,
-          "offset_top": 60.0
-        },
         "Label": {
           "text": "Quality"
+        },
+        "Widget": {
+          "offset_left": 16.0,
+          "offset_top": 60.0
         }
       }
     },
     "view": {
       "components": {
-        "Control": {},
         "MenuButton": {
           "items": [
             {
@@ -119,7 +118,8 @@
           ],
           "switch_on_hover": true,
           "text": "View"
-        }
+        },
+        "Widget": {}
       }
     }
   },

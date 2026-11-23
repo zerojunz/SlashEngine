@@ -7,7 +7,7 @@
     },
     "spawner": {
       "components": {
-        "MultiplayerSpawner": {
+        "NetSpawner": {
           "spawn_path": "arena",
           "spawnable_scenes": ["bullet.prefab.json"]
         }

@@ -32,7 +32,7 @@ struct DebugContact {
 // A joint after a step.
 struct DebugJoint {
     std::string id;   // the joint's entity, or a physical bone's
-    std::string kind; // its component, such as "PinJoint3D", or "PhysicalBone3D"
+    std::string kind; // its component, such as "PinJoint3D", or "SimulatedBone3D"
     std::string a;    // the bodies it joins; b is empty for the world
     std::string b;
     float force = 0.0F;   // the force holding the bodies together: newtons, or 2D's units

@@ -131,7 +131,7 @@ struct Scene {
         files.files["models/arm.gltf"] = arm_model();
         world.set_file_reader(files.reader());
         create("floor", R"({"Transform3D": {"position": [0, -1, 0]}, "StaticBody3D": {},
-            "CollisionShape3D": {"size": [20, 2, 20]}})");
+            "Collider3D": {"size": [20, 2, 20]}})");
     }
 
     entt::entity create(std::string_view id, std::string_view components_json) {
@@ -151,8 +151,8 @@ struct Scene {
                      std::string_view joint_json = R"("joint_type": "pin")") {
         const std::string joint(joint_json);
         const auto bone = [&](std::string_view id, std::string_view name) {
-            create(id, R"({"Transform3D": {}, "CollisionShape3D": {"shape": "capsule",
-                "radius": 0.1, "height": 0.6}, "PhysicalBone3D": {"bone_name": ")" +
+            create(id, R"({"Transform3D": {}, "Collider3D": {"shape": "capsule",
+                "radius": 0.1, "height": 0.6}, "SimulatedBone3D": {"bone_name": ")" +
                            std::string(name) + R"(", "body_offset_position": [0, 0.5, 0], )" +
                            joint + "}}");
         };
@@ -160,9 +160,9 @@ struct Scene {
         bone("elbow", "Elbow");
         bone("wrist", "Wrist");
         create("ragdoll", R"({"Transform3D": {"children": ["shoulder", "elbow", "wrist"]},
-            "PhysicalBoneSimulator3D": {}})");
+            "BoneSimulation3D": {}})");
         const entt::entity entity = create("arm", R"({"Transform3D": {"children": ["ragdoll"]},
-            "MeshInstance3D": {"mesh": "models/arm.gltf"}})");
+            "Model3D": {"mesh": "models/arm.gltf"}})");
         auto& transform = world.ecs().get<world::Transform3D>(entity);
         transform.position = position;
         transform.rotation = {0.0F, 0.0F, turn};
@@ -175,8 +175,8 @@ struct Scene {
         }
     }
 
-    world::PhysicalBoneSimulator3D& simulator() {
-        return world.ecs().get<world::PhysicalBoneSimulator3D>(world.find("ragdoll"));
+    world::BoneSimulation3D& simulator() {
+        return world.ecs().get<world::BoneSimulation3D>(world.find("ragdoll"));
     }
 
     // Where an entity is in the world.
@@ -194,7 +194,7 @@ struct Scene {
 
     // The arm's bones in the world, as drawn.
     std::map<std::string, Vec3> positions(entt::entity entity) {
-        const auto& instance = world.ecs().get<world::MeshInstance3D>(entity);
+        const auto& instance = world.ecs().get<world::Model3D>(entity);
         auto model = load(instance.mesh);
         REQUIRE(model.ok());
         std::vector<scene3d::NodePose> pose =
@@ -265,7 +265,7 @@ TEST_CASE("physical bones follow their bones while the simulator is active") {
 
     // A crate lands on them, since bodies that follow collide.
     scene.create("crate", R"({"Transform3D": {"position": [1.5, 3, 0]}, "RigidBody3D": {},
-        "CollisionShape3D": {"size": [0.4, 0.4, 0.4]}})");
+        "Collider3D": {"size": [0.4, 0.4, 0.4]}})");
     scene.step(90);
     CHECK(std::abs(scene.global("crate").origin.y - 1.3F) < 0.02F);
 }
@@ -409,15 +409,15 @@ TEST_CASE("a simulator that isn't active turns its physical bones off") {
 
 TEST_CASE("physical bones are checked against the model, with did you mean") {
     Scene scene;
-    scene.create("upper", R"({"Transform3D": {}, "PhysicalBone3D": {"bone_name": "Shoulder"}})");
-    scene.create("again", R"({"Transform3D": {}, "PhysicalBone3D": {"bone_name": "Shoulder"}})");
-    scene.create("fore", R"({"Transform3D": {}, "PhysicalBone3D": {"bone_name": "Elbw"}})");
-    scene.create("unnamed", R"({"Transform3D": {}, "PhysicalBone3D": {}})");
+    scene.create("upper", R"({"Transform3D": {}, "SimulatedBone3D": {"bone_name": "Shoulder"}})");
+    scene.create("again", R"({"Transform3D": {}, "SimulatedBone3D": {"bone_name": "Shoulder"}})");
+    scene.create("fore", R"({"Transform3D": {}, "SimulatedBone3D": {"bone_name": "Elbw"}})");
+    scene.create("unnamed", R"({"Transform3D": {}, "SimulatedBone3D": {}})");
     scene.create("ragdoll", R"({"Transform3D": {"children": ["upper", "again", "fore", "unnamed"]},
-        "PhysicalBoneSimulator3D": {"simulated_bones": ["Wrst"]}})");
+        "BoneSimulation3D": {"simulated_bones": ["Wrst"]}})");
     scene.create("arm", R"({"Transform3D": {"children": ["ragdoll"]},
-        "MeshInstance3D": {"mesh": "models/arm.gltf"}})");
-    scene.create("loose", R"({"Transform3D": {}, "PhysicalBone3D": {"bone_name": "Hand"}})");
+        "Model3D": {"mesh": "models/arm.gltf"}})");
+    scene.create("loose", R"({"Transform3D": {}, "SimulatedBone3D": {"bone_name": "Hand"}})");
     std::vector<std::string> problems;
     for (const scene3d::Problem& problem : scene3d::check_meshes(scene.world)) {
         problems.push_back(std::string(scene.world.id_of(problem.entity)) + " " + problem.path +
@@ -425,16 +425,16 @@ TEST_CASE("physical bones are checked against the model, with did you mean") {
     }
     CHECK(problems ==
           std::vector<std::string>{
-              "ragdoll /components/PhysicalBoneSimulator3D/simulated_bones/0: the model has no "
+              "ragdoll /components/BoneSimulation3D/simulated_bones/0: the model has no "
               "bone or node named \"Wrst\"; did you mean \"Wrist\"?",
-              "again /components/PhysicalBone3D/bone_name: \"Shoulder\" already has a physical "
+              "again /components/SimulatedBone3D/bone_name: \"Shoulder\" already has a physical "
               "bone: \"upper\"",
-              "fore /components/PhysicalBone3D/bone_name: the model has no bone or node named "
+              "fore /components/SimulatedBone3D/bone_name: the model has no bone or node named "
               "\"Elbw\"; did you mean \"Elbow\"?",
-              "unnamed /components/PhysicalBone3D/bone_name: names no bone: name the model's "
+              "unnamed /components/SimulatedBone3D/bone_name: names no bone: name the model's "
               "bone it moves",
-              "loose /components/PhysicalBone3D: isn't in the Transform3D children of a "
-              "PhysicalBoneSimulator3D's entity, so it is a static body that never moves: put it "
+              "loose /components/SimulatedBone3D: isn't in the Transform3D children of a "
+              "BoneSimulation3D's entity, so it is a static body that never moves: put it "
               "there",
           });
 

@@ -21,7 +21,7 @@
 // Oceans, lakes and rivers, after Unreal's Water plugin (Godot has none): a surface of Gerstner
 // waves (GPU Gems' sum of trochoids, each crest sharpened by moving the water toward it) with the
 // ripples and wakes things leave rings of, foam where crests fold (the surface's Jacobian), where
-// rings are steep and along the shore, a river's current along its Path3D, and the water's own
+// rings are steep and along the shore, a river's current along its Spline3D, and the water's own
 // velocity, which floats and drags bodies in physics3d and physics2d. Heights are found under a
 // point by fixed-point inversion of the waves' sideways motion, so a query asks for the height
 // at a place, not of a moving bit of water. Built with -ffp-contract=off, with no libm but square

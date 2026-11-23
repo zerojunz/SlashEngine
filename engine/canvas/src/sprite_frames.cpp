@@ -70,7 +70,7 @@ json::Value sprite_frames_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine sprite frames";
-    schema["description"] = "Named flipbook animations that AnimatedSprite2D plays, like "
+    schema["description"] = "Named flipbook animations that Flipbook2D plays, like "
                             "Godot's SpriteFrames.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
@@ -81,7 +81,7 @@ json::Value sprite_frames_schema() {
     schema["properties"]["animations"]["minProperties"] = 1;
     schema["properties"]["animations"]["additionalProperties"] = animation;
     schema["properties"]["animations"]["description"] =
-        "Animations by name; AnimatedSprite2D plays \"default\" unless told otherwise.";
+        "Animations by name; Flipbook2D plays \"default\" unless told otherwise.";
     return schema;
 }
 

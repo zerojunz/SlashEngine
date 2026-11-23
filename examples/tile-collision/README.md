@@ -3,7 +3,7 @@
 Solid tile maps, as Godot's TileSet physics layers. [level.tileset.json](level.tileset.json) gives
 each tile collision polygons around its center: a block, a slope, a one-way ledge and a spring on
 a second physics layer that bounces. The block's alternative 1 is a see-through version with no
-collision. The `level` entity in [main.scene.json](main.scene.json) is a `TileMapLayer` of those
+collision. The `level` entity in [main.scene.json](main.scene.json) is a `TileLayer2D` of those
 tiles with four balls above it. [main.cpp](main.cpp) draws the atlas, turns a slope with
 `tilemap.set`, steps two seconds and asks a ray what it hits. [expected.txt](expected.txt) holds
 its output.
@@ -29,7 +29,7 @@ physics.raycast {"from":[72,0],"to":[72,128]}
   into convex pieces.
 - A polygon with `one_way` collides only with what comes down onto it, so the riser passes up
   through the ledge and lands on top.
-- Each `TileMapLayer` whose tiles have polygons is one static body in the `physics2d` system,
+- Each `TileLayer2D` whose tiles have polygons is one static body in the `physics2d` system,
   moving with the layer's `Transform2D`. Editing cells, the layer or the tile set rebuilds it, and
   `collision_enabled: false` turns it off.
 - A cell can turn its tile: `:h` flips it left to right, `:v` top to bottom and `:t` swaps its

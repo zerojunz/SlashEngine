@@ -107,7 +107,7 @@ struct Scene {
         set(world.find(id), components_json);
     }
 
-    // A ColorRect with a minimum size, for containers to place.
+    // A ColorFill with a minimum size, for containers to place.
     void block(std::string_view id, int width, int height, std::string_view control_fields = "") {
         std::string control = "{\"custom_minimum_size\": [" + std::to_string(width) + ", " +
                               std::to_string(height) + "]";
@@ -115,7 +115,7 @@ struct Scene {
             control += ", " + std::string(control_fields);
         }
         control += "}";
-        create(id, "{\"Control\": " + control + ", \"ColorRect\": {}}");
+        create(id, "{\"Widget\": " + control + ", \"ColorFill\": {}}");
     }
 
     text::Fonts& fonts() { return *ui::fonts(world); }
@@ -155,9 +155,9 @@ TEST_CASE("a box container lines its children up and gives expanding ones the sp
     scene.block("a", 50, 20);
     scene.block("b", 60, 30, R"("size_flags_horizontal": "expand_fill")");
     scene.block("c", 40, 10);
-    scene.create("box", R"({"Control": {"offset_right": 300, "offset_bottom": 50,
+    scene.create("box", R"({"Widget": {"offset_right": 300, "offset_bottom": 50,
                                         "children": ["a", "b", "c"]},
-                            "BoxContainer": {}})");
+                            "StackBox": {}})");
     // 300 less two separations of 4 and the minimums leave 142 for b, the one that expands.
     ui::Layout layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{0, 0, 50, 50});
@@ -165,24 +165,24 @@ TEST_CASE("a box container lines its children up and gives expanding ones the sp
     CHECK(rect_of(scene, layout, "c") == Rect{260, 0, 40, 50});
 
     // With nothing expanding, alignment places the row: center leaves 71 on the left.
-    scene.set("b", R"({"Control": {"size_flags_horizontal": "fill"}})");
-    scene.set("box", R"({"BoxContainer": {"alignment": "center"}})");
+    scene.set("b", R"({"Widget": {"size_flags_horizontal": "fill"}})");
+    scene.set("box", R"({"StackBox": {"alignment": "center"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{71, 0, 50, 50});
     CHECK(rect_of(scene, layout, "b") == Rect{125, 0, 60, 50});
     CHECK(rect_of(scene, layout, "c") == Rect{189, 0, 40, 50});
-    scene.set("box", R"({"BoxContainer": {"alignment": "end"}})");
+    scene.set("box", R"({"StackBox": {"alignment": "end"}})");
     CHECK(rect_of(scene, scene.layout(), "a") == Rect{142, 0, 50, 50});
 
     // Across the box, size flags place each child: shrink_end keeps its height at the bottom.
-    scene.set("a", R"({"Control": {"size_flags_vertical": "shrink_end"}})");
-    scene.set("c", R"({"Control": {"size_flags_vertical": "shrink_center"}})");
+    scene.set("a", R"({"Widget": {"size_flags_vertical": "shrink_end"}})");
+    scene.set("c", R"({"Widget": {"size_flags_vertical": "shrink_center"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{142, 30, 50, 20});
     CHECK(rect_of(scene, layout, "c") == Rect{260, 20, 40, 10});
 
     // Hidden children take no room.
-    scene.set("b", R"({"Control": {"visible": false}})");
+    scene.set("b", R"({"Widget": {"visible": false}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{206, 30, 50, 20});
     CHECK(rect_of(scene, layout, "c") == Rect{260, 20, 40, 10});
@@ -194,9 +194,9 @@ TEST_CASE("a vertical box shares space by stretch ratio, carrying the leftover p
     scene.block("b", 30, 30, R"("size_flags_vertical": "expand_fill")");
     scene.block("c", 10, 10,
                 R"("size_flags_vertical": "expand_fill", "size_flags_stretch_ratio": 2)");
-    scene.create("box", R"({"Control": {"offset_right": 100, "offset_bottom": 200,
+    scene.create("box", R"({"Widget": {"offset_right": 100, "offset_bottom": 200,
                                         "children": ["a", "b", "c"]},
-                            "BoxContainer": {"vertical": true}})");
+                            "StackBox": {"vertical": true}})");
     // 172 pixels to share 1:2 are 57.33 and 114.67; the fractions add up to a pixel for c, and
     // the last expanding child reaches the end.
     const ui::Layout layout = scene.layout();
@@ -214,9 +214,9 @@ TEST_CASE("a grid sizes columns and rows by their widest and tallest children") 
     scene.block("b", 50, 20);
     scene.block("c", 40, 30, R"("size_flags_horizontal": "expand_fill")");
     scene.block("d", 20, 5);
-    scene.create("grid", R"({"Control": {"offset_right": 201, "offset_bottom": 100,
+    scene.create("grid", R"({"Widget": {"offset_right": 201, "offset_bottom": 100,
                                          "children": ["a", "b", "c", "d"]},
-                             "GridContainer": {"columns": 3}})");
+                             "GridBox": {"columns": 3}})");
     // Columns 0 and 2 expand into 143 pixels: 71 each, and the odd pixel goes to the first.
     ui::Layout layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{0, 0, 72, 30});
@@ -226,7 +226,7 @@ TEST_CASE("a grid sizes columns and rows by their widest and tallest children") 
 
     // Too small, it grows to its minimum, and a column that can't fit its share stops
     // expanding: column 2 (40 wide) leaves column 0 the remaining 30.
-    scene.set("grid", R"({"Control": {"offset_right": 10, "offset_bottom": 10,
+    scene.set("grid", R"({"Widget": {"offset_right": 10, "offset_bottom": 10,
                                       "children": ["a", "b", "c", "d"]}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "grid") == Rect{0, 0, 128, 39});
@@ -238,22 +238,22 @@ TEST_CASE("a grid sizes columns and rows by their widest and tallest children") 
 TEST_CASE("margin, center and panel containers place their children inside them") {
     Scene scene;
     scene.block("in_margin", 10, 10);
-    scene.create("margin", R"({"Control": {"offset_right": 200, "offset_bottom": 100,
+    scene.create("margin", R"({"Widget": {"offset_right": 200, "offset_bottom": 100,
                                            "children": ["in_margin"],
                                            "theme_override_constants": {
                                                "margin_left": 10, "margin_top": 5,
                                                "margin_right": 20, "margin_bottom": 15}},
-                               "MarginContainer": {}})");
+                               "MarginBox": {}})");
     scene.block("in_center", 50, 20);
-    scene.create("center", R"({"Control": {"offset_right": 201, "offset_bottom": 101,
+    scene.create("center", R"({"Widget": {"offset_right": 201, "offset_bottom": 101,
                                            "children": ["in_center"]},
-                               "CenterContainer": {}})");
+                               "CenterBox": {}})");
     scene.block("in_panel", 10, 10);
-    scene.create("panel", R"({"Control": {"offset_right": 200, "offset_bottom": 100,
+    scene.create("panel", R"({"Widget": {"offset_right": 200, "offset_bottom": 100,
                                           "children": ["in_panel"],
                                           "theme_override_styles": {
                                               "panel": {"content_margin": 8}}},
-                              "PanelContainer": {}})");
+                              "PanelBox": {}})");
     ui::Layout layout = scene.layout();
     CHECK(rect_of(scene, layout, "in_margin") == Rect{10, 5, 170, 80});
     CHECK(rect_of(scene, layout, "in_center") == Rect{75, 40, 50, 20});
@@ -263,7 +263,7 @@ TEST_CASE("margin, center and panel containers place their children inside them"
     REQUIRE(layout.boxes.contains(scene.world.find("panel")));
     CHECK(layout.boxes.at(scene.world.find("panel")).front().size == Vec2{200.0F, 100.0F});
 
-    scene.set("center", R"({"CenterContainer": {"use_top_left": true}})");
+    scene.set("center", R"({"CenterBox": {"use_top_left": true}})");
     CHECK(rect_of(scene, scene.layout(), "in_center") == Rect{-25, -10, 50, 20});
 }
 
@@ -273,9 +273,9 @@ TEST_CASE("a flow container wraps its children into lines") {
     scene.block("b", 80, 30);
     scene.block("c", 80, 10, R"("size_flags_horizontal": "expand_fill")");
     scene.block("d", 50, 10);
-    scene.create("flow", R"({"Control": {"offset_right": 200, "offset_bottom": 100,
+    scene.create("flow", R"({"Widget": {"offset_right": 200, "offset_bottom": 100,
                                          "children": ["a", "b", "c", "d"]},
-                             "FlowContainer": {}})");
+                             "FlowBox": {}})");
     // c doesn't fit after a and b, so it starts the second line and takes the 66 pixels left.
     ui::Layout layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{0, 0, 80, 30});
@@ -284,15 +284,15 @@ TEST_CASE("a flow container wraps its children into lines") {
     CHECK(rect_of(scene, layout, "d") == Rect{150, 34, 50, 10});
     CHECK(layout.find(scene.world.find("flow"))->minimum_size == Vec2{80.0F, 44.0F});
 
-    scene.set("c", R"({"Control": {"size_flags_horizontal": "fill"}})");
-    scene.set("flow", R"({"FlowContainer": {"alignment": "center"}})");
+    scene.set("c", R"({"Widget": {"size_flags_horizontal": "fill"}})");
+    scene.set("flow", R"({"FlowBox": {"alignment": "center"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{18, 0, 80, 30});
     CHECK(rect_of(scene, layout, "c") == Rect{33, 34, 80, 10});
     CHECK(rect_of(scene, layout, "d") == Rect{117, 34, 50, 10});
 
     // The last line aligned to the end of the line before it.
-    scene.set("flow", R"({"FlowContainer": {"alignment": "begin", "last_wrap_alignment": "end"}})");
+    scene.set("flow", R"({"FlowBox": {"alignment": "begin", "last_wrap_alignment": "end"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{0, 0, 80, 30});
     CHECK(rect_of(scene, layout, "c") == Rect{30, 34, 80, 10});
@@ -303,9 +303,9 @@ TEST_CASE("a wrapping label in a container gets the height of its lines at the w
     const std::string words = "one two three four five six seven eight nine ten";
     scene.create("label", R"({"Label": {"text": ")" + words + R"(", "autowrap_mode": "word"}})");
     scene.block("after", 10, 10);
-    scene.create("box", R"({"Control": {"offset_right": 120, "offset_bottom": 10,
+    scene.create("box", R"({"Widget": {"offset_right": 120, "offset_bottom": 10,
                                         "children": ["label", "after"]},
-                            "BoxContainer": {"vertical": true}})");
+                            "StackBox": {"vertical": true}})");
     const ui::Layout layout = scene.layout();
     const ui::LabelText* label = layout.label(scene.world.find("label"));
     REQUIRE(label != nullptr);
@@ -325,7 +325,7 @@ TEST_CASE("themes give controls their items, nearest first, then the project's t
         "types": {
             "Label": {"colors": {"font_color": [1, 0, 0, 1]}, "font_sizes": {"font_size": 20}},
             "Title": {"base_type": "Label", "font_sizes": {"font_size": 32}},
-            "BoxContainer": {"constants": {"separation": 10}},
+            "StackBox": {"constants": {"separation": 10}},
             "Panel": {"styles": {"panel": {"bg_color": [0, 0, 1, 1], "corner_radius": 6}}}
         }
     })";
@@ -335,13 +335,13 @@ TEST_CASE("themes give controls their items, nearest first, then the project's t
         "types": {"Label": {"colors": {"font_color": [0, 0, 1, 1]}}}
     })";
     ui::set_settings(scene.world, {.viewport = {400.0F, 300.0F}, .theme = "ui/project.theme.json"});
-    scene.create("title", R"({"Control": {"theme_type_variation": "Title"},
+    scene.create("title", R"({"Widget": {"theme_type_variation": "Title"},
                               "Label": {"text": "Hi"}})");
-    scene.create("body", R"({"Control": {"theme_override_colors": {"font_color": [0, 1, 0, 1]}},
+    scene.create("body", R"({"Widget": {"theme_override_colors": {"font_color": [0, 1, 0, 1]}},
                              "Label": {"text": "Hi"}})");
-    scene.create("box", R"({"Control": {"children": ["title", "body"]},
-                            "BoxContainer": {"vertical": true}})");
-    scene.create("root", R"({"Control": {"offset_right": 400, "offset_bottom": 300,
+    scene.create("box", R"({"Widget": {"children": ["title", "body"]},
+                            "StackBox": {"vertical": true}})");
+    scene.create("root", R"({"Widget": {"offset_right": 400, "offset_bottom": 300,
                                          "theme": "ui/game.theme.json", "children": ["box"]},
                              "Panel": {}})");
     scene.create("outside", R"({"Label": {"text": "Hi"}})");
@@ -386,18 +386,18 @@ TEST_CASE("themes give controls their items, nearest first, then the project's t
 TEST_CASE("layout reports themes, variations and textures it can't use") {
     Scene scene;
     scene.files.files["ui/game.theme.json"] = R"({"format": 1})";
-    scene.create("a", R"({"Control": {"theme": "ui/missing.theme.json"}})");
-    scene.create("b", R"({"Control": {"theme": "ui/game.theme.json",
+    scene.create("a", R"({"Widget": {"theme": "ui/missing.theme.json"}})");
+    scene.create("b", R"({"Widget": {"theme": "ui/game.theme.json",
                                       "theme_type_variation": "Title"},
                           "Label": {"text": "Hi"}})");
-    scene.create("c", R"({"TextureRect": {"texture": "ui/missing.png"}})");
+    scene.create("c", R"({"Picture": {"texture": "ui/missing.png"}})");
     CHECK(problem_lines(scene.layout().problems) ==
           std::vector<std::string>{
-              "a/components/Control/theme: asset \"ui/missing.theme.json\" could not be read: no "
+              "a/components/Widget/theme: asset \"ui/missing.theme.json\" could not be read: no "
               "such file",
-              "b/components/Control/theme_type_variation: \"Title\" is no type variation in the "
+              "b/components/Widget/theme_type_variation: \"Title\" is no type variation in the "
               "themes this control uses; give it a base_type in one",
-              "c/components/TextureRect/texture: asset \"ui/missing.png\" could not be read: no "
+              "c/components/Picture/texture: asset \"ui/missing.png\" could not be read: no "
               "such file",
           });
 }
@@ -467,7 +467,7 @@ TEST_CASE("theme files are checked for unknown types, items and broken variation
 
 TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's StyleBoxFlat") {
     Scene scene;
-    scene.create("panel", R"({"Control": {"offset_left": 10, "offset_top": 10,
+    scene.create("panel", R"({"Widget": {"offset_left": 10, "offset_top": 10,
                                           "offset_right": 110, "offset_bottom": 60,
                                           "theme_override_styles": {"panel": {
                                               "bg_color": [1, 0, 0, 1], "corner_radius": 4}}},
@@ -495,7 +495,7 @@ TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's St
     CHECK(vertices[0].rgba == std::array<std::uint8_t, 4>{255, 0, 0, 255});
 
     // Square corners need no smoothing: a border ring and the fill inside it.
-    scene.set("panel", R"({"Control": {"offset_left": 10, "offset_top": 10,
+    scene.set("panel", R"({"Widget": {"offset_left": 10, "offset_top": 10,
                                        "offset_right": 110, "offset_bottom": 60,
                                        "theme_override_styles": {"panel": {
                                            "bg_color": [0, 0, 0, 1], "border_width": 2}}}})");
@@ -503,7 +503,7 @@ TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's St
     CHECK(drawn.calls[0].vertices.size() == (16 + 6) * 3);
 
     // A shadow is a ring fading out from under the box, plus the box's shape under it.
-    scene.set("panel", R"({"Control": {"offset_left": 10, "offset_top": 10,
+    scene.set("panel", R"({"Widget": {"offset_left": 10, "offset_top": 10,
                                        "offset_right": 110, "offset_bottom": 60,
                                        "theme_override_styles": {"panel": {
                                            "shadow_size": 4, "shadow_offset": [2, 2]}}}})");
@@ -516,7 +516,7 @@ TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's St
     CHECK(bottom_right == 116.0F);
 
     // An empty style box draws nothing.
-    scene.set("panel", R"({"Control": {"theme_override_styles": {"panel": {"type": "empty"}}}})");
+    scene.set("panel", R"({"Widget": {"theme_override_styles": {"panel": {"type": "empty"}}}})");
     drawn = ui::draw_calls(scene.layout(), scene.world, scene.fonts());
     CHECK(drawn.boxes == 0);
     CHECK(drawn.calls.empty());
@@ -525,8 +525,8 @@ TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's St
 TEST_CASE("nine-patch rects keep their corners and stretch or tile the rest") {
     Scene scene;
     scene.files.files["ui/patch.png"] = png(30, 30);
-    scene.create("patch", R"({"Control": {"offset_right": 100, "offset_bottom": 50},
-                              "NinePatchRect": {"texture": "ui/patch.png",
+    scene.create("patch", R"({"Widget": {"offset_right": 100, "offset_bottom": 50},
+                              "NineSlice": {"texture": "ui/patch.png",
                                                 "patch_margin_left": 10, "patch_margin_top": 10,
                                                 "patch_margin_right": 10,
                                                 "patch_margin_bottom": 10}})");
@@ -549,15 +549,15 @@ TEST_CASE("nine-patch rects keep their corners and stretch or tile the rest") {
     CHECK(vertices[28].y == 40.0F);
     CHECK(vertices[28].u == doctest::Approx(2.0F / 3.0F));
 
-    scene.set("patch", R"({"NinePatchRect": {"texture": "ui/patch.png", "patch_margin_left": 10,
+    scene.set("patch", R"({"NineSlice": {"texture": "ui/patch.png", "patch_margin_left": 10,
                                              "patch_margin_top": 10, "patch_margin_right": 10,
                                              "patch_margin_bottom": 10, "draw_center": false}})");
     CHECK(ui::draw_calls(scene.layout(), scene.world, scene.fonts()).calls[0].vertices.size() ==
           8 * 6);
 
     // Tiled, a 75-pixel middle takes seven 10-pixel tiles and half of an eighth.
-    scene.set("patch", R"({"Control": {"offset_right": 95, "offset_bottom": 50},
-                           "NinePatchRect": {"texture": "ui/patch.png", "patch_margin_left": 10,
+    scene.set("patch", R"({"Widget": {"offset_right": 95, "offset_bottom": 50},
+                           "NineSlice": {"texture": "ui/patch.png", "patch_margin_left": 10,
                                              "patch_margin_top": 10, "patch_margin_right": 10,
                                              "patch_margin_bottom": 10, "draw_center": true,
                                              "axis_stretch_horizontal": "tile"}})");
@@ -568,7 +568,7 @@ TEST_CASE("nine-patch rects keep their corners and stretch or tile the rest") {
     CHECK(vertices[(8 * 6) + 4].x == 85.0F);
     CHECK(vertices[(8 * 6) + 4].u == doctest::Approx(0.5F));
     // Tile fit stretches eight tiles to fill it exactly.
-    scene.set("patch", R"({"NinePatchRect": {"texture": "ui/patch.png", "patch_margin_left": 10,
+    scene.set("patch", R"({"NineSlice": {"texture": "ui/patch.png", "patch_margin_left": 10,
                                              "patch_margin_top": 10, "patch_margin_right": 10,
                                              "patch_margin_bottom": 10,
                                              "axis_stretch_horizontal": "tile_fit"}})");
@@ -581,21 +581,21 @@ TEST_CASE("nine-patch rects keep their corners and stretch or tile the rest") {
 TEST_CASE("texture rects size, stretch and flip their texture as their modes say") {
     Scene scene;
     scene.files.files["ui/icon.png"] = png(20, 10);
-    scene.create("icon", R"({"TextureRect": {"texture": "ui/icon.png"}})");
+    scene.create("icon", R"({"Picture": {"texture": "ui/icon.png"}})");
     ui::Layout layout = scene.layout();
     // keep_size: at least as big as its texture.
     CHECK(rect_of(scene, layout, "icon") == Rect{0, 0, 20, 10});
 
-    scene.set("icon", R"({"Control": {"offset_right": 100, "offset_bottom": 100},
-                          "TextureRect": {"texture": "ui/icon.png", "expand_mode": "ignore_size",
+    scene.set("icon", R"({"Widget": {"offset_right": 100, "offset_bottom": 100},
+                          "Picture": {"texture": "ui/icon.png", "expand_mode": "ignore_size",
                                           "stretch_mode": "keep_aspect_centered"}})");
     layout = scene.layout();
     const ui::Box& box = layout.boxes.at(scene.world.find("icon")).front();
     CHECK(box.position == Vec2{0.0F, 25.0F});
     CHECK(box.size == Vec2{100.0F, 50.0F});
 
-    scene.set("icon", R"({"Control": {"offset_right": 40, "offset_bottom": 20},
-                          "TextureRect": {"texture": "ui/icon.png", "flip_h": true}})");
+    scene.set("icon", R"({"Widget": {"offset_right": 40, "offset_bottom": 20},
+                          "Picture": {"texture": "ui/icon.png", "flip_h": true}})");
     const ui::DrawList drawn = ui::draw_calls(scene.layout(), scene.world, scene.fonts());
     REQUIRE(drawn.calls.size() == 1);
     REQUIRE(drawn.calls[0].vertices.size() == 6);
@@ -604,14 +604,14 @@ TEST_CASE("texture rects size, stretch and flip their texture as their modes say
     CHECK(drawn.calls[0].vertices[4].u == 0.0F);
 
     // Its texture_filter, or a parent's, picks how the renderer samples it.
-    scene.set("icon", R"({"Control": {"offset_right": 40, "offset_bottom": 20,
+    scene.set("icon", R"({"Widget": {"offset_right": 40, "offset_bottom": 20,
                                       "texture_filter": "nearest"}})");
     CHECK(ui::draw_calls(scene.layout(), scene.world, scene.fonts()).calls[0].filter == "nearest");
 }
 
 TEST_CASE("a progress bar fills as far as its value and shows the percentage") {
     Scene scene;
-    scene.create("bar", R"({"Control": {"offset_right": 200},
+    scene.create("bar", R"({"Widget": {"offset_right": 200},
                             "ProgressBar": {"value": 50}})");
     const float text_height = scene.fonts().metrics("", text::kDefaultFontSize).value().height();
     ui::Layout layout = scene.layout();
@@ -650,24 +650,24 @@ TEST_CASE("a progress bar fills as far as its value and shows the percentage") {
 
 TEST_CASE("check finds two containers on one entity, and style overrides it can't use") {
     Scene scene;
-    scene.create("both", R"({"BoxContainer": {}, "GridContainer": {}, "CenterContainer": {}})");
-    scene.create("panel", R"({"Control": {"theme_override_styles": {
+    scene.create("both", R"({"StackBox": {}, "GridBox": {}, "CenterBox": {}})");
+    scene.create("panel", R"({"Widget": {"theme_override_styles": {
                                   "panl": {},
                                   "panel": {"type": "texture", "texture": "ui/missing.png"}}},
                               "Panel": {}})");
-    scene.create("box", R"({"Control": {"theme_override_styles": {"panel": {}}},
-                            "BoxContainer": {}, "Label": {"text": "x"}})");
+    scene.create("box", R"({"Widget": {"theme_override_styles": {"panel": {}}},
+                            "StackBox": {}, "Label": {"text": "x"}})");
     CHECK(problem_lines(ui::check(scene.world, scene.fonts())) ==
           std::vector<std::string>{
-              "both/components/GridContainer: an entity has one container; its BoxContainer "
+              "both/components/GridBox: an entity has one container; its StackBox "
               "places its children",
-              "both/components/CenterContainer: an entity has one container; its BoxContainer "
+              "both/components/CenterBox: an entity has one container; its StackBox "
               "places its children",
-              "box/components/Control/theme_override_styles/panel: Label and HBoxContainer have "
+              "box/components/Widget/theme_override_styles/panel: Label and HBoxContainer have "
               "no styles item \"panel\"; it has none",
-              "panel/components/Control/theme_override_styles/panl: Panel has no styles item "
+              "panel/components/Widget/theme_override_styles/panl: Panel has no styles item "
               "\"panl\"; did you mean \"panel\"?",
-              "panel/components/Control/theme_override_styles/panel/texture: asset "
+              "panel/components/Widget/theme_override_styles/panel/texture: asset "
               "\"ui/missing.png\" could not be read: no such file",
           });
 }
@@ -686,7 +686,7 @@ TEST_CASE("the canvas renderer counts the style boxes it draws") {
     std::string path;
     REQUIRE(components.find("Panel")->assign(world, panel, parse("{}"), path).ok());
     const entt::entity patch = world.create("patch").value();
-    REQUIRE(components.find("NinePatchRect")
+    REQUIRE(components.find("NineSlice")
                 ->assign(world, patch, parse(R"({"texture": "ui/patch.png"})"), path)
                 .ok());
     REQUIRE(renderer.draw(world, {}).ok());
@@ -697,18 +697,18 @@ TEST_CASE("the canvas renderer counts the style boxes it draws") {
 TEST_CASE("controls laid out right to left mirror their anchors, offsets and grow directions") {
     Scene scene;
     // 10 pixels from the left edge, left to right, is 10 from the right edge.
-    scene.create("tag", R"({"Control": {"offset_left": 10, "offset_right": 110,
+    scene.create("tag", R"({"Widget": {"offset_left": 10, "offset_right": 110,
                                         "offset_bottom": 20, "layout_direction": "rtl"},
-                            "ColorRect": {}})");
+                            "ColorFill": {}})");
     // Growing to its minimum size toward its end grows it toward the left.
-    scene.create("grows", R"({"Control": {"offset_left": 100, "offset_right": 100,
+    scene.create("grows", R"({"Widget": {"offset_left": 100, "offset_right": 100,
                                           "custom_minimum_size": [40, 10],
                                           "layout_direction": "rtl"}})");
     // Children inherit their parent's direction unless they set their own.
     scene.block("inner", 20, 10, R"("offset_right": 20, "offset_bottom": 10)");
     scene.block("own", 20, 10,
                 R"("offset_right": 20, "offset_bottom": 10, "layout_direction": "ltr")");
-    scene.create("panel", R"({"Control": {"offset_left": 100, "offset_right": 300,
+    scene.create("panel", R"({"Widget": {"offset_left": 100, "offset_right": 300,
                                           "offset_bottom": 50, "layout_direction": "rtl",
                                           "children": ["inner", "own"]}})");
     const ui::Layout layout = scene.layout();
@@ -725,9 +725,9 @@ TEST_CASE("containers laid out right to left place their children from the right
     scene.block("a", 50, 20);
     scene.block("b", 60, 30, R"("size_flags_horizontal": "expand_fill")");
     scene.block("c", 40, 10);
-    scene.create("box", R"({"Control": {"offset_right": 300, "offset_bottom": 50,
+    scene.create("box", R"({"Widget": {"offset_right": 300, "offset_bottom": 50,
                                         "layout_direction": "rtl", "children": ["a", "b", "c"]},
-                            "BoxContainer": {}})");
+                            "StackBox": {}})");
     // The box sits at the right of the 400-wide viewport, its first child at its right.
     ui::Layout layout = scene.layout();
     CHECK(rect_of(scene, layout, "box") == Rect{100, 0, 300, 50});
@@ -735,17 +735,17 @@ TEST_CASE("containers laid out right to left place their children from the right
     CHECK(rect_of(scene, layout, "b") == Rect{144, 0, 202, 50});
     CHECK(rect_of(scene, layout, "c") == Rect{100, 0, 40, 50});
     // With nothing expanding, begin alignment puts the row at the right, end at the left.
-    scene.set("b", R"({"Control": {"size_flags_horizontal": "fill"}})");
+    scene.set("b", R"({"Widget": {"size_flags_horizontal": "fill"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{350, 0, 50, 50});
     CHECK(rect_of(scene, layout, "c") == Rect{242, 0, 40, 50});
-    scene.set("box", R"({"BoxContainer": {"alignment": "end"}})");
+    scene.set("box", R"({"StackBox": {"alignment": "end"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{208, 0, 50, 50});
     CHECK(rect_of(scene, layout, "c") == Rect{100, 0, 40, 50});
     // A vertical box keeps its order down the box; shrink_begin across it is at the right.
-    scene.set("box", R"({"BoxContainer": {"vertical": true}})");
-    scene.set("a", R"({"Control": {"size_flags_horizontal": "shrink_begin"}})");
+    scene.set("box", R"({"StackBox": {"vertical": true}})");
+    scene.set("a", R"({"Widget": {"size_flags_horizontal": "shrink_begin"}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{350, 0, 50, 20});
     CHECK(rect_of(scene, layout, "b") == Rect{100, 24, 300, 30});
@@ -754,9 +754,9 @@ TEST_CASE("containers laid out right to left place their children from the right
     scene.block("g1", 30, 10);
     scene.block("g2", 20, 10);
     scene.block("g3", 30, 10);
-    scene.create("grid", R"({"Control": {"offset_right": 100, "layout_direction": "rtl",
+    scene.create("grid", R"({"Widget": {"offset_right": 100, "layout_direction": "rtl",
                                          "children": ["g1", "g2", "g3"]},
-                             "GridContainer": {"columns": 2}})");
+                             "GridBox": {"columns": 2}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "g1") == Rect{370, 0, 30, 10});
     CHECK(rect_of(scene, layout, "g2") == Rect{346, 0, 20, 10});
@@ -765,9 +765,9 @@ TEST_CASE("containers laid out right to left place their children from the right
     // A flow's lines start at the right.
     scene.block("f1", 30, 10);
     scene.block("f2", 30, 10);
-    scene.create("flow", R"({"Control": {"offset_right": 100, "layout_direction": "rtl",
+    scene.create("flow", R"({"Widget": {"offset_right": 100, "layout_direction": "rtl",
                                          "children": ["f1", "f2"]},
-                             "FlowContainer": {}})");
+                             "FlowBox": {}})");
     layout = scene.layout();
     CHECK(rect_of(scene, layout, "f1") == Rect{370, 0, 30, 10});
     CHECK(rect_of(scene, layout, "f2") == Rect{336, 0, 30, 10});
@@ -777,17 +777,17 @@ TEST_CASE("labels, buttons and bars laid out right to left start at the right") 
     Scene scene;
     scene.files.files["ui/icon.png"] = png(16, 16);
     // Left alignment is the start of the line: the right.
-    scene.create("label", R"({"Control": {"offset_right": 100, "layout_direction": "rtl"},
+    scene.create("label", R"({"Widget": {"offset_right": 100, "layout_direction": "rtl"},
                               "Label": {"text": "Hello"}})");
-    scene.create("right", R"({"Control": {"offset_right": 100, "layout_direction": "rtl"},
+    scene.create("right", R"({"Widget": {"offset_right": 100, "layout_direction": "rtl"},
                               "Label": {"text": "Hello", "horizontal_alignment": "right"}})");
     // text_direction inherited takes the layout's direction.
-    scene.create("inherits", R"({"Control": {"layout_direction": "rtl"},
+    scene.create("inherits", R"({"Widget": {"layout_direction": "rtl"},
                                  "Label": {"text": "Hello", "text_direction": "inherited"}})");
     // A button's icon on the left goes to the right.
-    scene.create("button", R"({"Control": {"offset_right": 120, "layout_direction": "rtl"},
+    scene.create("button", R"({"Widget": {"offset_right": 120, "layout_direction": "rtl"},
                                "Button": {"text": "Go", "icon": "ui/icon.png"}})");
-    scene.create("bar", R"({"Control": {"offset_right": 200, "layout_direction": "rtl"},
+    scene.create("bar", R"({"Widget": {"offset_right": 200, "layout_direction": "rtl"},
                             "ProgressBar": {"value": 25}})");
     ui::Layout layout = scene.layout();
     CHECK(layout.problems.empty());
@@ -809,13 +809,13 @@ TEST_CASE("labels, buttons and bars laid out right to left start at the right") 
     CHECK(bar[1].position.x == 147.0F);
 
     // A theme's _mirrored style boxes are used for buttons laid out right to left.
-    scene.set("button", R"({"Control": {"offset_right": 120, "layout_direction": "rtl",
+    scene.set("button", R"({"Widget": {"offset_right": 120, "layout_direction": "rtl",
         "theme_override_styles": {"normal_mirrored": {"bg_color": [1, 0, 0, 1]}}}})");
     layout = scene.layout();
     CHECK(layout.boxes.at(scene.world.find("button")).front().style.bg_color ==
           Vec4{1.0F, 0.0F, 0.0F, 1.0F});
     CHECK(ui::check(scene.world, scene.fonts()).empty());
-    scene.set("button", R"({"Control": {"layout_direction": "ltr"}})");
+    scene.set("button", R"({"Widget": {"layout_direction": "ltr"}})");
     CHECK(scene.layout().boxes.at(scene.world.find("button")).front().style.bg_color !=
           Vec4{1.0F, 0.0F, 0.0F, 1.0F});
 }
@@ -826,7 +826,7 @@ TEST_CASE("fill alignment stretches the spaces between words of right-to-left li
         const auto bytes = text::box_font(U"אבג ");
         return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     }();
-    scene.create("filled", R"({"Control": {"offset_right": 200,
+    scene.create("filled", R"({"Widget": {"offset_right": 200,
                                            "theme_override_fonts": {"font": "hebrew.ttf"}},
                                "Label": {"text": "א ב ג ", "horizontal_alignment": "fill"}})");
     const ui::Layout layout = scene.layout();
@@ -850,17 +850,17 @@ TEST_CASE("labels and buttons with a language that isn't a BCP 47 tag are report
 TEST_CASE("a top-level control is placed in the viewport and left out by its container") {
     Scene scene;
     scene.block("a", 50, 20);
-    scene.create("tip", R"({"Control": {"top_level": true, "offset_left": 10, "offset_top": 10,
+    scene.create("tip", R"({"Widget": {"top_level": true, "offset_left": 10, "offset_top": 10,
                                         "offset_right": 60, "offset_bottom": 40},
-                            "ColorRect": {}})");
+                            "ColorFill": {}})");
     scene.block("b", 60, 30);
-    scene.create("box", R"({"Control": {"offset_left": 100, "offset_top": 50,
+    scene.create("box", R"({"Widget": {"offset_left": 100, "offset_top": 50,
                                         "offset_right": 300, "offset_bottom": 250,
                                         "clip_contents": true, "modulate": [1, 1, 1, 0.5],
                                         "z_index": 3, "children": ["a", "tip", "b"]},
-                            "BoxContainer": {"vertical": true}})");
-    scene.create("after", R"({"Control": {"offset_right": 400, "offset_bottom": 300},
-                              "ColorRect": {}})");
+                            "StackBox": {"vertical": true}})");
+    scene.create("after", R"({"Widget": {"offset_right": 400, "offset_bottom": 300},
+                              "ColorFill": {}})");
     // The box lines up a and b as if tip weren't there; tip keeps its own offsets, in the
     // viewport rather than the box, as Godot's top_level.
     ui::Layout layout = scene.layout();
@@ -887,10 +887,10 @@ TEST_CASE("a top-level control is placed in the viewport and left out by its con
         return order;
     };
     CHECK(drawing_order() == std::vector<std::string>{"tip", "after", "box", "a", "b"});
-    scene.set("box", R"({"Control": {"z_index": 0}})");
+    scene.set("box", R"({"Widget": {"z_index": 0}})");
     CHECK(drawing_order() == std::vector<std::string>{"box", "a", "b", "tip", "after"});
 
     // Hiding the box still hides it, as hiding a node hides its top-level children.
-    scene.set("box", R"({"Control": {"visible": false}})");
+    scene.set("box", R"({"Widget": {"visible": false}})");
     CHECK_FALSE(scene.layout().find(scene.world.find("tip"))->visible);
 }

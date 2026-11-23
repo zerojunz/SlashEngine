@@ -1,6 +1,6 @@
 # Vehicles
 
-Vehicles as recipes, after Unreal's Chaos Vehicles (Godot has only `VehicleBody3D`), in 3D and
+Vehicles as recipes, after Unreal's Chaos Vehicles (Godot has only `WheeledBody3D`), in 3D and
 in 2D. A `.vehicle.json` file says what a vehicle looks like and how it handles:
 [hatchback.vehicle.json](vehicles/hatchback.vehicle.json) is a front-wheel drive car with its
 own engine, gears and the design a test drive must meet.
@@ -19,7 +19,7 @@ own engine, gears and the design a test drive must meet.
 grip and a quicker design, [tank.vehicle.json](vehicles/tank.vehicle.json) is a tracked vehicle of its kind's
 defaults, [speedboat.vehicle.json](vehicles/speedboat.vehicle.json) a boat and
 [pickup.vehicle.json](vehicles/pickup.vehicle.json) an all-wheel drive pickup. The scene is a
-long field with a driver and a walker (`CharacterBody3D`s), open water to the east, and a 2D road.
+long field with a driver and a walker (`CharacterMover3D`s), open water to the east, and a 2D road.
 
 [calls.jsonl](calls.jsonl) works on the vehicles the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

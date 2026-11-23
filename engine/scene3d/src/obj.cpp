@@ -177,7 +177,7 @@ void smooth_normals(std::vector<render::Vertex3D>& corners,
 // A material in a library, as Godot's _parse_material_library makes it, with the project paths
 // of its textures, "" for none.
 struct LibraryMaterial {
-    world::StandardMaterial3D standard;
+    world::Surface3D standard;
     std::string albedo;
     std::string metallic;
     std::string roughness;

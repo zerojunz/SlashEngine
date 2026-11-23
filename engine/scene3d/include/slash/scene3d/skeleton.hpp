@@ -47,7 +47,7 @@ struct ClipSample {
     std::string animation;
     double time = 0.0;
     float weight = 1.0F;
-    // How much it counts for some nodes, by name, in place of weight, as an AnimationTree's
+    // How much it counts for some nodes, by name, in place of weight, as an AnimationGraph's
     // filters and root motion track leave them.
     std::map<std::string, float> node_weights{}; // NOLINT(readability-redundant-member-init)
     // The model to play it from in place of loading model: an animation library's node tracks
@@ -133,7 +133,7 @@ void skin_vertices(std::span<const render::Vertex3D> vertices,
                                                 std::span<const NodePose> b, float weight);
 
 // What an entity's model plays: its clips, which the animation module works out from the
-// entity's AnimationTree or AnimationPlayer (animation::install sets it with set_clip_source).
+// entity's AnimationGraph or Animator (animation::install sets it with set_clip_source).
 // Without one set, models stay at rest.
 using ClipSource =
     std::function<std::vector<ClipSample>(const world::World& world, entt::entity entity)>;
@@ -143,7 +143,7 @@ void set_clip_source(world::World& world, ClipSource source);
 // Loads a model by project path.
 using ModelLoader = std::function<Result<std::shared_ptr<const Model>>(const std::string& path)>;
 
-// A model posed as an entity's MeshInstance3D draws it: at rest, then moved by its clips
+// A model posed as an entity's Model3D draws it: at rest, then moved by its clips
 // (blend_animation, with a clip's node_weights for the nodes it names), then by its Skeleton3D if
 // it has one (apply_skeleton), or at rest with show_rest_only. A clip plays from its source, or
 // else its model loaded; one whose model doesn't load, or that names an animation it hasn't, is
@@ -152,7 +152,7 @@ using ModelLoader = std::function<Result<std::shared_ptr<const Model>>(const std
                                             const world::Skeleton3D* skeleton,
                                             const ModelLoader& load);
 
-// The problems with a Skeleton3D posing model (the model of the entity's MeshInstance3D, or null
+// The problems with a Skeleton3D posing model (the model of the entity's Model3D, or null
 // for none): bone names the model hasn't, with "did you mean", each at its field's JSON Pointer
 // in the component, and a Skeleton3D with no model to pose, at "".
 struct SkeletonProblem {

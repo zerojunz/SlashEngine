@@ -47,12 +47,12 @@ struct Particles {
         world.set_event_listener([this](const world::Event& event) { events.push_back(event); });
     }
 
-    // An entity at a position with a CPUParticles2D whose fields the JSON sets.
+    // An entity at a position with a Emitter2D whose fields the JSON sets.
     entt::entity add(std::string_view id, Vec2 position, std::string_view fields) {
         const entt::entity entity = world.create(id).value();
         world.ecs().emplace<world::Transform2D>(entity).position = position;
         std::string path;
-        REQUIRE(components.find("CPUParticles2D")->assign(world, entity, parse(fields), path).ok());
+        REQUIRE(components.find("Emitter2D")->assign(world, entity, parse(fields), path).ok());
         return entity;
     }
 
@@ -66,8 +66,8 @@ struct Particles {
         return canvas::particles(world, entity);
     }
 
-    world::CPUParticles2D& emitter(entt::entity entity) {
-        return world.ecs().get<world::CPUParticles2D>(entity);
+    world::Emitter2D& emitter(entt::entity entity) {
+        return world.ecs().get<world::Emitter2D>(entity);
     }
 
     std::size_t count(std::string_view kind) const {
@@ -165,7 +165,7 @@ TEST_CASE("simulate runs settings apart from a world and gives what the system w
     }
 
     // Preprocess runs the emitter on before the first tick, and time 0 gives what it made.
-    world::CPUParticles2D sparkler = scene.emitter(entity);
+    world::Emitter2D sparkler = scene.emitter(entity);
     sparkler.amount = 10;
     sparkler.lifetime = 1.0F;
     sparkler.randomness = 0.0F;

@@ -11,7 +11,7 @@ a pixel. Each opaque pixel sends them over the half of the sphere it faces. What
 lit as a path tracer's bounce lights it (what it gives off, the sun through its shadows, and the
 ambient light); a ray that meets nothing brings the ambient light. Their average, smoothed over
 the neighboring pixels on the same surface, is the pixel's ambient light in place of the
-`WorldEnvironment`'s.
+`Environment3D`'s.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

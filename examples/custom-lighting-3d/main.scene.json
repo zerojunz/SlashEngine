@@ -13,7 +13,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.5, 0.55, 0.7, 1.0],
           "ambient_light_energy": 0.3,
           "ambient_light_source": "color",
@@ -24,11 +24,11 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [40.0, 40.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.35, 0.5, 0.3, 1.0]
         },
         "Transform3D": {}
@@ -36,7 +36,7 @@
     },
     "lamp": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.6, 0.3, 1.0],
           "light_energy": 2.0,
           "omni_range": 3.0
@@ -48,9 +48,9 @@
     },
     "smooth": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "SphereGeometry": {},
+        "Surface3D": {
           "albedo_color": [0.9, 0.35, 0.3, 1.0],
           "roughness": 0.5
         },
@@ -61,7 +61,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "shadow_enabled": true
         },
         "Transform3D": {
@@ -71,10 +71,10 @@
     },
     "toon": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "material_override": "toon.material.json"
         },
-        "SphereMesh": {},
+        "SphereGeometry": {},
         "Transform3D": {
           "position": [-0.8, 0.5, 0.0]
         }

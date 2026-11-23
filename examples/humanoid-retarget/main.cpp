@@ -246,13 +246,13 @@ int main() {
     // does, and its hips bob 8 centimeters, as far for its height.
     call(game, "entity.create",
          R"({"id": "hero", "components": {"Transform3D": {},
-             "MeshInstance3D": {"mesh": "characters/hero.glb"},
-             "AnimationPlayer": {"library": "characters/hero.glb", "animation": "wave-loop",
+             "Model3D": {"mesh": "characters/hero.glb"},
+             "Animator": {"library": "characters/hero.glb", "animation": "wave-loop",
                                  "time": 0.5, "playing": false}}})");
     call(game, "entity.create",
          R"({"id": "knight", "components": {"Transform3D": {"position": [1, 0, 0]},
-             "MeshInstance3D": {"mesh": "characters/knight.glb"},
-             "AnimationPlayer": {"library": "characters/hero.glb", "animation": "wave-loop",
+             "Model3D": {"mesh": "characters/knight.glb"},
+             "Animator": {"library": "characters/hero.glb", "animation": "wave-loop",
                                  "time": 0.5, "playing": false}}})");
     call(game, "skeleton.get", R"({"id": "hero", "bones": ["Hips", "LeftLowerArm", "LeftHand"]})");
     call(game, "skeleton.get",

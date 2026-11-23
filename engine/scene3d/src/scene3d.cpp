@@ -172,9 +172,9 @@ render::Light3D light_base(const T& light, render::LightType type, bool units) {
         // Godot's physical light units: the color tinted by the temperature in linear light, and
         // the energy by the lux or lumens.
         out.color = render::tint_by_temperature(out.color, light.light_temperature);
-        if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+        if constexpr (std::is_same_v<T, world::SunLight3D>) {
             out.energy *= render::directional_light_units(light.light_intensity_lux);
-        } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+        } else if constexpr (std::is_same_v<T, world::PointLight3D>) {
             out.energy *= render::omni_light_units(light.light_intensity_lumens);
         } else {
             out.energy *= render::spot_light_units(light.light_intensity_lumens);
@@ -239,7 +239,7 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
         }
         const T& light = world.ecs().get<const T>(entity);
         render::Light3D shone;
-        if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+        if constexpr (std::is_same_v<T, world::SunLight3D>) {
             if (light.sky_mode == "sky_only") {
                 continue;
             }
@@ -253,7 +253,7 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             shone.shadow_max_distance = light.directional_shadow_max_distance;
             shone.shadow_pancake_size = light.directional_shadow_pancake_size;
             shone.size = light.light_angular_distance;
-        } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
+        } else if constexpr (std::is_same_v<T, world::PointLight3D>) {
             shone = light_base(light, render::LightType::Omni, units);
             shone.size = light.light_size;
             shone.range = light.omni_range;
@@ -289,8 +289,8 @@ std::vector<Shone> shining(const world::World& world, const world::Tree3D& tree,
         order.emplace(tree.order()[i], i);
     }
     std::vector<Shone> found;
-    add_lights<world::DirectionalLight3D>(world, tree, global, order, found);
-    add_lights<world::OmniLight3D>(world, tree, global, order, found);
+    add_lights<world::SunLight3D>(world, tree, global, order, found);
+    add_lights<world::PointLight3D>(world, tree, global, order, found);
     add_lights<world::SpotLight3D>(world, tree, global, order, found);
     std::ranges::stable_sort(found, {}, &Shone::place);
     return found;
@@ -300,30 +300,29 @@ std::array<float, 4> rgba(const Vec4& color) {
     return {color.x, color.y, color.z, color.w};
 }
 
-// The sky material on a WorldEnvironment's entity as a frame's sky, as Godot's Sky: the first of
-// ProceduralSkyMaterial, PhysicalSkyMaterial and PanoramaSkyMaterial it has, or a default
-// ProceduralSkyMaterial, as Godot's new scenes have.
+// The sky material on a Environment3D's entity as a frame's sky, as Godot's Sky: the first of
+// SkyGradient, SkyScattering and SkyPanorama it has, or a default
+// SkyGradient, as Godot's new scenes have.
 void add_sky(const world::World& world, entt::entity entity, Environment& out) {
     const auto& ecs = world.ecs();
-    const auto* procedural = ecs.try_get<const world::ProceduralSkyMaterial>(entity);
-    const auto* physical = ecs.try_get<const world::PhysicalSkyMaterial>(entity);
-    const auto* panorama = ecs.try_get<const world::PanoramaSkyMaterial>(entity);
+    const auto* procedural = ecs.try_get<const world::SkyGradient>(entity);
+    const auto* physical = ecs.try_get<const world::SkyScattering>(entity);
+    const auto* panorama = ecs.try_get<const world::SkyPanorama>(entity);
     const char* ignored = nullptr;
     if (procedural != nullptr && physical != nullptr) {
-        ignored = "PhysicalSkyMaterial";
+        ignored = "SkyScattering";
     } else if ((procedural != nullptr || physical != nullptr) && panorama != nullptr) {
-        ignored = "PanoramaSkyMaterial";
+        ignored = "SkyPanorama";
     }
     if (ignored != nullptr) {
         out.problems.push_back({entity, std::string("/components/") + ignored,
                                 "is a second sky material, which draws nothing: keep one of "
-                                "ProceduralSkyMaterial, PhysicalSkyMaterial and "
-                                "PanoramaSkyMaterial"});
+                                "SkyGradient, SkyScattering and "
+                                "SkyPanorama"});
     }
     render::Sky3D& sky = out.sky;
     if (procedural != nullptr || (physical == nullptr && panorama == nullptr)) {
-        const world::ProceduralSkyMaterial m =
-            procedural != nullptr ? *procedural : world::ProceduralSkyMaterial{};
+        const world::SkyGradient m = procedural != nullptr ? *procedural : world::SkyGradient{};
         sky.kind = render::SkyKind::Procedural;
         render::ProceduralSky& p = sky.procedural;
         p.sky_top_color = rgb(m.sky_top_color);
@@ -340,9 +339,9 @@ void add_sky(const world::World& world, entt::entity entity, Environment& out) {
         p.use_debanding = m.use_debanding;
         p.energy_multiplier = m.energy_multiplier;
         out.sky_texture = m.sky_cover;
-        out.sky_texture_field = "/components/ProceduralSkyMaterial/sky_cover";
+        out.sky_texture_field = "/components/SkyGradient/sky_cover";
     } else if (physical != nullptr) {
-        const world::PhysicalSkyMaterial& m = *physical;
+        const world::SkyScattering& m = *physical;
         sky.kind = render::SkyKind::Physical;
         render::PhysicalSky& p = sky.physical;
         p.rayleigh_coefficient = m.rayleigh_coefficient;
@@ -356,31 +355,32 @@ void add_sky(const world::World& world, entt::entity entity, Environment& out) {
         p.energy_multiplier = m.energy_multiplier;
         p.use_debanding = m.use_debanding;
         out.sky_texture = m.night_sky;
-        out.sky_texture_field = "/components/PhysicalSkyMaterial/night_sky";
+        out.sky_texture_field = "/components/SkyScattering/night_sky";
     } else {
         sky.kind = render::SkyKind::Panorama;
         sky.panorama.energy_multiplier = panorama->energy_multiplier;
         out.sky_texture = panorama->panorama;
         out.sky_filter = panorama->filter ? render::Filter::Linear : render::Filter::Nearest;
-        out.sky_texture_field = "/components/PanoramaSkyMaterial/panorama";
+        out.sky_texture_field = "/components/SkyPanorama/panorama";
     }
 }
 
 constexpr std::string_view kNoMesh =
     "has no mesh: set mesh to a .gltf, .glb, .obj, .fbx, .blend or .model.json "
-    "file, or add a BoxMesh, SphereMesh, "
-    "CylinderMesh, "
-    "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
-constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
-constexpr std::string_view kMultiMeshField = "/components/MultiMeshInstance3D/mesh";
+    "file, or add a BoxGeometry, SphereGeometry, "
+    "CylinderGeometry, "
+    "CapsuleGeometry, PlaneGeometry, QuadGeometry, PrismGeometry or TorusGeometry";
+constexpr std::string_view kMeshField = "/components/Model3D/mesh";
+constexpr std::string_view kMultiMeshField = "/components/ModelInstances3D/mesh";
 constexpr std::string_view kNoParticleMesh =
-    "has no mesh to draw at its particles: set mesh to a model file, or add a QuadMesh or "
+    "has no mesh to draw at its particles: set mesh to a model file, or add a QuadGeometry or "
     "another primitive mesh";
 constexpr std::string_view kNoDrawPassMesh =
-    "has no mesh to draw at its particles: set draw_pass_1 to a model file, or add a QuadMesh or "
+    "has no mesh to draw at its particles: set draw_pass_1 to a model file, or add a QuadGeometry "
+    "or "
     "another primitive mesh";
 
-// What's wrong with a MeshInstance3D's mesh path, without reading it; "" for nothing.
+// What's wrong with a Model3D's mesh path, without reading it; "" for nothing.
 std::string mesh_path_problem(const world::World& world, entt::entity entity,
                               const std::string& path) {
     // A made mesh (asset::Assets::put) is gameplay code's, made while the game runs.
@@ -418,7 +418,7 @@ std::optional<Primitive> drawable(const world::World& world, entt::entity entity
     }
     const std::optional<Primitive>& found = primitive.value();
     if (!found) {
-        problems.push_back({entity, "/components/MeshInstance3D", std::string(kNoMesh)});
+        problems.push_back({entity, "/components/Model3D", std::string(kNoMesh)});
         return std::nullopt;
     }
     const Primitive& mesh = *found;
@@ -506,11 +506,11 @@ bool physical_light_units(const world::World& world) {
 Environment world_environment(const world::World& world, render::Color clear) {
     Environment out;
     out.background = clear;
-    const auto environments = made<world::WorldEnvironment>(world);
+    const auto environments = made<world::Environment3D>(world);
     if (environments.empty()) {
         return out;
     }
-    const auto& env = world.ecs().get<const world::WorldEnvironment>(environments.front());
+    const auto& env = world.ecs().get<const world::Environment3D>(environments.front());
     render::Color background = clear;
     if (env.background_mode == "color") {
         background = {.r = env.background_color.x,
@@ -634,7 +634,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
         if (size >= 32 && size <= 2048 && std::has_single_bit(size)) {
             radiance.size = size;
         } else {
-            out.problems.push_back({out.entity, "/components/WorldEnvironment/sky_radiance_size",
+            out.problems.push_back({out.entity, "/components/Environment3D/sky_radiance_size",
                                     "is 32, 64, 128, 256, 512, 1024 or 2048, not " +
                                         std::to_string(size) + "; drawing it at 256"});
         }
@@ -661,7 +661,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
     out.post.glow = env.glow_enabled;
     out.post.glow_intensity = env.glow_intensity;
     if (env.glow_levels.size() != render::kMaxGlowLevels) {
-        out.problems.push_back({out.entity, "/components/WorldEnvironment/glow_levels",
+        out.problems.push_back({out.entity, "/components/Environment3D/glow_levels",
                                 "has 7 levels, not " + std::to_string(env.glow_levels.size()) +
                                     "; the missing ones are 0 and the rest are left out"});
     }
@@ -707,13 +707,11 @@ std::atomic<std::uint64_t> exposure_versions{0};
 
 entt::entity camera_attributes(const world::World& world, entt::entity camera) {
     const auto& ecs = world.ecs();
-    if (camera != entt::null && world.valid(camera) &&
-        ecs.all_of<world::CameraAttributesPractical>(camera)) {
+    if (camera != entt::null && world.valid(camera) && ecs.all_of<world::CameraLens>(camera)) {
         return camera;
     }
-    const auto environments = made<world::WorldEnvironment>(world);
-    if (!environments.empty() &&
-        ecs.all_of<world::CameraAttributesPractical>(environments.front())) {
+    const auto environments = made<world::Environment3D>(world);
+    if (!environments.empty() && ecs.all_of<world::CameraLens>(environments.front())) {
         return environments.front();
     }
     return entt::null;
@@ -725,8 +723,7 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     if (out.attributes == entt::null) {
         return out;
     }
-    const auto& attributes =
-        world.ecs().get<const world::CameraAttributesPractical>(out.attributes);
+    const auto& attributes = world.ecs().get<const world::CameraLens>(out.attributes);
     // Godot's exposure normalization without physical light units is exposure_multiplier alone.
     // As its bg_energy_multiplier, it brightens the background and the sky, and so the sky's
     // light, but not ambient_light_color or fog; a fogged background's sky, which the background's
@@ -757,8 +754,7 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     }
     if (!std::isfinite(attributes.exposure_sensitivity) ||
         attributes.exposure_sensitivity <= 0.0F) {
-        out.problems.push_back({out.attributes,
-                                "/components/CameraAttributesPractical/exposure_sensitivity",
+        out.problems.push_back({out.attributes, "/components/CameraLens/exposure_sensitivity",
                                 "is above 0 for auto exposure; drawing without it"});
         return out;
     }
@@ -809,8 +805,8 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
         order.emplace(tree.order()[i], i);
     }
     std::vector<std::pair<std::size_t, render::SkyLight>> found;
-    for (const entt::entity entity : made<world::DirectionalLight3D>(world)) {
-        const auto& light = world.ecs().get<const world::DirectionalLight3D>(entity);
+    for (const entt::entity entity : made<world::SunLight3D>(world)) {
+        const auto& light = world.ecs().get<const world::SunLight3D>(entity);
         if (!tree.visible(entity) || light.sky_mode == "light_only") {
             continue;
         }
@@ -842,7 +838,7 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
 
 namespace {
 
-// Why a MeshInstance3D's material_override can't draw, as far as can be told without loading it:
+// Why a Model3D's material_override can't draw, as far as can be told without loading it:
 // it isn't a material file, can't be read, or (a .material.json file) isn't a spatial material;
 // "" for none. Its file's own mistakes are its file's to report.
 std::string override_problem(const world::World& world, const std::string& path) {
@@ -905,19 +901,19 @@ std::vector<Problem> check_meshes(const world::World& world) {
     std::set<entt::entity> followed;
     {
         const world::Tree3D tree(world);
-        for (const entt::entity entity : world.ecs().view<const world::BoneAttachment3D>()) {
+        for (const entt::entity entity : world.ecs().view<const world::BoneSocket3D>()) {
             followed.insert(attachment_skeleton(world, tree, entity));
         }
     }
     std::map<entt::entity, Model> loaded;
-    for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
+    for (const entt::entity entity : made<world::Model3D>(world)) {
         if (std::string problem = override_problem(
-                world, world.ecs().get<const world::MeshInstance3D>(entity).material_override);
+                world, world.ecs().get<const world::Model3D>(entity).material_override);
             !problem.empty()) {
             problems.push_back(
-                {entity, "/components/MeshInstance3D/material_override", std::move(problem)});
+                {entity, "/components/Model3D/material_override", std::move(problem)});
         }
-        const std::string& path = world.ecs().get<const world::MeshInstance3D>(entity).mesh;
+        const std::string& path = world.ecs().get<const world::Model3D>(entity).mesh;
         if (path.empty()) {
             (void)drawable(world, entity, problems);
             check_bones(entity, nullptr);
@@ -954,9 +950,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
             }
         }
     }
-    // A MultiMeshInstance3D draws its model at each instance.
-    for (const entt::entity entity : made<world::MultiMeshInstance3D>(world)) {
-        const std::string& path = world.ecs().get<const world::MultiMeshInstance3D>(entity).mesh;
+    // A ModelInstances3D draws its model at each instance.
+    for (const entt::entity entity : made<world::ModelInstances3D>(world)) {
+        const std::string& path = world.ecs().get<const world::ModelInstances3D>(entity).mesh;
         if (path.empty()) {
             problems.push_back(
                 {entity, std::string(kMultiMeshField), "has no mesh: set mesh to a model file"});
@@ -983,12 +979,12 @@ std::vector<Problem> check_meshes(const world::World& world) {
                                     error.message});
         }
     }
-    // A CPUParticles3D draws its model or its primitive mesh at each particle.
-    for (const entt::entity entity : made<world::CPUParticles3D>(world)) {
-        const std::string& path = world.ecs().get<const world::CPUParticles3D>(entity).mesh;
+    // A Emitter3D draws its model or its primitive mesh at each particle.
+    for (const entt::entity entity : made<world::Emitter3D>(world)) {
+        const std::string& path = world.ecs().get<const world::Emitter3D>(entity).mesh;
         if (!path.empty()) {
             if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
-                problems.push_back({entity, "/components/CPUParticles3D/mesh", std::move(problem)});
+                problems.push_back({entity, "/components/Emitter3D/mesh", std::move(problem)});
             }
             continue;
         }
@@ -998,22 +994,22 @@ std::vector<Problem> check_meshes(const world::World& world) {
         }
         if (!primitive.value()) {
             problems.push_back(
-                {entity, "/components/CPUParticles3D/mesh", std::string(kNoParticleMesh)});
+                {entity, "/components/Emitter3D/mesh", std::string(kNoParticleMesh)});
         } else if (auto checked = check_primitive(*primitive.value()); !checked) {
             problems.push_back(
                 {entity, "/components/" + std::string(kPrimitiveNames[primitive.value()->index()]),
                  checked.error().message});
         }
     }
-    // A GPUParticles3D draws its draw passes' models, or for the first "" its primitive mesh.
-    for (const entt::entity entity : made<world::GPUParticles3D>(world)) {
-        const auto& emitter = world.ecs().get<const world::GPUParticles3D>(entity);
+    // A GpuEmitter3D draws its draw passes' models, or for the first "" its primitive mesh.
+    for (const entt::entity entity : made<world::GpuEmitter3D>(world)) {
+        const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(entity);
         const std::array<const std::string*, 4> passes{&emitter.draw_pass_1, &emitter.draw_pass_2,
                                                        &emitter.draw_pass_3, &emitter.draw_pass_4};
         const auto count = static_cast<std::size_t>(std::clamp(emitter.draw_passes, 1, 4));
         for (std::size_t pass = 0; pass < count; ++pass) {
             const std::string field =
-                "/components/GPUParticles3D/draw_pass_" + std::to_string(pass + 1);
+                "/components/GpuEmitter3D/draw_pass_" + std::to_string(pass + 1);
             const std::string& path = *passes.at(pass);
             if (!path.empty()) {
                 if (std::string problem = mesh_path_problem(world, entity, path);
@@ -1040,15 +1036,13 @@ std::vector<Problem> check_meshes(const world::World& world) {
         }
     }
     // A vector field's texture must read and cut into its slices.
-    for (const entt::entity entity : made<world::GPUParticlesAttractorVectorField3D>(world)) {
-        const auto& field =
-            world.ecs().get<const world::GPUParticlesAttractorVectorField3D>(entity);
+    for (const entt::entity entity : made<world::ParticleFlowField3D>(world)) {
+        const auto& field = world.ecs().get<const world::ParticleFlowField3D>(entity);
         const world::FileReader& reader = world.file_reader();
         if (field.texture.empty() || !reader || asset::is_made_path(field.texture)) {
             continue;
         }
-        constexpr std::string_view kTextureField =
-            "/components/GPUParticlesAttractorVectorField3D/texture";
+        constexpr std::string_view kTextureField = "/components/ParticleFlowField3D/texture";
         auto bytes = reader(field.texture);
         if (!bytes) {
             problems.push_back(
@@ -1079,15 +1073,15 @@ std::vector<Problem> check_meshes(const world::World& world) {
         problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
     for (const entt::entity entity : made<world::Skeleton3D>(world)) {
-        if (!world.ecs().all_of<world::MeshInstance3D>(entity)) {
+        if (!world.ecs().all_of<world::Model3D>(entity)) {
             check_bones(entity, nullptr);
         }
     }
-    // A primitive mesh draws only on an entity with a MeshInstance3D, but two are always wrong.
+    // A primitive mesh draws only on an entity with a Model3D, but two are always wrong.
     std::vector<entt::entity> others;
     if (const auto* entities = world.ecs().storage<entt::entity>(); entities != nullptr) {
         for (const entt::entity entity : *entities) {
-            if (world.ecs().valid(entity) && !world.ecs().all_of<world::MeshInstance3D>(entity)) {
+            if (world.ecs().valid(entity) && !world.ecs().all_of<world::Model3D>(entity)) {
                 others.push_back(entity);
             }
         }
@@ -1160,9 +1154,8 @@ std::vector<json::ValidationError> check_meshes(const world::ComponentRegistry& 
     return errors;
 }
 
-render::Material3D material(const world::StandardMaterial3D& standard,
-                            const TextureSource& textures, std::vector<Problem>& problems,
-                            entt::entity entity) {
+render::Material3D material(const world::Surface3D& standard, const TextureSource& textures,
+                            std::vector<Problem>& problems, entt::entity entity) {
     render::Material3D out;
     const bool nearest = standard.texture_filter.starts_with("nearest");
     const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
@@ -1173,8 +1166,8 @@ render::Material3D material(const world::StandardMaterial3D& standard,
         }
         auto made = textures(path, filter);
         if (!made) {
-            problems.push_back({entity, std::string("/components/StandardMaterial3D/") + field,
-                                made.error().message});
+            problems.push_back(
+                {entity, std::string("/components/Surface3D/") + field, made.error().message});
             return {};
         }
         return {.texture = made.value().id, .repeat = standard.texture_repeat};
@@ -1247,17 +1240,17 @@ render::Material3D material(const world::StandardMaterial3D& standard,
 
 std::optional<render::Material3D> Renderer::override_material(const world::World& world,
                                                               entt::entity entity,
-                                                              const world::MeshInstance3D& instance,
+                                                              const world::Model3D& instance,
                                                               bool& shadows_disabled) {
     shadows_disabled = false;
-    const auto* standard = world.ecs().try_get<world::StandardMaterial3D>(entity);
+    const auto* standard = world.ecs().try_get<world::Surface3D>(entity);
     if (instance.material_override.empty()) {
         if (standard == nullptr) {
             return std::nullopt;
         }
         return material(*standard, textures_, problems_, entity);
     }
-    const std::string field = "/components/MeshInstance3D/material_override";
+    const std::string field = "/components/Model3D/material_override";
     if (!override_materials_) {
         problems_.push_back({entity, field, "material overrides can't load here"});
         return std::nullopt;
@@ -1268,7 +1261,7 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
         const std::string& message = loaded.error().message;
         if (message.starts_with("material_params/")) {
             const std::size_t end = message.find(": ");
-            problems_.push_back({entity, "/components/MeshInstance3D/" + message.substr(0, end),
+            problems_.push_back({entity, "/components/Model3D/" + message.substr(0, end),
                                  end == std::string::npos ? message : message.substr(end + 2)});
         } else {
             problems_.push_back({entity, field, message});
@@ -1499,12 +1492,12 @@ void Renderer::find_lightmaps(const world::World& world, float exposure,
                               const std::function<world::Affine3D(entt::entity)>& global) {
     lit_.clear();
     probe_sources_.clear();
-    for (const entt::entity entity : made<world::LightmapGI>(world)) {
-        const auto& gi = world.ecs().get<const world::LightmapGI>(entity);
+    for (const entt::entity entity : made<world::BakedLighting3D>(world)) {
+        const auto& gi = world.ecs().get<const world::BakedLighting3D>(entity);
         if (gi.light_data.empty()) {
             continue;
         }
-        const std::string field = "/components/LightmapGI/light_data";
+        const std::string field = "/components/BakedLighting3D/light_data";
         if (!lightmaps_) {
             problems_.push_back({entity, field, "lightmaps can't load here"});
             continue;
@@ -1669,8 +1662,8 @@ const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::u
     if (hash.hash != lit.mesh) {
         if (!lit.reported) {
             lit.reported = true;
-            problems_.push_back({entity, "/components/MeshInstance3D",
-                                 "has changed since its LightmapGI baked it, so it is drawn "
+            problems_.push_back({entity, "/components/Model3D",
+                                 "has changed since its BakedLighting3D baked it, so it is drawn "
                                  "without its lightmap: bake it again"});
         }
         return nullptr;
@@ -1721,7 +1714,7 @@ const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::u
                                   "its lightmap's unwrap doesn't fit its mesh: bake it again"));
         if (!created) {
             shared_.erase(key);
-            problems_.push_back({entity, "/components/MeshInstance3D", created.error().message});
+            problems_.push_back({entity, "/components/Model3D", created.error().message});
             return nullptr;
         }
         shared.id = created.value();
@@ -1746,8 +1739,8 @@ void Renderer::before_tick(const world::World& world) {
                                       .scale = transform.scale});
     }
     before_poses_.clear();
-    for (const entt::entity entity : world.ecs().view<const world::MeshInstance3D>()) {
-        if (world.ecs().get<const world::MeshInstance3D>(entity).mesh.empty()) {
+    for (const entt::entity entity : world.ecs().view<const world::Model3D>()) {
+        if (world.ecs().get<const world::Model3D>(entity).mesh.empty()) {
             continue;
         }
         PoseKey key{.clips = clips(world, entity), .skeleton = std::nullopt};
@@ -2183,8 +2176,7 @@ Result<render::MeshId> Renderer::skin_on_device(const std::string& key, Skinned&
 }
 
 render::MaterialTexture Renderer::model_texture(const std::string& path, const SourceModel& source,
-                                                int image,
-                                                const world::StandardMaterial3D& standard,
+                                                int image, const world::Surface3D& standard,
                                                 entt::entity entity, const std::string& field) {
     if (image < 0 || static_cast<std::size_t>(image) >= source.model->images.size()) {
         return {};
@@ -2225,7 +2217,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
 }
 
 void Renderer::add_model(const world::World& world, entt::entity entity,
-                         const world::MeshInstance3D& instance, const world::Affine3D& place,
+                         const world::Model3D& instance, const world::Affine3D& place,
                          const std::function<world::Affine3D(entt::entity)>& global,
                          render::ShadowCasting casting, float interpolation) {
     if (std::string problem = mesh_path_problem(world, entity, instance.mesh); !problem.empty()) {
@@ -2242,7 +2234,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
         return;
     }
     const Model& model = *source.value().model;
-    // Its material_override, or a StandardMaterial3D on the entity, takes the place of every
+    // Its material_override, or a Surface3D on the entity, takes the place of every
     // surface's, as Godot's material_override.
     bool shadows_disabled = false;
     const std::optional<render::Material3D> override =
@@ -2424,8 +2416,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             if (override) {
                 draw.material = *override;
                 if (!deformed && instance.material_override.empty()) {
-                    face_camera(world.ecs().get<const world::StandardMaterial3D>(entity),
-                                part_place, draw);
+                    face_camera(world.ecs().get<const world::Surface3D>(entity), part_place, draw);
                 }
             } else if (surface.material >= 0) {
                 const auto index = static_cast<std::size_t>(surface.material);
@@ -2508,7 +2499,7 @@ render::Material3D Renderer::surface_material(const SurfaceMaterial& from, entt:
         static_cast<std::size_t>(from.model_material) >= from.model->materials.size()) {
         return {};
     }
-    // A model's own material, its images found as a MeshInstance3D's are.
+    // A model's own material, its images found as a Model3D's are.
     const ModelMaterial& model_material =
         from.model->materials[static_cast<std::size_t>(from.model_material)];
     render::Material3D out = material(model_material.standard, textures_, problems_, from.entity);
@@ -2537,7 +2528,7 @@ render::Material3D Renderer::surface_material(const SurfaceMaterial& from, entt:
     return out;
 }
 
-void Renderer::face_camera(const world::StandardMaterial3D& standard, const world::Affine3D& place,
+void Renderer::face_camera(const world::Surface3D& standard, const world::Affine3D& place,
                            Draw& draw) const {
     const Billboard mode = billboard_of(standard.billboard_mode);
     if (mode == Billboard::Disabled) {
@@ -2556,12 +2547,12 @@ void Renderer::face_camera(const world::StandardMaterial3D& standard, const worl
 }
 
 void Renderer::add_piece(const world::World& world, entt::entity entity,
-                         const world::MeshInstance3D& instance, const world::Affine3D& place,
+                         const world::Model3D& instance, const world::Affine3D& place,
                          render::ShadowCasting casting) {
     auto damaged = damaged_piece_of(world, entity);
     if (!damaged) {
         // A piece its cuts don't make is a problem at them; the rest at what it draws.
-        std::string path = "/components/MeshInstance3D";
+        std::string path = "/components/Model3D";
         if (const auto* piece = world.ecs().try_get<const world::FracturePiece3D>(entity);
             piece != nullptr && damaged.error().message.starts_with("its mesh breaks into")) {
             path = piece->cuts.empty() ? "/components/FracturePiece3D/index"
@@ -2577,14 +2568,14 @@ void Renderer::add_piece(const world::World& world, entt::entity entity,
         const MeshSurface& surface = mesh.surfaces[i];
         auto made = kept_mesh(prefix + std::to_string(i), surface.vertices, surface.indices);
         if (!made) {
-            problems_.push_back({entity, "/components/MeshInstance3D", made.error().message});
+            problems_.push_back({entity, "/components/Model3D", made.error().message});
             continue;
         }
         Draw draw;
         draw.mesh = made.value();
         draw.transform = transform;
         draw.entity = entity;
-        draw.material = surface_material(surface.material, entity, "/components/MeshInstance3D");
+        draw.material = surface_material(surface.material, entity, "/components/Model3D");
         draw.layers = instance.layers;
         draw.shadows = casting;
         draws_.push_back(draw);
@@ -2620,7 +2611,7 @@ void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, ent
         draw.mesh = made.value();
         draw.transform = transform;
         draw.entity = root;
-        draw.material = surface_material(surface.material, root, "/components/CSGMesh3D/mesh");
+        draw.material = surface_material(surface.material, root, "/components/SolidMesh3D/mesh");
         draw.layers = settings.layers;
         draw.shadows = casting;
         draws_.push_back(draw);
@@ -2631,7 +2622,7 @@ void Renderer::add_multimesh(const world::World& world, entt::entity entity,
                              const world::Affine3D& place,
                              const std::function<world::Affine3D(entt::entity)>& global,
                              std::uint32_t cull_mask, float interpolation) {
-    const auto& multimesh = world.ecs().get<const world::MultiMeshInstance3D>(entity);
+    const auto& multimesh = world.ecs().get<const world::ModelInstances3D>(entity);
     if (multimesh.mesh.empty()) {
         problems_.push_back(
             {entity, std::string(kMultiMeshField), "has no mesh: set mesh to a model file"});
@@ -2644,8 +2635,8 @@ void Renderer::add_multimesh(const world::World& world, entt::entity entity,
         }
         casting = render::ShadowCasting::ShadowsOnly;
     }
-    // Each instance draws as a MeshInstance3D of the model would, where it puts it.
-    world::MeshInstance3D instance;
+    // Each instance draws as a Model3D of the model would, where it puts it.
+    world::Model3D instance;
     instance.mesh = multimesh.mesh;
     instance.layers = multimesh.layers;
     instance.cast_shadow = multimesh.cast_shadow;
@@ -2666,7 +2657,7 @@ void Renderer::add_multimesh(const world::World& world, entt::entity entity,
         add_model(world, entity, instance, place * world::affine(local), global, casting,
                   interpolation);
         if (problems_.size() > before) {
-            // The model can't draw: say so once, at the MultiMeshInstance3D's field.
+            // The model can't draw: say so once, at the ModelInstances3D's field.
             for (std::size_t p = before; p < problems_.size(); ++p) {
                 if (problems_[p].path == kMeshField) {
                     problems_[p].path = kMultiMeshField;
@@ -2698,15 +2689,15 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
             auto made =
                 kept_mesh(prefix + std::to_string(i), surface.mesh.vertices, surface.mesh.indices);
             if (!made) {
-                problems_.push_back({entity, "/components/GridMap", made.error().message});
+                problems_.push_back({entity, "/components/BlockMap3D", made.error().message});
                 continue;
             }
             Draw draw;
             draw.mesh = made.value();
             draw.entity = entity;
             draw.transform = transform;
-            draw.material =
-                surface_material(surface.mesh.material, entity, "/components/GridMap/mesh_library");
+            draw.material = surface_material(surface.mesh.material, entity,
+                                             "/components/BlockMap3D/mesh_library");
             draw.layers = kLayers;
             draw.shadows = casting;
             draws_.push_back(draw);
@@ -2742,7 +2733,7 @@ void Renderer::add_foliage(const world::World& world, entt::entity entity,
             }
             casting = render::ShadowCasting::ShadowsOnly;
         }
-        world::MeshInstance3D instance;
+        world::Model3D instance;
         instance.mesh = type->mesh;
         instance.layers = foliage.layers;
         instance.cast_shadow = type->cast_shadow;
@@ -2855,7 +2846,7 @@ void Renderer::add_impostor(entt::entity entity, const world::FoliageType& type,
     quad.y = Vec3{0.0F, height, 0.0F};
     quad.z = facing;
     quad.origin = placed.origin;
-    world::StandardMaterial3D standard;
+    world::Surface3D standard;
     standard.albedo_texture = type.impostor;
     standard.transparency = "alpha_scissor";
     standard.cull_mode = "disabled";
@@ -2873,9 +2864,9 @@ bool Renderer::particle_pieces(const world::World& world, entt::entity entity,
                                const std::string& path, std::string_view field,
                                std::vector<ParticlePiece>& pieces,
                                std::shared_ptr<const Model>& model, std::string_view no_mesh) {
-    const auto* standard = world.ecs().try_get<const world::StandardMaterial3D>(entity);
+    const auto* standard = world.ecs().try_get<const world::Surface3D>(entity);
     // The mesh drawn at each particle: its surfaces, each where its part puts it, with what it is
-    // made of; the entity's StandardMaterial3D takes the place of a model's materials.
+    // made of; the entity's Surface3D takes the place of a model's materials.
     if (!path.empty()) {
         if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
             problems_.push_back({entity, std::string(field), std::move(problem)});
@@ -2959,7 +2950,7 @@ bool Renderer::particle_pieces(const world::World& world, entt::entity entity,
 void Renderer::add_particles(const world::World& world, entt::entity entity,
                              const world::Affine3D& place, const world::Affine3D& camera,
                              std::uint32_t cull_mask, float interpolation) {
-    const auto& emitter = world.ecs().get<const world::CPUParticles3D>(entity);
+    const auto& emitter = world.ecs().get<const world::Emitter3D>(entity);
     render::ShadowCasting casting = casting_of(emitter.cast_shadow);
     if ((emitter.layers & cull_mask) == 0) {
         if (casting == render::ShadowCasting::Off) {
@@ -2967,7 +2958,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
         }
         casting = render::ShadowCasting::ShadowsOnly;
     }
-    constexpr std::string_view kField = "/components/CPUParticles3D/mesh";
+    constexpr std::string_view kField = "/components/Emitter3D/mesh";
     std::vector<ParticlePiece> pieces;
     std::shared_ptr<const Model> model;
     if (!particle_pieces(world, entity, emitter.mesh, kField, pieces, model, kNoParticleMesh)) {
@@ -2997,12 +2988,12 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
             (indices.empty() ? vertices.size() : indices.size()) * amount >
                 render::kMaxMeshIndices) {
             problems_.push_back(
-                {entity, "/components/CPUParticles3D/amount",
+                {entity, "/components/Emitter3D/amount",
                  "its mesh has too many corners to draw " + std::to_string(amount) + " of them"});
             continue;
         }
         render::Material3D made = surface_material(piece.material, entity, std::string(kField));
-        const world::StandardMaterial3D* look =
+        const world::Surface3D* look =
             piece.material.standard ? &*piece.material.standard : nullptr;
         if (look == nullptr && model != nullptr && piece.surface->material >= 0) {
             look = &model->materials[static_cast<std::size_t>(piece.surface->material)].standard;
@@ -3146,7 +3137,7 @@ void Renderer::hair_mesh(const std::string& key, entt::entity entity,
     }
     if (vertices.size() > render::kMaxMeshVertices || indices.size() > render::kMaxMeshIndices) {
         problems_.push_back({entity, std::string(where),
-                             where.starts_with("/components/HairInstance3D")
+                             where.starts_with("/components/Hair3D")
                                  ? "the groom makes too many corners to draw; lower its density, "
                                    "max_strands, segments or shell_count"
                                  : "too many corners to draw"});
@@ -3184,11 +3175,11 @@ void Renderer::hair_mesh(const std::string& key, entt::entity entity,
 
 void Renderer::add_hair(const world::World& world, const world::Tree3D& tree, entt::entity entity,
                         std::uint32_t cull_mask, float interpolation) {
-    const auto& hair = world.ecs().get<const world::HairInstance3D>(entity);
+    const auto& hair = world.ecs().get<const world::Hair3D>(entity);
     if (!hair.visible) {
         return;
     }
-    const auto* instance = world.ecs().try_get<const world::MeshInstance3D>(entity);
+    const auto* instance = world.ecs().try_get<const world::Model3D>(entity);
     const std::uint32_t layers = instance != nullptr ? instance->layers : 1U;
     render::ShadowCasting casting = casting_of(hair.cast_shadow);
     if ((layers & cull_mask) == 0) {
@@ -3231,7 +3222,7 @@ void Renderer::add_hair(const world::World& world, const world::Tree3D& tree, en
     for (Vec3& point : guides) {
         point = point - render_origin_;
     }
-    world::StandardMaterial3D look;
+    world::Surface3D look;
     look.vertex_color_use_as_albedo = true;
     look.roughness = groom.roughness;
     look.metallic_specular = groom.specular;
@@ -3318,7 +3309,7 @@ void Renderer::add_fluid(const world::World& world, entt::entity entity, std::ui
         fluid_surface(recipe, *particles,
                       FluidEye{.eye = camera_place_, .projection = scene.projection}, shift,
                       vertices, indices);
-        world::StandardMaterial3D look;
+        world::Surface3D look;
         look.vertex_color_use_as_albedo = true;
         look.cull_mode = "disabled";
         look.transparency = "alpha";
@@ -3350,7 +3341,7 @@ void Renderer::add_fluid(const world::World& world, entt::entity entity, std::ui
     } else {
         fluid_quads(recipe, *particles, unit(right), unit(up), shift, vertices, indices);
     }
-    world::StandardMaterial3D look;
+    world::Surface3D look;
     look.vertex_color_use_as_albedo = true;
     look.albedo_texture = std::string(kFluidDisc);
     look.cull_mode = "disabled";
@@ -3462,7 +3453,7 @@ void Renderer::add_water(const world::WaterBody& body, std::uint32_t cull_mask, 
             indices.insert(indices.end(), {a, b, c, b, d, c});
         }
     }
-    world::StandardMaterial3D look;
+    world::Surface3D look;
     look.vertex_color_use_as_albedo = true;
     look.cull_mode = "disabled";
     look.transparency = "alpha";
@@ -3510,7 +3501,7 @@ bool out_of_view(const Bounds& box, const CameraView& view) {
 void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
                                  const world::Affine3D& place, const CameraView& view,
                                  std::uint32_t cull_mask, float interpolation) {
-    const auto& emitter = world.ecs().get<const world::GPUParticles3D>(entity);
+    const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(entity);
     render::ShadowCasting casting = casting_of(emitter.cast_shadow);
     if ((emitter.layers & cull_mask) == 0) {
         if (casting == render::ShadowCasting::Off) {
@@ -3540,8 +3531,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
         if (pass > 0 && paths.at(pass)->empty()) {
             continue;
         }
-        const std::string field =
-            "/components/GPUParticles3D/draw_pass_" + std::to_string(pass + 1);
+        const std::string field = "/components/GpuEmitter3D/draw_pass_" + std::to_string(pass + 1);
         if (!particle_pieces(world, entity, *paths.at(pass), field, made.pieces, made.model,
                              kNoDrawPassMesh)) {
             made.pieces.clear();
@@ -3554,7 +3544,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     static const render::ParticleProcess3D kStill{};
     std::shared_ptr<const render::ParticleProcess3D> process;
     if (!emitter.process_material.empty()) {
-        constexpr std::string_view kProcessField = "/components/GPUParticles3D/process_material";
+        constexpr std::string_view kProcessField = "/components/GpuEmitter3D/process_material";
         if (!processes_) {
             problems_.push_back(
                 {entity, std::string(kProcessField), "process materials can't load here"});
@@ -3573,7 +3563,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     GpuParticles3D& system = gpu_particles_[entity];
     system.used = frame_;
     const std::uint64_t end = kept->first + kept->steps.size();
-    constexpr std::string_view kAmountField = "/components/GPUParticles3D/amount";
+    constexpr std::string_view kAmountField = "/components/GpuEmitter3D/amount";
     if (system.id == render::Particles3DId::None || system.serial != kept->serial ||
         system.amount != kept->amount || system.next < kept->first) {
         if (system.id != render::Particles3DId::None) {
@@ -3644,8 +3634,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
 
     const std::size_t amount = kept->amount;
     for (std::size_t pass = 0; pass < passes.size(); ++pass) {
-        const std::string field =
-            "/components/GPUParticles3D/draw_pass_" + std::to_string(pass + 1);
+        const std::string field = "/components/GpuEmitter3D/draw_pass_" + std::to_string(pass + 1);
         const std::vector<ParticlePiece>& pieces = passes[pass].pieces;
         const std::shared_ptr<const Model>& model = passes[pass].model;
         for (std::size_t i = 0; i < pieces.size(); ++i) {
@@ -3685,7 +3674,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
                 }
             }
             render::Material3D made = surface_material(piece.material, entity, field);
-            const world::StandardMaterial3D* standard = nullptr;
+            const world::Surface3D* standard = nullptr;
             if (const auto& own = piece.material.standard; own.has_value()) {
                 standard = &*own;
             }
@@ -3774,7 +3763,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
 
 namespace {
 
-// Where a camera's forward ray first meets a terrain, in its cell space, as HTerrain's
+// Where a camera's forward ray first meets a terrain, in its cell space, as Terrain3D's
 // cell_raycast finds it for orthogonal cameras: stepping half a cell at a time up to far * 1.2.
 std::optional<Vec3> terrain_hit(const TerrainData& data, const world::Affine3D& to_cells,
                                 const world::Affine3D& camera, float far, float step) {
@@ -3825,7 +3814,7 @@ render::MaterialTexture Renderer::kept_texture(const std::string& key, const ren
 void Renderer::add_terrain(const world::World& world, entt::entity entity,
                            const world::Affine3D& place, const world::Affine3D& camera,
                            const world::Camera3D& lens) {
-    const auto& terrain = world.ecs().get<const world::HTerrain>(entity);
+    const auto& terrain = world.ecs().get<const world::Terrain3D>(entity);
     const std::shared_ptr<const TerrainData> data = terrain_data(world, entity);
     problems_.insert(problems_.end(), data->problems.begin(), data->problems.end());
     if (data->empty()) {
@@ -3833,7 +3822,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
     }
     const int chunk_size = terrain.chunk_size;
     if (chunk_size != 16 && chunk_size != 32 && chunk_size != 64) {
-        problems_.push_back({entity, "/components/HTerrain/chunk_size",
+        problems_.push_back({entity, "/components/Terrain3D/chunk_size",
                              "is 16, 32 or 64, not " + std::to_string(chunk_size)});
         return;
     }
@@ -3872,7 +3861,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
                 return render::MaterialTexture{.texture = made.value().id, .repeat = false};
             }
             problems_.push_back(
-                {entity, std::string("/components/HTerrain/") + field, made.error().message});
+                {entity, std::string("/components/Terrain3D/") + field, made.error().message});
         }
         render::Image pixel;
         pixel.width = 1;
@@ -3897,7 +3886,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
     for (std::size_t i = 0; i < terrain.textures.size() && i < shading.layers.size(); ++i) {
         const world::TerrainTexture& ground = terrain.textures[i];
         render::TerrainLayer& layer = shading.layers.at(i);
-        const std::string at = "/components/HTerrain/textures/" + std::to_string(i) + "/";
+        const std::string at = "/components/Terrain3D/textures/" + std::to_string(i) + "/";
         const auto texture = [&](const std::string& path, const char* field) {
             if (path.empty() || !textures_) {
                 return render::MaterialTexture{};
@@ -3927,7 +3916,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
                         : kept_mesh(key, terrain_chunk_vertices(*data, chunk_size, chunk),
                                     terrain_indices(chunk_size, chunk_size, chunk.seams));
         if (!made) {
-            problems_.push_back({entity, "/components/HTerrain", made.error().message});
+            problems_.push_back({entity, "/components/Terrain3D", made.error().message});
             return;
         }
         Draw draw;
@@ -3943,7 +3932,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
 
 namespace {
 
-// rendering/global_illumination/voxel_gi: the most lights Godot injects into a VoxelGI.
+// rendering/global_illumination/voxel_gi: the most lights Godot injects into a VoxelLighting3D.
 constexpr std::size_t kMaxVoxelGILights = 32;
 
 // The bounds of a box under a column-major transform.
@@ -4001,20 +3990,20 @@ Bounds light_bounds(const render::Light3D& light) {
 std::pair<float, std::string_view> indirect_of(const world::World& world, const Shone& shone) {
     const auto& ecs = world.ecs();
     if (shone.light.type == render::LightType::Directional) {
-        const auto& light = ecs.get<const world::DirectionalLight3D>(shone.entity);
+        const auto& light = ecs.get<const world::SunLight3D>(shone.entity);
         return {light.light_indirect_energy, light.light_bake_mode};
     }
     if (shone.light.type == render::LightType::Omni) {
-        const auto& light = ecs.get<const world::OmniLight3D>(shone.entity);
+        const auto& light = ecs.get<const world::PointLight3D>(shone.entity);
         return {light.light_indirect_energy, light.light_bake_mode};
     }
     const auto& light = ecs.get<const world::SpotLight3D>(shone.entity);
     return {light.light_indirect_energy, light.light_bake_mode};
 }
 
-// The lights a VoxelGI of data, placed at place, whose box in the world is box, injects, as Godot
-// pairs them: the omni and spot lights whose bake_mode isn't "disabled" and whose reach touches
-// its box, then every directional light, at most kMaxVoxelGILights.
+// The lights a VoxelLighting3D of data, placed at place, whose box in the world is box, injects, as
+// Godot pairs them: the omni and spot lights whose bake_mode isn't "disabled" and whose reach
+// touches its box, then every directional light, at most kMaxVoxelGILights.
 std::vector<VoxelGILight> voxel_gi_lights(const world::World& world, std::span<const Shone> shone,
                                           const VoxelGIData& data, const world::Affine3D& place,
                                           const Bounds& box) {
@@ -4042,8 +4031,8 @@ std::vector<VoxelGILight> voxel_gi_lights(const world::World& world, std::span<c
 
 } // namespace
 
-// A dynamic mesh plotted into a VoxelGI: its entity, the version of its meshes, which of them,
-// and its transform into the VoxelGI's space.
+// A dynamic mesh plotted into a VoxelLighting3D: its entity, the version of its meshes, which of
+// them, and its transform into the VoxelLighting3D's space.
 struct PlottedObject {
     entt::entity entity = entt::null;
     std::uint64_t version = 0;
@@ -4069,9 +4058,9 @@ struct Renderer::KeptVoxelGI {
 };
 
 struct Renderer::VoxelObject {
-    world::MeshInstance3D instance;
+    world::Model3D instance;
     std::optional<Primitive> primitive;
-    std::optional<world::StandardMaterial3D> standard;
+    std::optional<world::Surface3D> standard;
     std::uint64_t model_version = 0;
     // The images its materials read, and what each loaded as (null where it didn't).
     std::vector<std::pair<std::string, std::shared_ptr<const render::Image>>> images;
@@ -4084,7 +4073,7 @@ struct Renderer::VoxelObject {
 const Renderer::VoxelObject& Renderer::voxel_object(const world::World& world,
                                                     entt::entity entity) {
     const auto& ecs = world.ecs();
-    const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+    const auto& instance = ecs.get<const world::Model3D>(entity);
     std::optional<Primitive> primitive;
     std::uint64_t model_version = 0;
     if (instance.mesh.empty()) {
@@ -4096,7 +4085,7 @@ const Renderer::VoxelObject& Renderer::voxel_object(const world::World& world,
             model_version = source.value().version;
         }
     }
-    const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+    const auto* standard = ecs.try_get<const world::Surface3D>(entity);
     const auto image = [this](const std::string& path) -> std::shared_ptr<const render::Image> {
         if (!images_) {
             return nullptr;
@@ -4171,27 +4160,27 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     struct Traced {
         entt::entity entity = entt::null;
         const KeptVoxelGI* kept = nullptr;
-        const world::VoxelGI* component = nullptr;
+        const world::VoxelLighting3D* component = nullptr;
         world::Affine3D place;
         Bounds box; // in the world
     };
     std::vector<Traced> traced;
     std::vector<entt::entity> seen;
     std::optional<std::vector<Shone>> shone;
-    // The dynamic MeshInstance3Ds, as Godot's dynamic GI instances, read once a VoxelGI needs
-    // them.
+    // The dynamic MeshInstance3Ds, as Godot's dynamic GI instances, read once a VoxelLighting3D
+    // needs them.
     struct Moving {
         entt::entity entity = entt::null;
         const VoxelObject* object = nullptr;
         world::Affine3D place;
     };
     std::optional<std::vector<Moving>> moving;
-    for (const entt::entity entity : made<world::VoxelGI>(world)) {
-        const auto& gi = ecs.get<const world::VoxelGI>(entity);
+    for (const entt::entity entity : made<world::VoxelLighting3D>(world)) {
+        const auto& gi = ecs.get<const world::VoxelLighting3D>(entity);
         if (gi.data.empty() || !tree.visible(entity)) {
             continue;
         }
-        const std::string field = "/components/VoxelGI/data";
+        const std::string field = "/components/VoxelLighting3D/data";
         if (!voxel_gi_source_) {
             problems_.push_back({entity, field, "VoxelGIs can't load here"});
             continue;
@@ -4239,8 +4228,8 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
         // has any.
         if (!moving) {
             moving.emplace();
-            for (const entt::entity object : made<world::MeshInstance3D>(world)) {
-                if (ecs.get<const world::MeshInstance3D>(object).gi_mode == "dynamic" &&
+            for (const entt::entity object : made<world::Model3D>(world)) {
+                if (ecs.get<const world::Model3D>(object).gi_mode == "dynamic" &&
                     tree.visible(object)) {
                     moving->push_back({.entity = object,
                                        .object = &voxel_object(world, object),
@@ -4304,7 +4293,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     for (auto it = traced.begin(); it != traced.end();) {
         const render::Image& image = it->kept->atlas.image;
         if (height + image.height > render::kMaxTextureSize) {
-            problems_.push_back({it->entity, "/components/VoxelGI/subdiv",
+            problems_.push_back({it->entity, "/components/VoxelLighting3D/subdiv",
                                  "leaves its light no room in the atlas it shares with the "
                                  "VoxelGIs made before it: lower its subdiv, or theirs"});
             it = traced.erase(it);
@@ -4349,7 +4338,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
             }
         }
         if (!made) {
-            problems_.push_back({traced.front().entity, "/components/VoxelGI/data",
+            problems_.push_back({traced.front().entity, "/components/VoxelLighting3D/data",
                                  "its light's atlas: " + made.error().message});
             destroy_voxel_gis();
             return;
@@ -4524,8 +4513,7 @@ std::optional<Frame3D> Renderer::prepare(
             exposure_entity_ = env.attributes;
             exposure_time_ = time;
         }
-        const float speed =
-            ecs.get<const world::CameraAttributesPractical>(env.attributes).auto_exposure_speed;
+        const float speed = ecs.get<const world::CameraLens>(env.attributes).auto_exposure_speed;
         frame.scene.post.auto_exposure_adjust = speed * static_cast<float>(time - exposure_time_);
         frame.scene.post.auto_exposure_version = exposure_version_;
         exposure_time_ = time;
@@ -4547,7 +4535,7 @@ std::optional<Frame3D> Renderer::prepare(
     if (env.post.adjustments && !env.color_correction.empty()) {
         // Sampled smoothly, as Godot samples its LUTs.
         auto lut = textures_(env.color_correction, render::Filter::Linear);
-        const char* const field = "/components/WorldEnvironment/adjustment_color_correction";
+        const char* const field = "/components/Environment3D/adjustment_color_correction";
         if (!lut) {
             problems_.push_back({env.entity, field, lut.error().message});
         } else if (lut.value().height != 1 &&
@@ -4613,8 +4601,8 @@ std::optional<Frame3D> Renderer::prepare(
         add_fog_volumes(world, tree, global, lens.cull_mask, frame.scene.volumetric_fog.volumes);
     }
 
-    for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
-        const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+    for (const entt::entity entity : made<world::Model3D>(world)) {
+        const auto& instance = ecs.get<const world::Model3D>(entity);
         if (!tree.visible(entity)) {
             continue;
         }
@@ -4669,7 +4657,7 @@ std::optional<Frame3D> Renderer::prepare(
         if (auto override = override_material(world, entity, instance, shadows_disabled)) {
             draw.material = *override;
         }
-        if (const auto* standard = ecs.try_get<world::StandardMaterial3D>(entity);
+        if (const auto* standard = ecs.try_get<world::Surface3D>(entity);
             standard != nullptr && instance.material_override.empty() && soft == nullptr) {
             face_camera(*standard, global(entity), draw);
         }
@@ -4700,7 +4688,7 @@ std::optional<Frame3D> Renderer::prepare(
         draws_.push_back(draw);
     }
     // MultiMeshInstance3Ds draw their model at each instance.
-    for (const entt::entity entity : made<world::MultiMeshInstance3D>(world)) {
+    for (const entt::entity entity : made<world::ModelInstances3D>(world)) {
         if (tree.visible(entity)) {
             add_multimesh(world, entity, global(entity), global, lens.cull_mask, t);
         }
@@ -4718,19 +4706,19 @@ std::optional<Frame3D> Renderer::prepare(
         }
     }
     // GridMaps draw their octants.
-    for (const entt::entity entity : made<world::GridMap>(world)) {
+    for (const entt::entity entity : made<world::BlockMap3D>(world)) {
         if (tree.visible(entity)) {
             add_gridmap(world, entity, global(entity), lens.cull_mask);
         }
     }
     // CPUParticles3Ds draw their meshes at their particles.
-    for (const entt::entity entity : made<world::CPUParticles3D>(world)) {
+    for (const entt::entity entity : made<world::Emitter3D>(world)) {
         if (tree.visible(entity)) {
             add_particles(world, entity, global(entity), camera_global, lens.cull_mask, t);
         }
     }
     // HairInstance3Ds draw their grooms over their models.
-    for (const entt::entity entity : made<world::HairInstance3D>(world)) {
+    for (const entt::entity entity : made<world::Hair3D>(world)) {
         if (tree.visible(entity)) {
             add_hair(world, tree, entity, lens.cull_mask, t);
         }
@@ -4751,13 +4739,13 @@ std::optional<Frame3D> Renderer::prepare(
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.
-    for (const entt::entity entity : made<world::GPUParticles3D>(world)) {
+    for (const entt::entity entity : made<world::GpuEmitter3D>(world)) {
         if (tree.visible(entity)) {
             add_gpu_particles(world, entity, global(entity), view, lens.cull_mask, t);
         }
     }
     // Terrains draw the chunks their quad trees settle on for the camera.
-    for (const entt::entity entity : made<world::HTerrain>(world)) {
+    for (const entt::entity entity : made<world::Terrain3D>(world)) {
         if (tree.visible(entity)) {
             add_terrain(world, entity, global(entity), camera_global, lens);
         }
@@ -4903,12 +4891,12 @@ void Renderer::add_projectors(const world::World& world, const std::vector<entt:
         const std::string* ies_path = nullptr;
         Vec2 scroll;
         std::string component;
-        if (const auto* omni = world.ecs().try_get<const world::OmniLight3D>(entity);
+        if (const auto* omni = world.ecs().try_get<const world::PointLight3D>(entity);
             omni != nullptr && light.type == render::LightType::Omni) {
             texture_path = &omni->light_projector;
             ies_path = &omni->light_ies;
             scroll = omni->light_projector_scroll;
-            component = "OmniLight3D";
+            component = "PointLight3D";
         } else if (const auto* spot = world.ecs().try_get<const world::SpotLight3D>(entity);
                    spot != nullptr && light.type == render::LightType::Spot) {
             texture_path = &spot->light_projector;
@@ -5118,7 +5106,7 @@ void Renderer::add_fog_volumes(const world::World& world, const world::Tree3D& t
                   static_cast<float>(std::max<real_t>(volume.size.y, 0.0F)),
                   static_cast<float>(std::max<real_t>(volume.size.z, 0.0F))};
         v.shape = fog_volume_shape(volume.shape);
-        if (const auto* material = ecs.try_get<const world::FogMaterial>(entity)) {
+        if (const auto* material = ecs.try_get<const world::FogVolumeLook>(entity)) {
             v.material = true;
             v.density = material->density;
             v.albedo = {material->albedo.x, material->albedo.y, material->albedo.z};
@@ -5653,7 +5641,7 @@ void Renderer::cull_occluded(const world::World& world, const world::Tree3D& tre
     kept.reserve(draws_.size());
     for (Draw& draw : draws_) {
         const std::pair key{draw.entity, counts[draw.entity]++};
-        const auto* instance = ecs.try_get<const world::MeshInstance3D>(draw.entity);
+        const auto* instance = ecs.try_get<const world::Model3D>(draw.entity);
         const auto box = boxes.find(draw.mesh);
         bool hidden = false;
         if (draw.shadows != render::ShadowCasting::ShadowsOnly &&

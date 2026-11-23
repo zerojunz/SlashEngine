@@ -25,7 +25,7 @@ namespace slash::world {
 class World;
 }
 
-// Heightmap terrains, as the HTerrain plugin for Godot (zylann.hterrain, MIT): an HTerrain's
+// Heightmap terrains, as the Terrain3D plugin for Godot (zylann.hterrain, MIT): an Terrain3D's
 // heights a cell apart, read from a 16-bit gray .height.png file, drawn in chunks whose detail
 // falls off with distance as its quad tree (util/quad_tree_lod.gd) settles, stitched to coarser
 // neighbors as its mesher (hterrain_mesher.gd) stitches them, shaded with its four ground
@@ -50,7 +50,7 @@ inline constexpr int kSeamTop = 8;    // toward +z
 // highest of its 17 x 17 heights, sharing its edges with its neighbors.
 inline constexpr int kTerrainRangeBlock = 16;
 
-// What an HTerrain's map files hold.
+// What an Terrain3D's map files hold.
 struct TerrainData {
     int resolution = 0;
     // resolution * resolution heights in meters before map_scale.y, by row (z) then column (x);
@@ -67,7 +67,7 @@ struct TerrainData {
     float highest = 0.0F;
     // A number no other data made in this process has, for keeping what is made from it.
     std::uint64_t version = 0;
-    // Why the heights can't be made: a resolution or chunk_size HTerrain refuses, a map that
+    // Why the heights can't be made: a resolution or chunk_size Terrain3D refuses, a map that
     // doesn't load or isn't resolution pixels square.
     std::vector<Problem> problems;
 
@@ -102,15 +102,15 @@ void update_ranges(TerrainData& data);
 [[nodiscard]] render::Gray16 encode_heights(const std::vector<float>& heights, int resolution,
                                             Vec2 range);
 
-// What an HTerrain's maps hold. With install_terrain it is kept until the HTerrain or a map
+// What an Terrain3D's maps hold. With install_terrain it is kept until the Terrain3D or a map
 // changes; without, it is made on each call, the maps read with the world's file reader. A
 // terrain that can't be made has no heights and says why in problems.
 [[nodiscard]] std::shared_ptr<const TerrainData> terrain_data(const world::World& world,
                                                               entt::entity entity);
 
-// Where an HTerrain's cells are, as HTerrain's get_internal_transform: its entity's place times
+// Where an Terrain3D's cells are, as Terrain3D's get_internal_transform: its entity's place times
 // map_scale, moved back half its size when centered.
-[[nodiscard]] world::Affine3D terrain_transform(const world::HTerrain& terrain, int resolution,
+[[nodiscard]] world::Affine3D terrain_transform(const world::Terrain3D& terrain, int resolution,
                                                 const world::Affine3D& global);
 
 // The levels of detail a terrain has past the finest, as HT_QuadTreeLod.compute_lod_count: the
@@ -128,7 +128,7 @@ struct TerrainChunk {
     friend bool operator==(const TerrainChunk&, const TerrainChunk&) = default;
 };
 
-// The chunks drawn for a viewer at viewer in the terrain's cell space, as HTerrain's quad tree
+// The chunks drawn for a viewer at viewer in the terrain's cell space, as Terrain3D's quad tree
 // settles there: a quad splits while the viewer is nearer its middle (at the height of its
 // middle's range map block) than chunk_size << lod times lod_scale (2 to 5). In quad tree order.
 [[nodiscard]] std::vector<TerrainChunk> terrain_chunks(const TerrainData& data, int chunk_size,
@@ -139,12 +139,12 @@ struct TerrainChunk {
 [[nodiscard]] std::vector<std::uint32_t> terrain_indices(int quads_x, int quads_z, int seams);
 
 // A chunk's corners in the terrain's cell space, raised to their heights, each with its texture
-// coordinate at its cell's middle in the maps, as HTerrain's vertex shader places them.
+// coordinate at its cell's middle in the maps, as Terrain3D's vertex shader places them.
 [[nodiscard]] std::vector<render::Vertex3D>
 terrain_chunk_vertices(const TerrainData& data, int chunk_size, const TerrainChunk& chunk);
 
 // The terrain's normals as an image the size of its maps, in its scaled space, packed as
-// n * 0.5 + 0.5: HTerrain's bump2normal, (left - right, 2, back - front) normalized, turned by
+// n * 0.5 + 0.5: Terrain3D's bump2normal, (left - right, 2, back - front) normalized, turned by
 // the inverse transpose of map_scale as its u_terrain_normal_basis turns it.
 [[nodiscard]] render::Image terrain_normals(const TerrainData& data, Vec3 map_scale);
 
@@ -162,11 +162,11 @@ terrain_chunk_vertices(const TerrainData& data, int chunk_size, const TerrainChu
 using HeightmapLoader =
     std::function<Result<std::shared_ptr<const render::Gray16>>(const std::string& path)>;
 
-// Keeps each HTerrain's data in the world until it changes, reading heightmaps with heightmaps
+// Keeps each Terrain3D's data in the world until it changes, reading heightmaps with heightmaps
 // and the splat and color maps with images. Sessions and games call it through canvas::install.
 void install_terrain(world::World& world, HeightmapLoader heightmaps, ImageLoader images);
 
-// An HTerrain that collides: its layer, mask, physics material and data, placed by map_scale
+// An Terrain3D that collides: its layer, mask, physics material and data, placed by map_scale
 // and centered in its entity's space.
 struct TerrainBody {
     entt::entity entity = entt::null;
@@ -180,14 +180,14 @@ struct TerrainBody {
 };
 [[nodiscard]] std::vector<TerrainBody> terrain_bodies(const world::World& world);
 
-// Every HTerrain that can't be drawn, in the order entities were made: a resolution that isn't a
+// Every Terrain3D that can't be drawn, in the order entities were made: a resolution that isn't a
 // power of two plus one, a chunk_size that isn't 16, 32 or 64, more than four textures, an
-// HTerrain on a physics body's entity, and terrain_data's problems.
+// Terrain3D on a physics body's entity, and terrain_data's problems.
 [[nodiscard]] std::vector<Problem> check_terrains(const world::World& world);
 
-// ---- Making and painting heights, as HTerrain's generator and brushes.
+// ---- Making and painting heights, as Terrain3D's generator and brushes.
 
-// HTerrain's generator dialog: fractal Perlin noise, curved, shaped into an island or canyon and
+// Terrain3D's generator dialog: fractal Perlin noise, curved, shaped into an island or canyon and
 // eroded, as its perlin_noise and erode shaders.
 struct TerrainNoise {
     int seed = 0;
@@ -219,7 +219,7 @@ struct TerrainNoise {
 [[nodiscard]] std::vector<float> generate_heights(const TerrainNoise& noise, int resolution,
                                                   const std::vector<float>* additive = nullptr);
 
-// What a brush dab does, as HTerrain's painter modes.
+// What a brush dab does, as Terrain3D's painter modes.
 enum class BrushMode : std::uint8_t {
     Raise,   // heights up by amount at the middle
     Lower,   // heights down by amount
@@ -234,7 +234,7 @@ enum class BrushMode : std::uint8_t {
 
 // One dab of a round brush at a cell, radius cells across from its middle to its edge: each cell
 // within takes the brush's value there (1 inside 1 - falloff of the radius, easing to 0 at its
-// edge) times opacity, as HTerrain's shaders take their brush texture's red times opacity.
+// edge) times opacity, as Terrain3D's shaders take their brush texture's red times opacity.
 // Splat and color dabs are limited by slope (the normal's y from slope_min to slope_max) as its
 // splat4 and color shaders limit them, the normal the ground's once map_scale stretches it.
 struct BrushDab {

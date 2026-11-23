@@ -18,11 +18,11 @@
 #include <vector>
 
 // 2D physics on Box2D v3, as Godot's 2D physics. The components are in slash/world/components.hpp:
-// StaticBody2D, AnimatableBody2D, RigidBody2D, CharacterBody2D and Area2D make an entity a body or
-// an area, CollisionShape2D and CollisionPolygon2D give it shapes, and PinJoint2D,
-// DampedSpringJoint2D and GrooveJoint2D join two bodies.
+// StaticBody2D, MovingBody2D, RigidBody2D, CharacterMover2D and Zone2D make an entity a body or
+// an area, Collider2D and PolygonCollider2D give it shapes, and PinJoint2D,
+// SpringJoint2D and TrackJoint2D join two bodies.
 //
-// A TileMapLayer is solid where its tiles have collision polygons, as Godot's tile physics:
+// A TileLayer2D is solid where its tiles have collision polygons, as Godot's tile physics:
 // canvas::install hands this module the polygons (set_tile_shape_source), since tile sets are
 // the canvas module's.
 //
@@ -97,7 +97,7 @@ struct RayHit {
     Vec2 point;
     Vec2 normal;           // the surface's, toward the ray's start
     float fraction = 0.0F; // how far along the ray, from 0 to 1
-    // The cell hit, when the entity is a TileMapLayer.
+    // The cell hit, when the entity is a TileLayer2D.
     std::optional<Vec2i> cell{}; // NOLINT(readability-redundant-member-init)
     // The surface its physics material names, such as "wood"; empty without one.
     std::string surface;
@@ -116,8 +116,8 @@ struct RayHit {
 // Entities whose shapes overlap a shape placed at position and rotation, as Godot's
 // intersect_shape, sorted by ID. The shape's own position and rotation apply too.
 [[nodiscard]] std::vector<entt::entity>
-overlap_shape(world::World& world, const world::CollisionShape2D& shape, Vec2 position,
-              float rotation, const QueryFilter& filter = {}, std::size_t max_results = 32);
+overlap_shape(world::World& world, const world::Collider2D& shape, Vec2 position, float rotation,
+              const QueryFilter& filter = {}, std::size_t max_results = 32);
 
 // What touches an entity now, each sorted by ID: for a body, the bodies touching it (for a
 // character, what its last move slid along) and the areas it is in; for an area, the bodies and
@@ -141,7 +141,7 @@ struct Gravity {
 // nullopt when the entity is no body.
 [[nodiscard]] std::optional<Gravity> gravity(world::World& world, entt::entity entity);
 
-// A collision polygon of one cell of a TileMapLayer, in pixels in the layer's own space, with
+// A collision polygon of one cell of a TileLayer2D, in pixels in the layer's own space, with
 // its tile set physics layer's settings.
 struct TileShape {
     Vec2i cell;
@@ -154,11 +154,11 @@ struct TileShape {
     float one_way_margin = 1.0F;
 };
 using TileShapes = std::shared_ptr<const std::vector<TileShape>>;
-// A TileMapLayer's shapes, or nullptr for none; the same pointer while they haven't changed, so
+// A TileLayer2D's shapes, or nullptr for none; the same pointer while they haven't changed, so
 // the layer's body is rebuilt only when they do.
 using TileShapeSource = std::function<TileShapes(const world::World& world, entt::entity layer)>;
 
-// Where a world's TileMapLayer components get their shapes: canvas::install sets it. Each layer
+// Where a world's TileLayer2D components get their shapes: canvas::install sets it. Each layer
 // whose collision_enabled is on and that has shapes becomes one static body, in the order the
 // layers were made, after every other body.
 void set_tile_shape_source(world::World& world, TileShapeSource source);
@@ -190,7 +190,7 @@ struct DamageReport2D {
     std::vector<std::string> effects; // what the hit or break left (debris, dust, decal, sound)
 };
 
-// Carves the cells of a TileMapLayer whose centers are within radius pixels of center, as the
+// Carves the cells of a TileLayer2D whose centers are within radius pixels of center, as the
 // canvas module sets it (physics2d doesn't depend on canvas); returns how many it took away, or
 // without apply how many it would.
 using TileCarver = std::function<int(world::World& world, entt::entity layer, Vec2 center,
@@ -199,7 +199,7 @@ void set_tile_carver(world::World& world, TileCarver carver);
 
 // Changes a Destructible2D's outline by damage that didn't break it, as its profile's deform
 // settings say: blunt, impact and explosive damage dent it, pierce damage holes it and
-// explosive damage carves it (a TileMapLayer loses the cells a blast reaches). Parts cut off
+// explosive damage carves it (a TileLayer2D loses the cells a blast reaches). Parts cut off
 // fall away as debris pieces. The settings' meters are 64 pixels each, as Box2D's length unit.
 // Returns "dent", "hole", "carve" or "" when nothing changed.
 std::string deform_body_2d(world::World& world, entt::entity entity,

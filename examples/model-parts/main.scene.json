@@ -2,7 +2,7 @@
   "entities": {
     "cabinet": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "props/cabinet.model.json"
         },
         "Skeleton3D": {
@@ -29,7 +29,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.6, 0.6, 0.65, 1.0],
           "ambient_light_energy": 0.4,
           "ambient_light_source": "color",
@@ -40,7 +40,7 @@
     },
     "lamp": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "props/lamp.model.json"
         },
         "Transform3D": {
@@ -50,7 +50,7 @@
     },
     "on_top": {
       "components": {
-        "BoneAttachment3D": {
+        "BoneSocket3D": {
           "bone_name": "top"
         },
         "Transform3D": {
@@ -60,7 +60,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.9, 0.6, 0.0]
         }

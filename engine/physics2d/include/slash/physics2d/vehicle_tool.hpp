@@ -5,8 +5,8 @@
 // .vehicle.json recipe's side view says (slash/world/vehicle.hpp's vehicle_side_view): the
 // RigidBody2D's mass and center of mass, a collision box child "<id>_collision", a Polygon2D child
 // "<id>_<piece>" for each piece of its body, and for each wheel a RigidBody2D circle
-// "<id>_wheel_<n>" held under it by a GrooveJoint2D ("<id>_wheel_<n>_groove") and sprung by a
-// DampedSpringJoint2D ("<id>_wheel_<n>_spring"). It drives the wheels with the recipe's
+// "<id>_wheel_<n>" held under it by a TrackJoint2D ("<id>_wheel_<n>_groove") and sprung by a
+// SpringJoint2D ("<id>_wheel_<n>_spring"). It drives the wheels with the recipe's
 // drivetrain from the controls, floats boats on their water (at y = -water_level pixels), flies
 // aircraft, carries riders (VehicleRider) and hits characters and creatures as Vehicle3D does,
 // pixels_per_meter big.
@@ -28,7 +28,7 @@ void add_vehicle_system(world::World& world);
 [[nodiscard]] Result<std::shared_ptr<const world::VehicleRecipe>>
 vehicle_recipe(const world::World& world, entt::entity vehicle);
 
-// Seats someone (a CharacterBody2D, or anything with a Transform2D) in a Vehicle2D: in the seat
+// Seats someone (a CharacterMover2D, or anything with a Transform2D) in a Vehicle2D: in the seat
 // named, or the first free one (the driver's first). Their body stops colliding while they ride.
 [[nodiscard]] Result<std::string> enter_vehicle(world::World& world, entt::entity rider,
                                                 entt::entity vehicle, std::string_view seat = {});

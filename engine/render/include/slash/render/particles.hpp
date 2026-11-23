@@ -192,7 +192,7 @@ struct ParticleProcess {
     float turbulence_noise_scale = 9.0F;        // Godot's slider: higher is larger swirls
     Vec3f turbulence_noise_speed;               // how the noise moves per second of particle time
     float turbulence_noise_speed_random = 0.2F; // how fast the noise changes as it moves
-    // Collision with the steps' shapes (ParticleShape), as Godot's with LightOccluder2D nodes.
+    // Collision with the steps' shapes (ParticleShape), as Godot's with Occluder2D nodes.
     ParticleCollision collision_mode = ParticleCollision::Disabled;
     float collision_friction = 0.0F;  // of the speed along the surface lost, 0 to 1
     float collision_bounce = 0.0F;    // of the speed into the surface sent back, 0 to 1
@@ -212,7 +212,7 @@ struct ParticleProcess {
     bool operator==(const ParticleProcess&) const = default;
 };
 
-// A shape particles collide with, as a LightOccluder2D's outline in the signed distance field
+// A shape particles collide with, as a Occluder2D's outline in the signed distance field
 // Godot's particles collide with: a closed one is solid, an open one a line.
 struct ParticleShape {
     std::vector<Vec2f> points; // pixels

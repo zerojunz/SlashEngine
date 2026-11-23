@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-// Godot 4.6's PhysicalBoneSimulator3D and the binding half of PhysicalBone3D
+// Godot 4.6's BoneSimulation3D and the binding half of SimulatedBone3D
 // (scene/3d/physics/physical_bone_simulator_3d.cpp, physical_bone_3d.cpp). The bodies and joints
 // are engine/physics3d's.
 namespace slash::scene3d {
@@ -38,13 +38,13 @@ std::vector<PhysicalBone> physical_bones(const world::World& world, entt::entity
     std::vector<entt::entity> bound(nodes, entt::entity{entt::null});
     for (const entt::entity child : transform->children) {
         if (child == entt::null || !world.valid(child) ||
-            !ecs.all_of<world::PhysicalBone3D, world::Transform3D>(child) ||
+            !ecs.all_of<world::SimulatedBone3D, world::Transform3D>(child) ||
             std::ranges::any_of(out, [&](const PhysicalBone& b) { return b.entity == child; })) {
             continue;
         }
         PhysicalBone bone{.entity = child};
         if (model != nullptr) {
-            bone.bone = find_node(*model, ecs.get<const world::PhysicalBone3D>(child).bone_name);
+            bone.bone = find_node(*model, ecs.get<const world::SimulatedBone3D>(child).bone_name);
             if (bone.bone >= 0 && bound[static_cast<std::size_t>(bone.bone)] != entt::null) {
                 bone.bone = -1;
             } else if (bone.bone >= 0) {
@@ -59,7 +59,7 @@ std::vector<PhysicalBone> physical_bones(const world::World& world, entt::entity
 
     // physical_bones_start_simulation_on: the named bones and those under them, or every bone
     // when it names none it can find.
-    const auto* simulator = ecs.try_get<const world::PhysicalBoneSimulator3D>(entity);
+    const auto* simulator = ecs.try_get<const world::BoneSimulation3D>(entity);
     std::vector<int> simulated;
     if (simulator != nullptr) {
         for (const std::string& name : simulator->simulated_bones) {
@@ -92,17 +92,17 @@ std::vector<PhysicalBone> physical_bones(const world::World& world, entt::entity
 std::vector<std::pair<entt::entity, entt::entity>> simulators(const world::World& world) {
     std::vector<std::pair<entt::entity, entt::entity>> out;
     const auto& ecs = world.ecs();
-    const auto view = ecs.view<const world::PhysicalBoneSimulator3D>();
+    const auto view = ecs.view<const world::BoneSimulation3D>();
     if (view.empty()) {
         return out;
     }
     const world::Tree3D tree(world);
     for (const entt::entity entity : view) {
         entt::entity drawn{entt::null};
-        if (ecs.all_of<world::MeshInstance3D>(entity)) {
+        if (ecs.all_of<world::Model3D>(entity)) {
             drawn = entity;
         } else if (const entt::entity up = tree.parent(entity);
-                   up != entt::null && ecs.all_of<world::MeshInstance3D>(up)) {
+                   up != entt::null && ecs.all_of<world::Model3D>(up)) {
             drawn = up;
         }
         out.emplace_back(entity, drawn);
@@ -112,7 +112,7 @@ std::vector<std::pair<entt::entity, entt::entity>> simulators(const world::World
     return out;
 }
 
-world::Affine3D body_offset(const world::PhysicalBone3D& bone) {
+world::Affine3D body_offset(const world::SimulatedBone3D& bone) {
     world::Transform3D offset;
     offset.position = bone.body_offset_position;
     offset.rotation = bone.body_offset_rotation;
@@ -125,14 +125,14 @@ world::PhysicalBoneLinks physical_bone_links(const world::World& world, const Mo
     for (const auto& [entity, drawn] : simulators(world)) {
         std::shared_ptr<const Model> model;
         if (drawn != entt::null && load) {
-            const std::string& path = ecs.get<const world::MeshInstance3D>(drawn).mesh;
+            const std::string& path = ecs.get<const world::Model3D>(drawn).mesh;
             if (!path.empty()) {
                 if (auto loaded = load(path); loaded) {
                     model = loaded.value();
                 }
             }
         }
-        const auto& simulator = ecs.get<const world::PhysicalBoneSimulator3D>(entity);
+        const auto& simulator = ecs.get<const world::BoneSimulation3D>(entity);
         for (const PhysicalBone& bone : physical_bones(world, entity, model.get())) {
             // PhysicalBone3D::_start_physics_simulation and _stop_physics_simulation.
             auto mode = world::PhysicalBoneMode::Off;

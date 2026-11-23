@@ -68,12 +68,12 @@ std::string joint_kind(const JointKey& key) {
                 return std::string("PinJoint3D");
             } else if constexpr (std::is_same_v<Joint, world::HingeJoint3D>) {
                 return std::string("HingeJoint3D");
-            } else if constexpr (std::is_same_v<Joint, world::SliderJoint3D>) {
-                return std::string("SliderJoint3D");
-            } else if constexpr (std::is_same_v<Joint, world::ConeTwistJoint3D>) {
-                return std::string("ConeTwistJoint3D");
+            } else if constexpr (std::is_same_v<Joint, world::SlideJoint3D>) {
+                return std::string("SlideJoint3D");
+            } else if constexpr (std::is_same_v<Joint, world::ConeJoint3D>) {
+                return std::string("ConeJoint3D");
             } else {
-                return std::string("Generic6DOFJoint3D");
+                return std::string("SixAxisJoint3D");
             }
         },
         key);
@@ -162,7 +162,7 @@ void Space::finish_debug(const world::World& world, float seconds) {
         add(entity, joint_kind(joint.key), joint);
     }
     for (const auto& [entity, bone] : bone_joints_) {
-        add(entity, "PhysicalBone3D", bone.joint);
+        add(entity, "SimulatedBone3D", bone.joint);
     }
     std::ranges::sort(step.joints, [](const world::DebugJoint& x, const world::DebugJoint& y) {
         return x.id < y.id;

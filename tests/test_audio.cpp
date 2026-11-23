@@ -738,7 +738,7 @@ TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows
                   {"name": "fight", "stream": "music/b.wav", "auto_advance": "enabled",
                    "next_clip": "calm"}],
         "transitions": [{"from_time": "immediate", "fade_mode": "disabled"}]})");
-    const entt::entity music = sounds.add("music", "AudioStreamPlayer",
+    const entt::entity music = sounds.add("music", "SoundPlayer",
                                           R"({"stream": "music/score.audio.json", "autoplay": true,
             "parameters": {"switch_to_clip": "calm"}})");
     sounds.step();
@@ -756,9 +756,9 @@ TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows
         return out;
     };
     CHECK(clip_changes() ==
-          std::vector<std::string>{R"(music {"clip":"calm","component":"AudioStreamPlayer"})"});
+          std::vector<std::string>{R"(music {"clip":"calm","component":"SoundPlayer"})"});
 
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer>(music);
+    auto& player = sounds.world.ecs().get<world::SoundPlayer>(music);
     player.parameters["switch_to_clip"] = json::Value("fight");
     sounds.step();
     CHECK(sounds.player("music")->clip == "fight");
@@ -766,38 +766,36 @@ TEST_CASE("a player's parameters reach its playbacks, and switch_to_clip follows
     // Fight lasts a tenth of a second, then goes back to calm, and the parameter follows.
     sounds.step(8);
     CHECK(sounds.player("music")->clip == "calm");
-    CHECK(sounds.world.ecs().get<world::AudioStreamPlayer>(music).parameters.at("switch_to_clip") ==
+    CHECK(sounds.world.ecs().get<world::SoundPlayer>(music).parameters.at("switch_to_clip") ==
           json::Value("calm"));
     check_frame(sounds.last(), 0.5F, 0.5F);
     // So asking for fight again plays it again.
-    sounds.world.ecs().get<world::AudioStreamPlayer>(music).parameters["switch_to_clip"] =
+    sounds.world.ecs().get<world::SoundPlayer>(music).parameters["switch_to_clip"] =
         json::Value("fight");
     sounds.step();
     CHECK(sounds.player("music")->clip == "fight");
     CHECK(clip_changes() ==
           std::vector<std::string>{
-              R"(music {"clip":"fight","component":"AudioStreamPlayer","from":"calm",)"
+              R"(music {"clip":"fight","component":"SoundPlayer","from":"calm",)"
               R"("transition":0})",
-              R"(music {"automatic":true,"clip":"calm","component":"AudioStreamPlayer",)"
+              R"(music {"automatic":true,"clip":"calm","component":"SoundPlayer",)"
               R"("from":"fight","transition":0,"waited":0.097})",
-              R"(music {"clip":"fight","component":"AudioStreamPlayer","from":"calm",)"
+              R"(music {"clip":"fight","component":"SoundPlayer","from":"calm",)"
               R"("transition":0})",
           });
     // Music that stops says so: no clip, and the one it played.
-    sounds.world.ecs().get<world::AudioStreamPlayer>(music).playing = false;
+    sounds.world.ecs().get<world::SoundPlayer>(music).playing = false;
     sounds.step();
-    CHECK(clip_changes() ==
-          std::vector<std::string>{
-              R"(music {"clip":"","component":"AudioStreamPlayer","from":"fight"})"});
+    CHECK(clip_changes() == std::vector<std::string>{
+                                R"(music {"clip":"","component":"SoundPlayer","from":"fight"})"});
 
     // A voice that starts later gets the parameters it was given before it plays.
     sounds.files.write("music/layers.audio.json", R"({"format": 1, "synchronized": [
         {"stream": "music/a.wav"}, {"stream": "music/a.wav", "volume_db": -80}]})");
-    sounds.add("layers", "AudioStreamPlayer",
+    sounds.add("layers", "SoundPlayer",
                R"({"stream": "music/layers.audio.json", "volume_db": -80,
                    "parameters": {"stream_1_volume_db": 0}})");
-    const auto& layers =
-        sounds.world.ecs().get<world::AudioStreamPlayer>(sounds.world.find("layers"));
+    const auto& layers = sounds.world.ecs().get<world::SoundPlayer>(sounds.world.find("layers"));
     CHECK(layers.parameters.size() == 1);
 }
 
@@ -978,7 +976,7 @@ TEST_CASE("a game pushes frames to a generator player and plays streams on a pol
     sounds.files.write("audio/sfx.audio.json", R"({"format": 1, "polyphonic": {"polyphony": 4}})");
     sounds.files.write("audio/hit.wav", steady_wav(kRate / 10, {0.25F, 0.25F}));
     const entt::entity synth =
-        sounds.add("synth", "AudioStreamPlayer",
+        sounds.add("synth", "SoundPlayer",
                    R"({"stream": "audio/synth.audio.json", "autoplay": true, "max_polyphony": 3})");
     // A gameplay system keeps the generator full, as Godot's AudioStreamGenerator demo does.
     bool pushing = true;
@@ -1020,7 +1018,7 @@ TEST_CASE("a game pushes frames to a generator player and plays streams on a pol
 
     // play_stream starts the player, then the streams on it.
     const entt::entity sfx =
-        sounds.add("sfx", "AudioStreamPlayer", R"({"stream": "audio/sfx.audio.json"})");
+        sounds.add("sfx", "SoundPlayer", R"({"stream": "audio/sfx.audio.json"})");
     REQUIRE(audio::play_stream(sounds.world, sfx, "audio/hit.wav", 0.0, -6.0206F).ok());
     REQUIRE(audio::play_stream(sounds.world, sfx, "audio/hit.wav").ok());
     sounds.step();
@@ -1050,7 +1048,7 @@ TEST_CASE("animations' audio tracks play streams on a voice of the player's own,
     sounds.files.write("music.wav", steady_wav(kRate, {0.125F, 0.125F}));
     sounds.files.write("line.wav", steady_wav(kRate / 2, {0.25F, 0.25F}));
     const entt::entity speaker =
-        sounds.add("speaker", "AudioStreamPlayer", R"({"stream": "music.wav", "autoplay": true})");
+        sounds.add("speaker", "SoundPlayer", R"({"stream": "music.wav", "autoplay": true})");
     const world::AudioTrackSound* sound = world::audio_track_sound(sounds.world);
     REQUIRE(sound != nullptr);
     sounds.step();
@@ -1074,7 +1072,7 @@ TEST_CASE("animations' audio tracks play streams on a voice of the player's own,
     sounds.step(2);
     check_frame(sounds.last(), 0.125F, 0.125F);
     CHECK(sounds.player("speaker")->track_streams == 0);
-    CHECK(sounds.world.ecs().get<world::AudioStreamPlayer>(speaker).playing);
+    CHECK(sounds.world.ecs().get<world::SoundPlayer>(speaker).playing);
 
     // A stream that ends stops playing; one stopped before it starts never does; a restored
     // snapshot takes back one asked for after it was saved.
@@ -1215,8 +1213,7 @@ TEST_CASE("a microphone player plays what the input device records, 50 ms late")
     CHECK(microphone.starts == 0);
     CHECK_FALSE(audio::input_info(sounds.world).active);
 
-    sounds.add("voice", "AudioStreamPlayer",
-               R"({"stream": "audio/mic.audio.json", "autoplay": true})");
+    sounds.add("voice", "SoundPlayer", R"({"stream": "audio/mic.audio.json", "autoplay": true})");
     sounds.heard.clear();
     sounds.step(30);
     CHECK(microphone.starts == 1);
@@ -1264,8 +1261,7 @@ TEST_CASE("agents play a sound into the input in place of the microphone") {
     sounds.files.write("audio/voice.wav", steady_wav(kRate, {0.25F, -0.25F}));
     RampMicrophone microphone;
     audio::set_input_device(sounds.world, &microphone);
-    sounds.add("voice", "AudioStreamPlayer",
-               R"({"stream": "audio/mic.audio.json", "autoplay": true})");
+    sounds.add("voice", "SoundPlayer", R"({"stream": "audio/mic.audio.json", "autoplay": true})");
     sounds.step();
     CHECK(microphone.starts == 1);
 
@@ -1312,8 +1308,7 @@ TEST_CASE("a microphone needs audio.enable_input and plays only as a player's ow
           R"("audio/mic.audio.json" is a microphone, which plays only as a player's own stream)");
 
     // Without enable_input, input doesn't turn on, so the microphone player stops.
-    sounds.add("voice", "AudioStreamPlayer",
-               R"({"stream": "audio/mic.audio.json", "autoplay": true})");
+    sounds.add("voice", "SoundPlayer", R"({"stream": "audio/mic.audio.json", "autoplay": true})");
     sounds.step();
     CHECK(sounds.player("voice")->voices == 0);
     CHECK(sounds.count("finished") == 1);
@@ -1323,7 +1318,7 @@ TEST_CASE("a microphone needs audio.enable_input and plays only as a player's ow
     CHECK(contains(off.error().message, "audio.enable_input"));
 
     const entt::entity sfx =
-        sounds.add("sfx", "AudioStreamPlayer", R"({"stream": "audio/sfx.audio.json"})");
+        sounds.add("sfx", "SoundPlayer", R"({"stream": "audio/sfx.audio.json"})");
     auto played = audio::play_stream(sounds.world, sfx, "audio/mic.audio.json");
     REQUIRE_FALSE(played.ok());
     CHECK(contains(played.error().message, "plays only as a player's own stream"));
@@ -1834,19 +1829,19 @@ TEST_CASE("an effect on a bus runs on what was mixed into it, and bypass skips i
     check_frame(mix(server, 512).back(), 0.5F, 0.5F);
 }
 
-TEST_CASE("an AudioStreamPlayer with autoplay plays its sound, then says it finished") {
+TEST_CASE("an SoundPlayer with autoplay plays its sound, then says it finished") {
     Sounds sounds;
     sounds.files.write("sfx/beep.wav", steady_wav(kRate / 10, {0.5F, 0.5F}));
     const entt::entity beep =
-        sounds.add("beep", "AudioStreamPlayer", R"({"stream": "sfx/beep.wav", "autoplay": true})");
+        sounds.add("beep", "SoundPlayer", R"({"stream": "sfx/beep.wav", "autoplay": true})");
     sounds.step();
     // Each tick mixes its share of the frames: 735 at 60 ticks a second.
     CHECK(sounds.heard.size() == 735);
     check_frame(sounds.last(), 0.5F, 0.5F);
-    CHECK(sounds.world.ecs().get<world::AudioStreamPlayer>(beep).playing);
+    CHECK(sounds.world.ecs().get<world::SoundPlayer>(beep).playing);
     const auto info = sounds.player("beep");
     REQUIRE(info.has_value());
-    CHECK(info->kind == "AudioStreamPlayer");
+    CHECK(info->kind == "SoundPlayer");
     CHECK(info->stream == "sfx/beep.wav");
     CHECK(info->bus == "Master");
     CHECK(info->voices == 1);
@@ -1858,8 +1853,8 @@ TEST_CASE("an AudioStreamPlayer with autoplay plays its sound, then says it fini
     CHECK(sounds.count("finished") == 1);
     const auto finished = std::ranges::find(sounds.events, "finished", &world::Event::kind);
     CHECK(finished->id == "beep");
-    CHECK(finished->data == parse(R"({"component": "AudioStreamPlayer"})"));
-    CHECK_FALSE(sounds.world.ecs().get<world::AudioStreamPlayer>(beep).playing);
+    CHECK(finished->data == parse(R"({"component": "SoundPlayer"})"));
+    CHECK_FALSE(sounds.world.ecs().get<world::SoundPlayer>(beep).playing);
     CHECK(sounds.player("beep")->voices == 0);
     check_frame(sounds.last(), 0.0F, 0.0F);
     // Ticks at 1/60 s carry the leftover fraction of a frame, so a second is 44100 frames.
@@ -1872,8 +1867,8 @@ TEST_CASE("playing, stream, play() and stop() work as Godot's AudioStreamPlayer"
     sounds.files.write("loud.wav", steady_wav(kRate, {0.5F, 0.5F}));
     sounds.files.write("quiet.wav", steady_wav(kRate, {0.125F, 0.125F}));
     const entt::entity music =
-        sounds.add("music", "AudioStreamPlayer", R"({"stream": "loud.wav", "volume_db": -6.0206})");
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer>(music);
+        sounds.add("music", "SoundPlayer", R"({"stream": "loud.wav", "volume_db": -6.0206})");
+    auto& player = sounds.world.ecs().get<world::SoundPlayer>(music);
     sounds.step();
     CHECK(sounds.player("music")->voices == 0);
 
@@ -1946,14 +1941,14 @@ TEST_CASE("playing, stream, play() and stop() work as Godot's AudioStreamPlayer"
     check_frame(sounds.last(), 0.0F, 0.0F);
 }
 
-TEST_CASE("an AudioStreamPlayer2D pans and fades with its distance from the listener") {
+TEST_CASE("an SoundPlayer2D pans and fades with its distance from the listener") {
     Sounds sounds;
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
     const float screen = slash::ui::settings(sounds.world).viewport.x;
-    const entt::entity listener = sounds.add("ears", "AudioListener2D", R"({"current": true})");
+    const entt::entity listener = sounds.add("ears", "Listener2D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform2D>(listener);
     const entt::entity hum =
-        sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
+        sounds.add("hum", "SoundPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.world.ecs().emplace<world::Transform2D>(hum).position = {-400.0F, 0.0F};
     sounds.step();
     // Godot's _update_panning: fades over max_distance and pans by where it is on the screen,
@@ -1979,7 +1974,7 @@ TEST_CASE("an AudioStreamPlayer2D pans and fades with its distance from the list
     check_frame(sounds.player("hum")->volume[0], 0.0F, 0.0F);
 
     // With no current listener, it is heard from the middle of the screen.
-    sounds.world.ecs().get<world::AudioListener2D>(listener).current = false;
+    sounds.world.ecs().get<world::Listener2D>(listener).current = false;
     const slash::Vec2 viewport = slash::ui::settings(sounds.world).viewport;
     sounds.world.ecs().get<world::Transform2D>(hum).position = {viewport.x / 2.0F,
                                                                 viewport.y / 2.0F};
@@ -1987,7 +1982,7 @@ TEST_CASE("an AudioStreamPlayer2D pans and fades with its distance from the list
     check_frame(sounds.player("hum")->volume[0], 0.5F, 0.5F);
 }
 
-TEST_CASE("an Area2D with audio_bus_override sends the 2D sounds inside it to its bus") {
+TEST_CASE("an Zone2D with audio_bus_override sends the 2D sounds inside it to its bus") {
     audio::Settings settings;
     settings.bus_layout = "buses.bus_layout.json";
     Sounds sounds(settings);
@@ -1996,9 +1991,9 @@ TEST_CASE("an Area2D with audio_bus_override sends the 2D sounds inside it to it
         {"name": "Sfx"}, {"name": "Cave", "volume_db": -6.0206}, {"name": "Lake"}]})");
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
     const auto area = [&](std::string_view id, std::string_view fields, slash::Vec2 at) {
-        const entt::entity entity = sounds.add(id, "Area2D", fields);
+        const entt::entity entity = sounds.add(id, "Zone2D", fields);
         sounds.world.ecs().emplace<world::Transform2D>(entity).position = at;
-        sounds.world.ecs().emplace<world::CollisionShape2D>(entity).size = {100.0F, 100.0F};
+        sounds.world.ecs().emplace<world::Collider2D>(entity).size = {100.0F, 100.0F};
         return entity;
     };
     area("cave", R"({"audio_bus_override": true, "audio_bus_name": "Cave"})", {500.0F, 0.0F});
@@ -2010,7 +2005,7 @@ TEST_CASE("an Area2D with audio_bus_override sends the 2D sounds inside it to it
     // An area that doesn't override changes nothing.
     area("field", "{}", {0.0F, 300.0F});
     const entt::entity hum = sounds.add(
-        "hum", "AudioStreamPlayer2D",
+        "hum", "SoundPlayer2D",
         R"({"stream": "hum.wav", "autoplay": true, "bus": "Sfx", "max_distance": 100000})");
     auto& at = sounds.world.ecs().emplace<world::Transform2D>(hum).position;
     const auto bus_at = [&](slash::Vec2 where) {
@@ -2029,22 +2024,22 @@ TEST_CASE("an Area2D with audio_bus_override sends the 2D sounds inside it to it
     CHECK(bus_at({590.0F, 0.0F}) == "Lake");
     CHECK(bus_at({0.0F, 300.0F}) == "Sfx");
     CHECK(bus_at({-500.0F, 0.0F}) == "Sfx");
-    sounds.world.ecs().get<world::AudioStreamPlayer2D>(hum).area_mask = 3;
+    sounds.world.ecs().get<world::SoundPlayer2D>(hum).area_mask = 3;
     CHECK(bus_at({-500.0F, 0.0F}) == "Lake");
     // area_mask 0 ignores areas, as Godot's.
-    sounds.world.ecs().get<world::AudioStreamPlayer2D>(hum).area_mask = 0;
+    sounds.world.ecs().get<world::SoundPlayer2D>(hum).area_mask = 0;
     CHECK(bus_at({480.0F, 0.0F}) == "Sfx");
     // A sound that starts inside starts on the area's bus.
-    sounds.world.ecs().get<world::AudioStreamPlayer2D>(hum).area_mask = 1;
+    sounds.world.ecs().get<world::SoundPlayer2D>(hum).area_mask = 1;
     audio::play(sounds.world, hum);
     CHECK(bus_at({480.0F, 0.0F}) == "Cave");
     CHECK(sounds.player("hum")->voices == 1);
 }
 
-TEST_CASE("an AudioStreamPlayer2D inside another entity is heard from where it is") {
+TEST_CASE("an SoundPlayer2D inside another entity is heard from where it is") {
     Sounds sounds;
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
-    const entt::entity listener = sounds.add("ears", "AudioListener2D", R"({"current": true})");
+    const entt::entity listener = sounds.add("ears", "Listener2D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform2D>(listener);
     // A cart 200 pixels left, doubled, carries the hum 100 of its pixels further left.
     const entt::entity cart = sounds.world.create("cart").value();
@@ -2052,7 +2047,7 @@ TEST_CASE("an AudioStreamPlayer2D inside another entity is heard from where it i
     carried.position = {-200.0F, 0.0F};
     carried.scale = {2.0F, 2.0F};
     const entt::entity hum =
-        sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
+        sounds.add("hum", "SoundPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.world.ecs().emplace<world::Transform2D>(hum).position = {-100.0F, 0.0F};
     carried.children = {hum};
     sounds.step();
@@ -2072,7 +2067,7 @@ TEST_CASE("without a listener, 2D sounds are heard from the middle of the camera
     sounds.world.ecs().emplace<world::Transform2D>(camera).position = {5000.0F, 3000.0F};
     sounds.world.ecs().emplace<world::Camera2D>(camera).zoom = {2.0F, 2.0F};
     const entt::entity hum =
-        sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
+        sounds.add("hum", "SoundPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.world.ecs().emplace<world::Transform2D>(hum).position = {5100.0F, 3000.0F};
     sounds.step();
     // 100 pixels from the middle of the view, which shows it 200 pixels right of the middle of
@@ -2082,7 +2077,7 @@ TEST_CASE("without a listener, 2D sounds are heard from the middle of the camera
     check_frame(sounds.player("hum")->volume[0], (1.0F - pan) * fade, pan * fade);
 
     // A listener's distances are scaled with the view too.
-    const entt::entity listener = sounds.add("ears", "AudioListener2D", R"({"current": true})");
+    const entt::entity listener = sounds.add("ears", "Listener2D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform2D>(listener).position = {5000.0F, 3000.0F};
     sounds.step();
     check_frame(sounds.player("hum")->volume[0], (1.0F - pan) * fade, pan * fade);
@@ -2095,14 +2090,14 @@ float ahead() {
     return std::sqrt(0.5F);
 }
 
-// A current AudioListener3D at the origin, looking down -z as everything in Godot does.
+// A current Listener3D at the origin, looking down -z as everything in Godot does.
 entt::entity listen_3d(Sounds& sounds) {
-    const entt::entity ears = sounds.add("ears", "AudioListener3D", R"({"current": true})");
+    const entt::entity ears = sounds.add("ears", "Listener3D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform3D>(ears);
     return ears;
 }
 
-// An AudioStreamPlayer3D playing a steady hum of 0.5 at a place, with more fields.
+// An SoundPlayer3D playing a steady hum of 0.5 at a place, with more fields.
 entt::entity hum_3d(Sounds& sounds, slash::Vec3 at, std::string_view fields = "") {
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
     std::string text = R"({"stream": "hum.wav", "autoplay": true)";
@@ -2111,18 +2106,18 @@ entt::entity hum_3d(Sounds& sounds, slash::Vec3 at, std::string_view fields = ""
         text += fields;
     }
     text += "}";
-    const entt::entity hum = sounds.add("hum", "AudioStreamPlayer3D", text);
+    const entt::entity hum = sounds.add("hum", "SoundPlayer3D", text);
     sounds.world.ecs().emplace<world::Transform3D>(hum).position = at;
     return hum;
 }
 
 } // namespace
 
-TEST_CASE("an AudioStreamPlayer3D fades with distance as Godot's attenuation models say") {
+TEST_CASE("an SoundPlayer3D fades with distance as Godot's attenuation models say") {
     Sounds sounds;
     listen_3d(sounds);
     const entt::entity hum = hum_3d(sounds, {});
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    auto& player = sounds.world.ecs().get<world::SoundPlayer3D>(hum);
     const auto volume_at = [&](float distance) {
         sounds.world.ecs().get<world::Transform3D>(hum).position = {0.0F, 0.0F, -distance};
         sounds.step();
@@ -2151,7 +2146,7 @@ TEST_CASE("an AudioStreamPlayer3D fades with distance as Godot's attenuation mod
     check_frame(volume_at(20.0F), 0.5F * ahead(), 0.5F * ahead());
 }
 
-TEST_CASE("an AudioStreamPlayer3D pans by where it is around the listener, as Godot's") {
+TEST_CASE("an SoundPlayer3D pans by where it is around the listener, as Godot's") {
     Sounds sounds;
     const entt::entity ears = listen_3d(sounds);
     const entt::entity hum = hum_3d(sounds, {10.0F, 0.0F, 0.0F});
@@ -2177,14 +2172,14 @@ TEST_CASE("an AudioStreamPlayer3D pans by where it is around the listener, as Go
 
     // panning_strength scales the project's: at none it's the same on both sides, at twice it
     // pans all the way.
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    auto& player = sounds.world.ecs().get<world::SoundPlayer3D>(hum);
     player.panning_strength = 0.0F;
     check_frame(volume(), ahead(), ahead());
     player.panning_strength = 2.0F;
     check_frame(volume(), 0.0F, 1.0F);
 }
 
-TEST_CASE("an AudioStreamPlayer3D dulls as it fades and is silent past max_distance") {
+TEST_CASE("an SoundPlayer3D dulls as it fades and is silent past max_distance") {
     Sounds sounds;
     listen_3d(sounds);
     const entt::entity hum = hum_3d(sounds, {0.0F, 0.0F, -10.0F}, R"("max_distance": 40)");
@@ -2206,12 +2201,12 @@ TEST_CASE("an AudioStreamPlayer3D dulls as it fades and is silent past max_dista
 
     // Without attenuation_filter_db, the highs stay.
     sounds.world.ecs().get<world::Transform3D>(hum).position.z = -10.0F;
-    sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum).attenuation_filter_db = 0.0F;
+    sounds.world.ecs().get<world::SoundPlayer3D>(hum).attenuation_filter_db = 0.0F;
     sounds.step();
     CHECK(sounds.player("hum")->filter_db == doctest::Approx(0.0F));
 }
 
-TEST_CASE("an AudioStreamPlayer3D with an emission angle dulls when it faces away") {
+TEST_CASE("an SoundPlayer3D with an emission angle dulls when it faces away") {
     Sounds sounds;
     listen_3d(sounds);
     const entt::entity hum =
@@ -2227,13 +2222,13 @@ TEST_CASE("an AudioStreamPlayer3D with an emission angle dulls when it faces awa
     CHECK(filter_turned(0.0F) == doctest::Approx(-12.0F).epsilon(0.001));
     CHECK(filter_turned(half_turn) == doctest::Approx(0.0F).epsilon(0.001));
     CHECK(filter_turned(half_turn / 2.0F) == doctest::Approx(-12.0F).epsilon(0.001));
-    sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum).emission_angle_degrees = 100.0F;
+    sounds.world.ecs().get<world::SoundPlayer3D>(hum).emission_angle_degrees = 100.0F;
     CHECK(filter_turned(half_turn / 2.0F) == doctest::Approx(0.0F).epsilon(0.001));
     // Its volume stays.
     check_frame(sounds.player("hum")->volume[0], ahead(), ahead());
 }
 
-TEST_CASE("an AudioStreamPlayer3D tracking doppler is higher coming and lower going") {
+TEST_CASE("an SoundPlayer3D tracking doppler is higher coming and lower going") {
     Sounds sounds;
     const entt::entity ears = listen_3d(sounds);
     const entt::entity hum =
@@ -2254,18 +2249,18 @@ TEST_CASE("an AudioStreamPlayer3D tracking doppler is higher coming and lower go
     CHECK(glide(hum, 0.0F, 13) == doctest::Approx(1.0F));
 
     // A listener that tracks doppler counts its own speed.
-    sounds.world.ecs().get<world::AudioListener3D>(ears).doppler_tracking = "idle_step";
+    sounds.world.ecs().get<world::Listener3D>(ears).doppler_tracking = "idle_step";
     CHECK(glide(ears, -1.0F, 5) == doctest::Approx(kSound / (kSound - 60.0F)).epsilon(0.001));
     glide(ears, 0.0F, 13);
 
     // A player that doesn't track it keeps its pitch_scale.
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    auto& player = sounds.world.ecs().get<world::SoundPlayer3D>(hum);
     player.doppler_tracking = "disabled";
     player.pitch_scale = 2.0F;
     CHECK(glide(ears, -1.0F, 5) == doctest::Approx(2.0F));
 }
 
-TEST_CASE("an Area3D sends the 3D sounds inside it to its bus, its reverb bus or both") {
+TEST_CASE("an Zone3D sends the 3D sounds inside it to its bus, its reverb bus or both") {
     audio::Settings settings;
     settings.bus_layout = "buses.bus_layout.json";
     Sounds sounds(settings);
@@ -2275,9 +2270,9 @@ TEST_CASE("an Area3D sends the 3D sounds inside it to its bus, its reverb bus or
     listen_3d(sounds);
     const entt::entity hum = hum_3d(sounds, {0.0F, 0.0F, -10.0F}, R"("bus": "Sfx")");
     const entt::entity cave =
-        sounds.add("cave", "Area3D", R"({"audio_bus_override": true, "audio_bus_name": "Cave"})");
+        sounds.add("cave", "Zone3D", R"({"audio_bus_override": true, "audio_bus_name": "Cave"})");
     sounds.world.ecs().emplace<world::Transform3D>(cave).position = {0.0F, 0.0F, -10.0F};
-    sounds.world.ecs().emplace<world::CollisionShape3D>(cave).size = {4.0F, 4.0F, 4.0F};
+    sounds.world.ecs().emplace<world::Collider3D>(cave).size = {4.0F, 4.0F, 4.0F};
     const auto heard = [&] {
         sounds.step();
         return *sounds.player("hum");
@@ -2288,7 +2283,7 @@ TEST_CASE("an Area3D sends the 3D sounds inside it to its bus, its reverb bus or
     CHECK(info.sends.empty());
 
     // With a reverb bus as well, it plays on both, the reverb bus getting reverb_bus_amount of it.
-    auto& area = sounds.world.ecs().get<world::Area3D>(cave);
+    auto& area = sounds.world.ecs().get<world::Zone3D>(cave);
     area.reverb_bus_enabled = true;
     area.reverb_bus_name = "Echo";
     area.reverb_bus_amount = 0.5F;
@@ -2314,17 +2309,17 @@ TEST_CASE("an Area3D sends the 3D sounds inside it to its bus, its reverb bus or
     // With uniformity, the reverb comes from the area's nearest point to the listener; inside the
     // area that is the listener itself, so it is heard on both sides alike, at max_db.
     area.reverb_bus_uniformity = 1.0F;
-    sounds.world.ecs().get<world::CollisionShape3D>(cave).size = {40.0F, 40.0F, 40.0F};
+    sounds.world.ecs().get<world::Collider3D>(cave).size = {40.0F, 40.0F, 40.0F};
     const float uniform = 0.5F * 0.5F * audio::db_to_linear(3.0F);
     check_frame(heard().volume[0], uniform, uniform);
     area.reverb_bus_uniformity = 0.0F;
-    sounds.world.ecs().get<world::CollisionShape3D>(cave).size = {4.0F, 4.0F, 4.0F};
+    sounds.world.ecs().get<world::Collider3D>(cave).size = {4.0F, 4.0F, 4.0F};
 
     // A bus the layout doesn't have is Master, as Godot's.
     area.reverb_bus_name = "Nowhere";
     CHECK(heard().bus == "Master");
     // Areas whose layer isn't in area_mask, and those it isn't in, leave its bus.
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    auto& player = sounds.world.ecs().get<world::SoundPlayer3D>(hum);
     player.area_mask = 2;
     CHECK(heard().bus == "Sfx");
     player.area_mask = 1;
@@ -2332,7 +2327,7 @@ TEST_CASE("an Area3D sends the 3D sounds inside it to its bus, its reverb bus or
     CHECK(heard().bus == "Sfx");
 }
 
-TEST_CASE("without an AudioListener3D, 3D sounds are heard from the current camera") {
+TEST_CASE("without an Listener3D, 3D sounds are heard from the current camera") {
     Sounds sounds;
     hum_3d(sounds, {0.0F, 0.0F, -10.0F});
     // With neither, nothing hears it.
@@ -2349,12 +2344,12 @@ TEST_CASE("without an AudioListener3D, 3D sounds are heard from the current came
     check_frame(sounds.player("hum")->volume[0], 0.5F * std::sqrt(0.2F), 0.5F * std::sqrt(0.8F));
 
     // A listener takes over, current or not, as the first in a viewport becomes current.
-    const entt::entity ears = sounds.add("ears", "AudioListener3D", "{}");
+    const entt::entity ears = sounds.add("ears", "Listener3D", "{}");
     sounds.world.ecs().emplace<world::Transform3D>(ears).position = {0.0F, 0.0F, 10.0F};
     sounds.step();
     check_frame(sounds.player("hum")->volume[0], 0.5F * ahead(), 0.5F * ahead());
     // Of several, the current one.
-    const entt::entity near = sounds.add("near", "AudioListener3D", R"({"current": true})");
+    const entt::entity near = sounds.add("near", "Listener3D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform3D>(near);
     sounds.step();
     check_frame(sounds.player("hum")->volume[0], ahead(), ahead());
@@ -2407,8 +2402,7 @@ TEST_CASE("buses come from the project's .bus_layout.json, reloaded when it chan
     files->write("audio/default.bus_layout.json", R"({"format": 1, "buses": [{"name": "Master"},
         {"name": "Music", "volume_db": -6.0206}]})");
     files->write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
-    sounds.add("hum", "AudioStreamPlayer",
-               R"({"stream": "hum.wav", "autoplay": true, "bus": "Music"})");
+    sounds.add("hum", "SoundPlayer", R"({"stream": "hum.wav", "autoplay": true, "bus": "Music"})");
     sounds.step(2);
     REQUIRE(audio::server(sounds.world)->layout().buses.size() == 2);
     CHECK(sounds.player("hum")->bus == "Music");
@@ -2445,7 +2439,7 @@ TEST_CASE("capture measures what a bus played over the last seconds") {
     CHECK(silent.value().peak_db == -200.0F);
 
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
-    sounds.add("hum", "AudioStreamPlayer", R"({"stream": "hum.wav", "autoplay": true})");
+    sounds.add("hum", "SoundPlayer", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.step(30);
     auto captured = audio::capture(sounds.world, "Master", 1.0, 4, true);
     REQUIRE(captured.ok());
@@ -2616,13 +2610,13 @@ TEST_CASE("in surround each speaker pair runs its own copy of a bus's effects") 
     CHECK(ducking.bus_peak_db(music, 2).left < audio::linear_to_db(0.05F));
 }
 
-TEST_CASE("an AudioStreamPlayer's mix_target picks its speakers in surround, as Godot's") {
+TEST_CASE("an SoundPlayer's mix_target picks its speakers in surround, as Godot's") {
     audio::Settings settings;
     settings.speaker_mode = audio::SpeakerMode::Surround71;
     Sounds sounds(settings);
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
     const entt::entity hum =
-        sounds.add("hum", "AudioStreamPlayer", R"({"stream": "hum.wav", "autoplay": true})");
+        sounds.add("hum", "SoundPlayer", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.step(2);
     CHECK(sounds.pairs == 4);
     CHECK(audio::server(sounds.world)->speaker_mode() == audio::SpeakerMode::Surround71);
@@ -2635,7 +2629,7 @@ TEST_CASE("an AudioStreamPlayer's mix_target picks its speakers in surround, as 
 
     // surround: every speaker, the LFE too. Godot plays the LFE at 1.0 whatever the volume;
     // here it follows volume_db.
-    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer>(hum);
+    auto& player = sounds.world.ecs().get<world::SoundPlayer>(hum);
     player.mix_target = "surround";
     player.volume_db = half_db();
     sounds.step(2);
@@ -2659,7 +2653,7 @@ TEST_CASE("an AudioStreamPlayer's mix_target picks its speakers in surround, as 
     // In stereo the mix target is left alone, as Godot's.
     Sounds headphones;
     headphones.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
-    headphones.add("hum", "AudioStreamPlayer",
+    headphones.add("hum", "SoundPlayer",
                    R"({"stream": "hum.wav", "autoplay": true, "mix_target": "center"})");
     headphones.step(2);
     CHECK(headphones.pairs == 1);
@@ -2697,10 +2691,10 @@ TEST_CASE("in surround, 2D sounds play on the front speakers alone, as Godot's")
     settings.speaker_mode = audio::SpeakerMode::Surround51;
     Sounds sounds(settings);
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
-    const entt::entity listener = sounds.add("ears", "AudioListener2D", R"({"current": true})");
+    const entt::entity listener = sounds.add("ears", "Listener2D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform2D>(listener);
     const entt::entity hum =
-        sounds.add("hum", "AudioStreamPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
+        sounds.add("hum", "SoundPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.world.ecs().emplace<world::Transform2D>(hum);
     sounds.step(2);
     const audio::Volumes volume = sounds.player("hum")->volume;
@@ -2712,7 +2706,7 @@ TEST_CASE("in surround, 2D sounds play on the front speakers alone, as Godot's")
     check_frame(sounds.last(2), 0.0F, 0.0F);
 }
 
-TEST_CASE("in 3.1, 5.1 and 7.1 an AudioStreamPlayer3D pans by Godot's Spcap") {
+TEST_CASE("in 3.1, 5.1 and 7.1 an SoundPlayer3D pans by Godot's Spcap") {
     const auto heard = [](audio::SpeakerMode speakers, slash::Vec3 at) {
         audio::Settings settings;
         settings.speaker_mode = speakers;
@@ -2765,7 +2759,7 @@ TEST_CASE("in 3.1, 5.1 and 7.1 an AudioStreamPlayer3D pans by Godot's Spcap") {
     check_frame(volume[2], 0.5F * 0.1247F, 0.5F * 0.1247F);
 }
 
-TEST_CASE("in 7.1 an Area3D's uniform reverb comes from every speaker alike") {
+TEST_CASE("in 7.1 an Zone3D's uniform reverb comes from every speaker alike") {
     audio::Settings settings;
     settings.bus_layout = "buses.bus_layout.json";
     settings.speaker_mode = audio::SpeakerMode::Surround71;
@@ -2775,11 +2769,11 @@ TEST_CASE("in 7.1 an Area3D's uniform reverb comes from every speaker alike") {
                        R"({"format": 1, "buses": [{"name": "Master"}, {"name": "Echo"}]})");
     listen_3d(sounds);
     hum_3d(sounds, {0.0F, 0.0F, -10.0F});
-    const entt::entity cave = sounds.add("cave", "Area3D",
+    const entt::entity cave = sounds.add("cave", "Zone3D",
                                          R"({"reverb_bus_enabled": true, "reverb_bus_name": "Echo",
                        "reverb_bus_amount": 0.5, "reverb_bus_uniformity": 1})");
     sounds.world.ecs().emplace<world::Transform3D>(cave).position = {0.0F, 0.0F, -10.0F};
-    sounds.world.ecs().emplace<world::CollisionShape3D>(cave).size = {40.0F, 40.0F, 40.0F};
+    sounds.world.ecs().emplace<world::Collider3D>(cave).size = {40.0F, 40.0F, 40.0F};
     sounds.step();
     // The listener is inside, so the reverb comes from all round at max_db: each of the eight
     // speakers gets an eighth of it, the share Godot's center_val gives each of four pairs.
@@ -2797,10 +2791,10 @@ TEST_CASE("capture in surround measures each speaker and writes a .wav file nami
     settings.speaker_mode = audio::SpeakerMode::Surround51;
     Sounds sounds(settings);
     sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
-    sounds.add("hum", "AudioStreamPlayer",
+    sounds.add("hum", "SoundPlayer",
                R"({"stream": "hum.wav", "autoplay": true, "mix_target": "surround",
                    "volume_db": -6.0206})");
-    sounds.add("voice", "AudioStreamPlayer",
+    sounds.add("voice", "SoundPlayer",
                R"({"stream": "hum.wav", "autoplay": true, "mix_target": "center",
                    "volume_db": -13.9794})");
     sounds.step(30);

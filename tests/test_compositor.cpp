@@ -511,7 +511,7 @@ struct Scene {
 
 } // namespace
 
-TEST_CASE("a WorldEnvironment's or a Camera3D's compositor draws its pipeline file's effects") {
+TEST_CASE("a Environment3D's or a Camera3D's compositor draws its pipeline file's effects") {
     Scene scene;
     scene.files["shaders/grade.hlsl"] = "void fragment() {\n    COLOR.rgb *= tint.rgb;\n}\n";
     scene.files["fx/grade.material.json"] = R"({"format": 1, "params": {
@@ -526,10 +526,10 @@ TEST_CASE("a WorldEnvironment's or a Camera3D's compositor draws its pipeline fi
     const entt::entity camera =
         scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
     scene.create("sun", R"({"Transform3D": {"rotation": [-0.6, 0.3, 0]},
-                            "DirectionalLight3D": {}})");
-    scene.create("box", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}})");
+                            "SunLight3D": {}})");
+    scene.create("box", R"({"Transform3D": {}, "Model3D": {}, "BoxGeometry": {}})");
     const entt::entity environment =
-        scene.create("environment", R"({"WorldEnvironment": {"background_mode": "color",
+        scene.create("environment", R"({"Environment3D": {"background_mode": "color",
                            "background_color": [0.6, 0.6, 0.6, 1]}})");
     const auto center = [&] {
         auto captured = canvas::capture(scene.world, scene.assets, {.scale = 0.125F});
@@ -539,7 +539,7 @@ TEST_CASE("a WorldEnvironment's or a Camera3D's compositor draws its pipeline fi
     };
     const std::array<int, 3> plain = center();
     CHECK(plain[0] == plain[1]);
-    auto& env = scene.world.ecs().get<world::WorldEnvironment>(environment);
+    auto& env = scene.world.ecs().get<world::Environment3D>(environment);
     env.compositor = "look.pipeline.json";
     const std::array<int, 3> graded = center();
     CHECK(graded[1] > graded[0] + 40);

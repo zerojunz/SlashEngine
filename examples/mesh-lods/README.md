@@ -10,11 +10,11 @@ the camera, one 9 meters off and a large one 33 meters off.
 Each frame, each surface draws the coarsest LOD whose error, seen from the camera at the mesh's
 bounds, comes to no more than a pixel of the view's width (project.json's
 `rendering.mesh_lod.lod_change.threshold_pixels`, Godot's
-`rendering/mesh_lod/lod_change/threshold_pixels`). `MeshInstance3D`'s `lod_bias` picks as if the
+`rendering/mesh_lod/lod_change/threshold_pixels`). `Model3D`'s `lod_bias` picks as if the
 entity were that many times larger, as Godot's `GeometryInstance3D.lod_bias`:
 
 ```json
-"MeshInstance3D": {"mesh": "models/boulder.obj", "lod_bias": 20.0}
+"Model3D": {"mesh": "models/boulder.obj", "lod_bias": 20.0}
 ```
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
@@ -27,5 +27,5 @@ entity were that many times larger, as Godot's `GeometryInstance3D.lod_bias`:
   coarser LOD.
 - Moved up beside the near one, the middle boulder draws in full too, and `lods` drops out.
 
-Shadow maps draw the LODs the camera sees. Primitive meshes, CSG shapes, `GridMap`s and terrains
+Shadow maps draw the LODs the camera sees. Primitive meshes, CSG shapes, `BlockMap3D`s and terrains
 have none, as in Godot.

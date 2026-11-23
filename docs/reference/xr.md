@@ -27,12 +27,12 @@ field of view as its edges' tangents (`xr::Fov`), which `render::frustum` makes 
 camera, which `frame.capture`'s `xr_view` does at the view's render target size.
 `examples/xr-stereo-views` sees a post move between the eyes.
 
-Face tracking is Godot's `XRFaceTracker` and `XRFaceModifier3D` (`slash/xr/face.hpp`,
+Face tracking is Godot's `XRFaceTracker` and `XRFace3D` (`slash/xr/face.hpp`,
 `src/face.cpp`, its tables ported from Godot's): a face tracker's `Tracker::blend_shapes` holds
 the 143 Unified Expressions weights (`set_face_blend_shapes`), `face_shape_named` reads a blend
 shape's name in Unified Expressions', ARKit's, SRanipal's or Meta's standard, and
 `face_blend_mapping` leaves out blended shapes whose parts the mesh has, as Godot's. The `xr`
-system's `drive_faces` sets the `MeshInstance3D.blend_shapes` of each `XRFaceModifier3D`'s target
+system's `drive_faces` sets the `Model3D.blend_shapes` of each `XRFace3D`'s target
 from its model's shape names. `fill_blended_shapes` (SlashEngine's own) fills in the shapes a
 recording implies, for the test headset's face trackers (`xr.set`'s `blend_shapes`) and
 `animation.import_face_capture` (`engine/command/src/face_capture.cpp`), which reads Live Link

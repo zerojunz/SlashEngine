@@ -346,14 +346,14 @@ Reply entity_place(Session& session, const json::Value& params) {
         curve = world::curve_3d(world, path);
         if (!curve) {
             return param_error(code::kInvalidParams, "/along/path",
-                               quoted(path_id) + " has no Path3D");
+                               quoted(path_id) + " has no Spline3D");
         }
         if (curve->length() <= 0.0F) {
             return param_error(code::kInvalidArgument, "/along/path",
                                quoted(path_id) +
-                                   "'s curve has no length: give its Path3D two points or more");
+                                   "'s curve has no length: give its Spline3D two points or more");
         }
-        closed = registry.get<world::Path3D>(path).closed;
+        closed = registry.get<world::Spline3D>(path).closed;
         path_place = tree.global(path);
         if (const json::Value* from = along->find("from"); from != nullptr) {
             start = static_cast<float>(from->as_double());
@@ -603,7 +603,7 @@ void register_place_commands(Registry& registry) {
     entities["minItems"] = 1;
     entities["maxItems"] = kMaxEntities;
 
-    json::Value path = property("string", "An entity with a Path3D.");
+    json::Value path = property("string", "An entity with a Spline3D.");
     path["minLength"] = 1;
     json::Value from = property("number", "Meters along the curve to the first. Default 0.");
     from["minimum"] = 0;

@@ -14,7 +14,7 @@
     },
     "cyan_light": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [0.3, 0.9, 1.0, 1.0],
           "light_energy": 1.5
         },
@@ -25,11 +25,11 @@
     },
     "cyan_sign": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.2, 1.8, 0.1]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.0, 0.0, 0.0, 1.0],
           "emission": [0.3, 0.9, 1.0, 1.0],
           "emission_enabled": true,
@@ -42,7 +42,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.3, 0.3, 0.5, 1.0],
           "ambient_light_energy": 0.3,
           "ambient_light_source": "color",
@@ -56,11 +56,11 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [16.0, 16.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.2, 0.2, 0.22, 1.0],
           "roughness": 0.4
         },
@@ -69,7 +69,7 @@
     },
     "pink_light": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.3, 0.7, 1.0],
           "light_energy": 1.5
         },
@@ -80,11 +80,11 @@
     },
     "pink_sign": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [2.4, 0.25, 0.1]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.0, 0.0, 0.0, 1.0],
           "emission": [1.0, 0.2, 0.6, 1.0],
           "emission_enabled": true,
@@ -97,11 +97,11 @@
     },
     "wall": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [10.0, 4.0, 0.4]
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.3, 0.27, 0.28, 1.0]
         },
         "Transform3D": {

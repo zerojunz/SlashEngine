@@ -2,10 +2,10 @@
   "entities": {
     "island": {
       "components": {
-        "ColorRect": {
+        "ColorFill": {
           "color": [0.3, 0.6, 0.3, 1.0]
         },
-        "Control": {
+        "Widget": {
           "offset_bottom": 140.0,
           "offset_left": 64.0,
           "offset_right": 200.0,
@@ -15,30 +15,30 @@
     },
     "log": {
       "components": {
-        "Control": {
+        "ScrollBox": {
+          "follow_focus": true,
+          "horizontal_scroll_mode": "disabled"
+        },
+        "Widget": {
           "children": ["quests"],
           "offset_bottom": 172.0,
           "offset_left": 8.0,
           "offset_right": 168.0,
           "offset_top": 8.0
-        },
-        "ScrollContainer": {
-          "follow_focus": true,
-          "horizontal_scroll_mode": "disabled"
         }
       }
     },
     "map": {
       "components": {
-        "Control": {
+        "Panel": {},
+        "Widget": {
           "children": ["island"],
           "clip_contents": true,
           "offset_bottom": 100.0,
           "offset_left": 184.0,
           "offset_right": 312.0,
           "offset_top": 8.0
-        },
-        "Panel": {}
+        }
       }
     },
     "quest_1": {
@@ -46,7 +46,7 @@
         "Button": {
           "text": "The Lost Ring"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_10": {
@@ -54,7 +54,7 @@
         "Button": {
           "text": "Home Again"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_2": {
@@ -62,7 +62,7 @@
         "Button": {
           "text": "Wolves at the Mill"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_3": {
@@ -70,7 +70,7 @@
         "Button": {
           "text": "A Letter for Mira"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_4": {
@@ -78,7 +78,7 @@
         "Button": {
           "text": "The Old Lighthouse"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_5": {
@@ -86,7 +86,7 @@
         "Button": {
           "text": "Herbs for the Healer"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_6": {
@@ -94,7 +94,7 @@
         "Button": {
           "text": "Bandit Camp"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_7": {
@@ -102,7 +102,7 @@
         "Button": {
           "text": "The Sunken Bell"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_8": {
@@ -110,7 +110,7 @@
         "Button": {
           "text": "Rats in the Cellar"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quest_9": {
@@ -118,15 +118,15 @@
         "Button": {
           "text": "The Silver Key"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quests": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "children": ["quest_1", "quest_2", "quest_3", "quest_4", "quest_5", "quest_6", "quest_7", "quest_8", "quest_9", "quest_10"],
           "size_flags_horizontal": "expand_fill"
         }
@@ -134,15 +134,15 @@
     },
     "zoom": {
       "components": {
-        "Control": {
+        "ScrollBar": {
+          "page": 25.0,
+          "step": 1.0
+        },
+        "Widget": {
           "offset_bottom": 120.0,
           "offset_left": 184.0,
           "offset_right": 312.0,
           "offset_top": 112.0
-        },
-        "ScrollBar": {
-          "page": 25.0,
-          "step": 1.0
         }
       }
     }

@@ -14,7 +14,7 @@ slash-cli rpc --project . < calls.jsonl
   needs no SoundFont file; `soundfont` names an `.sf2` file to use instead.
 - Each track becomes an Ogg Vorbis stem in `music/battle/` with a `.audio.json` file giving its
   `bpm` and `beat_count`, and `music/battle.audio.json` plays the four together as a synchronized
-  stream, so a game's `AudioStreamPlayer` plays the music and can fade one layer at a time.
+  stream, so a game's `SoundPlayer` plays the music and can fade one layer at a time.
 - With `"loop": true` each stem is exactly 16 beats long, and what rings past the end (the
   brass's last note) is added onto the start, so the loop joins without a click.
 - `audio.analyze` finds the drums at 140 beats per minute with a clean loop, and the strings in

@@ -180,8 +180,8 @@ int main() {
     // and its hips bob in proportion to its height.
     call(game, "entity.create",
          R"({"id": "knight", "components": {"Transform3D": {},
-             "MeshInstance3D": {"mesh": "characters/knight.glb"},
-             "AnimationPlayer": {"library": "characters/dancer.glb", "animation": "wave-loop",
+             "Model3D": {"mesh": "characters/knight.glb"},
+             "Animator": {"library": "characters/dancer.glb", "animation": "wave-loop",
                                  "time": 0.5, "playing": false}}})");
     call(game, "skeleton.get",
          R"({"id": "knight", "bones": ["Hips", "LeftUpperArm", "LeftHand"]})");

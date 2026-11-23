@@ -26,15 +26,15 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-using world::ConeTwistJoint3D;
-using world::Generic6DOFJoint3D;
+using world::ConeJoint3D;
 using world::HingeJoint3D;
 using world::Joint3DAngularAxis;
 using world::Joint3DLinearAxis;
-using world::PhysicalBone3D;
 using world::PhysicalBone3DAxis;
 using world::PinJoint3D;
-using world::SliderJoint3D;
+using world::SimulatedBone3D;
+using world::SixAxisJoint3D;
+using world::SlideJoint3D;
 using world::Transform3D;
 
 constexpr float kPi = std::numbers::pi_v<float>;
@@ -152,8 +152,8 @@ JPH::Ref<JPH::Constraint> build_hinge(const Joint& joint, const HingeJoint3D& hi
 }
 
 // Godot's JoltSliderJoint3D::rebuild: limits centered as a hinge's, by moving the first frame.
-JPH::Ref<JPH::Constraint> build_slider(const Joint& joint, const SliderJoint3D& slider,
-                                       Vec3 scale_a, Vec3 scale_b, JPH::Body& a, JPH::Body* b) {
+JPH::Ref<JPH::Constraint> build_slider(const Joint& joint, const SlideJoint3D& slider, Vec3 scale_a,
+                                       Vec3 scale_b, JPH::Body& a, JPH::Body* b) {
     float ref_shift = 0.0F;
     float limit = FLT_MAX;
     if (slider.linear_limit_lower <= slider.linear_limit_upper) {
@@ -180,7 +180,7 @@ JPH::Ref<JPH::Constraint> build_slider(const Joint& joint, const SliderJoint3D& 
 }
 
 // Godot's JoltConeTwistJoint3D::_build_swing_twist: spans out of range leave the joint free.
-JPH::Ref<JPH::Constraint> build_cone_twist(const Frames& frames, const ConeTwistJoint3D& cone,
+JPH::Ref<JPH::Constraint> build_cone_twist(const Frames& frames, const ConeJoint3D& cone,
                                            JPH::Body& a, JPH::Body* b) {
     JPH::SwingTwistConstraintSettings settings;
     const bool twist_valid = cone.twist_span >= 0.0F && cone.twist_span <= kPi;
@@ -208,7 +208,7 @@ JPH::Ref<JPH::Constraint> build_cone_twist(const Frames& frames, const ConeTwist
 }
 
 // Godot's JoltGeneric6DOFJoint3D::rebuild with its motors and springs.
-JPH::Ref<JPH::Constraint> build_6dof(const Frames& frames, const Generic6DOFJoint3D& joint,
+JPH::Ref<JPH::Constraint> build_6dof(const Frames& frames, const SixAxisJoint3D& joint,
                                      JPH::Body& a, JPH::Body* b) {
     using Axis = JPH::SixDOFConstraintSettings::EAxis;
     const std::array<const Joint3DLinearAxis*, 3> linear{&joint.linear_x, &joint.linear_y,
@@ -301,14 +301,14 @@ JPH::Ref<JPH::Constraint> build(const Joint& joint, Vec3 scale_a, Vec3 scale_b, 
     if (const auto* hinge = std::get_if<HingeJoint3D>(&joint.key); hinge != nullptr) {
         return build_hinge(joint, *hinge, scale_a, scale_b, a, b);
     }
-    if (const auto* slider = std::get_if<SliderJoint3D>(&joint.key); slider != nullptr) {
+    if (const auto* slider = std::get_if<SlideJoint3D>(&joint.key); slider != nullptr) {
         return build_slider(joint, *slider, scale_a, scale_b, a, b);
     }
     const Frames frames = shift(joint, scale_a, scale_b, {}, 0.0F);
-    if (const auto* cone = std::get_if<ConeTwistJoint3D>(&joint.key); cone != nullptr) {
+    if (const auto* cone = std::get_if<ConeJoint3D>(&joint.key); cone != nullptr) {
         return build_cone_twist(frames, *cone, a, b);
     }
-    if (const auto* six = std::get_if<Generic6DOFJoint3D>(&joint.key); six != nullptr) {
+    if (const auto* six = std::get_if<SixAxisJoint3D>(&joint.key); six != nullptr) {
         return build_6dof(frames, *six, a, b);
     }
     return build_pin(frames, a, b);
@@ -316,14 +316,14 @@ JPH::Ref<JPH::Constraint> build(const Joint& joint, Vec3 scale_a, Vec3 scale_b, 
 
 // A physical bone's joint as the joint component that builds the same constraint, as Godot's
 // PhysicalBone3D::_reload_joint passes its parameters to the physics server; nothing for "none".
-std::optional<JointKey> joint_key_of(const PhysicalBone3D& bone) {
+std::optional<JointKey> joint_key_of(const SimulatedBone3D& bone) {
     if (bone.joint_type == "pin") {
         return PinJoint3D{.exclude_nodes_from_collision = false};
     }
     if (bone.joint_type == "cone") {
-        return ConeTwistJoint3D{.exclude_nodes_from_collision = false,
-                                .swing_span = bone.swing_span,
-                                .twist_span = bone.twist_span};
+        return ConeJoint3D{.exclude_nodes_from_collision = false,
+                           .swing_span = bone.swing_span,
+                           .twist_span = bone.twist_span};
     }
     if (bone.joint_type == "hinge") {
         return HingeJoint3D{.exclude_nodes_from_collision = false,
@@ -333,9 +333,9 @@ std::optional<JointKey> joint_key_of(const PhysicalBone3D& bone) {
                             .motor_enabled = false};
     }
     if (bone.joint_type == "slider") {
-        return SliderJoint3D{.exclude_nodes_from_collision = false,
-                             .linear_limit_upper = bone.linear_limit_upper,
-                             .linear_limit_lower = bone.linear_limit_lower};
+        return SlideJoint3D{.exclude_nodes_from_collision = false,
+                            .linear_limit_upper = bone.linear_limit_upper,
+                            .linear_limit_lower = bone.linear_limit_lower};
     }
     if (bone.joint_type == "6dof") {
         const auto linear = [](const PhysicalBone3DAxis& axis) {
@@ -362,19 +362,19 @@ std::optional<JointKey> joint_key_of(const PhysicalBone3D& bone) {
                                       .spring_damping = axis.angular_spring_damping,
                                       .spring_equilibrium_point = axis.angular_equilibrium_point};
         };
-        return Generic6DOFJoint3D{.exclude_nodes_from_collision = false,
-                                  .linear_x = linear(bone.x),
-                                  .linear_y = linear(bone.y),
-                                  .linear_z = linear(bone.z),
-                                  .angular_x = angular(bone.x),
-                                  .angular_y = angular(bone.y),
-                                  .angular_z = angular(bone.z)};
+        return SixAxisJoint3D{.exclude_nodes_from_collision = false,
+                              .linear_x = linear(bone.x),
+                              .linear_y = linear(bone.y),
+                              .linear_z = linear(bone.z),
+                              .angular_x = angular(bone.x),
+                              .angular_y = angular(bone.y),
+                              .angular_z = angular(bone.z)};
     }
     return std::nullopt;
 }
 
 // Whether two of a physical bone's components put its joint's frames in the same place.
-bool same_frames(const PhysicalBone3D& a, const PhysicalBone3D& b) {
+bool same_frames(const SimulatedBone3D& a, const SimulatedBone3D& b) {
     return a.joint_type == b.joint_type && a.joint_rotation == b.joint_rotation &&
            a.body_offset_position == b.body_offset_position &&
            a.body_offset_rotation == b.body_offset_rotation;
@@ -415,8 +415,9 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
     entt::registry& registry = world.ecs();
     // Joints whose entity is gone.
     joints_.erase_if([&](entt::entity entity, Joint& joint) {
-        if (world.valid(entity) && registry.any_of<PinJoint3D, HingeJoint3D, SliderJoint3D,
-                                                   ConeTwistJoint3D, Generic6DOFJoint3D>(entity)) {
+        if (world.valid(entity) &&
+            registry.any_of<PinJoint3D, HingeJoint3D, SlideJoint3D, ConeJoint3D, SixAxisJoint3D>(
+                entity)) {
             return false;
         }
         remove_joint(joint);
@@ -528,19 +529,19 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
             place(entity, registry.get<HingeJoint3D>(entity));
         }
     }
-    for (const entt::entity entity : registry.view<SliderJoint3D>()) {
+    for (const entt::entity entity : registry.view<SlideJoint3D>()) {
         if (!registry.any_of<PinJoint3D, HingeJoint3D>(entity)) {
-            place(entity, registry.get<SliderJoint3D>(entity));
+            place(entity, registry.get<SlideJoint3D>(entity));
         }
     }
-    for (const entt::entity entity : registry.view<ConeTwistJoint3D>()) {
-        if (!registry.any_of<PinJoint3D, HingeJoint3D, SliderJoint3D>(entity)) {
-            place(entity, registry.get<ConeTwistJoint3D>(entity));
+    for (const entt::entity entity : registry.view<ConeJoint3D>()) {
+        if (!registry.any_of<PinJoint3D, HingeJoint3D, SlideJoint3D>(entity)) {
+            place(entity, registry.get<ConeJoint3D>(entity));
         }
     }
-    for (const entt::entity entity : registry.view<Generic6DOFJoint3D>()) {
-        if (!registry.any_of<PinJoint3D, HingeJoint3D, SliderJoint3D, ConeTwistJoint3D>(entity)) {
-            place(entity, registry.get<Generic6DOFJoint3D>(entity));
+    for (const entt::entity entity : registry.view<SixAxisJoint3D>()) {
+        if (!registry.any_of<PinJoint3D, HingeJoint3D, SlideJoint3D, ConeJoint3D>(entity)) {
+            place(entity, registry.get<SixAxisJoint3D>(entity));
         }
     }
 
@@ -588,7 +589,7 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
 void Space::sync_bone_joints(world::World& world, const world::Tree3D& tree) {
     entt::registry& registry = world.ecs();
     bone_joints_.erase_if([&](entt::entity entity, BoneJoint& bone) {
-        if (world.valid(entity) && registry.all_of<PhysicalBone3D>(entity)) {
+        if (world.valid(entity) && registry.all_of<SimulatedBone3D>(entity)) {
             return false;
         }
         remove_joint(bone.joint);
@@ -605,8 +606,8 @@ void Space::sync_bone_joints(world::World& world, const world::Tree3D& tree) {
         return from_jolt(found->shape->GetCenterOfMass());
     };
 
-    for (const entt::entity entity : registry.view<PhysicalBone3D>()) {
-        const auto& component = registry.get<PhysicalBone3D>(entity);
+    for (const entt::entity entity : registry.view<SimulatedBone3D>()) {
+        const auto& component = registry.get<SimulatedBone3D>(entity);
         const auto link = bone_links_.find(entity);
         const entt::entity parent = link != bone_links_.end() ? link->second.parent : entt::null;
         const Body* a = bone_body(parent);

@@ -5,7 +5,7 @@
 // body names), the recipe's own parts (shapes or model files) with its collision, and an attachment
 // point for each seat ("seat_<name>") and door ("door_<name>", where one gets in). Wheels aren't in
 // it: the vehicles system gives each wheel an entity of its own that turns. Models load
-// .vehicle.json files through it, so a MeshInstance3D draws one.
+// .vehicle.json files through it, so a Model3D draws one.
 
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"

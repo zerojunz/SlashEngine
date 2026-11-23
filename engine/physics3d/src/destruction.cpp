@@ -7,7 +7,7 @@
 // world::settle_stress whenever a link or piece goes, until what no link holds to an anchored
 // piece falls. Pieces with a lifetime go when it runs out. Before it breaks, its profile's deform
 // dents its mesh, holes it and carves it (Destructible3D's dents and carves, which scene3d cuts
-// into the mesh its pieces come from), or digs craters into an HTerrain.
+// into the mesh its pieces come from), or digs craters into an Terrain3D.
 
 #include "space.hpp"
 
@@ -96,18 +96,18 @@ Result<entt::entity> create_piece(world::World& world, std::string_view body, st
     }
 }
 
-// Gives a piece the body's MeshInstance3D, primitive mesh and material.
-void copy_looks(entt::registry& ecs, entt::entity out, const world::MeshInstance3D& instance,
+// Gives a piece the body's Model3D, primitive mesh and material.
+void copy_looks(entt::registry& ecs, entt::entity out, const world::Model3D& instance,
                 const std::optional<scene3d::Primitive>& shape,
-                const std::optional<world::StandardMaterial3D>& material) {
-    ecs.emplace<world::MeshInstance3D>(out, instance);
+                const std::optional<world::Surface3D>& material) {
+    ecs.emplace<world::Model3D>(out, instance);
     if (shape.has_value()) {
         std::visit(
             [&ecs, out](const auto& mesh) { ecs.emplace<std::decay_t<decltype(mesh)>>(out, mesh); },
             *shape);
     }
     if (material.has_value()) {
-        ecs.emplace<world::StandardMaterial3D>(out, *material);
+        ecs.emplace<world::Surface3D>(out, *material);
     }
 }
 
@@ -256,14 +256,14 @@ Vec3 clamped(Vec3 p, const std::pair<Vec3, Vec3>& box) {
             std::clamp(p.z, box.first.z, box.second.z)};
 }
 
-// Where a point in the world is over an HTerrain: its cell along x and z, and how far above
+// Where a point in the world is over an Terrain3D: its cell along x and z, and how far above
 // the ground there it is in meters (below is negative); nullopt off the map or with no heights.
 struct OverTerrain {
     Vec2 cell;
     float above = 0.0F;
 };
 std::optional<OverTerrain> over_terrain(const world::World& world, entt::entity entity, Vec3 at) {
-    const auto* terrain = world.ecs().try_get<const world::HTerrain>(entity);
+    const auto* terrain = world.ecs().try_get<const world::Terrain3D>(entity);
     if (terrain == nullptr) {
         return std::nullopt;
     }
@@ -290,10 +290,10 @@ constexpr std::size_t kMaxCarves = 64;
 constexpr std::size_t kMaxCraters = 256;
 
 // Gives a body whose mesh was carved collision of what is left: a static body's own
-// CollisionShape3D its triangles, a rigid body's its hull.
+// Collider3D its triangles, a rigid body's its hull.
 void reshape(world::World& world, entt::entity entity) {
     auto& ecs = world.ecs();
-    auto* shape = ecs.try_get<world::CollisionShape3D>(entity);
+    auto* shape = ecs.try_get<world::Collider3D>(entity);
     if (shape == nullptr || shape->shape == "world_boundary") {
         return;
     }
@@ -302,7 +302,7 @@ void reshape(world::World& world, entt::entity entity) {
         return;
     }
     const scene3d::FracturePiece& piece = *made.value();
-    world::CollisionShape3D out = *shape;
+    world::Collider3D out = *shape;
     out.position = {};
     out.rotation = {};
     out.points.clear();
@@ -334,8 +334,8 @@ std::string deform_body(world::World& world, entt::entity entity,
         return {};
     }
     const bool explosive = kind == "explosive";
-    // An HTerrain is dug into where a blast reaches its ground.
-    if (auto* terrain = ecs.try_get<world::HTerrain>(entity); terrain != nullptr) {
+    // An Terrain3D is dug into where a blast reaches its ground.
+    if (auto* terrain = ecs.try_get<world::Terrain3D>(entity); terrain != nullptr) {
         if (!explosive || deform.carve <= 0.0F || terrain->craters.size() >= kMaxCraters) {
             return {};
         }
@@ -354,7 +354,7 @@ std::string deform_body(world::World& world, entt::entity entity,
                       static_cast<float>(std::max<real_t>(terrain->map_scale.y, 1e-6F))});
         return "crater";
     }
-    if (!ecs.all_of<world::MeshInstance3D>(entity)) {
+    if (!ecs.all_of<world::Model3D>(entity)) {
         return {};
     }
     const auto bounds = mesh_bounds(world, entity);
@@ -478,7 +478,7 @@ void show_state(world::World& world, entt::entity entity, const world::DamagePro
     };
     const world::DamageState* before = state_at(from);
     const world::DamageState* after = state_at(to);
-    if (auto* material = ecs.try_get<world::StandardMaterial3D>(entity); material != nullptr) {
+    if (auto* material = ecs.try_get<world::Surface3D>(entity); material != nullptr) {
         Vec4 color = material->albedo_color;
         if (before != nullptr && before->tinted) {
             const auto undo = [](float c, float t) { return t > 0.0F ? c / t : c; };
@@ -491,7 +491,7 @@ void show_state(world::World& world, entt::entity entity, const world::DamagePro
         }
         material->albedo_color = color;
     }
-    if (auto* instance = ecs.try_get<world::MeshInstance3D>(entity);
+    if (auto* instance = ecs.try_get<world::Model3D>(entity);
         instance != nullptr && after != nullptr) {
         if (!after->material.empty()) {
             instance->material_override = after->material;
@@ -618,10 +618,9 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
     base.lock_rotation = false;
     base.constant_force = {};
     base.constant_torque = {};
-    const world::MeshInstance3D instance = ecs.get<const world::MeshInstance3D>(entity);
-    std::optional<world::StandardMaterial3D> material;
-    if (const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
-        standard != nullptr) {
+    const world::Model3D instance = ecs.get<const world::Model3D>(entity);
+    std::optional<world::Surface3D> material;
+    if (const auto* standard = ecs.try_get<const world::Surface3D>(entity); standard != nullptr) {
         material = *standard;
     }
     auto primitive = scene3d::primitive_of(world, entity);
@@ -722,10 +721,10 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
             body.angular_velocity = {};
         }
         ecs.emplace<world::RigidBody3D>(out, body);
-        world::CollisionShape3D hull;
+        world::Collider3D hull;
         hull.shape = "convex_polygon";
         hull.points = piece.hull;
-        ecs.emplace<world::CollisionShape3D>(out, std::move(hull));
+        ecs.emplace<world::Collider3D>(out, std::move(hull));
         std::vector<world::FractureCut> own_cuts = cuts;
         own_cuts.back().index = static_cast<int>(i);
         FracturePiece3D made_piece{.pieces = settings.pieces,
@@ -847,7 +846,7 @@ BodyKind kind_of(const entt::registry& ecs, entt::entity entity) {
     if (ecs.any_of<world::Ragdoll3D, world::Creature3D, world::Flesh3D, world::NpcAgent>(entity)) {
         return BodyKind::Living;
     }
-    if (const auto* instance = ecs.try_get<const world::MeshInstance3D>(entity);
+    if (const auto* instance = ecs.try_get<const world::Model3D>(entity);
         instance != nullptr && (instance->mesh.ends_with(".character.json") ||
                                 instance->mesh.ends_with(".creature.json"))) {
         return BodyKind::Living;
@@ -897,7 +896,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
     if (const detail::Space* space = detail::find_space(world); space != nullptr) {
         down = space->settings().gravity_vector * space->settings().gravity;
     }
-    world::CPUParticles3D particles;
+    world::Emitter3D particles;
     particles.amount = amount;
     particles.lifetime = effect.lifetime;
     particles.one_shot = true;
@@ -925,16 +924,17 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
         particles.scale_amount_min = 0.5F;
     }
     ecs.emplace<world::Transform3D>(made, placed_at(at, {}));
-    ecs.emplace<world::CPUParticles3D>(made, std::move(particles));
+    ecs.emplace<world::Emitter3D>(made, std::move(particles));
     const float size = effect.size;
     if (dust) {
-        ecs.emplace<world::SphereMesh>(
-            made, world::SphereMesh{
+        ecs.emplace<world::SphereGeometry>(
+            made, world::SphereGeometry{
                       .radius = size * 0.5F, .height = size, .radial_segments = 8, .rings = 4});
     } else {
-        ecs.emplace<world::BoxMesh>(made, world::BoxMesh{.size = {size, size * 0.6F, size}});
+        ecs.emplace<world::BoxGeometry>(made,
+                                        world::BoxGeometry{.size = {size, size * 0.6F, size}});
     }
-    world::StandardMaterial3D material;
+    world::Surface3D material;
     material.vertex_color_use_as_albedo = true;
     if (dust || effect.color.w < 1.0F) {
         material.transparency = "alpha";
@@ -942,7 +942,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
     if (dust) {
         material.shading_mode = "unshaded";
     }
-    ecs.emplace<world::StandardMaterial3D>(made, std::move(material));
+    ecs.emplace<world::Surface3D>(made, std::move(material));
     ecs.emplace<world::DamageEffect>(
         made, world::DamageEffect{.lifetime = effect.lifetime * 1.5F, .body = std::string(body)});
     return std::string(world.id_of(made));
@@ -991,14 +991,14 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
     if (!set.sound.stream.empty()) {
         if (const entt::entity sound = create_effect(world, body, "sound"); sound != entt::null) {
             ecs.emplace<world::Transform3D>(sound, placed_at(at, {}));
-            world::AudioStreamPlayer3D player;
+            world::SoundPlayer3D player;
             player.stream = set.sound.stream;
             player.volume_db = set.sound.volume_db;
             player.pitch_scale = set.sound.pitch_scale;
             player.bus = set.sound.bus;
             player.autoplay = true;
             player.playing = true;
-            ecs.emplace<world::AudioStreamPlayer3D>(sound, std::move(player));
+            ecs.emplace<world::SoundPlayer3D>(sound, std::move(player));
             ecs.emplace<world::DamageEffect>(
                 sound,
                 world::DamageEffect{.lifetime = set.sound.lifetime, .body = std::string(body)});
@@ -1291,7 +1291,7 @@ std::vector<DamageReport> damage_area(world::World& world, Vec3 center, float ra
         // How far the blast is from the nearest of it: a terrain's ground below it, or the
         // nearest point of its bounds.
         float distance = 0.0F;
-        if (world.ecs().all_of<world::HTerrain>(entity)) {
+        if (world.ecs().all_of<world::Terrain3D>(entity)) {
             const auto over = over_terrain(world, entity, center);
             if (!over.has_value()) {
                 continue;

@@ -17,7 +17,7 @@
 // 2D characters' and creatures' own ragdolls (Ragdoll2D), the 2D side of Ragdoll3D: the same
 // .ragdoll.json profiles, in pixels, over a cut-out character's Transform2D tree. Each profile bone
 // is an entity under the Ragdoll2D's (named by its ID, without the ragdoll's own "<id>/" when it
-// is an instance's), which the ragdoll system makes a RigidBody2D with a CollisionShape2D and
+// is an instance's), which the ragdoll system makes a RigidBody2D with a Collider2D and
 // joins to the bone above it with a PinJoint2D ("<bone>_joint"). Animated, the bodies are frozen
 // and follow the animation; active, their muscles drive them toward it; limp, they fall; and once
 // they lie still the ragdoll gets up, as Ragdoll3D's.

@@ -17,7 +17,7 @@ replay.run {"path":"replays/run.replay.json","tick":55}
 tick 55: hero at (92.5, 115.1) in the air, coin still there
 input.state {"actions":["jump","move_right"]}
 {"actions":{"jump":{"pressed":false},"move_right":{"pressed":true}},"keys":["D"],"mouse":{"position":[0.0,0.0]},"tick":54}
-replay.seek {"until":"none","with":["Area2D"]}
+replay.seek {"until":"none","with":["Zone2D"]}
 {"count":0,"end":150,"entities":[],"found":true,"matched":true,"start":0,"tick":96,"truncated":false}
 tick 96: hero at (154.0, 134.4) in the air, coin taken
 replay.seek {"ticks":-1}
@@ -25,5 +25,5 @@ replay.seek {"ticks":-1}
 tick 95: hero at (152.5, 128.5) in the air, coin still there
 -- a session with a lower jump
 replay.run {"path":"replays/run.replay.json"}
-{"changes":{"added":["coin"],"changed":{"coin":["Area2D","CollisionShape2D","Transform2D"],"hero":["Transform2D"]}},"diverged":60,"end":150,"matched":false,"start":0,"tick":150}
+{"changes":{"added":["coin"],"changed":{"coin":["Collider2D","Transform2D","Zone2D"],"hero":["Transform2D"]}},"diverged":60,"end":150,"matched":false,"start":0,"tick":150}
 tick 150: hero at (45.0, 144.0) on the floor, coin still there

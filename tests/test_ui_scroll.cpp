@@ -23,8 +23,8 @@
 #include <utility>
 #include <vector>
 
-// Scroll bars, scroll containers and clipping, as Godot's ScrollBar, ScrollContainer and
-// Control.clip_contents (scene/gui/scroll_bar.cpp and scroll_container.cpp). The sizes and
+// Scroll bars, scroll containers and clipping, as Godot's ScrollBar, ScrollBox and
+// Widget.clip_contents (scene/gui/scroll_bar.cpp and scroll_container.cpp). The sizes and
 // values expected here follow those files and Godot's default theme: scroll bars with no arrow
 // icons and a grabber at least 8 pixels long.
 
@@ -138,19 +138,19 @@ struct Gui {
         }
     }
 
-    // A ScrollContainer "box" over the window's top left 100 x 100, holding "content" of a
-    // minimum size, with box's fields and content's components and Control fields added.
+    // A ScrollBox "box" over the window's top left 100 x 100, holding "content" of a
+    // minimum size, with box's fields and content's components and Widget fields added.
     void scroll_box(Vec2 content, std::string_view box_fields = "",
-                    std::string_view content_components = R"("ColorRect": {})",
+                    std::string_view content_components = R"("ColorFill": {})",
                     std::string_view box_control = "", std::string_view content_control = "") {
-        create("content", R"({"Control": {"custom_minimum_size": )" +
+        create("content", R"({"Widget": {"custom_minimum_size": )" +
                               numbers({content.x, content.y}) +
                               (content_control.empty() ? "" : ", " + std::string(content_control)) +
                               "}, " + std::string(content_components) + "}");
-        create("box", R"({"Control": {"offset_right": 100, "offset_bottom": 100, )" +
+        create("box", R"({"Widget": {"offset_right": 100, "offset_bottom": 100, )" +
                           (box_control.empty() ? "" : std::string(box_control) + ", ") +
-                          R"("children": ["content"]}, "ScrollContainer": {)" +
-                          std::string(box_fields) + "}}");
+                          R"("children": ["content"]}, "ScrollBox": {)" + std::string(box_fields) +
+                          "}}");
     }
 
     void push(std::string_view event_json) {
@@ -195,9 +195,9 @@ struct Gui {
     text::Fonts& fonts() { return *ui::fonts(world); }
     ui::Layout layout() { return ui::layout(world, fonts(), ui::settings(world).viewport); }
 
-    // A ScrollContainer's scroll as its component has it, [horizontal, vertical].
+    // A ScrollBox's scroll as its component has it, [horizontal, vertical].
     [[nodiscard]] std::string scroll(std::string_view id = "box") const {
-        const auto& box = world.ecs().get<world::ScrollContainer>(world.find(id));
+        const auto& box = world.ecs().get<world::ScrollBox>(world.find(id));
         return numbers(
             {static_cast<double>(box.scroll_horizontal), static_cast<double>(box.scroll_vertical)});
     }
@@ -291,7 +291,7 @@ struct Session {
 TEST_CASE("a scroll bar sizes its grabber by its page and places it by its value") {
     Gui gui;
     // 200 x 12, from 0 to 100 with a page of 25, at 50.
-    gui.create("bar", R"({"Control": {"offset_left": 10, "offset_top": 20, "offset_right": 210,
+    gui.create("bar", R"({"Widget": {"offset_left": 10, "offset_top": 20, "offset_right": 210,
                           "offset_bottom": 32}, "ScrollBar": {"page": 25, "value": 50}})");
     const ui::Layout layout = gui.layout();
     const ui::ScrollBarView& view = layout.scroll_bars.at(gui.world.find("bar"));
@@ -303,8 +303,8 @@ TEST_CASE("a scroll bar sizes its grabber by its page and places it by its value
     CHECK(gui.boxes("bar") == "flat [0,0,200,12], flat [96,0,56,12]");
 
     // With no size of its own it is as small as its track and grabber allow, either way.
-    gui.create("h", R"({"Control": {}, "ScrollBar": {}})");
-    gui.create("v", R"({"Control": {}, "ScrollBar": {"vertical": true}})");
+    gui.create("h", R"({"Widget": {}, "ScrollBar": {}})");
+    gui.create("v", R"({"Widget": {}, "ScrollBar": {"vertical": true}})");
     CHECK(gui.rect("h") == "[0,0,8,8]");
     CHECK(gui.rect("v") == "[0,0,8,8]");
     CHECK(gui.boxes("v") == "flat [0,0,8,8], flat [0,0,8,8]");
@@ -313,7 +313,7 @@ TEST_CASE("a scroll bar sizes its grabber by its page and places it by its value
 
 TEST_CASE("clicks page a scroll bar, its grabber drags, and the wheel moves it") {
     Gui gui;
-    gui.create("bar", R"({"Control": {"offset_left": 10, "offset_top": 20, "offset_right": 210,
+    gui.create("bar", R"({"Widget": {"offset_left": 10, "offset_top": 20, "offset_right": 210,
                           "offset_bottom": 32}, "ScrollBar": {"page": 25, "value": 50}})");
     CHECK(gui.step().empty());
     // The grabber spans 106 to 162: a click before it goes back a page.
@@ -338,7 +338,7 @@ TEST_CASE("clicks page a scroll bar, its grabber drags, and the wheel moves it")
 
 TEST_CASE("a scroll bar's grabber lights up under the pointer and while dragged") {
     Gui gui;
-    gui.create("bar", R"({"Control": {"offset_right": 200, "offset_bottom": 12},
+    gui.create("bar", R"({"Widget": {"offset_right": 200, "offset_bottom": 12},
                           "ScrollBar": {"page": 25}})");
     gui.step();
     const std::string normal = gui.grabber_color("bar");
@@ -368,7 +368,7 @@ TEST_CASE("a scroll container shows bars when its child doesn't fit, and moves i
     CHECK(view.scroll_max == Vec2{208.0F, 58.0F});
     CHECK(view.visible_size == Vec2{92.0F, 92.0F});
     CHECK(gui.rect("content") == "[0,0,300,150]");
-    gui.set("box", R"({"ScrollContainer": {"scroll_horizontal": 30, "scroll_vertical": 40}})");
+    gui.set("box", R"({"ScrollBox": {"scroll_horizontal": 30, "scroll_vertical": 40}})");
     CHECK(gui.rect("content") == "[-30,-40,300,150]");
     // Its bars draw over its child.
     CHECK_FALSE(gui.over_children("box").empty());
@@ -388,7 +388,7 @@ TEST_CASE("scroll modes hide, show and keep room for the bars") {
     }
     SUBCASE("reserve keeps the bar's room even while it is hidden") {
         Gui gui;
-        gui.scroll_box({80.0F, 60.0F}, R"("vertical_scroll_mode": "reserve")", R"("ColorRect": {})",
+        gui.scroll_box({80.0F, 60.0F}, R"("vertical_scroll_mode": "reserve")", R"("ColorFill": {})",
                        "", R"("size_flags_horizontal": "expand_fill")");
         CHECK(gui.bars() == "h hidden, v hidden");
         CHECK(gui.rect("content") == "[0,0,92,60]");
@@ -401,7 +401,7 @@ TEST_CASE("scroll modes hide, show and keep room for the bars") {
     }
     SUBCASE("right to left, the vertical bar goes on the left and the child after it") {
         Gui gui;
-        gui.scroll_box({300.0F, 150.0F}, "", R"("ColorRect": {})", R"("layout_direction": "rtl")");
+        gui.scroll_box({300.0F, 150.0F}, "", R"("ColorFill": {})", R"("layout_direction": "rtl")");
         CHECK(gui.bars() == "h [8,92,92,8], v [0,0,8,92]");
         // The box itself is mirrored to the viewport's right edge.
         CHECK(gui.rect("content") == "[308,0,300,150]");
@@ -425,7 +425,7 @@ TEST_CASE("the wheel scrolls a scroll container an eighth of a page, Shift sidew
     CHECK(gui.scroll() == "[23,11]");
     CHECK(gui.rect("content") == "[-23,-11,300,150]");
     // scroll_horizontal_by_default turns the wheel sideways, and Shift back.
-    gui.set("box", R"({"ScrollContainer": {"scroll_horizontal_by_default": true}})");
+    gui.set("box", R"({"ScrollBox": {"scroll_horizontal_by_default": true}})");
     gui.wheel(50, 50, "wheel_up");
     CHECK(gui.scroll() == "[11,11]");
     gui.wheel(50, 50, "wheel_up", true);
@@ -436,20 +436,20 @@ TEST_CASE("a wheel turn a scroll container can't take goes on to the one around 
     Gui gui;
     // outer holds a column of inner, 100 high, and 200 more; inner holds 200.
     gui.create("inner_content",
-               R"({"Control": {"custom_minimum_size": [80, 200]}, "ColorRect": {}})");
-    gui.create("inner", R"({"Control": {"custom_minimum_size": [92, 100],
-                            "children": ["inner_content"]}, "ScrollContainer": {}})");
-    gui.create("spacer", R"({"Control": {"custom_minimum_size": [80, 200]}})");
-    gui.create("column", R"({"Control": {"children": ["inner", "spacer"]},
-                             "BoxContainer": {"vertical": true}})");
-    gui.create("outer", R"({"Control": {"offset_right": 100, "offset_bottom": 100,
-                            "children": ["column"]}, "ScrollContainer": {}})");
+               R"({"Widget": {"custom_minimum_size": [80, 200]}, "ColorFill": {}})");
+    gui.create("inner", R"({"Widget": {"custom_minimum_size": [92, 100],
+                            "children": ["inner_content"]}, "ScrollBox": {}})");
+    gui.create("spacer", R"({"Widget": {"custom_minimum_size": [80, 200]}})");
+    gui.create("column", R"({"Widget": {"children": ["inner", "spacer"]},
+                             "StackBox": {"vertical": true}})");
+    gui.create("outer", R"({"Widget": {"offset_right": 100, "offset_bottom": 100,
+                            "children": ["column"]}, "ScrollBox": {}})");
     gui.step();
     gui.wheel(40, 40, "wheel_down");
     CHECK(gui.scroll("inner") == "[0,12]");
     CHECK(gui.scroll("outer") == "[0,0]");
     // At its end, inner lets the turn go on.
-    gui.set("inner", R"({"ScrollContainer": {"scroll_vertical": 100}})");
+    gui.set("inner", R"({"ScrollBox": {"scroll_vertical": 100}})");
     gui.wheel(40, 40, "wheel_down");
     CHECK(gui.scroll("inner") == "[0,100]");
     CHECK(gui.scroll("outer") == "[0,12]");
@@ -462,7 +462,7 @@ TEST_CASE("a scroll container's bars page and drag it") {
     // Below the vertical bar's grabber: down a page, kept to the end.
     gui.send({click(96, 80, true), click(96, 80, false)});
     CHECK(gui.scroll() == "[0,58]");
-    gui.set("box", R"({"ScrollContainer": {"scroll_vertical": 0}})");
+    gui.set("box", R"({"ScrollBox": {"scroll_vertical": 0}})");
     gui.step();
     // Its grabber is 84 * 92 / 150 + 8 long. Grabbed 10 down and dragged 21 more: a quarter.
     gui.send({click(96, 10, true), motion(96, 31)});
@@ -475,7 +475,7 @@ TEST_CASE("a scroll container's bars page and drag it") {
 TEST_CASE("a finger drags a scroll container past its deadzone, and it glides when let go") {
     Gui gui;
     // The content lets the pointer pass, so its touches reach the box.
-    gui.scroll_box({300.0F, 150.0F}, R"("scroll_deadzone": 10)", R"("ColorRect": {})", "",
+    gui.scroll_box({300.0F, 150.0F}, R"("scroll_deadzone": 10)", R"("ColorFill": {})", "",
                    R"("mouse_filter": "pass")");
     gui.step();
     // The touch is also an emulated mouse, which enters both.
@@ -509,13 +509,13 @@ TEST_CASE("follow_focus scrolls a control that gets focus into view") {
     std::string children;
     for (int i = 0; i < 6; ++i) {
         const std::string id = "b" + std::to_string(i);
-        gui.create(id, R"({"Control": {"custom_minimum_size": [80, 40]}, "Button": {}})");
+        gui.create(id, R"({"Widget": {"custom_minimum_size": [80, 40]}, "Button": {}})");
         children += (children.empty() ? "\"" : ", \"") + id + "\"";
     }
-    gui.create("list", R"({"Control": {"children": [)" + children + R"(]},
-                           "BoxContainer": {"vertical": true}})");
-    gui.create("box", R"({"Control": {"offset_right": 100, "offset_bottom": 100,
-                          "children": ["list"]}, "ScrollContainer": {"follow_focus": true}})");
+    gui.create("list", R"({"Widget": {"children": [)" + children + R"(]},
+                           "StackBox": {"vertical": true}})");
+    gui.create("box", R"({"Widget": {"offset_right": 100, "offset_bottom": 100,
+                          "children": ["list"]}, "ScrollBox": {"follow_focus": true}})");
     gui.step();
     // b4 spans 176 to 216: scrolled until its bottom is the view's.
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("b4")));
@@ -527,7 +527,7 @@ TEST_CASE("follow_focus scrolls a control that gets focus into view") {
     gui.step();
     CHECK(gui.scroll() == "[0,44]");
     // Without follow_focus it stays.
-    gui.set("box", R"({"ScrollContainer": {"follow_focus": false}})");
+    gui.set("box", R"({"ScrollBox": {"follow_focus": false}})");
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("b5")));
     gui.step();
     CHECK(gui.scroll() == "[0,44]");
@@ -579,9 +579,9 @@ TEST_CASE("a clip cuts a control's drawing and the clicks its children get at it
 TEST_CASE("clip_contents clips any control") {
     Gui gui;
     gui.create("inside",
-               R"({"Control": {"offset_left": 20, "offset_right": 120, "offset_bottom": 10},
-                             "ColorRect": {}})");
-    gui.create("frame", R"({"Control": {"offset_right": 50, "offset_bottom": 50,
+               R"({"Widget": {"offset_left": 20, "offset_right": 120, "offset_bottom": 10},
+                             "ColorFill": {}})");
+    gui.create("frame", R"({"Widget": {"offset_right": 50, "offset_bottom": 50,
                             "clip_contents": true, "children": ["inside"]}})");
     const ui::Layout layout = gui.layout();
     CHECK(*layout.find(gui.world.find("inside"))->clip == slash::Vec4{0.0F, 0.0F, 50.0F, 50.0F});
@@ -591,7 +591,7 @@ TEST_CASE("clip_contents clips any control") {
 TEST_CASE("a scroll set from outside is kept in range and written back in whole pixels") {
     Gui gui;
     gui.scroll_box({300.0F, 150.0F});
-    gui.set("box", R"({"ScrollContainer": {"scroll_horizontal": -20, "scroll_vertical": 9999}})");
+    gui.set("box", R"({"ScrollBox": {"scroll_horizontal": -20, "scroll_vertical": 9999}})");
     gui.step();
     CHECK(gui.scroll() == "[0,58]");
 }
@@ -600,18 +600,18 @@ TEST_CASE("ui.layout reports scrolls and clips, and frame.summary what clips cut
     const Session session;
     session.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "top", "components": {
-            "Control": {"custom_minimum_size": [80, 40]}, "Label": {"text": "Top"}}}},
+            "Widget": {"custom_minimum_size": [80, 40]}, "Label": {"text": "Top"}}}},
         {"command": "entity.create", "params": {"id": "bottom", "components": {
-            "Control": {"custom_minimum_size": [80, 40]}, "Label": {"text": "Bottom"}}}},
+            "Widget": {"custom_minimum_size": [80, 40]}, "Label": {"text": "Bottom"}}}},
         {"command": "entity.create", "params": {"id": "list", "components": {
-            "Control": {"children": ["top", "bottom"],
+            "Widget": {"children": ["top", "bottom"],
                         "theme_override_constants": {"separation": 200}},
-            "BoxContainer": {"vertical": true}}}},
+            "StackBox": {"vertical": true}}}},
         {"command": "entity.create", "params": {"id": "box", "components": {
-            "Control": {"offset_right": 100, "offset_bottom": 100, "children": ["list"]},
-            "ScrollContainer": {}}}},
+            "Widget": {"offset_right": 100, "offset_bottom": 100, "children": ["list"]},
+            "ScrollBox": {}}}},
         {"command": "entity.create", "params": {"id": "bar", "components": {
-            "Control": {"offset_left": 200, "offset_right": 400, "offset_bottom": 12},
+            "Widget": {"offset_left": 200, "offset_right": 400, "offset_bottom": 12},
             "ScrollBar": {"page": 50, "value": 25}}}}]})");
     session.ok("step", R"({"ticks": 1})");
     CHECK(compact(session.ok("ui.layout", R"({"ids": ["box", "top", "bottom", "bar"]})")) ==

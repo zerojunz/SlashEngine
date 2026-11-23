@@ -88,7 +88,7 @@ struct Foggy {
     float sky_affect = 1.0F;
     bool disable_fog = false; // the floor's material
     std::vector<render::FogVolume3D> volumes{};
-    bool voxel_gi = false;  // a VoxelGI glows over the floor
+    bool voxel_gi = false;  // a VoxelLighting3D glows over the floor
     float gi_inject = 1.0F; // how much of its light the fog takes
 };
 
@@ -128,9 +128,9 @@ std::vector<render::FogVolume3D> some_volumes() {
     };
 }
 
-// A VoxelGI 4 x 2 x 4 meters about the floor, its 4 x 4 x 4 cells of two levels glowing warm
-// on the left, green deeper in and blue up high, in a 16 x 6 atlas: level 0's slices side by side
-// on top, level 1's (2 x 2 x 2) under them.
+// A VoxelLighting3D 4 x 2 x 4 meters about the floor, its 4 x 4 x 4 cells of two levels glowing
+// warm on the left, green deeper in and blue up high, in a 16 x 6 atlas: level 0's slices side by
+// side on top, level 1's (2 x 2 x 2) under them.
 struct FogVoxelGI {
     Image atlas;
     render::VoxelGIProbe probe;
@@ -414,7 +414,8 @@ TEST_CASE("Forward+ volumetric fog lights the view, shaded by the lights' shadow
         // Fog volumes thicken it, glow and thin it.
         CHECK(differing(draw_fog(*device, {.volumes = some_volumes()}), fogged, 8) >
               fogged.pixels.size() / 20);
-        // A VoxelGI's light lights the fog in its box, as much as gi_inject says, and none at 0.
+        // A VoxelLighting3D's light lights the fog in its box, as much as gi_inject says, and none
+        // at 0.
         const Image glowing = draw_fog(*device, {.voxel_gi = true});
         CHECK(differing(glowing, fogged, 8) > fogged.pixels.size() / 20);
         CHECK(differing(draw_fog(*device, {.voxel_gi = true, .gi_inject = 4.0F}), glowing, 8) > 0);
@@ -563,7 +564,7 @@ TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point"
     CHECK(density_at(8, 8, 10)[3] == 0.0F);
 }
 
-TEST_CASE("the fog takes a VoxelGI's light inside its box, its levels front to back") {
+TEST_CASE("the fog takes a VoxelLighting3D's light inside its box, its levels front to back") {
     const FogVoxelGI gi = fog_voxel_gi();
     const detail::MeshVoxelGIUniforms uniforms = detail::voxel_gi_uniforms(gi.probe);
     // At the middle of cell (0, 1, 2): its texel's light, then the coarser level's through what

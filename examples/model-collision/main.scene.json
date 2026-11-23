@@ -2,7 +2,7 @@
   "entities": {
     "ball_arch": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "radius": 0.25,
           "shape": "sphere"
         },
@@ -14,7 +14,7 @@
     },
     "ball_ground": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "radius": 0.25,
           "shape": "sphere"
         },
@@ -26,7 +26,7 @@
     },
     "ball_wall": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "radius": 0.25,
           "shape": "sphere"
         },
@@ -38,7 +38,7 @@
     },
     "yard": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "source/yard.obj"
         },
         "Transform3D": {}

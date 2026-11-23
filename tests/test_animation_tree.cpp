@@ -108,8 +108,8 @@ struct Scene {
         return entity;
     }
 
-    world::AnimationTree& tree(entt::entity entity) {
-        return world.ecs().get<world::AnimationTree>(entity);
+    world::AnimationGraph& tree(entt::entity entity) {
+        return world.ecs().get<world::AnimationGraph>(entity);
     }
     world::Transform2D& transform(entt::entity entity) {
         return world.ecs().get<world::Transform2D>(entity);
@@ -155,7 +155,7 @@ constexpr std::string_view kHolds = R"({"format": 1, "animations": {
         "keys": [{"time": 0, "value": 30}]}]}
 }})";
 
-constexpr std::string_view kTreeComponent = R"({"AnimationTree":
+constexpr std::string_view kTreeComponent = R"({"AnimationGraph":
     {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}})";
 
 std::string errors_of(const json::Value& doc) {
@@ -428,7 +428,7 @@ TEST_CASE("event tracks and discrete keys fire as the tree's playback passes the
     }})");
     scene.files.write("hero.animtree.json",
                       R"({"format": 1, "root": {"type": "Animation", "animation": "step"}})");
-    const entt::entity hero = scene.create("hero", R"({"AnimationTree":
+    const entt::entity hero = scene.create("hero", R"({"AnimationGraph":
         {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"},
          "deterministic": false}, "Sprite2D": {"visible": false}})");
     std::vector<std::string> events;
@@ -448,7 +448,7 @@ TEST_CASE("event tracks and discrete keys fire as the tree's playback passes the
                                              "5 footstep \"left\""});
 }
 
-TEST_CASE("a tree's animation tracks play and stop another AnimationPlayer's animations, as "
+TEST_CASE("a tree's animation tracks play and stop another Animator's animations, as "
           "Godot's mixer") {
     Scene scene;
     scene.files.write("door.anim.json", R"({"format": 1, "animations": {
@@ -462,10 +462,10 @@ TEST_CASE("a tree's animation tracks play and stop another AnimationPlayer's ani
     scene.files.write("hero.animtree.json",
                       R"({"format": 1, "root": {"type": "Animation", "animation": "cut"}})");
     const entt::entity door = scene.create("door", R"({"Transform2D": {},
-        "AnimationPlayer": {"library": "door.anim.json", "animation": "open", "playing": false}})");
-    scene.create("hero", R"({"AnimationTree": {"tree_root": "hero.animtree.json",
+        "Animator": {"library": "door.anim.json", "animation": "open", "playing": false}})");
+    scene.create("hero", R"({"AnimationGraph": {"tree_root": "hero.animtree.json",
         "libraries": {"": "hero.anim.json"}, "targets": {"door": "door"}}})");
-    const auto& player = scene.world.ecs().get<world::AnimationPlayer>(door);
+    const auto& player = scene.world.ecs().get<world::Animator>(door);
     scene.world.step(0.1);
     CHECK(player.playing);
     CHECK(player.time == doctest::Approx(0.0));
@@ -506,8 +506,8 @@ TEST_CASE("a tree's audio tracks play as loud as their animations count, as Godo
                   "sneak": {"type": "Animation", "animation": "sneak"},
                   "mix": {"type": "Blend2", "inputs": {"in": "walk", "blend": "sneak"}}},
         "output": "mix"}})");
-    const entt::entity hero = scene.create("hero", R"({"AudioStreamPlayer": {},
-        "AnimationTree": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}})");
+    const entt::entity hero = scene.create("hero", R"({"SoundPlayer": {},
+        "AnimationGraph": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}})");
     scene.set(hero, "mix/blend_amount", 0.25);
     // The first tick seeks to the start, which starts the step there, at three quarters'
     // volume: 20 log10(0.75) dB.
@@ -579,9 +579,9 @@ TEST_CASE("a model node's motion is reported as root motion rather than posed") 
         "walk": {"from": {"model": "walker.gltf", "animation": "Walk"}, "loop": "linear"}}})");
     scene.files.write("hero.animtree.json",
                       R"({"format": 1, "root": {"type": "Animation", "animation": "walk"}})");
-    const entt::entity hero = scene.create("hero", R"({"AnimationTree":
+    const entt::entity hero = scene.create("hero", R"({"AnimationGraph":
         {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"},
-         "root_motion_track": "Root"}, "MeshInstance3D": {"mesh": "walker.gltf"}})");
+         "root_motion_track": "Root"}, "Model3D": {"mesh": "walker.gltf"}})");
 
     // Seeking to the start moves nothing; then a quarter second walks half a unit, round the
     // loop's end too.
@@ -645,9 +645,9 @@ TEST_CASE("a tree plays node tracks as it plays a model's animations, from the d
              "keys": [{"time": 0, "value": [0, 1, 0]}, {"time": 1, "value": [0, 2, 0]}]}]}}})");
     scene.files.write("hero.animtree.json",
                       R"({"format": 1, "root": {"type": "Animation", "animation": "walk"}})");
-    const entt::entity hero = scene.create("hero", R"({"AnimationTree":
+    const entt::entity hero = scene.create("hero", R"({"AnimationGraph":
         {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"},
-         "root_motion_track": "Root"}, "MeshInstance3D": {"mesh": "walker.gltf"}})");
+         "root_motion_track": "Root"}, "Model3D": {"mesh": "walker.gltf"}})");
     scene.world.step(0.25);
     scene.world.step(0.25);
     CHECK(near(scene.tree(hero).root_motion_position, {0.0F, 0.0F, 0.5F}));
@@ -679,10 +679,10 @@ TEST_CASE("a tree plays node tracks as it plays a model's animations, from the d
                   "rest": {"type": "Animation", "animation": "rest"},
                   "mix": {"type": "Blend2", "inputs": {"in": "rest", "blend": "walk"}}},
         "output": "mix"}})");
-    const entt::entity blender = scene.create("blender", R"({"AnimationTree":
+    const entt::entity blender = scene.create("blender", R"({"AnimationGraph":
         {"tree_root": "blend.animtree.json", "libraries": {"": "blend.anim.json"},
          "root_motion_track": "Root", "parameters": {"mix/blend_amount": 0.5}},
-         "MeshInstance3D": {"mesh": "shifted.gltf"}})");
+         "Model3D": {"mesh": "shifted.gltf"}})");
     scene.world.step(0.25);
     scene.world.step(0.25);
     CHECK(scene.tree(blender).invalid.empty());
@@ -719,7 +719,7 @@ TEST_CASE("AnimationTrees in a scene are checked against their trees and librari
                   "speed": {"type": "TimeScale", "inputs": {"in": "walk"}}},
         "output": "speed"}})");
     const json::Value scene = parse(R"({"format": 1, "entities": {"hero": {"components": {
-        "AnimationTree": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"},
+        "AnimationGraph": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"},
                           "parameters": {"speed/scael": 2, "speed/current_position": 1}}}}}})");
     std::vector<std::string> errors;
     for (const auto& error : animation::check_trees(scene, files.reader())) {
@@ -727,17 +727,17 @@ TEST_CASE("AnimationTrees in a scene are checked against their trees and librari
     }
     CHECK(errors ==
           std::vector<std::string>{
-              "/entities/hero/components/AnimationTree/libraries: "
+              "/entities/hero/components/AnimationGraph/libraries: "
               "Transform2D/position/x has no key in a RESET animation in the library "
               "\"\"; a deterministic tree sets it to 0 while no animation plays it, as "
               "Godot's does: add a RESET animation with its rest value, or set "
               "deterministic to false",
-              "/entities/hero/components/AnimationTree/libraries: hero.animtree.json: "
+              "/entities/hero/components/AnimationGraph/libraries: hero.animtree.json: "
               "/root/nodes/walk/animation: the libraries have no animation \"wakl\"; "
               "did you mean \"walk\"?",
-              "/entities/hero/components/AnimationTree/parameters/speed~1current_position: "
+              "/entities/hero/components/AnimationGraph/parameters/speed~1current_position: "
               "\"speed/current_position\" is kept by the tree as it plays, in state",
-              "/entities/hero/components/AnimationTree/parameters/speed~1scael: "
+              "/entities/hero/components/AnimationGraph/parameters/speed~1scael: "
               "hero.animtree.json has no parameter \"speed/scael\"; did you mean "
               "\"speed/scale\"?"});
 }

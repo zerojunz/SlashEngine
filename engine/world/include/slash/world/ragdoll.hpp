@@ -1,7 +1,7 @@
 #pragma once
 
 // Ragdoll profiles, SlashEngine's own after Unreal's physics assets and its Physical Animation
-// component (Godot has no profiles: its PhysicalBone3D nodes are made one by one). A
+// component (Godot has no profiles: its SimulatedBone3D nodes are made one by one). A
 // .ragdoll.json file names, for each bone of a character or creature, the body over it (shape,
 // size, mass), the joint that holds it to the body of the bone above (limits), and the muscle
 // that drives it toward the animated pose (stiffness, damping, strength), with how the whole
@@ -81,7 +81,7 @@ struct RagdollHit {
 
 // How a limp ragdoll gets back up: once every body has moved slower than settle_speed for
 // settle_time seconds, the entity moves to where it lies, plays face_up or face_down on its
-// AnimationPlayer (as forward, in the balance bone's space, points up or down) and blends from
+// Animator (as forward, in the balance bone's space, points up or down) and blends from
 // the bodies to the animation over blend seconds.
 struct RagdollGetUp {
     bool enabled = true;

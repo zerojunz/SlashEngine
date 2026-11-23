@@ -1061,13 +1061,9 @@ std::vector<int> chain_joints(const Bones& bones, int root, int end) {
 // ---- Modifiers in order ----
 
 enum class Kind : std::uint8_t { TwoBone, Fabrik, Ccd, Jacobian, CopyTransform, LookAt, Simulator };
-constexpr std::array<std::string_view, 7> kKindNames{"TwoBoneIK3D",
-                                                     "FABRIK3D",
-                                                     "CCDIK3D",
-                                                     "JacobianIK3D",
-                                                     "CopyTransformModifier3D",
-                                                     "LookAtModifier3D",
-                                                     "PhysicalBoneSimulator3D"};
+constexpr std::array<std::string_view, 7> kKindNames{
+    "TwoBoneIK3D", "FabrikIK3D",   "CcdIK3D",         "JacobianIK3D",
+    "BoneCopy3D",  "BoneLookAt3D", "BoneSimulation3D"};
 
 struct Modifier {
     entt::entity entity{entt::null};
@@ -1102,9 +1098,9 @@ std::optional<Iterating> iterating(const world::World& world, const Modifier& m)
     const auto& ecs = world.ecs();
     switch (m.kind) {
     case Kind::Fabrik:
-        return iterating_of(ecs.get<const world::FABRIK3D>(m.entity));
+        return iterating_of(ecs.get<const world::FabrikIK3D>(m.entity));
     case Kind::Ccd:
-        return iterating_of(ecs.get<const world::CCDIK3D>(m.entity));
+        return iterating_of(ecs.get<const world::CcdIK3D>(m.entity));
     case Kind::Jacobian:
         return iterating_of(ecs.get<const world::JacobianIK3D>(m.entity));
     case Kind::TwoBone:
@@ -1121,22 +1117,22 @@ void add_modifiers_of(const world::World& world, entt::entity entity, std::vecto
     if (ecs.all_of<world::TwoBoneIK3D>(entity)) {
         out.push_back({entity, Kind::TwoBone});
     }
-    if (ecs.all_of<world::FABRIK3D>(entity)) {
+    if (ecs.all_of<world::FabrikIK3D>(entity)) {
         out.push_back({entity, Kind::Fabrik});
     }
-    if (ecs.all_of<world::CCDIK3D>(entity)) {
+    if (ecs.all_of<world::CcdIK3D>(entity)) {
         out.push_back({entity, Kind::Ccd});
     }
     if (ecs.all_of<world::JacobianIK3D>(entity)) {
         out.push_back({entity, Kind::Jacobian});
     }
-    if (ecs.all_of<world::CopyTransformModifier3D>(entity)) {
+    if (ecs.all_of<world::BoneCopy3D>(entity)) {
         out.push_back({entity, Kind::CopyTransform});
     }
-    if (ecs.all_of<world::LookAtModifier3D>(entity)) {
+    if (ecs.all_of<world::BoneLookAt3D>(entity)) {
         out.push_back({entity, Kind::LookAt});
     }
-    if (ecs.all_of<world::PhysicalBoneSimulator3D>(entity)) {
+    if (ecs.all_of<world::BoneSimulation3D>(entity)) {
         out.push_back({entity, Kind::Simulator});
     }
 }
@@ -1359,7 +1355,7 @@ void run_iterating(const Run& run, const Modifier& m, const Iterating& it, Bones
 // are, parents first, and the bodies of the others follow their bones (PhysicalBone3D::
 // reset_to_rest_position) when stepping.
 void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
-    const auto& simulator = run.world->ecs().get<const world::PhysicalBoneSimulator3D>(m.entity);
+    const auto& simulator = run.world->ecs().get<const world::BoneSimulation3D>(m.entity);
     std::vector<PhysicalBone> physical = physical_bones(*run.world, m.entity, run.model);
     const auto depth = [&](const PhysicalBone& b) {
         std::size_t count = 0;
@@ -1384,7 +1380,7 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
                 run.targets->insert_or_assign(
                     b.entity,
                     posed(b, body_offset(
-                                 run.world->ecs().get<const world::PhysicalBone3D>(b.entity))));
+                                 run.world->ecs().get<const world::SimulatedBone3D>(b.entity))));
             }
         }
     }
@@ -1393,7 +1389,7 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
             continue;
         }
         const world::Affine3D offset =
-            body_offset(run.world->ecs().get<const world::PhysicalBone3D>(b.entity));
+            body_offset(run.world->ecs().get<const world::SimulatedBone3D>(b.entity));
         if (!b.simulating) {
             if (run.follows != nullptr) {
                 run.follows->emplace_back(b.entity, posed(b, offset));
@@ -1405,10 +1401,10 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
     }
 }
 
-// A LookAtModifier3D: stepping carries its turn from tick to tick; showing starts from where the
+// A BoneLookAt3D: stepping carries its turn from tick to tick; showing starts from where the
 // last tick left it.
 void run_look_at(const Run& run, const Modifier& m, std::vector<NodePose>& pose) {
-    const auto& c = run.world->ecs().get<const world::LookAtModifier3D>(m.entity);
+    const auto& c = run.world->ecs().get<const world::BoneLookAt3D>(m.entity);
     detail::LookAtPlaces places;
     places.target = run.where(c.target_node);
     places.origin_external = run.where(c.origin_external_node);
@@ -1428,7 +1424,7 @@ void run_look_at(const Run& run, const Modifier& m, std::vector<NodePose>& pose)
 }
 
 void run_copy_transform(const Run& run, const Modifier& m, std::vector<NodePose>& pose) {
-    const auto& c = run.world->ecs().get<const world::CopyTransformModifier3D>(m.entity);
+    const auto& c = run.world->ecs().get<const world::BoneCopy3D>(m.entity);
     detail::run_copy_transform(c, *run.model, pose,
                                [&run](entt::entity e) -> std::optional<world::Affine3D> {
                                    if (e == entt::null || !run.world->valid(e)) {
@@ -1449,15 +1445,15 @@ void run_modifiers(const Run& run, std::vector<NodePose>& pose) {
             influence = c.influence;
             active = c.active;
         } else if (m.kind == Kind::Simulator) {
-            const auto& c = ecs.get<const world::PhysicalBoneSimulator3D>(m.entity);
+            const auto& c = ecs.get<const world::BoneSimulation3D>(m.entity);
             influence = c.influence;
             active = c.active;
         } else if (m.kind == Kind::CopyTransform) {
-            const auto& c = ecs.get<const world::CopyTransformModifier3D>(m.entity);
+            const auto& c = ecs.get<const world::BoneCopy3D>(m.entity);
             influence = c.influence;
             active = c.active;
         } else if (m.kind == Kind::LookAt) {
-            const auto& c = ecs.get<const world::LookAtModifier3D>(m.entity);
+            const auto& c = ecs.get<const world::BoneLookAt3D>(m.entity);
             influence = c.influence;
             active = c.active;
         } else {
@@ -1541,8 +1537,8 @@ void add_modifier_system(world::World& world, ModelLoader load) {
             world::PhysicalBoneTargets targets;
             const world::Tree3D tree(w);
             const Placer global = [&tree](entt::entity e) { return tree.global(e); };
-            for (const entt::entity entity : w.ecs().view<const world::MeshInstance3D>()) {
-                const auto& instance = w.ecs().get<const world::MeshInstance3D>(entity);
+            for (const entt::entity entity : w.ecs().view<const world::Model3D>()) {
+                const auto& instance = w.ecs().get<const world::Model3D>(entity);
                 if (instance.mesh.empty() || !load) {
                     continue;
                 }
@@ -1554,7 +1550,7 @@ void add_modifier_system(world::World& world, ModelLoader load) {
                         steps = true;
                     }
                     if (m.kind == Kind::LookAt) {
-                        const auto& look = w.ecs().get<const world::LookAtModifier3D>(m.entity);
+                        const auto& look = w.ecs().get<const world::BoneLookAt3D>(m.entity);
                         steps = steps || (look.active && look.duration > 0.0F);
                     }
                 }
@@ -1605,7 +1601,7 @@ void add_modifier_system(world::World& world, ModelLoader load) {
             // Then the bone attachments, where the bones ended up.
             place_attachments(w, load);
         },
-        {.doc = "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't "
+        {.doc = "Steps the chains of FabrikIK3D, CcdIK3D and JacobianIK3D modifiers that aren't "
                 "deterministic toward their targets, moves the physical bones that follow the "
                 "pose and puts bone attachments where their bones are.",
          .priority = 920});
@@ -1634,7 +1630,7 @@ std::vector<ModifierProblem> check_modifiers(const world::World& world, entt::en
             out.push_back({m.entity, prefix + path, std::move(message)});
         };
         if (model == nullptr) {
-            problem("", "turns bones, but the entity's MeshInstance3D draws no model: set its mesh "
+            problem("", "turns bones, but the entity's Model3D draws no model: set its mesh "
                         "to a model file with a skeleton");
             continue;
         }
@@ -1709,7 +1705,7 @@ std::vector<ModifierProblem> check_modifiers(const world::World& world, entt::en
             continue;
         }
         if (m.kind == Kind::LookAt) {
-            const auto& c = world.ecs().get<const world::LookAtModifier3D>(m.entity);
+            const auto& c = world.ecs().get<const world::BoneLookAt3D>(m.entity);
             (void)bone("/bone", c.bone);
             choice("/forward_axis", c.forward_axis, kAxes);
             choice("/primary_rotation_axis", c.primary_rotation_axis, kPlainAxes);
@@ -1733,7 +1729,7 @@ std::vector<ModifierProblem> check_modifiers(const world::World& world, entt::en
             continue;
         }
         if (m.kind == Kind::CopyTransform) {
-            const auto& c = world.ecs().get<const world::CopyTransformModifier3D>(m.entity);
+            const auto& c = world.ecs().get<const world::BoneCopy3D>(m.entity);
             for (std::size_t i = 0; i < c.settings.size(); ++i) {
                 const world::CopyTransformSetting& s = c.settings[i];
                 const std::string at = "/settings/" + std::to_string(i);
@@ -1749,17 +1745,17 @@ std::vector<ModifierProblem> check_modifiers(const world::World& world, entt::en
             continue;
         }
         if (m.kind == Kind::Simulator) {
-            const auto& c = world.ecs().get<const world::PhysicalBoneSimulator3D>(m.entity);
+            const auto& c = world.ecs().get<const world::BoneSimulation3D>(m.entity);
             for (std::size_t i = 0; i < c.simulated_bones.size(); ++i) {
                 (void)bone("/simulated_bones/" + std::to_string(i), c.simulated_bones[i]);
             }
             std::vector<entt::entity> owners(model->nodes.size(), entt::entity{entt::null});
             for (const PhysicalBone& b : physical_bones(world, m.entity, model)) {
                 const std::string& name =
-                    world.ecs().get<const world::PhysicalBone3D>(b.entity).bone_name;
+                    world.ecs().get<const world::SimulatedBone3D>(b.entity).bone_name;
                 const auto bone_problem = [&](std::string message) {
                     out.push_back(
-                        {b.entity, "/components/PhysicalBone3D/bone_name", std::move(message)});
+                        {b.entity, "/components/SimulatedBone3D/bone_name", std::move(message)});
                 };
                 const int found = name.empty() ? -1 : find_node(*model, name);
                 if (name.empty()) {
@@ -1825,7 +1821,7 @@ std::vector<ModifierProblem> check_modifiers(const world::World& world, entt::en
 std::vector<ModifierProblem> check_stray_modifiers(const world::World& world) {
     const auto& ecs = world.ecs();
     std::set<entt::entity> covered;
-    for (const entt::entity entity : ecs.view<const world::MeshInstance3D>()) {
+    for (const entt::entity entity : ecs.view<const world::Model3D>()) {
         for (const Modifier& m : modifiers_of(world, entity)) {
             covered.insert(m.entity);
         }
@@ -1839,22 +1835,22 @@ std::vector<ModifierProblem> check_stray_modifiers(const world::World& world) {
     for (const entt::entity entity : ecs.view<const world::TwoBoneIK3D>()) {
         add(entity);
     }
-    for (const entt::entity entity : ecs.view<const world::FABRIK3D>()) {
+    for (const entt::entity entity : ecs.view<const world::FabrikIK3D>()) {
         add(entity);
     }
-    for (const entt::entity entity : ecs.view<const world::CCDIK3D>()) {
+    for (const entt::entity entity : ecs.view<const world::CcdIK3D>()) {
         add(entity);
     }
     for (const entt::entity entity : ecs.view<const world::JacobianIK3D>()) {
         add(entity);
     }
-    for (const entt::entity entity : ecs.view<const world::CopyTransformModifier3D>()) {
+    for (const entt::entity entity : ecs.view<const world::BoneCopy3D>()) {
         add(entity);
     }
-    for (const entt::entity entity : ecs.view<const world::LookAtModifier3D>()) {
+    for (const entt::entity entity : ecs.view<const world::BoneLookAt3D>()) {
         add(entity);
     }
-    for (const entt::entity entity : ecs.view<const world::PhysicalBoneSimulator3D>()) {
+    for (const entt::entity entity : ecs.view<const world::BoneSimulation3D>()) {
         add(entity);
     }
     // In the order entities were made, so reports read the same each time.
@@ -1867,26 +1863,26 @@ std::vector<ModifierProblem> check_stray_modifiers(const world::World& world) {
             out.push_back(
                 {entity, "/components/" + std::string(kKindNames[static_cast<std::size_t>(m.kind)]),
                  "turns bones, but neither its entity nor a parent's draws a model: put "
-                 "it on the MeshInstance3D's entity or in its Transform3D children"});
+                 "it on the Model3D's entity or in its Transform3D children"});
         }
     }
     // Physical bones no simulator holds, which are static bodies that never move.
     std::set<entt::entity> held;
-    for (const entt::entity entity : ecs.view<const world::PhysicalBoneSimulator3D>()) {
+    for (const entt::entity entity : ecs.view<const world::BoneSimulation3D>()) {
         for (const PhysicalBone& b : physical_bones(world, entity, nullptr)) {
             held.insert(b.entity);
         }
     }
     std::vector<entt::entity> loose;
-    for (const entt::entity entity : ecs.view<const world::PhysicalBone3D>()) {
+    for (const entt::entity entity : ecs.view<const world::SimulatedBone3D>()) {
         if (!held.contains(entity)) {
             loose.push_back(entity);
         }
     }
     std::ranges::sort(loose, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     for (const entt::entity entity : loose) {
-        out.push_back({entity, "/components/PhysicalBone3D",
-                       "isn't in the Transform3D children of a PhysicalBoneSimulator3D's entity, "
+        out.push_back({entity, "/components/SimulatedBone3D",
+                       "isn't in the Transform3D children of a BoneSimulation3D's entity, "
                        "so it is a static body that never moves: put it there"});
     }
     return out;

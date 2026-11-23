@@ -32,8 +32,8 @@ struct VfxKey {
     json::Value value;
 };
 
-// A field moved along keys while a layer lasts: "OmniLight3D/light_energy",
-// "CPUParticles3D/scale_amount_max", "ColorRect/color/a".
+// A field moved along keys while a layer lasts: "PointLight3D/light_energy",
+// "Emitter3D/scale_amount_max", "ColorFill/color/a".
 struct VfxCurve {
     std::string path;
     std::vector<VfxKey> keys;
@@ -155,7 +155,7 @@ using VfxHooks = std::map<std::string, std::string, std::less<>>;
 // A recipe's "vfx", or none.
 [[nodiscard]] VfxHooks read_vfx_hooks(const json::Value& doc);
 // The "vfx" of the recipe an entity is made from (its Creature3D or Creature2D, Vehicle3D or
-// Vehicle2D, Character2D, or a MeshInstance3D drawing a .character.json file), or of a
+// Vehicle2D, Character2D, or a Model3D drawing a .character.json file), or of a
 // .foliage.json file; none when it has none or it doesn't load.
 [[nodiscard]] VfxHooks vfx_hooks_of(const World& world, entt::entity entity);
 [[nodiscard]] VfxHooks foliage_vfx_hooks(const World& world, std::string_view path);

@@ -468,9 +468,9 @@ Reply cache_save(Session& session, const json::Value& params) {
     result["keys"] = static_cast<std::int64_t>(keys);
     if (player != entt::null) {
         auto& ecs = world.ecs();
-        world::AnimationPlayer animation_player = ecs.all_of<world::AnimationPlayer>(player)
-                                                      ? ecs.get<world::AnimationPlayer>(player)
-                                                      : world::AnimationPlayer{};
+        world::Animator animation_player = ecs.all_of<world::Animator>(player)
+                                               ? ecs.get<world::Animator>(player)
+                                               : world::Animator{};
         animation_player.library = out;
         animation_player.animation = name;
         animation_player.playing = false;
@@ -478,7 +478,7 @@ Reply cache_save(Session& session, const json::Value& params) {
         for (const json::Value& id : bodies) {
             animation_player.targets[id.as_string()] = world.find(id.as_string());
         }
-        ecs.emplace_or_replace<world::AnimationPlayer>(player, std::move(animation_player));
+        ecs.emplace_or_replace<world::Animator>(player, std::move(animation_player));
         result["player"] = std::string(world.id_of(player));
     }
     if (!session.dry_running()) {
@@ -560,7 +560,7 @@ void register_physics_debug_commands(Registry& registry) {
     json::Value cache_tolerance =
         property("number", "Keys within this of a straight line are dropped. Default 0.001.");
     cache_tolerance["minimum"] = 0;
-    json::Value cache_player = property("string", "With save: an entity whose AnimationPlayer "
+    json::Value cache_player = property("string", "With save: an entity whose Animator "
                                                   "(made if missing) gets the file and targets.");
     cache_player["minLength"] = 1;
     json::Value cache_params;
@@ -578,7 +578,7 @@ void register_physics_debug_commands(Registry& registry) {
         .name = "physics.cache",
         .description = "Records a simulation to play back the same every time, as Chaos "
                        "Cache: record starts, save writes the bodies' places as a .anim.json "
-                       "animation (frozen kinematic while it plays) for an AnimationPlayer or "
+                       "animation (frozen kinematic while it plays) for an Animator or "
                        "cinematic.",
         .capabilities = {Read, Edit},
         .effect = Effect::Edit,

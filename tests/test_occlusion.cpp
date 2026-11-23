@@ -88,17 +88,15 @@ struct Scene {
     }
 };
 
-world::OccluderInstance3D occluder(std::string_view json_text) {
-    world::OccluderInstance3D out;
+world::Occluder3D occluder(std::string_view json_text) {
+    world::Occluder3D out;
     world::ComponentRegistry registry;
     world::register_builtin_components(registry);
     world::World w{registry};
     const entt::entity e = w.create("o").value();
     std::string path;
-    REQUIRE(registry.find("OccluderInstance3D")
-                ->assign(w, e, json::parse(json_text).value(), path)
-                .ok());
-    return w.ecs().get<world::OccluderInstance3D>(e);
+    REQUIRE(registry.find("Occluder3D")->assign(w, e, json::parse(json_text).value(), path).ok());
+    return w.ecs().get<world::Occluder3D>(e);
 }
 
 // A camera at the origin looking down -z, 75 degrees across a square view.
@@ -249,12 +247,12 @@ TEST_CASE("with jitter, a box once seen stays shown for nine frames") {
 TEST_CASE("meshes behind OccluderInstance3Ds aren't drawn, but still cast shadows") {
     Scene scene;
     scene.create("wall", R"({"Transform3D": {"position": [0, 0, -5]},
-                              "OccluderInstance3D": {"shape": "quad", "size": [4, 4, 1]}})");
+                              "Occluder3D": {"shape": "quad", "size": [4, 4, 1]}})");
     scene.create("hidden", R"({"Transform3D": {"position": [0, 0, -10]},
-                                "MeshInstance3D": {}, "BoxMesh": {}})");
+                                "Model3D": {}, "BoxGeometry": {}})");
     const entt::entity shown = scene.create(
         "shown",
-        R"({"Transform3D": {"position": [0, 0, -3]}, "MeshInstance3D": {}, "BoxMesh": {"size": [0.5, 0.5, 0.5]}})");
+        R"({"Transform3D": {"position": [0, 0, -3]}, "Model3D": {}, "BoxGeometry": {"size": [0.5, 0.5, 0.5]}})");
     // Off by default, as Godot's rendering/occlusion_culling/use_occlusion_culling.
     canvas::Capture captured = scene.capture();
     CHECK(captured.meshes == 2);
@@ -266,17 +264,17 @@ TEST_CASE("meshes behind OccluderInstance3Ds aren't drawn, but still cast shadow
     CHECK(captured.occluded == 1);
     // One that casts no shadow isn't drawn at all.
     const entt::entity hidden = scene.world.find("hidden");
-    scene.world.ecs().get<world::MeshInstance3D>(hidden).cast_shadow = "off";
+    scene.world.ecs().get<world::Model3D>(hidden).cast_shadow = "off";
     captured = scene.capture();
     CHECK(captured.meshes == 1);
     CHECK(captured.occluded == 1);
     // ignore_occlusion_culling keeps it, as Godot's.
-    scene.world.ecs().get<world::MeshInstance3D>(hidden).ignore_occlusion_culling = true;
+    scene.world.ecs().get<world::Model3D>(hidden).ignore_occlusion_culling = true;
     captured = scene.capture();
     CHECK(captured.meshes == 2);
     CHECK(captured.occluded == 0);
     // Moved out from behind the wall, it shows.
-    scene.world.ecs().get<world::MeshInstance3D>(hidden).ignore_occlusion_culling = false;
+    scene.world.ecs().get<world::Model3D>(hidden).ignore_occlusion_culling = false;
     scene.world.ecs().get<world::Transform3D>(hidden).position = {6.0F, 0.0F, -10.0F};
     captured = scene.capture();
     CHECK(captured.occluded == 0);
@@ -305,9 +303,9 @@ TEST_CASE("project.json's occlusion_culling is read as Godot's") {
 TEST_CASE("occluders bake from the opaque meshes around them, as Godot's bake_scene") {
     Scene scene;
     const entt::entity baker = scene.create("baker", R"({"Transform3D": {"position": [0, 1, 0]},
-                                  "OccluderInstance3D": {"bake_simplification_distance": 0}})");
+                                  "Occluder3D": {"bake_simplification_distance": 0}})");
     scene.create("crate", R"({"Transform3D": {"position": [3, 1, 0]},
-                              "MeshInstance3D": {}, "BoxMesh": {}})");
+                              "Model3D": {}, "BoxGeometry": {}})");
     std::vector<scene3d::Problem> problems;
     scene3d::OccluderMesh baked = scene3d::bake_occluder(scene.world, baker, {}, problems);
     CHECK(problems.empty());
@@ -319,15 +317,15 @@ TEST_CASE("occluders bake from the opaque meshes around them, as Godot's bake_sc
         CHECK(std::abs(p.y) == doctest::Approx(0.5F));
     }
     // Simplified, a box keeps its shape: it has nothing to lose.
-    scene.world.ecs().get<world::OccluderInstance3D>(baker).bake_simplification_distance = 0.1F;
+    scene.world.ecs().get<world::Occluder3D>(baker).bake_simplification_distance = 0.1F;
     baked = scene3d::bake_occluder(scene.world, baker, {}, problems);
     CHECK(baked.indices.size() == 36);
     // Transparent meshes, and those outside the bake mask, are left out.
     const entt::entity crate = scene.world.find("crate");
-    scene.create("glass", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {},
-                              "StandardMaterial3D": {"transparency": "alpha"}})");
-    scene.world.ecs().get<world::MeshInstance3D>(crate).layers = 2;
-    scene.world.ecs().get<world::OccluderInstance3D>(baker).bake_mask = 1;
+    scene.create("glass", R"({"Transform3D": {}, "Model3D": {}, "BoxGeometry": {},
+                              "Surface3D": {"transparency": "alpha"}})");
+    scene.world.ecs().get<world::Model3D>(crate).layers = 2;
+    scene.world.ecs().get<world::Occluder3D>(baker).bake_mask = 1;
     baked = scene3d::bake_occluder(scene.world, baker, {}, problems);
     CHECK(baked.vertices.empty());
     CHECK(problems.empty());
@@ -335,14 +333,14 @@ TEST_CASE("occluders bake from the opaque meshes around them, as Godot's bake_sc
 
 TEST_CASE("scene checks find occluders that can't hide anything") {
     Scene scene;
-    scene.create("line", R"({"OccluderInstance3D": {"shape": "polygon", "polygon": [[0, 0]]}})");
-    scene.create("empty", R"({"OccluderInstance3D": {"shape": "array"}})");
-    scene.create("bad", R"({"OccluderInstance3D": {"shape": "array",
+    scene.create("line", R"({"Occluder3D": {"shape": "polygon", "polygon": [[0, 0]]}})");
+    scene.create("empty", R"({"Occluder3D": {"shape": "array"}})");
+    scene.create("bad", R"({"Occluder3D": {"shape": "array",
         "vertices": [[0, 0, 0]], "indices": [0, 0, 1]}})");
     const std::vector<scene3d::Problem> problems = scene3d::check_occluders(scene.world);
     REQUIRE(problems.size() == 3);
-    CHECK(problems[0].path == "/components/OccluderInstance3D/polygon");
-    CHECK(problems[1].path == "/components/OccluderInstance3D/indices");
+    CHECK(problems[0].path == "/components/Occluder3D/polygon");
+    CHECK(problems[1].path == "/components/Occluder3D/indices");
     CHECK(problems[1].message.find("occluder.bake") != std::string::npos);
     CHECK(problems[2].message.find("out of range") != std::string::npos);
 }
