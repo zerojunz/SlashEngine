@@ -11,6 +11,7 @@
 #include "slash/l10n/translation.hpp"
 #include "slash/npc/story.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -245,7 +246,11 @@ json::Value read_project(Session& session) {
         return {};
     }
     auto parsed = json::parse(*text);
-    return parsed ? std::move(parsed).value() : json::Value();
+    if (!parsed) {
+        return {};
+    }
+    world::upgrade_settings(parsed.value());
+    return std::move(parsed).value();
 }
 
 bool inside(std::string_view path, std::string_view folder) {
@@ -349,8 +354,7 @@ Reply l10n_extract(Session& session, const json::Value& params) {
     const std::vector<ExtractedMessage> messages = extract_messages(session);
     const json::Value project = read_project(session);
     std::vector<std::string> translations;
-    if (const json::Value* list =
-            member(member(member(&project, "internationalization"), "locale"), "translations");
+    if (const json::Value* list = member(member(&project, "localization"), "translations");
         list != nullptr && list->is_array()) {
         for (const json::Value& file : list->as_array()) {
             if (file.is_string()) {
@@ -429,7 +433,7 @@ Reply l10n_extract(Session& session, const json::Value& params) {
             data["path"] = at;
             if (std::ranges::find(translations, path) == translations.end()) {
                 std::string message = at;
-                message += ": project.json's internationalization lists no \"";
+                message += ": project.json's localization lists no \"";
                 message += path;
                 message += '"';
                 if (const std::string_view near = closest_match(path, translations);

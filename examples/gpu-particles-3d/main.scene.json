@@ -43,7 +43,7 @@
         "GpuEmitter3D": {
           "amount": 24,
           "lifetime": 3.0,
-          "local_coords": true,
+          "local_space": true,
           "preprocess": 3.0,
           "process_material": "leaves.process_material.json"
         },
@@ -78,10 +78,10 @@
           "size": [0.12, 0.12]
         },
         "Surface3D": {
+          "billboard": "particles",
           "billboard_keep_scale": true,
-          "billboard_mode": "particles",
           "blend_mode": "add",
-          "shading_mode": "unshaded",
+          "shading": "unshaded",
           "transparency": "alpha",
           "vertex_color_use_as_albedo": true
         },
@@ -102,7 +102,7 @@
           "transform_align": "y_to_velocity"
         },
         "Surface3D": {
-          "shading_mode": "unshaded",
+          "shading": "unshaded",
           "vertex_color_use_as_albedo": true
         },
         "Transform3D": {

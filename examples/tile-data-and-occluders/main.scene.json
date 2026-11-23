@@ -29,8 +29,8 @@
     "walls": {
       "components": {
         "TileLayer2D": {
-          "tile_set": "dungeon.tileset.json",
-          "z_index": 1
+          "sort_order": 1,
+          "tile_set": "dungeon.tileset.json"
         }
       }
     }

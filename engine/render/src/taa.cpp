@@ -10,8 +10,7 @@ namespace slash::render {
 
 bool use_taa(const json::Value& rendering) {
     const json::Value* found = rendering.is_object() ? rendering.find("anti_aliasing") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("quality") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("use_taa") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("taa") : nullptr;
     return found != nullptr && found->is_bool() && found->as_bool();
 }
 

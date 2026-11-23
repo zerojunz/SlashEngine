@@ -30,7 +30,7 @@
           "size": [0.6, 0.6, 0.6]
         },
         "RigidBody3D": {
-          "physics_material_override": "materials/oak.physics_material.json"
+          "physics_material": "materials/oak.physics_material.json"
         },
         "Transform3D": {
           "position": [0.0, 0.9, 0.0]
@@ -43,7 +43,7 @@
           "size": [0.6, 0.6, 0.6]
         },
         "RigidBody3D": {
-          "physics_material_override": "materials/oak.physics_material.json"
+          "physics_material": "materials/oak.physics_material.json"
         },
         "Transform3D": {
           "position": [0.0, 0.3, 0.0]
@@ -68,7 +68,7 @@
           "size": [20.0, 1.0, 20.0]
         },
         "StaticBody3D": {
-          "physics_material_override": "materials/stone.physics_material.json"
+          "physics_material": "materials/stone.physics_material.json"
         },
         "Transform3D": {
           "position": [0.0, -0.5, 0.0]
@@ -131,7 +131,7 @@
         },
         "RigidBody2D": {
           "lock_rotation": true,
-          "physics_material_override": "materials/ice.physics_material.json"
+          "physics_material": "materials/ice.physics_material.json"
         },
         "Transform2D": {
           "position": [0.0, 264.0]
@@ -144,7 +144,7 @@
           "size": [2000.0, 40.0]
         },
         "StaticBody2D": {
-          "physics_material_override": "materials/ice.physics_material.json"
+          "physics_material": "materials/ice.physics_material.json"
         },
         "Transform2D": {
           "position": [0.0, 300.0]
@@ -155,9 +155,9 @@
       "components": {
         "Emitter2D": {
           "amount": 6,
+          "burst": 1.0,
           "emission_shape": "sphere",
           "emission_sphere_radius": 20.0,
-          "explosiveness": 1.0,
           "gravity": [0.0, 0.0],
           "lifetime": 3.0
         },
@@ -179,7 +179,7 @@
         },
         "Model3D": {},
         "StaticBody3D": {
-          "physics_material_override": "materials/glass.physics_material.json"
+          "physics_material": "materials/glass.physics_material.json"
         },
         "Transform3D": {
           "position": [0.0, 1.5, -3.0]

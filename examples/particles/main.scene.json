@@ -6,8 +6,7 @@
           "amount": 32,
           "color_ramp": [
             {
-              "color": [0.6, 0.85, 1.0, 1.0],
-              "offset": 0.0
+              "color": [0.6, 0.85, 1.0, 1.0]
             },
             {
               "color": [0.3, 0.5, 1.0, 0.0],
@@ -43,7 +42,7 @@
           "gravity": [0.0, 0.0],
           "hue_variation_max": 0.1,
           "hue_variation_min": -0.1,
-          "local_coords": true,
+          "local_space": true,
           "orbit_velocity_max": 0.25,
           "orbit_velocity_min": 0.25,
           "scale_amount_max": 0.5,
@@ -63,8 +62,7 @@
           "angular_velocity_min": -45.0,
           "color_ramp": [
             {
-              "color": [0.5, 0.5, 0.5, 0.8],
-              "offset": 0.0
+              "color": [0.5, 0.5, 0.5, 0.8]
             },
             {
               "color": [0.7, 0.7, 0.7, 0.0],
@@ -97,10 +95,10 @@
       "components": {
         "Emitter2D": {
           "amount": 24,
+          "burst": 1.0,
           "color_ramp": [
             {
-              "color": [1.0, 0.95, 0.5, 1.0],
-              "offset": 0.0
+              "color": [1.0, 0.95, 0.5, 1.0]
             },
             {
               "color": [1.0, 0.2, 0.0, 0.0],
@@ -109,7 +107,6 @@
           ],
           "damping_max": 60.0,
           "damping_min": 40.0,
-          "explosiveness": 1.0,
           "gravity": [0.0, 200.0],
           "initial_velocity_max": 140.0,
           "initial_velocity_min": 80.0,

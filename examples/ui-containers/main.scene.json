@@ -15,7 +15,7 @@
         "PanelBox": {},
         "Widget": {
           "children": ["content"],
-          "custom_minimum_size": [360.0, 0.0]
+          "min_size": [360.0, 0.0]
         }
       }
     },
@@ -26,7 +26,7 @@
         },
         "Widget": {
           "children": ["slot_0", "slot_1", "slot_2", "slot_3", "slot_4", "slot_5", "slot_6", "slot_7"],
-          "size_flags_horizontal": "shrink_center"
+          "sizing_horizontal": "shrink_center"
         }
       }
     },
@@ -40,9 +40,9 @@
     "hint": {
       "components": {
         "Label": {
-          "autowrap_mode": "word",
           "horizontal_alignment": "center",
-          "text": "Drag an item onto a slot to equip it."
+          "text": "Drag an item onto a slot to equip it.",
+          "wrap": "word"
         }
       }
     },
@@ -54,8 +54,8 @@
           "texture": "ui/gem.png"
         },
         "Widget": {
-          "self_modulate": [1.0, 0.35, 0.35, 1.0],
-          "texture_filter": "nearest"
+          "filter": "nearest",
+          "own_tint": [1.0, 0.35, 0.35, 1.0]
         }
       }
     },
@@ -67,8 +67,8 @@
           "texture": "ui/gem.png"
         },
         "Widget": {
-          "self_modulate": [0.4, 1.0, 0.5, 1.0],
-          "texture_filter": "nearest"
+          "filter": "nearest",
+          "own_tint": [0.4, 1.0, 0.5, 1.0]
         }
       }
     },
@@ -80,8 +80,8 @@
           "texture": "ui/gem.png"
         },
         "Widget": {
-          "self_modulate": [0.45, 0.6, 1.0, 1.0],
-          "texture_filter": "nearest"
+          "filter": "nearest",
+          "own_tint": [0.45, 0.6, 1.0, 1.0]
         }
       }
     },
@@ -100,7 +100,7 @@
         "PanelBox": {},
         "Widget": {
           "children": ["icon_0", "tooltip"],
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -110,7 +110,7 @@
         "PanelBox": {},
         "Widget": {
           "children": ["icon_1"],
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -120,7 +120,7 @@
         "PanelBox": {},
         "Widget": {
           "children": ["icon_2"],
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -129,7 +129,7 @@
       "components": {
         "PanelBox": {},
         "Widget": {
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -138,7 +138,7 @@
       "components": {
         "PanelBox": {},
         "Widget": {
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -147,7 +147,7 @@
       "components": {
         "PanelBox": {},
         "Widget": {
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -156,7 +156,7 @@
       "components": {
         "PanelBox": {},
         "Widget": {
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -165,7 +165,7 @@
       "components": {
         "PanelBox": {},
         "Widget": {
-          "custom_minimum_size": [64.0, 64.0],
+          "min_size": [64.0, 64.0],
           "theme_type_variation": "Slot"
         }
       }
@@ -176,10 +176,10 @@
           "text": "rare"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.7, 0.75, 0.85, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -191,10 +191,10 @@
           "text": "magic"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.7, 0.75, 0.85, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -206,10 +206,10 @@
           "text": "two-handed"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.7, 0.75, 0.85, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -221,10 +221,10 @@
           "text": "cursed"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.7, 0.75, 0.85, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -236,10 +236,10 @@
           "text": "heavy"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.7, 0.75, 0.85, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -251,10 +251,10 @@
           "text": "glows at night"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.7, 0.75, 0.85, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -284,10 +284,10 @@
     "tooltip": {
       "components": {
         "NineSlice": {
-          "patch_margin_bottom": 6,
-          "patch_margin_left": 6,
-          "patch_margin_right": 6,
-          "patch_margin_top": 6,
+          "border_bottom": 6,
+          "border_left": 6,
+          "border_right": 6,
+          "border_top": 6,
           "texture": "ui/frame.png"
         },
         "Widget": {
@@ -307,7 +307,7 @@
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["tooltip_text"],
-          "theme_override_constants": {
+          "theme_constants": {
             "margin_bottom": 4,
             "margin_left": 10,
             "margin_right": 10,

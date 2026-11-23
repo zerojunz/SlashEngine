@@ -8,5 +8,5 @@
 {"id":8,"jsonrpc":"2.0","result":{"colors":[[0.988,0.906,0.82,1],[0.988,0.906,0.82,1],[0.78,0.345,0.392,1],[0.776,0.341,0.392,1]],"drawn":{"meshes":2},"height":90,"width":160}}
 {"id":9,"jsonrpc":"2.0","result":{"changed":{"Animator":{"animation":"grin","library":"anim/face.anim.json","playing":true,"time":0.0},"Model3D":{"blend_shapes":{}}},"id":"face"}}
 {"id":10,"jsonrpc":"2.0","result":{"tick":30,"ticks":30}}
-{"id":11,"jsonrpc":"2.0","result":{"components":{"Model3D":{"blend_shapes":{"smile":0.5},"cast_shadow":"on","gi_lightmap_texel_scale":1.0,"gi_mode":"static","ignore_occlusion_culling":false,"layers":1,"lod_bias":1.0,"material_override":"","material_params":{},"mesh":"models/face.gltf","virtualized":false}},"id":"face"}}
+{"id":11,"jsonrpc":"2.0","result":{"components":{"Model3D":{"blend_shapes":{"smile":0.5},"cast_shadow":"on","layers":1,"lighting_mode":"static","lightmap_texel_scale":1.0,"lod_bias":1.0,"material":"","material_params":{},"mesh":"models/face.gltf","skip_occlusion":false,"virtualized":false}},"id":"face"}}
 {"id":12,"jsonrpc":"2.0","result":{"colors":[[0.988,0.906,0.82,1],[0.78,0.349,0.396,1],[0.78,0.345,0.392,1],[0.988,0.906,0.82,1]],"drawn":{"meshes":2},"height":90,"width":160}}

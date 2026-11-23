@@ -175,29 +175,20 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
     switch (kind) {
     case Kind::Rigid: {
         const auto& body = registry.get<RigidBody3D>(entity);
-        return {
-            body.collision_layer,          body.collision_mask, body.friction, body.bounce, {}, {},
-            body.physics_material_override};
+        return {body.collision_layer, body.collision_mask, body.friction, body.bounce, {}, {},
+                body.physics_material};
     }
     case Kind::Animatable: {
         const auto& body = registry.get<MovingBody3D>(entity);
-        return {body.collision_layer,
-                body.collision_mask,
-                body.friction,
-                body.bounce,
-                body.constant_linear_velocity,
-                body.constant_angular_velocity,
-                body.physics_material_override};
+        return {body.collision_layer, body.collision_mask,           body.friction,
+                body.bounce,          body.constant_linear_velocity, body.constant_angular_velocity,
+                body.physics_material};
     }
     case Kind::Static: {
         const auto& body = registry.get<StaticBody3D>(entity);
-        return {body.collision_layer,
-                body.collision_mask,
-                body.friction,
-                body.bounce,
-                body.constant_linear_velocity,
-                body.constant_angular_velocity,
-                body.physics_material_override};
+        return {body.collision_layer, body.collision_mask,           body.friction,
+                body.bounce,          body.constant_linear_velocity, body.constant_angular_velocity,
+                body.physics_material};
     }
     case Kind::Character: {
         const auto& body = registry.get<CharacterMover3D>(entity);
@@ -209,9 +200,8 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
     }
     case Kind::Bone: {
         const auto& bone = registry.get<SimulatedBone3D>(entity);
-        return {
-            bone.collision_layer,          bone.collision_mask, bone.friction, bone.bounce, {}, {},
-            bone.physics_material_override};
+        return {bone.collision_layer, bone.collision_mask, bone.friction, bone.bounce, {}, {},
+                bone.physics_material};
     }
     }
     return {};
@@ -219,9 +209,8 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
 
 // Whether an area changes the gravity or damping of the bodies in it.
 bool overrides_space(const Zone3D& area) {
-    return area.gravity_space_override != "disabled" ||
-           area.linear_damp_space_override != "disabled" ||
-           area.angular_damp_space_override != "disabled";
+    return area.gravity_mode != "disabled" || area.linear_damp_mode != "disabled" ||
+           area.angular_damp_mode != "disabled";
 }
 
 // The scale an entity is drawn at: its own and its parents' Transform3D scales. Read from the
@@ -329,8 +318,8 @@ JPH::EAllowedDOFs dofs_of(const RigidBody3D& rigid, JPH::EMotionType motion) {
 
 RigidKey rigid_key_of(const RigidBody3D& rigid) {
     JPH::EMotionType motion = JPH::EMotionType::Dynamic;
-    if (rigid.freeze) {
-        motion = rigid.freeze_mode == "kinematic" ? JPH::EMotionType::Kinematic
+    if (rigid.frozen) {
+        motion = rigid.frozen_mode == "kinematic" ? JPH::EMotionType::Kinematic
                                                   : JPH::EMotionType::Static;
     }
     return {.motion = motion,
@@ -449,7 +438,7 @@ public:
             return true;
         }
         const auto* area = world_->ecs().try_get<Zone3D>(other->entity);
-        return area != nullptr && area->monitorable;
+        return area != nullptr && area->detectable;
     }
 
 private:
@@ -1132,7 +1121,7 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
             settings.mMotionQuality = body.rigid_key.ccd ? JPH::EMotionQuality::LinearCast
                                                          : JPH::EMotionQuality::Discrete;
             settings.mAllowSleeping = body.rigid_key.can_sleep;
-            settings.mUseManifoldReduction = !rigid.contact_monitor;
+            settings.mUseManifoldReduction = !rigid.report_contacts;
             settings.mLinearVelocity =
                 capped(to_jolt(rigid.linear_velocity), settings_.max_linear_velocity);
             settings.mAngularVelocity =
@@ -1341,8 +1330,8 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         RigidKey key = rigid_key_of(rigid);
         key.mass = mass_of(body, key.mass);
         update_motion(key, rigid.linear_velocity, rigid.angular_velocity, rigid.sleeping);
-        if (jolt->GetUseManifoldReduction() == rigid.contact_monitor) {
-            jolt->SetUseManifoldReduction(!rigid.contact_monitor);
+        if (jolt->GetUseManifoldReduction() == rigid.report_contacts) {
+            jolt->SetUseManifoldReduction(!rigid.report_contacts);
         }
         const bool dynamic = jolt->IsDynamic();
         if (rigid.sleeping != body.sleeping) {
@@ -1579,7 +1568,7 @@ AreaForces Space::forces(const world::World& world, const Body& body, Vec3 posit
         out.areas.push_back(area->entity);
         if (!gravity_done) {
             // Godot's JoltArea3D::compute_gravity.
-            gravity_done = integrate(out.gravity, component.gravity_space_override, [&] {
+            gravity_done = integrate(out.gravity, component.gravity_mode, [&] {
                 if (!component.gravity_point) {
                     return component.gravity_direction * component.gravity;
                 }
@@ -1596,11 +1585,11 @@ AreaForces Space::forces(const world::World& world, const Body& body, Vec3 posit
             });
         }
         if (!linear_done) {
-            linear_done = integrate(out.linear_damp, component.linear_damp_space_override,
+            linear_done = integrate(out.linear_damp, component.linear_damp_mode,
                                     [&] { return component.linear_damp; });
         }
         if (!angular_done) {
-            angular_done = integrate(out.angular_damp, component.angular_damp_space_override,
+            angular_done = integrate(out.angular_damp, component.angular_damp_mode,
                                      [&] { return component.angular_damp; });
         }
     }
@@ -1804,7 +1793,7 @@ void Space::find_overlaps(const world::World& world) {
         }
         area->overlaps.clear();
         const auto& component = registry.get<Zone3D>(entity);
-        if ((!component.monitoring && !overrides_space(component)) || area->id.IsInvalid() ||
+        if ((!component.detects && !overrides_space(component)) || area->id.IsInvalid() ||
             area->parts.empty()) {
             continue;
         }
@@ -1932,14 +1921,14 @@ void Space::emit_events(world::World& world) {
         if (id.empty()) {
             continue;
         }
-        if (body->kind == Kind::Rigid && registry.get<RigidBody3D>(entity).contact_monitor) {
+        if (body->kind == Kind::Rigid && registry.get<RigidBody3D>(entity).report_contacts) {
             for (const entt::entity other : body->contacts) {
                 if (const std::string_view other_id = world.id_of(other);
                     !other_id.empty() && this->body(other) != nullptr) {
                     now.emplace(id, other_id, false);
                 }
             }
-        } else if (body->kind == Kind::Area && registry.get<Zone3D>(entity).monitoring) {
+        } else if (body->kind == Kind::Area && registry.get<Zone3D>(entity).detects) {
             for (const auto& [other, is_area] : body->overlaps) {
                 if (const std::string_view other_id = world.id_of(other); !other_id.empty()) {
                     now.emplace(id, other_id, is_area);

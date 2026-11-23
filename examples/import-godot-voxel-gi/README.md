@@ -23,7 +23,7 @@ entity.get {"components":["VoxelGI"],"id":"gi"}
   `energy` and the other settings.
 - The cells become `main.gi_data.voxelgi.json`, the file `voxel_gi.bake` writes, named after
   the `.res` file. Data with no cells, or cells that don't make a VoxelGI's, would be reported.
-- The quality setting becomes `rendering.global_illumination.voxel_gi.quality` in
+- The quality setting becomes `rendering.voxel_lighting.quality` in
   `project.json`: `"high"`.
 - `frame.capture` reads the crate's shadowed side, the floor in its shadow, the floor by the red
   wall and the open floor. Lit by the imported cells, the floor in the crate's shadow is

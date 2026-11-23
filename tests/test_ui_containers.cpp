@@ -663,11 +663,11 @@ TEST_CASE("check finds two containers on one entity, and style overrides it can'
               "places its children",
               "both/components/CenterBox: an entity has one container; its StackBox "
               "places its children",
-              "box/components/Widget/theme_override_styles/panel: Label and HBoxContainer have "
+              "box/components/Widget/theme_styles/panel: Label and HBoxContainer have "
               "no styles item \"panel\"; it has none",
-              "panel/components/Widget/theme_override_styles/panl: Panel has no styles item "
+              "panel/components/Widget/theme_styles/panl: Panel has no styles item "
               "\"panl\"; did you mean \"panel\"?",
-              "panel/components/Widget/theme_override_styles/panel/texture: asset "
+              "panel/components/Widget/theme_styles/panel/texture: asset "
               "\"ui/missing.png\" could not be read: no such file",
           });
 }

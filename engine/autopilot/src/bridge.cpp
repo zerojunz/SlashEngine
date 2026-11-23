@@ -1634,9 +1634,9 @@ struct Bridge::State {
             for (const std::string_view type : {"CheckBox", "CheckButton", "Button"}) {
                 const world::ComponentType* component = w.components().find(type);
                 if (component != nullptr && component->has(w, control) &&
-                    bool_arg(component->get(w, control), "toggle_mode", false)) {
-                    return set(type, json::Value(json::Object{
-                                         {"button_pressed", bool_arg(args, "value", true)}}));
+                    bool_arg(component->get(w, control), "toggles", false)) {
+                    return set(type, json::Value(
+                                         json::Object{{"pressed", bool_arg(args, "value", true)}}));
                 }
             }
             return Answer::failure(control_id + " takes no value");

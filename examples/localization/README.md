@@ -1,7 +1,7 @@
 # Localization
 
 A title menu written in English and translated as Godot translates one: by translation files
-that project.json's `internationalization` lists, looked up in the game's locale.
+that project.json's `localization` lists, looked up in the game's locale.
 [translations/menu.csv](translations/menu.csv) holds French and Arabic in a column each, as
 Godot's CSV translations, and [translations/pl.po](translations/pl.po) holds Polish as a gettext
 file, with Polish's three plural forms and two meanings of "Open" told apart by context.

@@ -244,7 +244,7 @@ TEST_CASE("glTF models load as Godot's importer reads them") {
     CHECK(m.materials[0].albedo_image == -1);
     const world::Surface3D& cutout = m.materials[1].standard;
     CHECK(m.materials[1].name == "material_1");
-    CHECK(cutout.shading_mode == "unshaded");
+    CHECK(cutout.shading == "unshaded");
     CHECK(cutout.transparency == "alpha_scissor");
     CHECK(near(cutout.alpha_scissor_threshold, 0.25F));
     CHECK(near(cutout.metallic, 0.0F)); // no pbrMetallicRoughness: Godot's defaults
@@ -386,10 +386,10 @@ TEST_CASE("glTF files name buffers and images beside them, or carry them inside"
     CHECK(textured.roughness_image == 0);
     CHECK(textured.normal_image == 0);
     CHECK(textured.emission_image == 0);
-    CHECK(textured.standard.texture_filter == "nearest");
-    CHECK_FALSE(textured.standard.texture_repeat); // only both wraps repeating repeat
-    CHECK(near(textured.standard.uv1_offset, {0.5F, 0.0F, 0.0F}));
-    CHECK(near(textured.standard.uv1_scale, {2.0F, 2.0F, 1.0F}));
+    CHECK(textured.standard.filter == "nearest");
+    CHECK_FALSE(textured.standard.repeat); // only both wraps repeating repeat
+    CHECK(near(textured.standard.uv_offset, {0.5F, 0.0F, 0.0F}));
+    CHECK(near(textured.standard.uv_scale, {2.0F, 2.0F, 1.0F}));
     CHECK(textured.standard.metallic_texture_channel == "blue");
     CHECK(textured.standard.roughness_texture_channel == "green");
     CHECK(textured.standard.normal_enabled);
@@ -415,8 +415,8 @@ TEST_CASE("glTF files name buffers and images beside them, or carry them inside"
     CHECK(packed.value().images[0].image.pixels == checker().pixels);
     CHECK(packed.value().images[1].image.width == 2);
     CHECK(packed.value().materials.at(0).albedo_image == 1);
-    CHECK(packed.value().materials.at(0).standard.texture_filter == "linear_with_mipmaps");
-    CHECK(packed.value().materials.at(0).standard.texture_repeat);
+    CHECK(packed.value().materials.at(0).standard.filter == "linear_with_mipmaps");
+    CHECK(packed.value().materials.at(0).standard.repeat);
 
     // A data URI image.
     Gltf uri = quad();
@@ -572,7 +572,7 @@ TEST_CASE("Model3D draws a glTF model as it draws a primitive mesh") {
 
     // A Surface3D on the entity takes the place of the model's materials.
     world::Surface3D override;
-    override.shading_mode = "unshaded";
+    override.shading = "unshaded";
     override.albedo_color = {0.0F, 1.0F, 0.0F, 1.0F};
     scene.world.ecs().emplace<world::Surface3D>(model, override);
     const auto green = canvas::capture(scene.world, scene.assets);
@@ -727,10 +727,10 @@ TEST_CASE("models write as glTF files that load back as written") {
     wood.standard.albedo_color = {0.8F, 0.5F, 0.25F, 1.0F};
     wood.standard.metallic = 0.25F;
     wood.standard.roughness = 0.75F;
-    wood.standard.uv1_scale = {2.0F, 3.0F, 1.0F};
-    wood.standard.uv1_offset = {0.5F, 0.25F, 0.0F};
-    wood.standard.texture_filter = "nearest";
-    wood.standard.texture_repeat = false;
+    wood.standard.uv_scale = {2.0F, 3.0F, 1.0F};
+    wood.standard.uv_offset = {0.5F, 0.25F, 0.0F};
+    wood.standard.filter = "nearest";
+    wood.standard.repeat = false;
     wood.standard.metallic_texture_channel = "blue";
     wood.standard.roughness_texture_channel = "green";
     wood.standard.normal_enabled = true;
@@ -746,7 +746,7 @@ TEST_CASE("models write as glTF files that load back as written") {
     glow.standard.emission_enabled = true;
     glow.standard.emission = {1.0F, 0.5F, 0.0F, 1.0F};
     glow.standard.emission_energy_multiplier = 4.0F;
-    glow.standard.shading_mode = "unshaded";
+    glow.standard.shading = "unshaded";
     glow.standard.transparency = "alpha";
     glow.standard.vertex_color_use_as_albedo = true;
     // A material naming its texture by path, as the importers make them.
@@ -1366,9 +1366,9 @@ TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes th
     CHECK(near(w.standard.albedo_color.x, 0.735357F));
     CHECK(near(w.standard.albedo_color.w, 0.5F));
     CHECK(w.standard.transparency == "alpha_scissor");
-    CHECK_FALSE(w.standard.texture_repeat);
-    CHECK(near(w.standard.uv1_offset, {0.25F, 0.5F, 0.0F}));
-    CHECK(near(w.standard.uv1_scale, {2.0F, 3.0F, 1.0F}));
+    CHECK_FALSE(w.standard.repeat);
+    CHECK(near(w.standard.uv_offset, {0.25F, 0.5F, 0.0F}));
+    CHECK(near(w.standard.uv_scale, {2.0F, 3.0F, 1.0F}));
 
     // PBR: metalness and roughness, the roughness from its texture's red channel, and the normal
     // map. A four-part color takes its alpha from its third part, as Godot's importer does.
@@ -1812,7 +1812,7 @@ TEST_CASE("Animator plays a model's animations on the skinned mesh its entity dr
     scene.files.files["models/arm.gltf"] = slash::test::arm().gltf();
     // Unlit white, so pixels say where the arm is.
     world::Surface3D white;
-    white.shading_mode = "unshaded";
+    white.shading = "unshaded";
     const entt::entity arm = scene.create("arm", R"({"Transform3D": {"position": [0, -1, 0]},
                    "Model3D": {"mesh": "models/arm.gltf"},
                    "Animator": {"library": "models/arm.gltf", "animation": "Bend"}})");
@@ -1986,7 +1986,7 @@ TEST_CASE("Model3D's blend shapes and animations move the vertices of the model 
     slash::animation::install(scene.world, scene.assets);
     scene.files.files["models/face.gltf"] = slash::test::face().gltf();
     world::Surface3D white;
-    white.shading_mode = "unshaded";
+    white.shading = "unshaded";
     const entt::entity face =
         scene.create("face", R"({"Transform3D": {}, "Model3D": {"mesh": "models/face.gltf"}})");
     scene.world.ecs().emplace<world::Surface3D>(face, white);

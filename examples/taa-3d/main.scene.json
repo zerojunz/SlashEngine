@@ -19,7 +19,7 @@
         "Model3D": {},
         "Surface3D": {
           "albedo_color": [0.95, 0.9, 0.8, 1.0],
-          "shading_mode": "unshaded"
+          "shading": "unshaded"
         },
         "Transform3D": {
           "rotation": [0.0, 0.0, 0.5]

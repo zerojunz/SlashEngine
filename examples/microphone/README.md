@@ -5,7 +5,7 @@ What the microphone records, as Godot's `AudioStreamMicrophone` and `AudioServer
 then plays the game the way an agent does over MCP (tools `audio_input`, `audio_state`,
 `audio_spectrum`) or JSON-RPC. `expected.txt` holds each call and its reply.
 
-- [project.json](project.json) turns on `audio.enable_input`, as Godot's
+- [project.json](project.json) turns on `audio.input_enabled`, as Godot's
   `audio/driver/enable_input`, and gives `audio.input_usage_description`, which exports put in
   the macOS and iOS apps for the system to show when it asks the player for the microphone.
   Android exports ask for `RECORD_AUDIO`.

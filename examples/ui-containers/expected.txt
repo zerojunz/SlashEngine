@@ -15,9 +15,9 @@ component.set {"components":{"GridBox":{"columns":8}},"id":"grid"}
 ui.layout {"ids":["frame","health","grid","slot_7"]}
 {"controls":[{"id":"frame","rect":[27,62,586,236]},{"id":"health","lines":["35%"],"rect":[43,121,554,26]},{"id":"grid","rect":[43,157,554,64]},{"id":"slot_7","rect":[533,157,64,64]}],"viewport":[640,360]}
 component.set {"components":{"Widget":{"theme_override_styles":{"panal":{"bg_color":[1,0,0,1]}}}},"id":"slot_1"}
-{"changed":{"Widget":{"theme_override_styles":{"panal":{"bg_color":[1,0,0,1]}}}},"id":"slot_1"}
+{"changed":{"Widget":{"theme_styles":{"panal":{"bg_color":[1,0,0,1]}}}},"id":"slot_1"}
 ui.layout {"ids":["slot_1"]}
-{"controls":[{"id":"slot_1","rect":[113,157,64,64]}],"problems":[{"id":"slot_1","message":"PanelBox has no styles item \"panal\"; did you mean \"panel\"?","path":"/components/Widget/theme_override_styles/panal"}],"viewport":[640,360]}
+{"controls":[{"id":"slot_1","rect":[113,157,64,64]}],"problems":[{"id":"slot_1","message":"PanelBox has no styles item \"panal\"; did you mean \"panel\"?","path":"/components/Widget/theme_styles/panal"}],"viewport":[640,360]}
 undo {}
 {"can_redo":1,"can_undo":2,"undone":"component.set"}
 controls drawn: 23, boxes drawn: 15, glyphs drawn: 99, GPU draws: 14

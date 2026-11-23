@@ -65,7 +65,7 @@ struct TextEditState {
 
     // The undo history.
     std::vector<Operation> undo_stack;
-    // The steps undo_stack keeps, from gui.text_edit_undo_stack_max_size.
+    // The steps undo_stack keeps, from ui.text_edit_undo_limit.
     std::size_t undo_stack_max = 1024;
     Operation current_op;
     double idle_left = -1.0; // seconds until idle_detect closes the step; less than 0 when off

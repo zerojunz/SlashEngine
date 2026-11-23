@@ -477,7 +477,7 @@ TEST_CASE("BoneLookAt3D turns a bone's forward axis toward its target, within it
     at = scene.positions(arm);
     CHECK(near(at["Hand"], {std::sqrt(0.5F), 2.0F + std::sqrt(0.5F), 0.0F}, 0.02F));
     // Without a target it leaves the bone as it is.
-    look.target_node = entt::null;
+    look.target = entt::null;
     CHECK(near(scene.positions(arm)["Hand"], {0.0F, 3.0F, 0.0F}));
 }
 

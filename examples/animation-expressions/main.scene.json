@@ -6,7 +6,7 @@
           "libraries": {
             "": "hero.anim.json"
           },
-          "tree_root": "hero.animtree.json"
+          "root": "hero.animtree.json"
         },
         "Transform2D": {
           "position": [80.0, 48.0]

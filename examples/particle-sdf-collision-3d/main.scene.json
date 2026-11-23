@@ -47,8 +47,8 @@
       "components": {
         "GpuEmitter3D": {
           "amount": 128,
-          "collision_base_size": 0.03,
-          "fixed_fps": 60,
+          "collision_size": 0.03,
+          "fixed_rate": 60,
           "lifetime": 4.0,
           "process_material": "snow.process_material.json"
         },
@@ -56,8 +56,8 @@
           "size": [0.06, 0.06]
         },
         "Surface3D": {
-          "billboard_mode": "particles",
-          "shading_mode": "unshaded",
+          "billboard": "particles",
+          "shading": "unshaded",
           "vertex_color_use_as_albedo": true
         },
         "Transform3D": {
@@ -81,8 +81,8 @@
       "components": {
         "GpuEmitter3D": {
           "amount": 48,
-          "collision_base_size": 0.05,
-          "fixed_fps": 60,
+          "collision_size": 0.05,
+          "fixed_rate": 60,
           "lifetime": 2.0,
           "process_material": "sparks.process_material.json"
         },
@@ -90,8 +90,8 @@
           "size": [0.1, 0.1]
         },
         "Surface3D": {
-          "billboard_mode": "particles",
-          "shading_mode": "unshaded",
+          "billboard": "particles",
+          "shading": "unshaded",
           "vertex_color_use_as_albedo": true
         },
         "Transform3D": {

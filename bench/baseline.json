@@ -1,21 +1,21 @@
 {
   "setup": {
-    "instructions": 4148,
-    "tool_definitions": 11489,
+    "instructions": 4136,
+    "tool_definitions": 11501,
     "tools": 44
   },
   "tasks": {
     "add-enemy": {
       "calls": 3,
       "read": 35,
-      "tokens": 117,
-      "written": 82
+      "tokens": 116,
+      "written": 81
     },
     "fit-label": {
       "calls": 5,
-      "read": 167,
-      "tokens": 264,
-      "written": 97
+      "read": 165,
+      "tokens": 260,
+      "written": 95
     },
     "landing-tick": {
       "calls": 2,
@@ -37,8 +37,8 @@
     },
     "slime-prefab": {
       "calls": 4,
-      "read": 77,
-      "tokens": 227,
+      "read": 76,
+      "tokens": 226,
       "written": 150
     },
     "story-decision": {
@@ -50,6 +50,6 @@
   },
   "total": {
     "calls": 23,
-    "tokens": 1581
+    "tokens": 1575
   }
 }

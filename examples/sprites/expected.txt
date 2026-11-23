@@ -6,7 +6,7 @@ events.subscribe {"kinds":["animation_finished"]}
 step {"tick_seconds":0.0625,"ticks":3}
 {"tick":3,"ticks":3}
 entity.get {"components":["Flipbook2D","Sprite2D"],"id":"hero","omit_defaults":true}
-{"components":{"Flipbook2D":{"animation":"walk","frame":1,"frame_progress":0.5,"sprite_frames":"hero.frames.json"},"Sprite2D":{"frame":1,"hframes":4,"texture":"hero.png"}},"id":"hero"}
+{"components":{"Flipbook2D":{"animation":"walk","frame":1,"frame_progress":0.5,"sprite_frames":"hero.frames.json"},"Sprite2D":{"columns":4,"frame":1,"texture":"hero.png"}},"id":"hero"}
 component.set {"components":{"Flipbook2D":{"animation":"jump","frame":0,"frame_progress":0}},"id":"hero"}
 {"changed":{"Flipbook2D":{"animation":"jump","frame":0,"frame_progress":0.0}},"id":"hero"}
 run.until {"include":["Flipbook2D"],"tick_seconds":0.0625,"where":[{"component":"Flipbook2D","field":"playing","op":"==","value":false}],"with":["Flipbook2D"]}

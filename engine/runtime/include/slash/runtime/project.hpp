@@ -76,13 +76,13 @@ struct Project {
     std::string vsync_mode = "enabled";
     // The display server Linux games try first, "x11" or "wayland", falling back to the other.
     std::string linux_display_driver = "x11";
-    // rendering.lightmapping.probe_capture.update_speed, as Godot's: how fast moving meshes' light
+    // rendering.lightmaps.probe_capture.update_speed, as Godot's: how fast moving meshes' light
     // from light probes follows them, a share a second.
     double probe_update_speed = 15.0;
     double tick_hz = 60.0;
     // Frames per second at most; 0 means no cap.
     int max_fps = 0;
-    // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a coarser LOD may be off by,
+    // rendering.lod.threshold_pixels: how many pixels a coarser LOD may be off by,
     // as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
     float mesh_lod_threshold = 1.0F;
     // rendering.virtual_geometry: how virtualized surfaces' cluster pages stream.
@@ -104,12 +104,12 @@ struct Project {
     // Draw with OpenGL where the GPU backend doesn't work, as Godot's
     // rendering_device/fallback_to_opengl3.
     bool fallback_to_opengl = true;
-    // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs trace six narrower cones
+    // rendering.voxel_lighting.quality "high": VoxelGIs trace six narrower cones
     // for ambient light in place of four wide ones, as Godot's.
     bool voxel_gi_high_quality = false;
-    // rendering.global_illumination.sdfgi: SDFGI's probe rays and how fast it follows changes.
+    // rendering.field_lighting: SDFGI's probe rays and how fast it follows changes.
     render::SdfgiSettings sdfgi{};
-    // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world in Forward+,
+    // rendering.anti_aliasing.taa: temporal antialiasing of the 3D world in Forward+,
     // as Godot's.
     bool use_taa = false;
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3 frame
@@ -153,15 +153,15 @@ struct Project {
     std::string gui_theme;
     // Seconds the mouse rests on a control before its tooltip shows.
     double tooltip_delay_sec = 0.5;
-    // gui.text_edit_idle_detect_sec and button_shortcut_feedback_highlight_time (ui::Settings).
+    // ui.text_edit_merge_seconds and button_shortcut_feedback_highlight_time (ui::Settings).
     double text_edit_idle_detect_sec = 3.0;
     double button_shortcut_feedback_highlight_time = 0.2;
-    std::string accessibility_support = "auto"; // gui.accessibility_support
+    std::string accessibility_support = "auto"; // ui.accessibility_support
     // Where a tooltip shows from the pointer, in pixels.
     Vec2 tooltip_position_offset{10.0F, 10.0F};
     // Pixels the mouse moves with the left button held before a drag starts.
     int drag_threshold = 10;
-    // gui.text_edit_undo_stack_max_size and incremental_search_max_interval_msec (ui::Settings).
+    // ui.text_edit_undo_limit and incremental_search_max_interval_msec (ui::Settings).
     int text_edit_undo_stack_max_size = 1024;
     int incremental_search_max_interval_msec = 2000;
     // Text may use fonts installed on the machine for characters the project's fonts lack.
@@ -188,7 +188,7 @@ struct Project {
     // The job system's worker threads (slash/core/jobs.hpp), as Godot's
     // threading/worker_pool/max_threads: -1 for one per CPU core.
     int max_threads = -1;
-    // rendering.reflections.sky_reflections.ggx_samples, as Godot's: the samples the sky's
+    // rendering.reflections.sky_samples, as Godot's: the samples the sky's
     // radiance and reflection probes are blurred with.
     std::uint32_t ggx_samples = 32;
 
@@ -204,10 +204,10 @@ struct Project {
 
 // Checks a parsed project.json against the schema and the rules it can't express (a relative
 // main scene path, the id and version formats). Returns every error.
-[[nodiscard]] std::vector<json::ValidationError> validate_project(const json::Value& project);
+[[nodiscard]] std::vector<json::ValidationError> validate_project(const json::Value& given);
 
 // Reads a validated project. The error names the first problem with its JSON Pointer.
-[[nodiscard]] Result<Project> parse_project(const json::Value& project);
+[[nodiscard]] Result<Project> parse_project(const json::Value& given);
 
 // Reads and parses <folder>/project.json.
 [[nodiscard]] Result<Project> load_project(std::string_view folder);

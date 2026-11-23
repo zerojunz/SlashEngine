@@ -126,7 +126,7 @@ struct Environment {
 
 // Whether the world's lights, backgrounds and emission use Godot's physical light units: lux,
 // lumens and nits, with lights tinted by their color temperature. canvas::set_settings sets it from
-// rendering.lights_and_shadows.use_physical_light_units.
+// rendering.physical_light_units.
 void set_physical_light_units(world::World& world, bool on);
 [[nodiscard]] bool physical_light_units(const world::World& world);
 

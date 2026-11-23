@@ -346,7 +346,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
             audio::set_input_device(world_, audio_input_.get());
         }
         // Screen readers read and work the controls, as Godot's AccessKit driver serves them,
-        // unless the project's gui.accessibility_support turns that off.
+        // unless the project's ui.accessibility_support turns that off.
         if (project_.accessibility_support != "disabled") {
             screen_reader_ = accessibility::Backend::attach(platform_.window(), project_.name);
         }

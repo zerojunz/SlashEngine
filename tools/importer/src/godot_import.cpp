@@ -2332,6 +2332,8 @@ private:
             }
         }
 
+        // Settings converted to their old places go to their current ones.
+        world::upgrade_settings(project);
         // Keep only what validates, so a bad setting can't stop the rest.
         for (int pass = 0; pass < 32; ++pass) {
             const auto errors = runtime::validate_project(project);
@@ -5407,7 +5409,9 @@ private:
                                            const TextFile& file, const SceneContext& scene,
                                            std::string& why) {
         const world::ComponentType* type = components_.find(component);
-        const world::FieldMeta* meta = type != nullptr ? type->field_meta(field) : nullptr;
+        const world::FieldMeta* meta =
+            type != nullptr ? type->field_meta(world::current_field_name(type->name(), field))
+                            : nullptr;
         if (fallback.is_bool()) {
             if (value.kind != Value::Kind::Bool) {
                 why = "not a bool";
@@ -5526,7 +5530,10 @@ private:
             if (type == nullptr || field == "children") {
                 continue;
             }
-            const json::Value* fallback = type->defaults().find(field);
+            // Godot's property names are the fields' old names, which the scene keeps until
+            // world::upgrade_scene makes them current as it is written.
+            const json::Value* fallback =
+                type->defaults().find(world::current_field_name(type->name(), field));
             if (fallback == nullptr) {
                 continue;
             }
@@ -6038,7 +6045,10 @@ private:
                 contains(skip, std::string_view(name))) {
                 continue;
             }
-            const json::Value* fallback = type != nullptr ? type->defaults().find(name) : nullptr;
+            const json::Value* fallback =
+                type != nullptr
+                    ? type->defaults().find(world::current_field_name(type->name(), name))
+                    : nullptr;
             std::string what = resource + ".";
             if (fallback == nullptr) {
                 what += name.substr(0, name.find('/'));
@@ -10699,7 +10709,9 @@ private:
                 }
                 const world::ComponentType* type = components_.find(component);
                 const json::Value* fallback =
-                    type != nullptr && field != "children" ? type->defaults().find(field) : nullptr;
+                    type != nullptr && field != "children"
+                        ? type->defaults().find(world::current_field_name(type->name(), field))
+                        : nullptr;
                 if (fallback != nullptr) {
                     return FieldOf{component, std::string(field), *fallback};
                 }

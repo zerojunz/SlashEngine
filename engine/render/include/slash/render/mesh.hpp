@@ -264,11 +264,10 @@ struct ShadowSettings {
 
     bool operator==(const ShadowSettings&) const = default;
 };
-// Reads project.json's rendering.lights_and_shadows: {"directional_shadow": {"size",
-// "soft_shadow_filter_quality"}, "positional_shadow": {"atlas_size",
-// "soft_shadow_filter_quality"}, "use_physical_light_units"}. What is missing or not valid keeps
-// its default.
-[[nodiscard]] ShadowSettings shadow_settings_from_json(const json::Value& value);
+// Reads project.json's rendering: "shadows" ({"directional_size", "directional_softness",
+// "positional_atlas_size", "positional_softness"}) and "physical_light_units". What is missing
+// or not valid keeps its default.
+[[nodiscard]] ShadowSettings shadow_settings_from_json(const json::Value& rendering);
 // Whether size is an atlas size: a power of two from 256 to 16384.
 [[nodiscard]] bool valid_shadow_atlas_size(std::uint32_t size);
 
@@ -313,7 +312,7 @@ struct DepthOfFieldSettings {
 
     bool operator==(const DepthOfFieldSettings&) const = default;
 };
-// Reads project.json's rendering.camera.depth_of_field: {"depth_of_field_bokeh_shape",
+// Reads project.json's rendering.depth_of_field: {"depth_of_field_bokeh_shape",
 // "depth_of_field_bokeh_quality", "depth_of_field_use_jitter"}. What is missing or not valid keeps
 // its default.
 [[nodiscard]] DepthOfFieldSettings depth_of_field_settings_from_json(const json::Value& value);
@@ -342,7 +341,7 @@ struct SubsurfaceSettings {
 
     bool operator==(const SubsurfaceSettings&) const = default;
 };
-// Reads project.json's rendering.environment.subsurface_scattering: {"quality", "scale",
+// Reads project.json's rendering.subsurface: {"quality", "scale",
 // "depth_scale"}. What is missing or not valid keeps its default.
 [[nodiscard]] SubsurfaceSettings subsurface_settings_from_json(const json::Value& value);
 
@@ -359,7 +358,7 @@ struct SsaoSettings {
 
     bool operator==(const SsaoSettings&) const = default;
 };
-// Reads project.json's rendering.environment.ssao: {"quality", "half_size", "adaptive_target",
+// Reads project.json's rendering.ssao: {"quality", "half_size", "adaptive_target",
 // "blur_passes", "fadeout_from", "fadeout_to"}. What is missing or not valid keeps its default.
 [[nodiscard]] SsaoSettings ssao_settings_from_json(const json::Value& value);
 
@@ -394,7 +393,7 @@ struct SsrSettings {
 
     bool operator==(const SsrSettings&) const = default;
 };
-// Reads project.json's rendering.environment.screen_space_reflection: {"half_size"}. What is
+// Reads project.json's rendering.ssr: {"half_size"}. What is
 // missing or not valid keeps its default.
 [[nodiscard]] SsrSettings ssr_settings_from_json(const json::Value& value);
 
@@ -620,7 +619,7 @@ struct VolumetricFogSettings {
 
     bool operator==(const VolumetricFogSettings&) const = default;
 };
-// Reads project.json's rendering.environment.volumetric_fog: {"volume_size", "volume_depth",
+// Reads project.json's rendering.volumetric_fog: {"volume_size", "volume_depth",
 // "use_filter"}. What is missing or not valid keeps its default.
 [[nodiscard]] VolumetricFogSettings volumetric_fog_settings_from_json(const json::Value& value);
 
@@ -756,8 +755,8 @@ struct ReflectionAtlasSettings {
 
     bool operator==(const ReflectionAtlasSettings&) const = default;
 };
-// Reads project.json's rendering.reflections.reflection_atlas: {"reflection_size",
-// "reflection_count"}. What is missing or not valid keeps its default.
+// Reads project.json's rendering.reflections: {"probe_size", "probe_count"}. What is missing
+// or not valid keeps its default.
 [[nodiscard]] ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& value);
 // project.json's rendering object's reflections.sky_reflections.ggx_samples, as Godot's
 // rendering/reflections/sky_reflections/ggx_samples (Radiance3D::ggx_samples): 1 to 32, else 32.

@@ -24,7 +24,7 @@
 #include <vector>
 
 // Scroll bars, scroll containers and clipping, as Godot's ScrollBar, ScrollBox and
-// Widget.clip_contents (scene/gui/scroll_bar.cpp and scroll_container.cpp). The sizes and
+// Widget.clip_children (scene/gui/scroll_bar.cpp and scroll_container.cpp). The sizes and
 // values expected here follow those files and Godot's default theme: scroll bars with no arrow
 // icons and a grabber at least 8 pixels long.
 

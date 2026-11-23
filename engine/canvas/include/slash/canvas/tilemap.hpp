@@ -450,7 +450,7 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileLayer2D& la
 // each layer's tile set must load through reader, and its legend and rows name tiles there.
 // Paths point into the document. A layer that takes part of itself from a prefab is checked in
 // the prefab.
-[[nodiscard]] std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
+[[nodiscard]] std::vector<json::ValidationError> check_tile_layers(const json::Value& as_written,
                                                                    const world::FileReader& reader);
 
 } // namespace slash::canvas

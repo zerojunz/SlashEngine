@@ -344,12 +344,12 @@ template <typename T>
 Base base_from(const T& button) {
     return {.button_mask = &button.button_mask,
             .shortcut = &button.shortcut,
-            .action_mode = button.action_mode,
+            .action_mode = button.press_on,
             .button_group = button.button_group,
             .disabled = button.disabled,
-            .toggle_mode = button.toggle_mode,
-            .button_pressed = button.button_pressed,
-            .keep_pressed_outside = button.keep_pressed_outside,
+            .toggle_mode = button.toggles,
+            .button_pressed = button.pressed,
+            .keep_pressed_outside = button.hold_outside,
             .shortcut_feedback = button.shortcut_feedback};
 }
 
@@ -368,10 +368,10 @@ std::optional<Base> base_of(const world::World& world, entt::entity entity) {
 
 void set_button_pressed(world::World& world, entt::entity entity, bool pressed) {
     if (world::Button* button = button_of(world, entity); button != nullptr) {
-        button->button_pressed = pressed;
+        button->pressed = pressed;
     } else if (auto* texture = world.ecs().try_get<world::ImageButton>(entity);
                texture != nullptr) {
-        texture->button_pressed = pressed;
+        texture->pressed = pressed;
     }
 }
 
@@ -4965,9 +4965,8 @@ private:
             return entt::null;
         }
         const world::Widget& control = control_of(from);
-        const std::array<entt::entity, 4> fields{
-            control.focus_neighbor_left, control.focus_neighbor_top, control.focus_neighbor_right,
-            control.focus_neighbor_bottom};
+        const std::array<entt::entity, 4> fields{control.focus_left, control.focus_top,
+                                                 control.focus_right, control.focus_bottom};
         if (const entt::entity field = fields.at(side); field != entt::null) {
             if (!world_.valid(field) || !is_control(world_, field)) {
                 return entt::null;
@@ -6009,7 +6008,7 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
             problems.push_back({.id = id,
                                 .path = "/components/Widget/tooltip_text",
                                 .message = "the tooltip won't show: the pointer passes this "
-                                           "control by; set mouse_filter to \"stop\" or "
+                                           "control by; set pointer_mode to \"stop\" or "
                                            "\"pass\""});
         }
         const auto* drag = ecs.try_get<world::DragAndDrop>(entity);
@@ -6094,11 +6093,11 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         }
     };
     const auto check_group = [&](const std::string& id, std::string_view type, const auto& button) {
-        if (!button.button_group.empty() && !button.toggle_mode) {
+        if (!button.button_group.empty() && !button.toggles) {
             problems.push_back(
                 {.id = id,
                  .path = "/components/" + std::string(type) + "/button_group",
-                 .message = "button groups are for toggle buttons; set toggle_mode too"});
+                 .message = "button groups are for toggle buttons; set toggles too"});
         }
     };
     // Items' checkable and auto_translate_mode values, which the schema takes as any string.
@@ -6193,10 +6192,10 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
             continue;
         }
         const std::array<std::pair<std::string_view, entt::entity>, 6> fields{{
-            {"focus_neighbor_left", control->focus_neighbor_left},
-            {"focus_neighbor_top", control->focus_neighbor_top},
-            {"focus_neighbor_right", control->focus_neighbor_right},
-            {"focus_neighbor_bottom", control->focus_neighbor_bottom},
+            {"focus_left", control->focus_left},
+            {"focus_top", control->focus_top},
+            {"focus_right", control->focus_right},
+            {"focus_bottom", control->focus_bottom},
             {"focus_next", control->focus_next},
             {"focus_previous", control->focus_previous},
         }};

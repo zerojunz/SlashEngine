@@ -392,7 +392,7 @@ void restore(world::World& world, const Snapshot& snapshot);
 // Every error in a scene's or prefab's navigation regions, each with the JSON Pointer of the
 // bad value: a file that doesn't load or validate, or is of the wrong kind. Files are read
 // through reader.
-[[nodiscard]] std::vector<json::ValidationError> check_scene(const json::Value& doc,
+[[nodiscard]] std::vector<json::ValidationError> check_scene(const json::Value& as_written,
                                                              const world::FileReader& reader);
 
 } // namespace slash::navigation

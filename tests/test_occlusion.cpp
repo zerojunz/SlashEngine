@@ -253,7 +253,7 @@ TEST_CASE("meshes behind OccluderInstance3Ds aren't drawn, but still cast shadow
     const entt::entity shown = scene.create(
         "shown",
         R"({"Transform3D": {"position": [0, 0, -3]}, "Model3D": {}, "BoxGeometry": {"size": [0.5, 0.5, 0.5]}})");
-    // Off by default, as Godot's rendering/occlusion_culling/use_occlusion_culling.
+    // Off by default, as rendering.occlusion_culling.enabled.
     canvas::Capture captured = scene.capture();
     CHECK(captured.meshes == 2);
     CHECK(captured.occluded == 0);
@@ -269,12 +269,12 @@ TEST_CASE("meshes behind OccluderInstance3Ds aren't drawn, but still cast shadow
     CHECK(captured.meshes == 1);
     CHECK(captured.occluded == 1);
     // ignore_occlusion_culling keeps it, as Godot's.
-    scene.world.ecs().get<world::Model3D>(hidden).ignore_occlusion_culling = true;
+    scene.world.ecs().get<world::Model3D>(hidden).skip_occlusion = true;
     captured = scene.capture();
     CHECK(captured.meshes == 2);
     CHECK(captured.occluded == 0);
     // Moved out from behind the wall, it shows.
-    scene.world.ecs().get<world::Model3D>(hidden).ignore_occlusion_culling = false;
+    scene.world.ecs().get<world::Model3D>(hidden).skip_occlusion = false;
     scene.world.ecs().get<world::Transform3D>(hidden).position = {6.0F, 0.0F, -10.0F};
     captured = scene.capture();
     CHECK(captured.occluded == 0);
@@ -291,13 +291,12 @@ TEST_CASE("project.json's occlusion_culling is read as Godot's") {
         return render::occlusion_culling(json::parse(rendering).value());
     };
     CHECK(read(R"({})") == render::OcclusionCulling{});
-    CHECK(read(R"({"occlusion_culling": {"use_occlusion_culling": true}})").enabled);
+    CHECK(read(R"({"occlusion_culling": {"enabled": true}})").enabled);
     const render::OcclusionCulling set = read(R"({"occlusion_culling": {
-        "use_occlusion_culling": true, "occlusion_rays_per_thread": 64,
+        "enabled": true, "rays_per_thread": 64,
         "jitter_projection": false}})");
     CHECK(set == render::OcclusionCulling{.enabled = true, .rays_per_thread = 64, .jitter = false});
-    CHECK(read(R"({"occlusion_culling": {"occlusion_rays_per_thread": 0}})").rays_per_thread ==
-          512);
+    CHECK(read(R"({"occlusion_culling": {"rays_per_thread": 0}})").rays_per_thread == 512);
 }
 
 TEST_CASE("occluders bake from the opaque meshes around them, as Godot's bake_scene") {

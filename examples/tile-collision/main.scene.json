@@ -27,6 +27,7 @@
     "level": {
       "components": {
         "TileLayer2D": {
+          "filter": "nearest",
           "legend": {
             "#": "block",
             "/": "slope",
@@ -36,7 +37,6 @@
           },
           "origin": [0, 2],
           "rows": ["........===", "", "", "#", "#...#.^.~../", "############"],
-          "texture_filter": "nearest",
           "tile_set": "level.tileset.json"
         }
       }

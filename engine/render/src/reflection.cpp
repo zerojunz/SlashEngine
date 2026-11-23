@@ -113,15 +113,13 @@ ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& v
     if (!value.is_object()) {
         return out;
     }
-    if (const json::Value* found = value.find("reflection_size");
-        found != nullptr && found->is_int()) {
+    if (const json::Value* found = value.find("probe_size"); found != nullptr && found->is_int()) {
         const std::int64_t size = found->as_int();
         if (size >= 32 && size <= 2048 && std::has_single_bit(static_cast<std::uint64_t>(size))) {
             out.reflection_size = static_cast<std::uint32_t>(size);
         }
     }
-    if (const json::Value* found = value.find("reflection_count");
-        found != nullptr && found->is_int()) {
+    if (const json::Value* found = value.find("probe_count"); found != nullptr && found->is_int()) {
         const std::int64_t count = found->as_int();
         if (count >= 1 && count <= 4096) {
             out.reflection_count = static_cast<std::uint32_t>(count);
@@ -132,8 +130,7 @@ ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& v
 
 std::uint32_t sky_ggx_samples(const json::Value& rendering) {
     const json::Value* found = rendering.is_object() ? rendering.find("reflections") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("sky_reflections") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("ggx_samples") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("sky_samples") : nullptr;
     if (found == nullptr || !found->is_number() || found->as_double() < 1.0 ||
         found->as_double() > 32.0) {
         return 32;
@@ -142,18 +139,14 @@ std::uint32_t sky_ggx_samples(const json::Value& rendering) {
 }
 
 bool voxel_gi_high_quality(const json::Value& rendering) {
-    const json::Value* found =
-        rendering.is_object() ? rendering.find("global_illumination") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("voxel_gi") : nullptr;
+    const json::Value* found = rendering.is_object() ? rendering.find("voxel_lighting") : nullptr;
     found = found != nullptr && found->is_object() ? found->find("quality") : nullptr;
     return found != nullptr && found->is_string() && found->as_string() == "high";
 }
 
 SdfgiSettings sdfgi_settings_from_json(const json::Value& rendering) {
     SdfgiSettings out;
-    const json::Value* found =
-        rendering.is_object() ? rendering.find("global_illumination") : nullptr;
-    found = found != nullptr && found->is_object() ? found->find("sdfgi") : nullptr;
+    const json::Value* found = rendering.is_object() ? rendering.find("field_lighting") : nullptr;
     if (found == nullptr || !found->is_object()) {
         return out;
     }

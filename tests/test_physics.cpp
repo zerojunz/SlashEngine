@@ -325,7 +325,7 @@ TEST_CASE("an area reports bodies and areas entering and leaving") {
 
     // An area that isn't monitorable is not seen by others; one not monitoring sees nothing.
     physics.events.clear();
-    physics.get<world::Zone2D>("sensor").monitorable = false;
+    physics.get<world::Zone2D>("sensor").detectable = false;
     physics.step();
     CHECK(physics.event_list() == Ids{R"(area_exited zone {"area":"sensor"})"});
 }
@@ -334,7 +334,7 @@ TEST_CASE("contact_monitor reports the bodies a rigid body touches") {
     Physics physics;
     physics.box("floor", {-100.0F, 100.0F}, {100.0F, 120.0F});
     physics.crate("crate", {0.0F, 60.0F});
-    physics.get<world::RigidBody2D>("crate").contact_monitor = true;
+    physics.get<world::RigidBody2D>("crate").report_contacts = true;
     physics.step(60);
     CHECK(physics.event_list() == Ids{R"(body_entered crate {"body":"floor"})"});
     CHECK(physics.ids(physics2d::contacts(physics.world, physics.world.find("crate")).bodies) ==
@@ -448,7 +448,7 @@ TEST_CASE("a floating character slides along walls and has no floor") {
     physics.box("wall", {100.0F, -200.0F}, {120.0F, 200.0F});
     const entt::entity ship = physics.add("ship", {0.0F, 0.0F});
     physics.world.ecs().emplace<world::CharacterMover2D>(ship, world::CharacterMover2D{});
-    physics.get<world::CharacterMover2D>("ship").motion_mode = "floating";
+    physics.get<world::CharacterMover2D>("ship").movement = "floating";
     physics.get<world::CharacterMover2D>("ship").velocity = {300.0F, 120.0F};
     physics.world.ecs().emplace<world::Collider2D>(ship, circle(10.0F));
     physics.step(30);
@@ -589,19 +589,19 @@ TEST_CASE("joints pin, spring and slide bodies") {
     physics.crate("bob", {100.0F, 0.0F}, 10.0F);
     const entt::entity pin = physics.add("pin", {0.0F, 0.0F});
     physics.world.ecs().emplace<world::PinJoint2D>(
-        pin, world::PinJoint2D{.node_b = physics.world.find("bob")});
+        pin, world::PinJoint2D{.body_b = physics.world.find("bob")});
     // A weight on a spring hanging from (300, 0), resting 50 pixels down at first.
     physics.crate("weight", {300.0F, 50.0F}, 10.0F);
     const entt::entity spring = physics.add("spring", {300.0F, 0.0F});
     physics.world.ecs().emplace<world::SpringJoint2D>(
         spring, world::SpringJoint2D{
-                    .node_b = physics.world.find("weight"), .stiffness = 200.0F, .damping = 5.0F});
+                    .body_b = physics.world.find("weight"), .stiffness = 200.0F, .damping = 5.0F});
     // A bead on a groove from (500, 0) 100 pixels down, tilted 45 degrees, 25 pixels along it.
     physics.crate("bead", {517.678F, 17.678F}, 10.0F);
     const entt::entity groove = physics.add("groove", {500.0F, 0.0F});
     physics.get<world::Transform2D>("groove").rotation = -std::numbers::pi_v<float> / 4.0F;
     physics.world.ecs().emplace<world::TrackJoint2D>(
-        groove, world::TrackJoint2D{.node_b = physics.world.find("bead"), .length = 100.0F});
+        groove, world::TrackJoint2D{.body_b = physics.world.find("bead"), .length = 100.0F});
 
     physics.step(120);
     const auto distance = [](Vec2 a, Vec2 b) { return std::hypot(a.x - b.x, a.y - b.y); };
@@ -627,7 +627,7 @@ TEST_CASE("a joint stays where it was made when a parent carries it") {
     const entt::entity bob = physics.crate("bob", {100.0F, 0.0F}, 10.0F);
     const entt::entity pin = physics.add("pin", {-100.0F, 0.0F});
     physics.get<world::Transform2D>("bob").children.push_back(pin);
-    physics.world.ecs().emplace<world::PinJoint2D>(pin, world::PinJoint2D{.node_b = bob});
+    physics.world.ecs().emplace<world::PinJoint2D>(pin, world::PinJoint2D{.body_b = bob});
     physics.step(120);
     const auto distance = [](Vec2 a, Vec2 b) { return std::hypot(a.x - b.x, a.y - b.y); };
     CHECK(distance(physics.position("bob"), {0.0F, 0.0F}) == doctest::Approx(100.0F).epsilon(0.01));
@@ -645,7 +645,7 @@ TEST_CASE("a joint stays where it was made when a parent carries it") {
     const entt::entity groove = physics.add("groove", {500.0F, 0.0F});
     physics.get<world::Transform2D>("groove").scale = {2.0F, 2.0F};
     physics.world.ecs().emplace<world::TrackJoint2D>(
-        groove, world::TrackJoint2D{.node_b = physics.world.find("bead")});
+        groove, world::TrackJoint2D{.body_b = physics.world.find("bead")});
     physics.step(120);
     CHECK(physics.position("bead").x == doctest::Approx(500.0F).epsilon(0.002));
     CHECK(physics.position("bead").y == doctest::Approx(100.0F).epsilon(0.002));
@@ -659,7 +659,7 @@ TEST_CASE("a pin's motor turns its body up to the limit and no further") {
     const entt::entity door = physics.crate("door", {0.0F, 0.0F}, 20.0F);
     const entt::entity hinge = physics.add("hinge", {0.0F, 0.0F});
     physics.world.ecs().emplace<world::PinJoint2D>(
-        hinge, world::PinJoint2D{.node_b = door,
+        hinge, world::PinJoint2D{.body_b = door,
                                  .angular_limit_enabled = true,
                                  .angular_limit_lower = -0.5F,
                                  .angular_limit_upper = 1.0F,
@@ -685,7 +685,7 @@ TEST_CASE("impulses, forces, freezing and removing bodies") {
     physics.step();
     CHECK(physics.get<world::RigidBody2D>("crate").angular_velocity > 0.0F);
 
-    physics.get<world::RigidBody2D>("crate").freeze = true;
+    physics.get<world::RigidBody2D>("crate").frozen = true;
     physics.get<world::RigidBody2D>("crate").linear_velocity = {};
     physics.get<world::RigidBody2D>("crate").angular_velocity = 0.0F;
     const Vec2 frozen = physics.position("crate");
@@ -693,7 +693,7 @@ TEST_CASE("impulses, forces, freezing and removing bodies") {
     physics.step(10);
     CHECK(physics.position("crate") == frozen);
 
-    physics.get<world::RigidBody2D>("crate").freeze = false;
+    physics.get<world::RigidBody2D>("crate").frozen = false;
     physics.get<world::RigidBody2D>("crate").constant_force = {0.0F, 200.0F};
     physics.step(60);
     CHECK(physics.get<world::RigidBody2D>("crate").linear_velocity.y ==
@@ -819,9 +819,9 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     // A zone with no gravity from x 0 to 200. Overrides apply without monitoring, as Godot's.
     const entt::entity zone = physics.add("zone", {100.0F, 0.0F});
     auto& area = physics.world.ecs().emplace<world::Zone2D>(zone);
-    area.monitoring = false;
-    area.monitorable = false;
-    area.gravity_space_override = "replace";
+    area.detects = false;
+    area.detectable = false;
+    area.gravity_mode = "replace";
     area.gravity = 0.0F;
     physics.world.ecs().emplace<world::Collider2D>(zone, rectangle({200.0F, 200.0F}));
     physics.crate("floating", {150.0F, 0.0F});
@@ -868,8 +868,8 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     area.gravity_direction = {1.0F, 0.0F};
     area.gravity = 100.0F;
     const auto modes = [&](std::string_view high, std::string_view low) {
-        physics.get<world::Zone2D>("upper").gravity_space_override = std::string(high);
-        physics.get<world::Zone2D>("zone").gravity_space_override = std::string(low);
+        physics.get<world::Zone2D>("upper").gravity_mode = std::string(high);
+        physics.get<world::Zone2D>("zone").gravity_mode = std::string(low);
         physics.step();
         return gravity("floating");
     };
@@ -891,8 +891,8 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     CHECK(crate.linear_velocity.y == doctest::Approx(0.0F));
 
     // Damping overrides, then the body's own as its damp modes say; gravity_scale scales it.
-    second.gravity_space_override = "disabled";
-    area.linear_damp_space_override = "replace";
+    second.gravity_mode = "disabled";
+    area.linear_damp_mode = "replace";
     area.linear_damp = 5.0F;
     crate.gravity_scale = 2.0F;
     physics.step();
@@ -928,7 +928,7 @@ TEST_CASE("a body resting in an area wakes when the area's gravity changes") {
     REQUIRE(physics.get<world::RigidBody2D>("crate").sleeping);
 
     auto& area = physics.get<world::Zone2D>("zone");
-    area.gravity_space_override = "replace";
+    area.gravity_mode = "replace";
     area.gravity_direction = {0.0F, -1.0F};
     physics.step(30);
     CHECK_FALSE(physics.get<world::RigidBody2D>("crate").sleeping);
@@ -1067,7 +1067,7 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         physics.box("wall", {100.0F, -200.0F}, {120.0F, 200.0F});
         const entt::entity ship = physics.add("ship", {80.0F, 0.0F});
         auto& character = physics.world.ecs().emplace<world::CharacterMover2D>(ship);
-        character.motion_mode = "floating";
+        character.movement = "floating";
         character.wall_min_slide_angle = angle;
         physics.world.ecs().emplace<world::Collider2D>(ship, circle(10.0F));
         physics.step(
@@ -1083,7 +1083,7 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         physics.box("wall", {100.0F, -200.0F}, {120.0F, 200.0F});
         const entt::entity ship = physics.add("ship", {88.5F, 0.0F});
         auto& character = physics.world.ecs().emplace<world::CharacterMover2D>(ship);
-        character.motion_mode = "floating";
+        character.movement = "floating";
         character.safe_margin = margin;
         character.velocity = {0.0F, 60.0F};
         physics.world.ecs().emplace<world::Collider2D>(ship, circle(10.0F));

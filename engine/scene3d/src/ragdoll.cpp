@@ -135,7 +135,7 @@ world::SimulatedBone3D physical_bone(const world::SimulatedBone3D& old, const st
     out.collision_layer = profile.collision_layer;
     out.collision_mask = profile.collision_mask;
     out.mass = bone.mass;
-    out.physics_material_override = bone.physics_material;
+    out.physics_material = bone.physics_material;
     out.linear_damp = bone.linear_damp;
     out.angular_damp = bone.angular_damp;
     return out;

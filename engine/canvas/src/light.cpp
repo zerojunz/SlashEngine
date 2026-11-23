@@ -105,7 +105,7 @@ std::optional<std::string> fill_common(const LightComponent& component, render::
     }
     light.color = {color[0] * component.energy, color[1] * component.energy,
                    color[2] * component.energy, component.color.w};
-    light.item_cull_mask = mask_of(component.range_item_cull_mask);
+    light.item_cull_mask = mask_of(component.lit_layers);
     light.z_min = component.range_z_min;
     light.z_max = component.range_z_max;
     light.layer_min = component.range_layer_min;
@@ -381,7 +381,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
         }
         const auto& component = ecs.get<world::Occluder2D>(entity);
         Occluder occluder;
-        occluder.mask = mask_of(component.occluder_light_mask);
+        occluder.mask = mask_of(component.light_layers);
         if (component.cull_mode == "clockwise") {
             occluder.cull = Cull::Clockwise;
         } else if (component.cull_mode == "counter_clockwise") {
@@ -548,7 +548,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             light.shadow_far = std::max(far, 1.0F);
             if (point->shadow_enabled) {
                 shadowed.push_back({.light = out.lights.size(),
-                                    .mask = mask_of(point->shadow_item_cull_mask),
+                                    .mask = mask_of(point->shadow_layers),
                                     .max_distance = 0.0F});
             }
         } else {
@@ -571,7 +571,7 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
             }
             if (sun.shadow_enabled) {
                 shadowed.push_back({.light = out.lights.size(),
-                                    .mask = mask_of(sun.shadow_item_cull_mask),
+                                    .mask = mask_of(sun.shadow_layers),
                                     .max_distance = sun.max_distance});
             }
         }

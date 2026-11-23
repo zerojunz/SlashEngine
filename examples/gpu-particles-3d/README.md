@@ -28,9 +28,9 @@ particles.eval {"id":"streaks","time":2,"list":true,"max_results":1}
   `lifetime`, `explosiveness`, `randomness`, `preprocess`, `fixed_fps` with `interpolate`,
   `speed_scale`, `amount_ratio` and `one_shot`, which emits `finished`. Renderers run the steps
   the device hasn't and draw each draw pass's mesh at every live particle.
-- `draw_pass_1` to `draw_pass_4` name model files to draw, with `draw_passes` saying how many;
+- `mesh_1` to `mesh_4` name model files to draw, with `mesh_count` saying how many;
   with none, the entity's primitive mesh component and `Surface3D` draw, as the three
-  emitters here do. The sparks' material has `billboard_mode` `"particles"`, so each quad faces
+  emitters here do. The sparks' material has `billboard` `"particles"`, so each quad faces
   the camera, and `draw_order` `"view_depth"` draws the farthest first so their additive light
   blends in order. An emitter with nothing to draw is a problem in `frame.summary` and
   `scene validate`, as the last call shows.

@@ -405,8 +405,7 @@ ModelMaterial FbxReader::material(const ufbx_material& in, std::size_t index) {
         standard.cull_mode = "disabled";
     }
     if (const ufbx_texture* base = file_texture(pbr.base_color.texture); base != nullptr) {
-        standard.texture_repeat =
-            base->wrap_u == UFBX_WRAP_REPEAT && base->wrap_v == UFBX_WRAP_REPEAT;
+        standard.repeat = base->wrap_u == UFBX_WRAP_REPEAT && base->wrap_v == UFBX_WRAP_REPEAT;
         out.albedo_image = image(base);
         if (out.albedo_image >= 0) {
             const AlphaMode mode = alpha_of(out.albedo_image);
@@ -421,8 +420,8 @@ ModelMaterial FbxReader::material(const ufbx_material& in, std::size_t index) {
         const float factor =
             pbr.base_factor.has_value ? static_cast<float>(pbr.base_factor.value_real) : 1.0F;
         standard.albedo_color = srgb({factor, factor, factor, factor});
-        standard.uv1_offset = vec3_of(base->uv_transform.translation);
-        standard.uv1_scale = vec3_of(base->uv_transform.scale);
+        standard.uv_offset = vec3_of(base->uv_transform.translation);
+        standard.uv_scale = vec3_of(base->uv_transform.scale);
     }
     if (in.features.pbr.enabled) {
         standard.metallic =

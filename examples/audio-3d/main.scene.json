@@ -11,8 +11,8 @@
           "bus": "Sfx",
           "doppler_tracking": "physics_step",
           "max_distance": 80.0,
-          "stream": "audio/engine.wav",
-          "unit_size": 5.0
+          "reference_distance": 5.0,
+          "stream": "audio/engine.wav"
         },
         "Transform3D": {
           "position": [-40.0, 0.0, -10.0]
@@ -29,7 +29,7 @@
         },
         "Zone3D": {
           "audio_bus_name": "Cave",
-          "audio_bus_override": true,
+          "bus_override": true,
           "reverb_bus_amount": 0.6,
           "reverb_bus_enabled": true,
           "reverb_bus_name": "Echo"

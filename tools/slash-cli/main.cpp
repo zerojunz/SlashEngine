@@ -1991,7 +1991,7 @@ int cmd_project(const std::vector<std::string>& args) {
                 errors.push_back(std::move(item));
             }
         };
-        check(project.value().gui_theme, "/gui/theme", slash::ui::validate_theme);
+        check(project.value().gui_theme, "/ui/theme", slash::ui::validate_theme);
         for (std::size_t i = 0; i < project.value().plugins.size(); ++i) {
             check(project.value().plugins[i], "/plugins/" + std::to_string(i),
                   slash::plugin::validate_plugin_file);
@@ -2003,7 +2003,7 @@ int cmd_project(const std::vector<std::string>& args) {
             project.value().internationalization.translations;
         for (std::size_t i = 0; i < translations.size(); ++i) {
             const std::string& file = translations[i];
-            const std::string at = "/internationalization/locale/translations/" + std::to_string(i);
+            const std::string at = "/localization/translations/" + std::to_string(i);
             auto text = slash::platform::read_file(slash::runtime::join_path(folder, file));
             if (!text) {
                 json::Value item;

@@ -2,7 +2,7 @@
 {"jsonrpc":"2.0","id":2,"method":"world.query","params":{"with":["Transform2D"]}}
 {"jsonrpc":"2.0","id":3,"method":"entity.get","params":{"id":"hero/gun/muzzle"}}
 {"jsonrpc":"2.0","id":4,"method":"entity.create","params":{"id":"rival","extends":"scenes/player.scene.json","components":{"Transform2D":{"position":[160,32],"scale":[1.5,1.5]}}}}
-{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"rival/body","components":{"Sprite2D":{"modulate":[1,0.3,0.3,1]}}}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"rival/body","components":{"Sprite2D":{"tint":[1,0.3,0.3,1]}}}}
 {"jsonrpc":"2.0","id":6,"method":"entity.destroy","params":{"id":"hero/gun"}}
 {"jsonrpc":"2.0","id":7,"method":"entity.create","params":{"id":"boss","extends":"scenes/level.scene.json"}}
 {"jsonrpc":"2.0","id":8,"method":"scene.save"}

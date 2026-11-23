@@ -1,5 +1,5 @@
 // The microphone, as Godot's AudioStreamMicrophone and AudioServer input calls. project.json turns
-// on audio.enable_input, and the "voice" player plays audio/mic.audio.json on the muted "Mic" bus,
+// on audio.input_enabled, and the "voice" player plays audio/mic.audio.json on the muted "Mic" bus,
 // as in Godot's microphone demo, so its effects hear the player without the speakers playing it.
 // A gameplay system in C++ reads the same input with Server::input_frames and lights a lantern
 // for each half second of singing.

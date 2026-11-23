@@ -300,8 +300,8 @@ TEST_CASE("a BakedLighting3D bakes its static meshes' light, shadows and bounces
     CHECK(shadowed > 0.0F);
 }
 
-TEST_CASE("project.json's rendering.lightmapping sets bakes' rays and passes, as Godot's") {
-    const json::Value rendering = json::parse(R"({"lightmapping": {
+TEST_CASE("project.json's rendering.lightmaps sets bakes' rays and passes, as Godot's") {
+    const json::Value rendering = json::parse(R"({"lightmaps": {
         "bake_quality": {"low_quality_ray_count": 8, "medium_quality_ray_count": 16,
             "high_quality_ray_count": 4096, "ultra_quality_ray_count": 0,
             "low_quality_probe_ray_count": 16, "ultra_quality_probe_ray_count": 8192},
@@ -309,7 +309,7 @@ TEST_CASE("project.json's rendering.lightmapping sets bakes' rays and passes, as
             "region_size": 64},
         "probe_capture": {"update_speed": 2.5}}})")
                                       .value();
-    CHECK(json::validate(*rendering.find("lightmapping"), scene3d::lightmapping_schema()).size() ==
+    CHECK(json::validate(*rendering.find("lightmaps"), scene3d::lightmapping_schema()).size() ==
           1); // ultra_quality_ray_count 0
     const scene3d::LightmappingSettings settings = scene3d::lightmapping_settings(rendering);
     CHECK(settings.ray_count == std::array<std::uint32_t, 4>{8, 16, 4096, 2048});

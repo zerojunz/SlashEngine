@@ -432,8 +432,7 @@ private:
 [[nodiscard]] Result<Map> parse_map(const json::Value& doc, Keyboard keyboard = host_keyboard());
 [[nodiscard]] json::Value action_json(const Action& action);
 
-// How touches and the mouse stand in for each other, as Godot's input_devices/pointing settings
-// (project.json's "input_devices").
+// How touches and the mouse stand in for each other (project.json's "pointer").
 struct Settings {
     // A touch also clicks the left mouse button, and dragging it moves the mouse, so mouse-only
     // code works on phones.
@@ -444,7 +443,7 @@ struct Settings {
     friend bool operator==(const Settings&, const Settings&) = default;
 };
 [[nodiscard]] json::Value settings_schema();
-// Reads project.json's "input_devices"; null gives the defaults. Validate it first.
+// Reads project.json's "pointer"; null gives the defaults. Validate it first.
 [[nodiscard]] Settings parse_settings(const json::Value& doc);
 
 // Adds the input state and the "input" system, which applies queued events at the start of each

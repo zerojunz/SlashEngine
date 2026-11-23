@@ -1244,10 +1244,35 @@ void resolve_materials(json::Value& doc, const ModelReader& files,
     }
 }
 
-Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& errors,
+// The recipe with its materials' old field names, and those of its forms' materials, made current.
+json::Value current_recipe_names(const json::Value& doc) {
+    json::Value out = doc;
+    const auto upgrade = [](json::Value& holder) {
+        json::Value* materials = holder.is_object() ? holder.find("materials") : nullptr;
+        if (materials == nullptr || !materials->is_object()) {
+            return;
+        }
+        for (auto& [name, material] : materials->as_object()) {
+            material = current_material_names(material);
+        }
+    };
+    upgrade(out);
+    for (const std::string_view group : {kVariants, kQuality}) {
+        json::Value* forms = out.is_object() ? out.find(group) : nullptr;
+        if (forms != nullptr && forms->is_object()) {
+            for (auto& [name, form] : forms->as_object()) {
+                upgrade(form);
+            }
+        }
+    }
+    return out;
+}
+
+Read read_recipe(const json::Value& written, std::vector<json::ValidationError>& errors,
                  const ModelReader& files) {
     Read out;
-    out.doc = doc;
+    out.doc = current_recipe_names(written);
+    const json::Value& doc = out.doc;
     if (auto loose = json::validate(doc, model_recipe_schema()); !loose.empty()) {
         errors = std::move(loose);
         return out;
@@ -1625,8 +1650,9 @@ std::vector<std::string> recipe_forms(const json::Value& doc, std::string_view g
     return names;
 }
 
-Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
+Result<json::Value> recipe_form(const json::Value& written, std::string_view group,
                                 std::string_view name) {
+    const json::Value doc = current_recipe_names(written);
     const auto failed = [](const std::string& at, const std::string& message) {
         return make_error(ErrorCode::InvalidArgument, at + ": " + message);
     };

@@ -7,7 +7,7 @@ particles.eval {"id":"sparks"}
 sparks: 43 alive, 0 below the floor, 14 resting on it
 rain below the umbrella's middle: 0 under it, 21 beside it
 component.set {"components":{"ParticleColliderSphere3D":{"cull_mask":2}},"id":"umbrella"}
-{"changed":{"ParticleColliderSphere3D":{"cull_mask":2}},"id":"umbrella"}
+{"changed":{"ParticleColliderSphere3D":{"layer_filter":2}},"id":"umbrella"}
 step {"ticks":60}
 {"tick":180,"ticks":60}
 rain below the umbrella's middle: 3 under it, 28 beside it

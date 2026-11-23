@@ -84,7 +84,7 @@ mouse, touches and gamepads press the [input actions](project-format.md#input-ac
 project folder's `project.json`, or only Godot's `ui_*` actions without one. Its
 [sound](scene-format.md#audio) plays on the default output device; with none, a warning says so
 and the game runs silent. Headless runs mix sound but play it nowhere. With the project's
-`audio.enable_input`, [microphone](scene-format.md#microphone) players record the default
+`audio.input_enabled`, [microphone](scene-format.md#microphone) players record the default
 microphone; headless, they hear silence or what `audio.input` plays.
 
 With `--serve`, the result also carries the server's `url`, and the game takes the `play` and
@@ -442,9 +442,9 @@ a component are described with `ComponentType::describe` by their path: `"items[
 ### project validate
 
 Checks a folder's `project.json`, its `export_presets.json` if there is one, the theme its
-`gui.theme` names, the [plugin files](project-format.md#plugins) its `plugins` lists, the bus
+`ui.theme` names, the [plugin files](project-format.md#plugins) its `plugins` lists, the bus
 layout its `audio.bus_layout` names, the [translation
-files](project-format.md#internationalization) its `internationalization` lists (each must load,
+files](project-format.md#localization) its `localization` lists (each must load,
 with its problems by line), the [icons](project-format.md#icons)
 it and its presets name (each must be a square image), its storyboard with [`storyboard.check`](commands.md#storyboardcheck), its
 texture graphs with [`texture.check`](commands.md#texturecheck), and
@@ -463,7 +463,7 @@ slash-cli project validate tests/data/game
 ```
 
 ```json
-{"errors":[{"file":"project.json","message":"no file \"ui/gmae.theme.json\"","path":"/gui/theme"}],"valid":false}
+{"errors":[{"file":"project.json","message":"no file \"ui/gmae.theme.json\"","path":"/ui/theme"}],"valid":false}
 ```
 
 ```json

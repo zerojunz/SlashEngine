@@ -21,7 +21,7 @@ depend on which frame of Godot's jitter pattern it is.
   `occluded` how many of them the wall hid: the three houses. The tower rises above the wall, so
   it is drawn.
 - With the camera raised over the wall, every mesh shows and `occluded` drops out.
-- Back behind the wall, `house_b`'s `ignore_occlusion_culling` keeps it drawn, so two are hidden.
+- Back behind the wall, `house_b`'s `skip_occlusion` keeps it drawn, so two are hidden.
 - `occluder.bake` fills the `tower_occluder`'s triangles from the meshes on its `bake_mask`
   layer, here only the tower: 8 corners and 12 triangles, simplified as Godot's bake does. The
   tower is too far back to hide anything from here, so the counts stay the same.

@@ -127,7 +127,7 @@ double lifetime_of(const GpuEmitter3D& settings) {
 }
 
 int fixed_fps_of(const GpuEmitter3D& settings) {
-    return std::clamp(settings.fixed_fps, 0, 1000);
+    return std::clamp(settings.fixed_rate, 0, 1000);
 }
 
 // GPUParticles3D::set_emitting.
@@ -143,9 +143,8 @@ void set_emitting(Emitter& e, const GpuEmitter3D& settings, bool emitting, bool 
             e.time = 0.0;
             e.canceled = false;
             e.emission_time = lifetime_of(settings);
-            e.active_time =
-                lifetime_of(settings) *
-                (2.0 - std::clamp(static_cast<double>(settings.explosiveness), 0.0, 1.0));
+            e.active_time = lifetime_of(settings) *
+                            (2.0 - std::clamp(static_cast<double>(settings.burst), 0.0, 1.0));
             // As GpuEmitter2D's: the storage starts over, so a burst always emits.
             e.restart = !first;
         } else {
@@ -183,7 +182,7 @@ public:
             ++e.cycle;
         }
         render::ParticleStep3D step;
-        if (!s_.local_coords) {
+        if (!s_.local_space) {
             step.emission = particle_transform(transform_);
         }
         step.emitter_velocity = to_float(velocity_);
@@ -193,7 +192,7 @@ public:
         e.phase = new_phase;
         step.delta = static_cast<float>(delta);
         step.lifetime = static_cast<float>(lifetime_of(s_));
-        step.explosiveness = std::clamp(s_.explosiveness, 0.0F, 1.0F);
+        step.explosiveness = std::clamp(s_.burst, 0.0F, 1.0F);
         step.randomness = std::clamp(s_.randomness, 0.0F, 1.0F);
         step.amount_ratio = std::clamp(s_.amount_ratio, 0.0F, 1.0F);
         step.interp_to_end = std::clamp(s_.interp_to_end, 0.0F, 1.0F);
@@ -201,12 +200,12 @@ public:
         step.time = static_cast<float>(e.particle_time);
         step.cycle = e.cycle;
         step.seed = seed_;
-        step.fractional_delta = s_.fract_delta;
+        step.fractional_delta = s_.smooth_emission;
         step.clear = e.clear;
         step.attractors = touching_.attractors;
         step.colliders = touching_.colliders;
         step.stages = touching_.stages;
-        step.collision_size = std::max(s_.collision_base_size, 0.0F);
+        step.collision_size = std::max(s_.collision_size, 0.0F);
         e.clear = false;
         e.keep(step);
     }
@@ -400,7 +399,7 @@ template <typename Attractor>
 FoundAttractor found_of(render::AttractorShape3D shape, const Attractor& attractor) {
     FoundAttractor out;
     out.shape = shape;
-    out.cull_mask = attractor.cull_mask;
+    out.cull_mask = attractor.layer_filter;
     out.strength = attractor.strength;
     out.attenuation = attractor.attenuation;
     out.directionality = attractor.directionality;
@@ -753,7 +752,7 @@ struct GpuParticleSystem3D {
         for (const entt::entity entity : ecs.view<const world::ParticleColliderSphere3D>()) {
             const auto& c = ecs.get<const world::ParticleColliderSphere3D>(entity);
             FoundCollider sphere;
-            sphere.cull_mask = c.cull_mask;
+            sphere.cull_mask = c.layer_filter;
             sphere.radius = c.radius;
             add(entity, sphere, Vec3{c.radius, c.radius, c.radius} * 2.0F);
         }
@@ -761,7 +760,7 @@ struct GpuParticleSystem3D {
             const auto& c = ecs.get<const world::ParticleColliderBox3D>(entity);
             FoundCollider box;
             box.shape = render::ColliderShape3D::Box;
-            box.cull_mask = c.cull_mask;
+            box.cull_mask = c.layer_filter;
             box.extents = c.size * 0.5F;
             add(entity, box, c.size);
         }
@@ -769,7 +768,7 @@ struct GpuParticleSystem3D {
             const auto& c = ecs.get<const world::ParticleColliderSdf3D>(entity);
             FoundCollider sdf;
             sdf.shape = render::ColliderShape3D::Sdf;
-            sdf.cull_mask = c.cull_mask;
+            sdf.cull_mask = c.layer_filter;
             sdf.extents = c.size * 0.5F;
             sdf.sdf = sdf_of(c);
             add(entity, std::move(sdf), c.size);
@@ -782,7 +781,7 @@ struct GpuParticleSystem3D {
             }
             FoundCollider field;
             field.shape = render::ColliderShape3D::HeightField;
-            field.cull_mask = c.cull_mask;
+            field.cull_mask = c.layer_filter;
             field.extents = c.size * 0.5F;
             field.heights = heights_of(world, tree, entity, c, tree.global(entity));
             kept.insert(key_of(world, entity));
@@ -816,7 +815,7 @@ struct GpuParticleSystem3D {
         for (const entt::entity entity : ecs.view<GpuEmitter3D>()) {
             auto& component = ecs.get<GpuEmitter3D>(entity);
             const Affine3D transform = tree.global(entity);
-            // The attractors whose bounds touch its visibility box and whose cull_mask shares a
+            // The attractors whose bounds touch its visibility box and whose layer_filter shares a
             // bit with its layers, as Godot's scene cull pairs them; at most 32, and 7 fields.
             paired.attractors.clear();
             paired.colliders.clear();
@@ -842,14 +841,14 @@ struct GpuParticleSystem3D {
                     ++fields_used;
                 }
                 paired.attractors.push_back(
-                    for_particles(attractor, component.local_coords ? &to_particles : nullptr));
+                    for_particles(attractor, component.local_space ? &to_particles : nullptr));
             }
             // The wind where the emitter is, with its wind_influence, in the particles' space.
             if (component.wind_influence > 0.0F && !wind.empty() &&
                 paired.attractors.size() < render::kMaxParticleAttractors3D) {
                 Vec3 push = wind.at(transform.origin, wind_time) * component.wind_influence;
                 Vec3 at = transform.origin;
-                if (component.local_coords) {
+                if (component.local_space) {
                     push = to_particles.basis(push);
                     at = {};
                 }
@@ -880,7 +879,7 @@ struct GpuParticleSystem3D {
                     height_field = true;
                 }
                 paired.colliders.push_back(collider_for_particles(
-                    collider, component.local_coords ? &to_particles : nullptr));
+                    collider, component.local_space ? &to_particles : nullptr));
             }
             if (tick(emitters[key_of(world, entity)], component, transform, world.id_of(entity),
                      tick_seconds, paired)) {

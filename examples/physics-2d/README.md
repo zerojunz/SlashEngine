@@ -35,7 +35,7 @@ physics.raycast {"exclude":["hero"],"from":[420,189],"to":[420,300]}
   pieces, and `build_mode: "segments"` would make only its outline solid.
 - `take_coins` asks `physics2d::contacts` what each coin touches, as Godot's
   `get_overlapping_bodies`. Areas also emit `body_entered` and `body_exited` events, and a
-  rigid body with `contact_monitor` reports what it hits the same way.
+  rigid body with `report_contacts` reports what it hits the same way.
 - `physics.raycast` returns the first hit's ID, point, normal and the fraction of the way it
   got. `physics.overlap` lists what is at a point or under a shape, sorted by ID, and
   `physics.contacts` what an entity touches. All three take `collision_mask`, `exclude` and

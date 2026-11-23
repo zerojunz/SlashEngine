@@ -1545,29 +1545,28 @@ TEST_CASE("skies and fog draw behind and over the 3D world, their textures by pa
     CHECK(contents.problems.empty());
 }
 
-TEST_CASE("project.json's rendering.rendering_method picks how 3D meshes are lit") {
+TEST_CASE("project.json's rendering.renderer picks how 3D meshes are lit") {
     json::Value project = parse(R"({"format": 1, "name": "Lamps", "version": "1.0.0",
-        "main_scene": "main.scene.json", "rendering": {"rendering_method": "gl_compatibility"}})");
+        "main_scene": "main.scene.json", "rendering": {"renderer": "gl_compatibility"}})");
     CHECK(slash::runtime::validate_project(project).empty());
     CHECK(slash::runtime::parse_project(project).value().rendering_method ==
           render::RenderMethod::Compatibility);
     project["rendering"] = json::Object{};
     CHECK(slash::runtime::parse_project(project).value().rendering_method ==
           render::RenderMethod::ForwardPlus);
-    project["rendering"]["rendering_method"] = "mobile";
+    project["rendering"]["renderer"] = "mobile";
     const auto errors = slash::runtime::validate_project(project);
     REQUIRE(errors.size() == 1);
-    CHECK(errors.front().path == "/rendering/rendering_method");
+    CHECK(errors.front().path == "/rendering/renderer");
     CHECK(render::parse_render_method("forward_plus") == render::RenderMethod::ForwardPlus);
     CHECK_FALSE(render::parse_render_method("forward").has_value());
 }
 
-TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
+TEST_CASE("project.json's rendering.shadows is read and checked") {
     json::Value project = parse(R"({"format": 1, "name": "Shadows", "version": "1.0.0",
         "main_scene": "main.scene.json",
-        "rendering": {"lights_and_shadows": {
-            "directional_shadow": {"size": 2048, "soft_shadow_filter_quality": "soft_high"},
-            "positional_shadow": {"atlas_size": 8192}}}})");
+        "rendering": {"shadows": {"directional_size": 2048, "directional_softness": "soft_high",
+            "positional_atlas_size": 8192}}})");
     CHECK(slash::runtime::validate_project(project).empty());
     const slash::runtime::Project parsed = slash::runtime::parse_project(project).value();
     CHECK(parsed.shadows ==
@@ -1575,26 +1574,25 @@ TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
                                  .directional_quality = render::ShadowQuality::SoftHigh,
                                  .positional_size = 8192});
     const auto first_error = [&](std::string_view settings) {
-        project["rendering"]["lights_and_shadows"] = parse(settings);
+        project["rendering"]["shadows"] = parse(settings);
         const auto errors = slash::runtime::validate_project(project);
         REQUIRE_FALSE(errors.empty());
         return errors.front().path;
     };
-    CHECK(first_error(R"({"directional_shadow": {"size": 1000}})") ==
-          "/rendering/lights_and_shadows/directional_shadow/size");
-    CHECK(first_error(R"({"positional_shadow": {"atlas_size": 128}})") ==
-          "/rendering/lights_and_shadows/positional_shadow/atlas_size");
-    CHECK(first_error(R"({"positional_shadow": {"soft_shadow_filter_quality": "soft"}})") ==
-          "/rendering/lights_and_shadows/positional_shadow/soft_shadow_filter_quality");
-    CHECK(first_error(R"({"omni_shadow": {}})") == "/rendering/lights_and_shadows/omni_shadow");
+    CHECK(first_error(R"({"directional_size": 1000})") == "/rendering/shadows/directional_size");
+    CHECK(first_error(R"({"positional_atlas_size": 128})") ==
+          "/rendering/shadows/positional_atlas_size");
+    CHECK(first_error(R"({"positional_softness": "soft"})") ==
+          "/rendering/shadows/positional_softness");
+    CHECK(first_error(R"({"omni_size": 1024})") == "/rendering/shadows/omni_size");
 }
 
-TEST_CASE("project.json's rendering.environment.ssao is read and checked") {
+TEST_CASE("project.json's rendering.ssao is read and checked") {
     json::Value project = parse(R"({"format": 1, "name": "Corners", "version": "1.0.0",
         "main_scene": "main.scene.json",
-        "rendering": {"environment": {"ssao": {"quality": "ultra", "half_size": false,
+        "rendering": {"ssao": {"quality": "ultra", "half_size": false,
             "adaptive_target": 0.75, "blur_passes": 3, "fadeout_from": 10,
-            "fadeout_to": 20}}}})");
+            "fadeout_to": 20}}})");
     CHECK(slash::runtime::validate_project(project).empty());
     CHECK(slash::runtime::parse_project(project).value().ssao ==
           render::SsaoSettings{.quality = render::SsaoQuality::Ultra,
@@ -1605,39 +1603,39 @@ TEST_CASE("project.json's rendering.environment.ssao is read and checked") {
                                .fadeout_to = 20.0F});
     CHECK(render::ssao_settings_from_json(parse(R"({"quality": "extreme"})")) ==
           render::SsaoSettings{});
-    project["rendering"]["environment"]["ssao"]["blur_passes"] = 7;
+    project["rendering"]["ssao"]["blur_passes"] = 7;
     const auto errors = slash::runtime::validate_project(project);
     REQUIRE(errors.size() == 1);
-    CHECK(errors.front().path == "/rendering/environment/ssao/blur_passes");
+    CHECK(errors.front().path == "/rendering/ssao/blur_passes");
 }
 
-TEST_CASE("project.json's rendering.environment.screen_space_reflection is read and checked") {
+TEST_CASE("project.json's rendering.ssr is read and checked") {
     json::Value project = parse(R"({"format": 1, "name": "Mirror", "version": "1.0.0",
         "main_scene": "main.scene.json",
-        "rendering": {"environment": {"screen_space_reflection": {"half_size": false}}}})");
+        "rendering": {"ssr": {"half_size": false}}})");
     CHECK(slash::runtime::validate_project(project).empty());
     CHECK(slash::runtime::parse_project(project).value().ssr ==
           render::SsrSettings{.half_size = false});
-    project["rendering"]["environment"]["screen_space_reflection"]["half_size"] = 1;
+    project["rendering"]["ssr"]["half_size"] = 1;
     const auto errors = slash::runtime::validate_project(project);
     REQUIRE(errors.size() == 1);
-    CHECK(errors.front().path == "/rendering/environment/screen_space_reflection/half_size");
+    CHECK(errors.front().path == "/rendering/ssr/half_size");
 }
 
-TEST_CASE("project.json's rendering.camera.depth_of_field is read and checked") {
+TEST_CASE("project.json's rendering.depth_of_field is read and checked") {
     json::Value project = parse(R"({"format": 1, "name": "Focus", "version": "1.0.0",
         "main_scene": "main.scene.json",
-        "rendering": {"camera": {"depth_of_field": {"depth_of_field_bokeh_shape": "box",
-            "depth_of_field_bokeh_quality": "very_low", "depth_of_field_use_jitter": true}}}})");
+        "rendering": {"depth_of_field": {"bokeh_shape": "box", "bokeh_quality": "very_low",
+            "jitter": true}}})");
     CHECK(slash::runtime::validate_project(project).empty());
     CHECK(slash::runtime::parse_project(project).value().depth_of_field ==
           render::DepthOfFieldSettings{.bokeh_shape = render::BokehShape::Box,
                                        .bokeh_quality = render::BokehQuality::VeryLow,
                                        .use_jitter = true});
-    CHECK(render::depth_of_field_settings_from_json(parse(R"({"depth_of_field_bokeh_shape":
-        "star"})")) == render::DepthOfFieldSettings{});
-    project["rendering"]["camera"]["depth_of_field"]["depth_of_field_bokeh_quality"] = "ultra";
+    CHECK(render::depth_of_field_settings_from_json(parse(R"({"bokeh_shape": "star"})")) ==
+          render::DepthOfFieldSettings{});
+    project["rendering"]["depth_of_field"]["bokeh_quality"] = "ultra";
     const auto errors = slash::runtime::validate_project(project);
     REQUIRE(errors.size() == 1);
-    CHECK(errors.front().path == "/rendering/camera/depth_of_field/depth_of_field_bokeh_quality");
+    CHECK(errors.front().path == "/rendering/depth_of_field/bokeh_quality");
 }

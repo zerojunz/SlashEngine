@@ -495,7 +495,7 @@ json::Value stream_file_schema() {
     microphone["properties"] = json::Object{};
     microphone["description"] =
         "Plays what the microphone records, 50 ms late, as Godot's AudioStreamMicrophone; only as "
-        "a player's own stream, with project.json's audio.enable_input on.";
+        "a player's own stream, with project.json's audio.input_enabled on.";
     return schema;
 }
 

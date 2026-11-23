@@ -2157,7 +2157,7 @@ private:
     world::TextArea& edit_;
     TextEditState& s_;
     EditArea& area_;
-    double idle_seconds_ = 3.0; // gui.text_edit_idle_detect_sec
+    double idle_seconds_ = 3.0; // ui.text_edit_merge_seconds
     bool quiet_ = false;        // signals aren't emitted
     bool setting_text_ = false; // in set_text, which doesn't emit text_changed
     bool setting_caret_line_ = false;

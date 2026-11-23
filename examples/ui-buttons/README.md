@@ -16,7 +16,7 @@ events.read {"subscription":"events_1"}
   {"id":"hard","kind":"button_up","seq":7,"tick":0}],"more":false}
 ```
 
-- A button is pressed when a click or tap that started on it ends over it (`action_mode`
+- A button is pressed when a click or tap that started on it ends over it (`press_on`
   `press` presses as it starts), when `ui_accept` (Enter or Space) goes up while it has focus,
   or when its `shortcut` is pressed. It emits `button_down`, `pressed`, `toggled` (data
   `{"toggled_on": bool}`) and `button_up` as world events, in Godot's order; gameplay code reads
@@ -34,6 +34,6 @@ events.read {"subscription":"events_1"}
 - `ui.press` presses a button at the next tick, as a click would; `ui.focus` gives a control
   focus. A disabled button can't be pressed, and controls other than buttons take no focus
   unless their `focus_mode` says so.
-- Which control a pointer reaches is `Widget.mouse_filter`: a `Label` lets it through to the
+- Which control a pointer reaches is `Widget.pointer_mode`: a `Label` lets it through to the
   button under it (`ignore`), containers pass it on to their parents (`pass`), and buttons and
   the rest stop it (`stop`).

@@ -1146,7 +1146,7 @@ Reply character_place(Session& session, const json::Value& params) {
                 }
                 world::BoneLookAt3D look;
                 look.bone = side + "Eye";
-                look.target_node = look_at;
+                look.target = look_at;
                 look.forward_axis = "plus_y";
                 look.primary_rotation_axis = "z";
                 look.use_angle_limitation = true;

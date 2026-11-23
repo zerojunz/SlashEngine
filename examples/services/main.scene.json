@@ -23,7 +23,7 @@
         },
         "Widget": {
           "children": ["coins", "watch_ad", "buy_coins"],
-          "custom_minimum_size": [160.0, 0.0]
+          "min_size": [160.0, 0.0]
         }
       }
     },

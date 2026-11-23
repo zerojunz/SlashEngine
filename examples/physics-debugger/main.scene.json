@@ -1,21 +1,102 @@
-{"format": 1, "entities": {
-  "floor": {"components": {"Transform3D": {}, "StaticBody3D": {},
-                           "Collider3D": {"size": [40, 1, 40]}}},
-  "bottom": {"components": {"Transform3D": {"position": [0, 1, 0]}, "RigidBody3D": {},
-                            "Collider3D": {}}},
-  "middle": {"components": {"Transform3D": {"position": [0, 2, 0]}, "RigidBody3D": {},
-                            "Collider3D": {}}},
-  "top": {"components": {"Transform3D": {"position": [0, 3, 0]}, "RigidBody3D": {},
-                         "Collider3D": {}}},
-  "blast": {"components": {"Transform3D": {"position": [-2, 2, 0]},
-                           "PhysicsField3D": {"enabled": false, "magnitude": 300,
-                                              "radius": 4, "falloff": "linear"}}},
-  "lamp": {"components": {"Transform3D": {"position": [6, 4, 0]}, "RigidBody3D": {"mass": 2},
-                          "Collider3D": {"shape": "sphere", "radius": 0.25}}},
-  "chain": {"components": {"Transform3D": {"position": [6, 5, 0]},
-                           "PinJoint3D": {"node_a": "lamp"}}},
-  "director": {"components": {}},
-  "ground": {"components": {"Transform2D": {"position": [0, 200]}, "StaticBody2D": {},
-                            "Collider2D": {"size": [2000, 40]}}},
-  "puck": {"components": {"Transform2D": {"position": [0, 160]}, "RigidBody2D": {},
-                          "Collider2D": {"shape": "circle", "radius": 20}}}}}
+{
+  "entities": {
+    "blast": {
+      "components": {
+        "PhysicsField3D": {
+          "enabled": false,
+          "falloff": "linear",
+          "magnitude": 300.0,
+          "radius": 4.0
+        },
+        "Transform3D": {
+          "position": [-2.0, 2.0, 0.0]
+        }
+      }
+    },
+    "bottom": {
+      "components": {
+        "Collider3D": {},
+        "RigidBody3D": {},
+        "Transform3D": {
+          "position": [0.0, 1.0, 0.0]
+        }
+      }
+    },
+    "chain": {
+      "components": {
+        "PinJoint3D": {
+          "body_a": "lamp"
+        },
+        "Transform3D": {
+          "position": [6.0, 5.0, 0.0]
+        }
+      }
+    },
+    "director": {},
+    "floor": {
+      "components": {
+        "Collider3D": {
+          "size": [40.0, 1.0, 40.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {}
+      }
+    },
+    "ground": {
+      "components": {
+        "Collider2D": {
+          "size": [2000.0, 40.0]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [0.0, 200.0]
+        }
+      }
+    },
+    "lamp": {
+      "components": {
+        "Collider3D": {
+          "radius": 0.25,
+          "shape": "sphere"
+        },
+        "RigidBody3D": {
+          "mass": 2.0
+        },
+        "Transform3D": {
+          "position": [6.0, 4.0, 0.0]
+        }
+      }
+    },
+    "middle": {
+      "components": {
+        "Collider3D": {},
+        "RigidBody3D": {},
+        "Transform3D": {
+          "position": [0.0, 2.0, 0.0]
+        }
+      }
+    },
+    "puck": {
+      "components": {
+        "Collider2D": {
+          "radius": 20.0,
+          "shape": "circle"
+        },
+        "RigidBody2D": {},
+        "Transform2D": {
+          "position": [0.0, 160.0]
+        }
+      }
+    },
+    "top": {
+      "components": {
+        "Collider3D": {},
+        "RigidBody3D": {},
+        "Transform3D": {
+          "position": [0.0, 3.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -22,7 +22,7 @@ tilemap.get {"cells":[[2,3],[5,3]],"id":"ground"}
   the same.
 - `occlusion_layers` lists occlusion layers with the `light_mask` of the lights they shadow. A
   tile's `occlusion` polygons sit at its cell's center and cast shadows from lights with
-  `shadow_enabled` whose `shadow_item_cull_mask` shares a bit with that mask, as a
+  `shadow_enabled` whose `shadow_layers` shares a bit with that mask, as a
   `Occluder2D` does. An occluder is `closed` unless set otherwise, and its `cull_mode`
   shadows from one side only; turned cells turn their occluders.
 - `TileLayer2D`'s `occlusion_enabled` turns a layer's occluders off, as Godot's does; a hidden

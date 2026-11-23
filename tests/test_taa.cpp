@@ -290,11 +290,11 @@ TEST_CASE("TAA's resolve blends the frame with its history, as Godot's taa_resol
     CHECK(out[0] < 0.001F);
 }
 
-TEST_CASE("TAA settings come from project.json's rendering.anti_aliasing.quality.use_taa") {
-    CHECK(render::use_taa(parse(R"({"anti_aliasing": {"quality": {"use_taa": true}}})")));
-    CHECK_FALSE(render::use_taa(parse(R"({"anti_aliasing": {"quality": {"use_taa": false}}})")));
-    CHECK_FALSE(render::use_taa(parse(R"({"anti_aliasing": {"quality": {}}})")));
-    CHECK_FALSE(render::use_taa(parse(R"({"anti_aliasing": {"quality": {"use_taa": 1}}})")));
+TEST_CASE("TAA settings come from project.json's rendering.anti_aliasing.taa") {
+    CHECK(render::use_taa(parse(R"({"anti_aliasing": {"taa": true}})")));
+    CHECK_FALSE(render::use_taa(parse(R"({"anti_aliasing": {"taa": false}})")));
+    CHECK_FALSE(render::use_taa(parse(R"({"anti_aliasing": {}})")));
+    CHECK_FALSE(render::use_taa(parse(R"({"anti_aliasing": {"taa": 1}})")));
     CHECK_FALSE(render::use_taa(parse("{}")));
 }
 

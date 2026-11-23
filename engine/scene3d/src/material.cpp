@@ -5,6 +5,7 @@
 #include "slash/asset/assets.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
@@ -44,12 +45,28 @@ json::Value make_schema() {
 
 } // namespace
 
+json::Value current_material_names(const json::Value& doc) {
+    if (!doc.is_object()) {
+        return doc;
+    }
+    json::Value out = json::Object{};
+    for (const auto& [key, value] : doc.as_object()) {
+        const std::string_view name = world::current_field_name("Surface3D", key);
+        if (name != key && doc.find(name) != nullptr) {
+            continue;
+        }
+        out[std::string(name)] = value;
+    }
+    return out;
+}
+
 json::Value standard_material_schema() {
     static const json::Value schema = make_schema();
     return schema;
 }
 
-std::vector<json::ValidationError> validate_standard_material(const json::Value& doc) {
+std::vector<json::ValidationError> validate_standard_material(const json::Value& given) {
+    const json::Value doc = current_material_names(given);
     std::vector<json::ValidationError> errors = json::validate(doc, standard_material_schema());
     if (!errors.empty()) {
         return errors;
@@ -82,7 +99,8 @@ Result<world::Surface3D> parse_standard_material(const json::Value& doc) {
 }
 
 json::Value standard_material_fields(const json::Value& doc) {
-    json::Value fields = doc.is_object() ? doc : json::Value(json::Object{});
+    json::Value fields =
+        doc.is_object() ? current_material_names(doc) : json::Value(json::Object{});
     fields.as_object().erase("format");
     return fields;
 }

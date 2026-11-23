@@ -4,7 +4,7 @@ Translation files, locales and plural rules.
 
 Status: current · Updated: 2026-11-20
 
-`engine/l10n` is Godot's TranslationServer. `project.json`'s `internationalization` lists CSV,
+`engine/l10n` is Godot's TranslationServer. `project.json`'s `localization` lists CSV,
 `.po` and `.mo` translation files, the fallback locale, a `test` locale, pseudo-localization and
 the root layout direction (`l10n::Settings`). `src/translation.cpp` reads the files as Godot's
 CSV importer and `TranslationLoaderPO` do into `l10n::Translation`s (messages by context, plural

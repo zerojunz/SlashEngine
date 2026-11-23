@@ -9,7 +9,7 @@ directions. [main.cpp](main.cpp) makes the swirl's texture, checks the dust with
 cuts the swirl's texture wrong. [expected.txt](expected.txt) holds its output.
 
 - Each tick the `gpu_particles_3d` system pairs each emitter with the attractors visible in the
-  tree whose bounds touch its visibility box and whose `cull_mask` shares a bit with its
+  tree whose bounds touch its visibility box and whose `layer_filter` shares a bit with its
   `layers`, at most 32 (7 of them vector fields), as Godot's scene cull pairs them. Every device
   then moves the particles by Godot's formula: `strength` toward the center (or, by
   `directionality`, along the attractor's -z), falling off toward its edge by `attenuation`.

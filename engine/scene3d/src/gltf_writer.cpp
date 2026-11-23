@@ -264,7 +264,7 @@ struct Writer {
 
     // Godot's GLTFTextureSampler: the material's filter and repeat, as glTF's sampler.
     int sampler(const world::Surface3D& standard) {
-        const std::string& filter = standard.texture_filter;
+        const std::string& filter = standard.filter;
         const bool nearest = filter.starts_with("nearest");
         const int mag = nearest ? 9728 : 9729;
         int min = mag;
@@ -273,7 +273,7 @@ struct Writer {
         } else if (filter == "linear_with_mipmaps") {
             min = 9987;
         }
-        const int wrap = standard.texture_repeat ? 10497 : 33071;
+        const int wrap = standard.repeat ? 10497 : 33071;
         const auto key = std::tuple{mag, min, wrap, wrap};
         if (const auto it = samplers.find(key); it != samplers.end()) {
             return it->second;
@@ -338,8 +338,8 @@ struct Writer {
         if (const std::optional<int> index = albedo.value()) {
             json::Value view = json::Object{};
             view["index"] = *index;
-            const Vec3& scale = standard.uv1_scale;
-            const Vec3& offset = standard.uv1_offset;
+            const Vec3& scale = standard.uv_scale;
+            const Vec3& offset = standard.uv_offset;
             if (scale.x != 1.0F || scale.y != 1.0F || offset.x != 0.0F || offset.y != 0.0F) {
                 json::Value transform = json::Object{};
                 transform["offset"] = json::Array{offset.x, offset.y};
@@ -396,7 +396,7 @@ struct Writer {
                 uses("KHR_materials_emissive_strength");
             }
         }
-        if (standard.shading_mode == "unshaded") {
+        if (standard.shading == "unshaded") {
             out["extensions"]["KHR_materials_unlit"] = json::Object{};
             uses("KHR_materials_unlit");
         }

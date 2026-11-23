@@ -57,14 +57,14 @@ std::optional<ButtonFields> base_button(const world::World& world, entt::entity 
     if (const world::Button* button = button_of(world, entity); button != nullptr) {
         return ButtonFields{.button_group = button->button_group,
                             .disabled = button->disabled,
-                            .toggle_mode = button->toggle_mode,
-                            .pressed = button->button_pressed};
+                            .toggle_mode = button->toggles,
+                            .pressed = button->pressed};
     }
     if (const auto* button = world.ecs().try_get<world::ImageButton>(entity); button != nullptr) {
         return ButtonFields{.button_group = button->button_group,
                             .disabled = button->disabled,
-                            .toggle_mode = button->toggle_mode,
-                            .pressed = button->button_pressed};
+                            .toggle_mode = button->toggles,
+                            .pressed = button->pressed};
     }
     return std::nullopt;
 }

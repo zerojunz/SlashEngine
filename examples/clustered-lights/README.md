@@ -6,7 +6,7 @@ plaza at night under a dim `moon`, seen from above through a `Camera3D` in a 320
 0.9 meters.
 
 That is more lights than Godot's Compatibility renderer draws: it adds the first 64 to every
-pixel. [project.json](project.json) leaves `rendering.rendering_method` at its default,
+pixel. [project.json](project.json) leaves `rendering.renderer` at its default,
 `forward_plus`, so each frame sorts the lanterns into tiles of 32 pixels and slices of depth,
 and a pixel adds only the moon and the few lanterns whose range reaches its tile and slice. All
 100 light the plaza.

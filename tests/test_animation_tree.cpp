@@ -541,7 +541,7 @@ TEST_CASE("a tree reports why it can't play, and its parameters are checked") {
     CHECK(scene.tree(hero).invalid == "On BlendTree node 'a', animation not found: 'tem'");
     CHECK(scene.tree(hero).playing.empty());
 
-    scene.tree(hero).tree_root = "missing.animtree.json";
+    scene.tree(hero).root = "missing.animtree.json";
     scene.world.step(0.1);
     CHECK(scene.tree(hero).invalid.starts_with("missing.animtree.json: "));
 }

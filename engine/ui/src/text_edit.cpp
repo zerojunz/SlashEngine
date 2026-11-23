@@ -148,10 +148,10 @@ text::Direction direction_of(const world::TextArea& edit, bool rtl) {
 }
 
 text::Autowrap autowrap_of(const world::TextArea& edit) {
-    if (edit.autowrap_mode == "arbitrary") {
+    if (edit.wrap == "arbitrary") {
         return text::Autowrap::Arbitrary;
     }
-    if (edit.autowrap_mode == "word") {
+    if (edit.wrap == "word") {
         return text::Autowrap::Word;
     }
     return text::Autowrap::WordSmart;

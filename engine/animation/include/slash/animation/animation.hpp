@@ -257,7 +257,7 @@ struct Target {
 // value: a library that doesn't load, an animation it doesn't have, with "did you mean", a track
 // target the player's targets leave out, and a node track's node the entity's model hasn't.
 // Libraries and models are read through reader.
-[[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& doc,
+[[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& as_written,
                                                                const world::FileReader& reader);
 
 // Makes the camera a value track sets current on the current one, as Godot's Camera3D's
