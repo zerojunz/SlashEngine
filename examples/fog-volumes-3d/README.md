@@ -1,9 +1,9 @@
 # Fog volumes 3D
 
-A cellar filled with fog volumes, as Godot 4.6's `FogVolume` and `FogMaterial` in its Forward+
+A cellar filled with fog volumes, as Godot 4.6's `FogVolume` and `FogVolumeLook` in its Forward+
 renderer. [main.scene.json](main.scene.json) is a floor and a wall in a 160x90 window, lit by an
 orange lamp, in a thin volumetric fog (`volumetric_fog_density` 0.01). Three `FogVolume`s add to
-it, each filled as the `FogMaterial` on its entity says:
+it, each filled as the `FogVolumeLook` on its entity says:
 
 - `mist` is a box of pale fog over the floor, thinning with height by its `height_falloff` and
   fading toward its edges by its `edge_fade`.

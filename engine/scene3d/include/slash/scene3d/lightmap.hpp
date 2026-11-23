@@ -33,7 +33,7 @@ namespace slash::world {
 class World;
 }
 
-// Baked lightmaps, as Godot 4.6's LightmapGI (scene/3d/lightmap_gi.cpp) baked by its GPU
+// Baked lightmaps, as Godot 4.6's BakedLighting3D (scene/3d/lightmap_gi.cpp) baked by its GPU
 // lightmapper (modules/lightmapper_rd), here on the CPU. Each static mesh is unwrapped into
 // lightmap UVs with xatlas, as Godot's "Unwrap UV2 for Lightmap/AO" unwraps it; the meshes' places
 // are packed into an atlas; and every texel's light is traced: direct light from the baked lights
@@ -70,7 +70,7 @@ struct LightmapUnwrap {
 [[nodiscard]] std::string lightmap_mesh_hash(std::span<const render::Vertex3D> vertices,
                                              std::span<const std::uint32_t> indices);
 
-// One mesh's place in a baked lightmap, as Godot's LightmapGIData user: a static MeshInstance3D's
+// One mesh's place in a baked lightmap, as Godot's LightmapGIData user: a static Model3D's
 // mesh, or one part of its model.
 struct LightmapUser {
     std::string entity;     // the entity's ID
@@ -103,9 +103,9 @@ struct LightmapBspNode {
 };
 
 // A lightmap's light probes, as Godot's LightmapGIData capture data, which meshes that move take
-// their ambient light from: the probes' places and light in the LightmapGI's space, the Delaunay
-// tetrahedra between them, the BSP tree over those, and the bounds they fill. None when points is
-// empty.
+// their ambient light from: the probes' places and light in the BakedLighting3D's space, the
+// Delaunay tetrahedra between them, the BSP tree over those, and the bounds they fill. None when
+// points is empty.
 struct LightmapProbes {
     std::array<float, 3> bounds_position{0.0F, 0.0F, 0.0F};
     std::array<float, 3> bounds_size{0.0F, 0.0F, 0.0F};
@@ -146,14 +146,14 @@ struct LightmapData {
 // values.
 [[nodiscard]] json::Value lightmap_json(const LightmapData& data);
 
-// IES light profiles, which OmniLight3D's and SpotLight3D's light_ies name.
+// IES light profiles, which PointLight3D's and SpotLight3D's light_ies name.
 inline constexpr std::string_view kIesSuffix = ".ies";
 
 // Registers .lightmap.json files with assets as LightmapData, .hdr files as render::HdrImage and
 // .ies files as render::IesProfile. Called by add_asset_types.
 void add_lightmap_types(asset::Assets& assets);
 
-// The light a bake traces, as Godot's LightmapGI properties (world::LightmapGI's docs).
+// The light a bake traces, as Godot's LightmapGI properties (world::BakedLighting3D's docs).
 struct LightmapSettings {
     std::uint32_t rays = 128; // a texel's rays: Godot's quality, from 32 (low) to 2048 (ultra)
     std::uint32_t bounces = 3;
@@ -238,7 +238,7 @@ struct LightmapBake {
 
 // Where a bake traces light probes, as LightmapperRD::add_probe, each traced with rays rays: the
 // points in the world, and the space their light is kept in (only its axes count, as a
-// LightmapGI's rotation), so that a probe's light turns with its LightmapGI.
+// BakedLighting3D's rotation), so that a probe's light turns with its BakedLighting3D.
 struct LightmapProbeRequest {
     std::vector<std::array<float, 3>> points;
     world::Affine3D space;
@@ -256,11 +256,11 @@ bake_lightmap(const std::vector<LightmapMesh>& meshes, const std::vector<Lightma
               const render::HdrImage& environment, const LightmapSettings& settings,
               jobs::Pool* pool = nullptr, const LightmapProbeRequest& probes = {});
 
-// Where a LightmapGI's light probes go, as LightmapGI::bake places them, from its meshes'
+// Where a BakedLighting3D's light probes go, as LightmapGI::bake places them, from its meshes'
 // triangles (three points each) and the LightmapProbes' places, all in its space: bounds around
 // both, grown a little; the LightmapProbes' places first, then the bounds' 8 corners, and when
 // subdiv isn't 0 the corners of the cells of an octree subdiv cells along its longest side that
-// triangles touch, leaving out those within half a cell of a LightmapProbe. The bounds come back
+// triangles touch, leaving out those within half a cell of a LightProbe3D. The bounds come back
 // in probes' bounds_position and bounds_size, the places in its points.
 [[nodiscard]] LightmapProbes place_lightmap_probes(std::span<const std::array<float, 3>> triangles,
                                                    std::span<const std::array<float, 3>> user,
@@ -282,7 +282,7 @@ lightmap_bsp_tree(std::span<const std::array<float, 3>> points,
                   std::span<const std::array<std::uint32_t, 4>> tetrahedra,
                   jobs::Pool* pool = nullptr);
 
-// The light at a point in a LightmapGI's space, as LightStorage::lightmap_tap_sh_light: the
+// The light at a point in a BakedLighting3D's space, as LightStorage::lightmap_tap_sh_light: the
 // probes of the tetrahedron its BSP tree finds blended by the point's barycentric coordinates,
 // each clamped from 0 to 1, or nothing where the tree finds none.
 [[nodiscard]] LightmapSh tap_lightmap_probes(const LightmapProbes& probes,
@@ -292,8 +292,8 @@ lightmap_bsp_tree(std::span<const std::array<float, 3>> points,
 // Godot's Basis::rotate_sh, its coefficients' signs matched to Godot's lightmapper.
 void rotate_sh(LightmapSh& sh, const world::Affine3D& basis);
 
-// A lightmap's probes where they are drawn, for lightmap_capture: its LightmapGI's place in the
-// world, and the camera's exposure over the one it was baked with.
+// A lightmap's probes where they are drawn, for lightmap_capture: its BakedLighting3D's place in
+// the world, and the camera's exposure over the one it was baked with.
 struct LightmapCaptureSource {
     const LightmapProbes* probes = nullptr;
     world::Affine3D transform;
@@ -308,9 +308,9 @@ struct LightmapCaptureSource {
 lightmap_capture(std::span<const LightmapCaptureSource> lightmaps, std::array<float, 3> center);
 
 // Godot's rendering/lightmapping project settings (project.json's rendering.lightmapping): the
-// rays a texel and a probe trace at each LightmapGI quality (low, medium, high, ultra), how bakes
-// split their rays and texels into passes, and how fast moving meshes' light from probes follows
-// them.
+// rays a texel and a probe trace at each BakedLighting3D quality (low, medium, high, ultra), how
+// bakes split their rays and texels into passes, and how fast moving meshes' light from probes
+// follows them.
 struct LightmappingSettings {
     std::array<std::uint32_t, 4> ray_count{32, 128, 512, 2048};
     std::array<std::uint32_t, 4> probe_ray_count{64, 256, 512, 2048};
@@ -337,19 +337,19 @@ struct LightmapSources {
     LightmappingSettings lightmapping{};    // the project's rays and passes
 };
 
-// Bakes the lightmap of a LightmapGI entity, as Godot's LightmapGI::bake: the static
+// Bakes the lightmap of a BakedLighting3D entity, as Godot's LightmapGI::bake: the static
 // MeshInstance3Ds (gi_mode "static") visible under the entity's parent (everything for a root),
 // lit by the lights there whose light_bake_mode isn't "disabled", and the environment its
 // environment_mode names, on the world's pool. Skinned model parts are left out, with a problem.
 [[nodiscard]] Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entity,
                                                  const LightmapSources& sources);
 
-// Each LightmapGI's problems, for scene validate and exports: camera_attributes naming no
-// CameraAttributesPractical, and a light_data file that isn't a .lightmap.json file, doesn't
+// Each BakedLighting3D's problems, for scene validate and exports: camera_attributes naming no
+// CameraLens, and a light_data file that isn't a .lightmap.json file, doesn't
 // read, isn't valid or whose texture doesn't read.
 [[nodiscard]] std::vector<Problem> check_lightmaps(const world::World& world);
 
-// The lightmap path a LightmapGI's .hdr file takes beside its .lightmap.json file:
+// The lightmap path a BakedLighting3D's .hdr file takes beside its .lightmap.json file:
 // "level.lightmap.json" has "level.lightmap.hdr".
 [[nodiscard]] std::string lightmap_texture_path(std::string_view data_path);
 

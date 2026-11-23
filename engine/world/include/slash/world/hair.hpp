@@ -3,7 +3,7 @@
 // Hair and fur, after Unreal's Groom and its Chaos-driven strand simulation (Godot has none). A
 // .groom.json file says how strands grow (how many, how long, how thick, standing up or combed
 // down, clumped and curled, their colors and the maps that vary them), how they draw (thin
-// strands, cards or fur shells) and how they move. A HairInstance3D grows a groom over the model
+// strands, cards or fur shells) and how they move. A Hair3D grows a groom over the model
 // its entity draws, a Hair2D along a line in its own space; a few guide strands are simulated
 // and the strands drawn follow them.
 //
@@ -159,9 +159,9 @@ void step_strands(Strands& strands, int points, const std::vector<Vec3>& targets
                   const StrandStep& step);
 
 // The colliders of a body a groom grows on: every enabled sphere, capsule and box
-// CollisionShape3D (circle, capsule and rectangle CollisionShape2D, at z 0) under root in its
-// Transform3D (Transform2D) tree, the root's own included, except those of a CharacterBody3D
-// (CharacterBody2D), whose capsule moves the whole character.
+// Collider3D (circle, capsule and rectangle Collider2D, at z 0) under root in its
+// Transform3D (Transform2D) tree, the root's own included, except those of a CharacterMover3D
+// (CharacterMover2D), whose capsule moves the whole character.
 [[nodiscard]] std::vector<StrandCollider>
 strand_colliders_3d(const World& world, const Tree3D& tree, entt::entity root);
 class Tree2D;

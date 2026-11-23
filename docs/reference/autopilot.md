@@ -173,7 +173,7 @@ in Autopilot's "kit" frame, as the addon's are: Unreal's axes and centimeters, s
 | `watch` | Watches `objects` for `seconds` and answers what changed when: moved, turned, changed size, parts shown or hidden, lights on or off, animations started or ended |
 | `pose` | The player's position, feet, eye, view direction, velocity and whether it is on the ground |
 | `movement` | The player's tuning: walk speed, jump, gravity and size, from its components |
-| `screen` | The text the window shows, by `<layer>.<entity ID>` (a `CanvasLayer`'s ID, else `Screen`); with `ui`, the controls too |
+| `screen` | The text the window shows, by `<layer>.<entity ID>` (a `ScreenLayer`'s ID, else `Screen`); with `ui`, the controls too |
 | `ui` | The controls on screen (buttons, check boxes, option buttons, sliders, text fields) with their state and where their middle is in the window |
 | `ui_act` | Works a control by ID: `click` (the mouse, else the button pressed as its signal would be; an option button's next option or `option`), `right_click`, `double_click`, `set` (a slider's `value`, a text field's `text`, a toggle) or `drag` to another control |
 | `rc` | Unreal Remote Control's calls: `property` reads or writes a component or a field (`objectPath` an entity ID, `propertyName` `Transform2D/position/x`), `call` runs a command (`functionName`, `parameters`, the entity as `id`; `Session` for commands on no entity), `describe` lists an entity's fields and the commands that take it |

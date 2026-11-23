@@ -34,6 +34,7 @@
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -2980,6 +2981,7 @@ private:
     // Keeps only what validates, reporting the rest, so one bad value can't stop a file.
     template <typename Validate>
     void keep_valid(json::Value& doc, const std::string& path, Validate validate) {
+        world::upgrade_scene(doc);
         for (int pass = 0; pass < 64; ++pass) {
             const std::vector<json::ValidationError> errors = validate(doc);
             if (errors.empty()) {
@@ -4191,7 +4193,7 @@ private:
             }
             converted[{cell.x, cell.y}] = tile;
         }
-        world::TileMapLayer encoded;
+        world::TileLayer2D encoded;
         canvas::encode_cells(converted, *tiles.set, encoded);
         layer["origin"] = json::Array{encoded.origin.x, encoded.origin.y};
         json::Object legend;
@@ -6915,7 +6917,7 @@ private:
             problems_.add("GridMap cells", node.declared,
                           "item " + std::to_string(item) + " isn't in the mesh library");
         }
-        world::GridMap map;
+        world::BlockMap3D map;
         scene3d::encode_grid_cells(cells, map);
         json::Value legend = json::Object{};
         for (const auto& [key, item] : map.legend) {
@@ -7011,6 +7013,7 @@ private:
                             item["mesh"] = std::move(model);
                         } else {
                             item["primitive"] = std::move(primitive);
+                            world::upgrade_components(item["primitive"]);
                         }
                     }
                     if (material.value != nullptr) {
@@ -7287,7 +7290,7 @@ private:
         } else {
             problems_.add("collision shape " + type, node.declared,
                           type == "ConcavePolygonShape2D"
-                              ? "use a CollisionPolygon2D with build_mode segments"
+                              ? "use a PolygonCollider2D with build_mode segments"
                               : "no SlashEngine shape for it yet");
         }
     }
@@ -11145,6 +11148,7 @@ private:
         converted["format"] = 1;
         converted["entities"] = std::move(entities);
         converted["root"] = nodes[static_cast<std::size_t>(root)].id;
+        world::upgrade_scene(converted);
         const world::FileReader reader = planned_files();
         // Leave out what doesn't validate, so one bad value can't stop the scene.
         for (int pass = 0; pass < 64; ++pass) {

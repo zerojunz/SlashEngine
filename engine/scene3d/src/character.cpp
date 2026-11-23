@@ -583,7 +583,7 @@ void add_face(const CharacterRecipe& recipe, const Body& body, int skin) {
     const world::HeadShape head_shape = world::character_head(m);
     const world::SculptedHead sculpt = world::sculpt_head(face, head_shape);
     // ARKit's 52 expressions, as blend shapes of the head's parts (and of the teeth and tongue
-    // the jaw moves), which face capture and MeshInstance3D's blend_shapes drive.
+    // the jaw moves), which face capture and Model3D's blend_shapes drive.
     const std::vector<std::vector<Vec3>> expressions =
         world::face_expressions(face, head_shape, sculpt);
     out.set_blend_shapes(world::face_expression_names());
@@ -846,7 +846,7 @@ void add_garment(const CharacterRecipe& recipe, std::size_t index, const Body& b
         }
         case Region::Cape: {
             const real_t height = cover.to * (m.shoulder - (0.05F * m.scale));
-            world::PlaneMesh plane;
+            world::PlaneGeometry plane;
             plane.size = {1.0F, 1.0F};
             plane.subdivide_width = 6;
             plane.subdivide_depth = 12;
@@ -917,7 +917,7 @@ void add_garment(const CharacterRecipe& recipe, std::size_t index, const Body& b
                     material, body.bone("Head"));
             break;
         case Region::Scarf: {
-            world::TorusMesh torus;
+            world::TorusGeometry torus;
             torus.inner_radius = 0.6F;
             torus.outer_radius = 1.0F;
             torus.rings = 16;

@@ -1,6 +1,6 @@
 # Lightmaps 3D
 
-Light baked into a lightmap by a `LightmapGI`, as Godot 4.6's: sunlight bouncing off a red wall
+Light baked into a lightmap by a `BakedLighting3D`, as Godot 4.6's: sunlight bouncing off a red wall
 onto the floor and into a crate's shadow, worked out once by `lightmap.bake` rather than every
 frame. [main.scene.json](main.scene.json) is a floor, a wall, a crate and a ball seen through a
 `Camera3D` in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light. The
@@ -28,8 +28,8 @@ lightmap.bake {"id":"lightmap"}
   ambient light. `path` saves the frames as PNGs in `shots/`.
 - `lightmap.bake` unwraps the three static meshes with xatlas, packs them into one 128x64 slice
   and traces their light on the CPU, then traces 234 light probes on an octree over them (the
-  LightmapGI's `generate_probes_subdiv`, `"8"` by default). It writes `main.lightmap.json`
-  beside the scene, its texels in `main.lightmap.hdr`, and sets the LightmapGI's `light_data` to
+  BakedLighting3D's `generate_probes_subdiv`, `"8"` by default). It writes `main.lightmap.json`
+  beside the scene, its texels in `main.lightmap.hdr`, and sets the BakedLighting3D's `light_data` to
   it.
 - Drawn with the lightmap, the floor by the wall warms with the red light the wall throws on it,
   the crate's dark side brightens from 0.24 to 0.4 with the light off the floor, and the shadow
@@ -51,4 +51,4 @@ same but for rounding, so this example bakes on the CPU, whose bake is the same 
 
 `lightmap.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
 Undo removes the files it made, or puts back the ones it replaced. `slash-cli scene validate`
-checks a LightmapGI's `light_data`, and exports ship both files.
+checks a BakedLighting3D's `light_data`, and exports ship both files.

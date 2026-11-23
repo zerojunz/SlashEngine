@@ -30,7 +30,7 @@ colors of the `palette/cast` in [style.json](storyboard/style.json).
 - `character.generate` writes Mira and Oren: from 24 seeded candidates within the rules each,
   it keeps the one least like the rest of the cast, and says which character is nearest and how
   far. Checked, they keep the rules.
-- `character.place` puts the hero and Mira in the 3D scene: a `MeshInstance3D` drawing each one's
+- `character.place` puts the hero and Mira in the 3D scene: a `Model3D` drawing each one's
   rigged model and a `Cloth3D` on the hero's cape. `model.inspect` reads the hero's model: one
   skinned mesh with a material per thing it draws, and the points props hang from.
 - Placed at two numbers, Oren is a 2D cut-out: after a tick the `character_2d` system has made a

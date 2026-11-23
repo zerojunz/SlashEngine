@@ -69,8 +69,8 @@ struct Project3D {
         REQUIRE(slash::platform::write_file(root + "/rock.foliage.json", kRock).ok());
         REQUIRE(slash::platform::write_file(root + "/main.scene.json",
                                             R"({"format": 1, "entities": {
-              "ground": {"components": {"Transform3D": {}, "MeshInstance3D": {},
-                                        "PlaneMesh": {"size": [20, 20]}}})" +
+              "ground": {"components": {"Transform3D": {}, "Model3D": {},
+                                        "PlaneGeometry": {"size": [20, 20]}}})" +
                                                 std::string(entities) + "}}")
                     .ok());
         world::register_builtin_components(components);
@@ -216,7 +216,7 @@ TEST_CASE("foliage: grass leans with the wind and parts for a character, then sp
                              "strength": 4, "min_gust_amount": 0, "max_gust_amount": 0,
                              "turbulence": 0}}},
                            "walker": {"components": {"Transform3D": {"position": [0.3, 0.5, 0]},
-                             "CharacterBody3D": {}}})");
+                             "CharacterMover3D": {}}})");
     world::World& w = project.session->world();
     const entt::entity flora = w.find("flora");
     const auto type = procedural::foliage_type(w, "grass.foliage.json");
@@ -516,7 +516,7 @@ TEST_CASE("foliage 2D: the canvas draws each tuft, bent by the wind and parted b
 
     // A character just left of it pushes it right.
     project.ok("entity.create", R"({"id": "kid", "components": {
-        "Transform2D": {"position": [90, 95]}, "CharacterBody2D": {}}})");
+        "Transform2D": {"position": [90, 95]}, "CharacterMover2D": {}}})");
     project.steps(30);
     const std::vector<procedural::FoliagePush> pushes = procedural::foliage_pushes(w);
     REQUIRE(pushes.size() == 1);

@@ -134,9 +134,9 @@ struct Project {
 };
 
 constexpr std::string_view kHeadEntity = R"("head": {"components": {
-    "Transform3D": {}, "MeshInstance3D": {"mesh": "head.model.json"},
-    "StaticBody3D": {}, "CollisionShape3D": {"shape": "sphere", "radius": 0.12},
-    "HairInstance3D": {"groom": "long.groom.json", "section": "scalp"}}},
+    "Transform3D": {}, "Model3D": {"mesh": "head.model.json"},
+    "StaticBody3D": {}, "Collider3D": {"shape": "sphere", "radius": 0.12},
+    "Hair3D": {"groom": "long.groom.json", "section": "scalp"}}},
   "camera": {"components": {"Transform3D": {"position": [0, 0, 0.8]},
     "Camera3D": {"current": true}}})";
 
@@ -275,7 +275,7 @@ TEST_CASE("hair: a 2D groom grows guides and strands along its line, to its left
     }
 }
 
-TEST_CASE("hair: a HairInstance3D grows over its section, steps in physics and swings") {
+TEST_CASE("hair: a Hair3D grows over its section, steps in physics and swings") {
     Project project("hair_head_project", kHeadEntity);
     world::World& w = project.session->world();
     const entt::entity head = w.find("head");
@@ -312,12 +312,12 @@ TEST_CASE("hair: a HairInstance3D grows over its section, steps in physics and s
 
 TEST_CASE("hair: grooms that can't grow say why") {
     Project project("hair_problems_project", R"("a": {"components": {"Transform3D": {},
-        "MeshInstance3D": {"mesh": "head.model.json"},
-        "HairInstance3D": {"groom": "long.groom.json", "section": "scalpp"}}},
-      "b": {"components": {"Transform3D": {}, "MeshInstance3D": {"mesh": "head.model.json"},
-        "HairInstance3D": {"groom": "mane.groom.json"}}},
+        "Model3D": {"mesh": "head.model.json"},
+        "Hair3D": {"groom": "long.groom.json", "section": "scalpp"}}},
+      "b": {"components": {"Transform3D": {}, "Model3D": {"mesh": "head.model.json"},
+        "Hair3D": {"groom": "mane.groom.json"}}},
       "c": {"components": {"Transform3D": {},
-        "HairInstance3D": {"groom": "long.groom.json"}}})");
+        "Hair3D": {"groom": "long.groom.json"}}})");
     const std::vector<slash::scene3d::Problem> problems =
         scene3d::check_hair(project.session->world());
     REQUIRE(problems.size() == 3);
@@ -327,7 +327,7 @@ TEST_CASE("hair: grooms that can't grow say why") {
     }
     CHECK(by_entity["a"].find("did you mean \"scalp\"") != std::string::npos);
     CHECK(by_entity["b"].find("2D groom") != std::string::npos);
-    CHECK(by_entity["c"].find("MeshInstance3D") != std::string::npos);
+    CHECK(by_entity["c"].find("Model3D") != std::string::npos);
     command::Reply reply = project.session->call("hair.get", parse(R"({"entity": "a"})"));
     CHECK_FALSE(reply.ok);
     reply = project.session->call("hair.get", parse(R"({"entity": "heda"})"));
@@ -339,7 +339,7 @@ TEST_CASE("hair: strands, cards and fur shells draw over the model") {
         return project.ok("frame.capture", R"({"points": [[0, 0]]})")["drawn"]["meshes"].as_int();
     };
     Project bald("hair_bald_project", R"("head": {"components": {"Transform3D": {},
-        "MeshInstance3D": {"mesh": "head.model.json"}}},
+        "Model3D": {"mesh": "head.model.json"}}},
       "camera": {"components": {"Transform3D": {"position": [0, 0, 0.8]},
         "Camera3D": {"current": true}}})");
     const std::int64_t alone = meshes(bald);
@@ -347,7 +347,7 @@ TEST_CASE("hair: strands, cards and fur shells draw over the model") {
     CHECK(meshes(hairy) == alone + 1);
     // Fur draws a layer of shells each.
     hairy.ok("component.set",
-             R"({"id": "head", "components": {"HairInstance3D": {"groom": "fur.groom.json",
+             R"({"id": "head", "components": {"Hair3D": {"groom": "fur.groom.json",
                  "section": ""}}})");
     CHECK(meshes(hairy) == alone + 6);
     // The pattern the shells cut out is the same everywhere.

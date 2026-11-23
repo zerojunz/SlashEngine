@@ -44,7 +44,7 @@ particles.eval {"id":"fire"}
   slider, whose noise is sized for 3D meters: in pixels it wants to be close to 10 (the smoke's
   9.8 makes swirls about 50 pixels across), and its `velocity_limit_curve` keeps turbulence from
   speeding particles up as it turns them.
-- With a `collision_mode`, particles collide with `LightOccluder2D` outlines (those with
+- With a `collision_mode`, particles collide with `Occluder2D` outlines (those with
   `sdf_collision`, as by default) and tile occluders on occlusion layers with `sdf_collision`, as
   Godot's collide with the distance field it draws from them: `rigid` ones bounce off by
   `collision_bounce` and slide with `collision_friction`, `hide_on_contact` ones die. A particle
@@ -52,7 +52,7 @@ particles.eval {"id":"fire"}
   texture's average side: 4 pixels for the rain's 8-pixel dot. The shapes are measured exactly,
   so every device and the CPU agree; `particles.eval` with a `time` runs apart from the world, with
   nothing to collide with.
-- An emitter's `sub_emitter` names another `GPUParticles2D` that its particles start particles
+- An emitter's `sub_emitter` names another `GpuEmitter2D` that its particles start particles
   in, as its process material's `sub_emitter_mode` says: `constant` (`sub_emitter_frequency`
   times a second), `at_end` (when one dies of age), `at_collision` (each step it touches a shape)
   or `at_start`, with `sub_emitter_amount_at_end`, `_at_collision` and `_at_start` particles and
@@ -63,7 +63,7 @@ particles.eval {"id":"fire"}
   before. A sub-emitter can have its own, up to 8 emitters in a chain. When a sub-emitter's
   particles are all alive, new ones take the place of the oldest; Godot drops the new ones.
   `slash-cli scene validate` reports a `sub_emitter` that can't take part: one naming its own
-  emitter or an entity with no `GPUParticles2D`, a sub-emitter another emitter already has,
+  emitter or an entity with no `GpuEmitter2D`, a sub-emitter another emitter already has,
   and one that loops back or makes a chain too long.
 - With `trail_enabled`, each particle draws as Godot's trail ribbon: the texture, a frame wide,
   stretched down the path the particle took over the last `trail_lifetime` seconds. As in Godot
@@ -99,7 +99,7 @@ particles.eval {"id":"fire"}
   Setting `emitting` sets it off again.
 - `slash-cli scene validate` checks a `.process_material.json` file and reports every mistake
   with its JSON Pointer; exports check every process material.
-- Godot projects import with their `GPUParticles2D` nodes and `ParticleProcessMaterial`
+- Godot projects import with their `GpuEmitter2D` nodes and `ParticleProcessMaterial`
   resources (`slash-cli import`), turbulence, collisions, sub-emitters and trails included;
   attractors are reported as not converted, since SlashEngine doesn't have them yet.
 - Particles are not saved in the scene. Snapshots, undo, dry runs and failed commands leave them

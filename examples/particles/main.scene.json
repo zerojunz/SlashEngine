@@ -2,7 +2,7 @@
   "entities": {
     "fountain": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 32,
           "color_ramp": [
             {
@@ -34,7 +34,7 @@
     },
     "portal": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 20,
           "color": [0.7, 0.4, 1.0, 1.0],
           "emission_ring_inner_radius": 20.0,
@@ -57,7 +57,7 @@
     },
     "smoke": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 16,
           "angular_velocity_max": 45.0,
           "angular_velocity_min": -45.0,
@@ -95,7 +95,7 @@
     },
     "sparks": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 24,
           "color_ramp": [
             {

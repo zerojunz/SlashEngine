@@ -6,7 +6,7 @@ two pinned points and drops a ball full of air onto the floor. [main.cpp](main.c
 world as an agent would, reads each soft body's points with `physics.soft_body`, then moves the
 pole with `component.set`. [expected.txt](expected.txt) holds its output.
 
-- A `SoftBody3D` simulates the primitive mesh its entity's `MeshInstance3D` draws. The mesh's
+- A `SoftBody3D` simulates the primitive mesh its entity's `Model3D` draws. The mesh's
   vertices are welded where they meet into points, one for each place, and the faces between
   them hold them together with springs as stiff as `linear_stiffness` says. The mesh draws where
   the points are, so the tablecloth folds over the table's edges as it lands.

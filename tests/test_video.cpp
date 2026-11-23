@@ -323,7 +323,7 @@ render::Image flat(std::array<std::uint8_t, 3> color) {
 
 } // namespace
 
-TEST_CASE("video: a VideoStreamPlayer plays in its control and on sprites, then finishes") {
+TEST_CASE("video: a Video plays in its control and on sprites, then finishes") {
     const std::string root = "video_player_project";
     std::filesystem::remove_all(root);
     REQUIRE(platform::create_directories(root).ok());
@@ -341,8 +341,8 @@ TEST_CASE("video: a VideoStreamPlayer plays in its control and on sprites, then 
                 .ok());
     VideoEngine engine(root);
     (void)engine.ok("entity.create", R"({"id": "tv", "components": {
-        "Control": {"offset_left": 10, "offset_top": 10},
-        "VideoStreamPlayer": {"stream": "clip.ivf", "autoplay": true}}})");
+        "Widget": {"offset_left": 10, "offset_top": 10},
+        "Video": {"stream": "clip.ivf", "autoplay": true}}})");
     (void)engine.ok("entity.create", R"({"id": "screen", "components": {
         "Transform2D": {"position": [100, 50]}, "Sprite2D": {"texture": "video:tv"}}})");
     // Nothing decoded before the first tick.
@@ -363,33 +363,30 @@ TEST_CASE("video: a VideoStreamPlayer plays in its control and on sprites, then 
     CHECK(close_to(engine.color_at(20, 15), {0, 0, 255}));
     // At the end it stops on the last frame.
     const auto player = [&engine] {
-        return *engine.ok("entity.get", R"({"id": "tv"})")
-                    .find("components")
-                    ->find("VideoStreamPlayer");
+        return *engine.ok("entity.get", R"({"id": "tv"})").find("components")->find("Video");
     };
     CHECK_FALSE(player().find("playing")->as_bool());
     CHECK(player().find("stream_position")->as_double() == doctest::Approx(0.3));
     CHECK(video::stream_length(engine.session->world(), "tv") == doctest::Approx(0.3));
 
     // Looping, it starts again; stopped, setting the position seeks.
-    (void)engine.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)engine.ok("component.set", R"({"id": "tv", "components": {"Video":
         {"loop": true, "playing": true, "stream_position": 0.2}}})");
     (void)engine.ok("step", R"({"ticks": 3, "tick_seconds": 0.05})");
     CHECK(close_to(engine.color_at(20, 15), {255, 0, 0}));
     CHECK(player().find("playing")->as_bool());
-    (void)engine.ok("component.set", R"({"id": "tv", "components": {"VideoStreamPlayer":
+    (void)engine.ok("component.set", R"({"id": "tv", "components": {"Video":
         {"playing": false, "stream_position": 0.15}}})");
     (void)engine.ok("step", R"({"tick_seconds": 0.05})");
     CHECK(close_to(engine.color_at(20, 15), {0, 255, 0}));
     CHECK(close_to(engine.color_at(100, 50), {0, 255, 0}));
 
     // A stream that doesn't load is a layout problem.
-    (void)engine.ok(
-        "component.set",
-        R"({"id": "tv", "components": {"VideoStreamPlayer": {"stream": "missing.ivf"}}})");
+    (void)engine.ok("component.set",
+                    R"({"id": "tv", "components": {"Video": {"stream": "missing.ivf"}}})");
     CHECK(engine.ok("ui.layout", R"({"ids": ["tv"]})") == parse_json(R"({
         "controls": [{"id": "tv", "rect": [10, 10, 0, 0]}],
-        "problems": [{"id": "tv", "path": "/components/VideoStreamPlayer/stream",
+        "problems": [{"id": "tv", "path": "/components/Video/stream",
                       "message": "asset \"missing.ivf\" could not be read: no such file"}],
         "viewport": [160, 90]})"));
 }
@@ -424,13 +421,13 @@ TEST_CASE("video: video.encode turns captured frames into a cutscene") {
     };
 
     // A red box sliding right, captured each step.
-    (void)ok("entity.create", R"({"id": "box", "components": {"Control": {"offset_left": 0,
+    (void)ok("entity.create", R"({"id": "box", "components": {"Widget": {"offset_left": 0,
         "offset_top": 8, "offset_right": 16, "offset_bottom": 24},
-        "ColorRect": {"color": [0.9, 0.2, 0.1, 1]}}})");
+        "ColorFill": {"color": [0.9, 0.2, 0.1, 1]}}})");
     for (int i = 0; i < 6; ++i) {
         const std::string x = std::to_string(i * 8);
-        (void)ok("component.set", R"({"id": "box", "components": {"Control": {"offset_left": )" +
-                                      x + R"(, "offset_right": )" + std::to_string((i * 8) + 16) +
+        (void)ok("component.set", R"({"id": "box", "components": {"Widget": {"offset_left": )" + x +
+                                      R"(, "offset_right": )" + std::to_string((i * 8) + 16) +
                                       "}}}");
         (void)ok("frame.capture", R"({"path": "shots/f0)" + std::to_string(i) + R"(.png"})");
     }

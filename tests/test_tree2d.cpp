@@ -589,9 +589,9 @@ TEST_CASE("physics bodies inside other entities are where their parents put them
     const entt::entity platform = add("platform", {100.0F, 100.0F});
     const entt::entity floor = add("floor", {0.0F, 50.0F});
     game.ecs().emplace<world::StaticBody2D>(floor);
-    world::CollisionShape2D slab;
+    world::Collider2D slab;
     slab.size = {200.0F, 20.0F};
-    game.ecs().emplace<world::CollisionShape2D>(floor, slab);
+    game.ecs().emplace<world::Collider2D>(floor, slab);
     game.ecs().get<world::Transform2D>(platform).children = {floor};
     step(1);
     auto hit = physics2d::raycast(game, {100.0F, 0.0F}, {100.0F, 300.0F});
@@ -610,10 +610,10 @@ TEST_CASE("physics bodies inside other entities are where their parents put them
     const entt::entity carrier = add("carrier", {400.0F, 0.0F}, 0.3F, {1.5F, 1.5F});
     const entt::entity ball = add("ball", {});
     game.ecs().emplace<world::RigidBody2D>(ball);
-    world::CollisionShape2D round;
+    world::Collider2D round;
     round.shape = "circle";
     round.radius = 5.0F;
-    game.ecs().emplace<world::CollisionShape2D>(ball, round);
+    game.ecs().emplace<world::Collider2D>(ball, round);
     game.ecs().get<world::Transform2D>(carrier).children = {ball};
     world::Tree2D(game).set_global_position(game, ball, {413.7F, 60.0F});
     step(20);
@@ -636,8 +636,8 @@ TEST_CASE("physics bodies inside other entities are where their parents put them
     // A character moves in the world: half as far in a carrier that doubles it.
     const entt::entity rig = add("rig", {1000.0F, 0.0F}, 0.0F, {2.0F, 2.0F});
     const entt::entity hero = add("hero", {});
-    game.ecs().emplace<world::CharacterBody2D>(hero).velocity = {60.0F, 0.0F};
-    game.ecs().emplace<world::CollisionShape2D>(hero, round);
+    game.ecs().emplace<world::CharacterMover2D>(hero).velocity = {60.0F, 0.0F};
+    game.ecs().emplace<world::Collider2D>(hero, round);
     game.ecs().get<world::Transform2D>(rig).children = {hero};
     step(1);
     CHECK(game.ecs().get<world::Transform2D>(hero).position.x == doctest::Approx(0.5F));
@@ -658,16 +658,16 @@ TEST_CASE("a top_level body stays where it is when its parent moves") {
     const entt::entity floor = add("floor", {100.0F, 150.0F});
     game.ecs().get<world::Transform2D>(floor).top_level = true;
     game.ecs().emplace<world::StaticBody2D>(floor);
-    world::CollisionShape2D slab;
+    world::Collider2D slab;
     slab.size = {200.0F, 20.0F};
-    game.ecs().emplace<world::CollisionShape2D>(floor, slab);
+    game.ecs().emplace<world::Collider2D>(floor, slab);
     const entt::entity ball = add("ball", {100.0F, 0.0F});
     game.ecs().get<world::Transform2D>(ball).top_level = true;
     game.ecs().emplace<world::RigidBody2D>(ball);
-    world::CollisionShape2D round;
+    world::Collider2D round;
     round.shape = "circle";
     round.radius = 5.0F;
-    game.ecs().emplace<world::CollisionShape2D>(ball, round);
+    game.ecs().emplace<world::Collider2D>(ball, round);
     game.ecs().get<world::Transform2D>(platform).children = {floor, ball};
     game.step(kTick);
     game.ecs().get<world::Transform2D>(platform).position = {400.0F, 300.0F};
@@ -698,7 +698,7 @@ TEST_CASE("particles emit where their emitter's parents put it") {
     const entt::entity torch = game.create("torch").value();
     game.ecs().emplace<world::Transform2D>(torch).position = {10.0F, 5.0F};
     std::string path;
-    REQUIRE(components.find("CPUParticles2D")
+    REQUIRE(components.find("Emitter2D")
                 ->assign(game, torch, parse(R"({"amount": 1, "lifetime": 10, "gravity": [0, 0],
                                    "initial_velocity_min": 0, "initial_velocity_max": 0})"),
                          path)

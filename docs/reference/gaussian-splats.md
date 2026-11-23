@@ -17,12 +17,12 @@ meters), a turn, an opacity and a color that changes with the side it is seen fr
 harmonics, up to degree 3). Detail an agent could not model by hand (bark, moss, a cluttered
 shelf, a whole street) comes in as millions of them.
 
-A [`GaussianSplat3D`](scene-format.md#gaussian-splats) names the file and places it with its
+A [`Splat3D`](scene-format.md#gaussian-splats) names the file and places it with its
 entity's `Transform3D`:
 
 ```json
 "boulder": {"components": {
-  "GaussianSplat3D": {"splats": "captures/boulder.ply", "sh_degree": 3},
+  "Splat3D": {"splats": "captures/boulder.ply", "sh_degree": 3},
   "Transform3D": {"position": [0, 0.5, 0], "rotation": [3.14159, 0, 0]}}}
 ```
 
@@ -53,7 +53,7 @@ is the same on any number of threads and every machine. `frame.capture` and `lig
 see the splats, so agents check a capture's placement by its pixels.
 
 Exports ship `.ply` files and check that each reads as splats; `scene validate` reports a
-`GaussianSplat3D` whose file isn't a `.ply` file, can't be read or isn't splats, and an
+`Splat3D` whose file isn't a `.ply` file, can't be read or isn't splats, and an
 `sh_degree` outside 0 to 3. `examples/gaussian-splats` makes a boulder in code, puts it behind a
 post, turns its shine off and fades it.
 

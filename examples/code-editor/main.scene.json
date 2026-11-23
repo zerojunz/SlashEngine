@@ -2,13 +2,13 @@
   "entities": {
     "script": {
       "components": {
-        "CodeEdit": {
+        "CodeEditor": {
           "breakpointed_lines": [3],
           "gutters_draw_breakpoints_gutter": true,
           "gutters_draw_line_numbers": true,
           "line_length_guidelines": [40]
         },
-        "CodeHighlighter": {
+        "SyntaxColors": {
           "color_regions": {
             "\" \"": [1.0, 0.93, 0.63, 1.0],
             "/* */": [0.8, 0.85, 0.92, 0.5],
@@ -24,16 +24,16 @@
           "number_color": [0.63, 1.0, 0.88, 1.0],
           "symbol_color": [0.67, 0.79, 1.0, 1.0]
         },
-        "Control": {
+        "TextArea": {
+          "highlight_all_occurrences": true,
+          "search_text": "velocity",
+          "text": "// Jumps when the button is pressed.\nvoid jump(Player& player) {\n\tif (player.on_floor) {\n\t\tplayer.velocity.y = -400.0f;\n\t\tplay(\"jump.wav\");\n\t}\n}\n\n/* Falls faster than it rises,\n   as players expect. */\nvoid fall(Player& player, float delta) {\n\tplayer.velocity.y += 980.0f * delta;\n}"
+        },
+        "Widget": {
           "offset_bottom": 168.0,
           "offset_left": 8.0,
           "offset_right": 392.0,
           "offset_top": 8.0
-        },
-        "TextEdit": {
-          "highlight_all_occurrences": true,
-          "search_text": "velocity",
-          "text": "// Jumps when the button is pressed.\nvoid jump(Player& player) {\n\tif (player.on_floor) {\n\t\tplayer.velocity.y = -400.0f;\n\t\tplay(\"jump.wav\");\n\t}\n}\n\n/* Falls faster than it rises,\n   as players expect. */\nvoid fall(Player& player, float delta) {\n\tplayer.velocity.y += 980.0f * delta;\n}"
         }
       }
     }

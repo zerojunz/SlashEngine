@@ -50,6 +50,6 @@ crate that splinters, which [profiles/old_crate.damage.json](profiles/old_crate.
   the explosion.
 - [crates.scene.json](crates.scene.json) has two crates in 2D. `damage.check` with no profile
   reads every profile the scene names. Fire burns the old crate at once; a blunt blast breaks the
-  other, each piece a `RigidBody2D` with a `CollisionPolygon2D` cut from the crate's outline and
+  other, each piece a `RigidBody2D` with a `PolygonCollider2D` cut from the crate's outline and
   a `Polygon2D` drawing its part.
 - `physics.break` breaks a 2D piece by hand, and a kind of damage that doesn't exist is refused.

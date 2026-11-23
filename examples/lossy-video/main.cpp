@@ -2,7 +2,7 @@
 // sets, with a ball rolling across it, which no palette of 8 colors a block keeps. The engine's
 // own encoder (video::encode_ivf) codes every frame as a lossless key frame of palettes;
 // video::encode_lossy has libaom code key frames where kf_interval asks and every other frame
-// as changes to the ones before, far smaller. The VideoStreamPlayer "cutscene" plays it over
+// as changes to the ones before, far smaller. The Video "cutscene" plays it over
 // the whole window, seeks and finishes. libaom's bytes can differ a little between machines, so
 // the output says how close each picture is rather than printing pixels or sizes.
 #include "slash/command/builtin.hpp"
@@ -161,7 +161,7 @@ struct Game {
 
     void show(const char* what) const {
         const json::Value got = ok("entity.get", R"({"id": "cutscene"})");
-        const json::Value& player = *got.find("components")->find("VideoStreamPlayer");
+        const json::Value& player = *got.find("components")->find("Video");
         const json::Value* position = player.find("stream_position");
         const json::Value* playing = player.find("playing");
         const video::Shown shown = video::shown(session->world(), "cutscene");
@@ -230,12 +230,12 @@ int main() {
     game.show("tick 1: autoplay starts the cutscene");
     game.step(12);
     game.show("12 ticks on, frames predicted from the key frame");
-    (void)game.ok("component.set", R"({"id": "cutscene", "components": {"VideoStreamPlayer":
+    (void)game.ok("component.set", R"({"id": "cutscene", "components": {"Video":
                                     {"paused": true, "stream_position": 1.5}}})");
     game.step(1);
     game.show("paused and seeked to 1.5 s: decoded on from the key frame at 1 s");
     (void)game.ok("component.set",
-                  R"({"id": "cutscene", "components": {"VideoStreamPlayer": {"paused": false}}})");
+                  R"({"id": "cutscene", "components": {"Video": {"paused": false}}})");
     game.step(12);
     game.show("12 ticks later: past its 2 s, it stops on the last frame");
     return 0;

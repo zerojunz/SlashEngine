@@ -4,7 +4,7 @@
   "layers": [
     {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": "=round(4 + 20 * strength)",
           "color": [1, 0.9, 0.5, 1],
           "direction": [0, 1, 0],
@@ -15,7 +15,7 @@
           "one_shot": true,
           "spread": 60
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.04,
           "radius": 0.02
         }

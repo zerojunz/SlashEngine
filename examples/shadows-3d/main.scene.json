@@ -14,9 +14,9 @@
     },
     "crate": {
       "components": {
-        "BoxMesh": {},
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "BoxGeometry": {},
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.8, 0.45, 0.2, 1.0]
         },
         "Transform3D": {
@@ -27,7 +27,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.5, 0.6, 0.8, 1.0],
           "ambient_light_energy": 0.3,
           "ambient_light_source": "color",
@@ -38,11 +38,11 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [16.0, 16.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.75, 0.72, 0.65, 1.0]
         },
         "Transform3D": {}
@@ -50,7 +50,7 @@
     },
     "lamp": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.7, 0.4, 1.0],
           "light_energy": 2.0,
           "shadow_enabled": true
@@ -62,13 +62,13 @@
     },
     "pillar": {
       "components": {
-        "CylinderMesh": {
+        "CylinderGeometry": {
           "bottom_radius": 0.35,
           "height": 2.4,
           "top_radius": 0.3
         },
-        "MeshInstance3D": {},
-        "StandardMaterial3D": {
+        "Model3D": {},
+        "Surface3D": {
           "albedo_color": [0.85, 0.85, 0.8, 1.0]
         },
         "Transform3D": {
@@ -78,12 +78,12 @@
     },
     "sphere": {
       "components": {
-        "MeshInstance3D": {},
-        "SphereMesh": {
+        "Model3D": {},
+        "SphereGeometry": {
           "height": 0.8,
           "radius": 0.4
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.3, 0.5, 0.9, 1.0],
           "roughness": 0.4
         },
@@ -94,7 +94,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_color": [1.0, 0.95, 0.85, 1.0],
           "shadow_enabled": true
         },

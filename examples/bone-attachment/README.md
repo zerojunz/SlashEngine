@@ -8,12 +8,12 @@ in the attachment's, placed in the hand's space:
 ```json
 "grip": {"components": {
   "Transform3D": {"children": ["blade", "hilt"]},
-  "BoneAttachment3D": {"bone_name": "Hand"}
+  "BoneSocket3D": {"bone_name": "Hand"}
 }}
 ```
 
 Each tick, after the arm's animation, the `skeleton_modifiers` system sets the grip's
-`Transform3D` to where the hand is posed, so the blade, an `AnimatableBody3D`, reaches physics
+`Transform3D` to where the hand is posed, so the blade, an `MovingBody3D`, reaches physics
 where the hand put it.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

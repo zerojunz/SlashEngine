@@ -2,8 +2,8 @@
 
 Bodies, shapes, areas and character movement on Box2D, as Godot's 2D physics.
 [main.scene.json](main.scene.json) has ground and walls (`StaticBody2D`), a hill whose outline
-is a concave `CollisionPolygon2D`, a one-way ledge, a crate (`RigidBody2D`), a lamp hanging from
-a `PinJoint2D`, three coins (`Area2D`) and the hero (`CharacterBody2D`). [main.cpp](main.cpp)
+is a concave `PolygonCollider2D`, a one-way ledge, a crate (`RigidBody2D`), a lamp hanging from
+a `PinJoint2D`, three coins (`Zone2D`) and the hero (`CharacterMover2D`). [main.cpp](main.cpp)
 adds the hero's controls as plain C++ systems, runs six seconds, then asks the physics commands
 what is where, as an agent would. [expected.txt](expected.txt) holds its output.
 
@@ -30,8 +30,8 @@ physics.raycast {"exclude":["hero"],"from":[420,189],"to":[420,300]}
 - Collision layers and masks follow Godot: two bodies collide when either one's
   `collision_mask` has the other's `collision_layer`. The hero is on layer 2 and the coins
   watch only layer 2 (`collision_mask: 2`), so the crate and the lamp don't take coins.
-- `CollisionShape2D` is a rectangle unless `shape` says `circle`, `capsule`, `segment` or
-  `polygon`. `CollisionPolygon2D` takes any outline: the concave hill is split into convex
+- `Collider2D` is a rectangle unless `shape` says `circle`, `capsule`, `segment` or
+  `polygon`. `PolygonCollider2D` takes any outline: the concave hill is split into convex
   pieces, and `build_mode: "segments"` would make only its outline solid.
 - `take_coins` asks `physics2d::contacts` what each coin touches, as Godot's
   `get_overlapping_bodies`. Areas also emit `body_entered` and `body_exited` events, and a

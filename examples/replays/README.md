@@ -13,7 +13,7 @@ replay.run {"path":"replays/run.replay.json"}
 {"end":150,"matched":true,"start":0,"tick":150}
 replay.run {"path":"replays/run.replay.json","tick":55}
 {"end":150,"matched":true,"start":0,"tick":55}
-replay.seek {"until":"none","with":["Area2D"]}
+replay.seek {"until":"none","with":["Zone2D"]}
 {"count":0,"end":150,"entities":[],"found":true,"matched":true,"start":0,"tick":96,"truncated":false}
 replay.seek {"ticks":-1}
 {"end":150,"matched":true,"start":0,"tick":95}
@@ -31,7 +31,7 @@ replay.run {"path":"replays/run.replay.json"}
   commands, and compares the hashes and the end. `"tick"` stops early, here at the jump, so
   every query works on the world as it was then: `input.state` shows D still held.
 - `replay.seek` moves the playback: to a `tick`, by `ticks`, or to the first tick where an entity
-  matches `with`, `without` and `where`, here the first with no `Area2D` (the coin) left. Going
+  matches `with`, `without` and `where`, here the first with no `Zone2D` (the coin) left. Going
   forward goes on from where the playback is; going back, as `"ticks": -1` does here, plays the
   run again from its start, so the world is exactly as it was a tick before.
 - When it goes another way, `diverged` is the first tick whose hash differs and `changes` is

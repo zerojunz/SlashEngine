@@ -210,7 +210,7 @@ TEST_CASE("models draw coarser LODs further from the camera, as Godot's Forward+
     Scene scene;
     const entt::entity ball = scene.create(
         "ball",
-        R"({"Transform3D": {"position": [0, 0, -1.5]}, "MeshInstance3D": {"mesh": "sphere.gltf"}})");
+        R"({"Transform3D": {"position": [0, 0, -1.5]}, "Model3D": {"mesh": "sphere.gltf"}})");
     // Half a unit from its nearest side, the first LOD would be off by more than a pixel.
     CHECK(scene.drawn() == std::array<std::size_t, 2>{1, 0});
     auto& place = scene.world.ecs().get<world::Transform3D>(ball);
@@ -219,9 +219,9 @@ TEST_CASE("models draw coarser LODs further from the camera, as Godot's Forward+
     place.position = {0.0F, 0.0F, -200.0F};
     CHECK(scene.drawn() == std::array<std::size_t, 2>{1, 1});
     // A larger lod_bias keeps its detail there, as a larger mesh would.
-    scene.world.ecs().get<world::MeshInstance3D>(ball).lod_bias = 1000.0F;
+    scene.world.ecs().get<world::Model3D>(ball).lod_bias = 1000.0F;
     CHECK(scene.drawn() == std::array<std::size_t, 2>{1, 0});
-    scene.world.ecs().get<world::MeshInstance3D>(ball).lod_bias = 1.0F;
+    scene.world.ecs().get<world::Model3D>(ball).lod_bias = 1.0F;
     // A threshold of 0 pixels draws every mesh in full.
     canvas::Settings settings = canvas::settings(scene.world);
     settings.mesh_lod_threshold = 0.0F;

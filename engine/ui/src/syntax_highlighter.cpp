@@ -58,7 +58,7 @@ std::string key_error(const std::u32string& start, const std::u32string& end) {
 
 } // namespace
 
-CodeHighlight::CodeHighlight(const world::CodeHighlighter& highlighter, Vec4 font_color)
+CodeHighlight::CodeHighlight(const world::SyntaxColors& highlighter, Vec4 font_color)
     : highlighter_(&highlighter), font_color_(font_color) {
     for (const auto& [key, color] : highlighter.color_regions) {
         auto [start, end] = split_key(key);
@@ -130,7 +130,7 @@ ColorMap CodeHighlight::line(std::u32string_view str, int& region) const {
         return str.find(U'\\', static_cast<std::size_t>(std::max(from, 0))) !=
                std::u32string_view::npos;
     };
-    const world::CodeHighlighter& h = *highlighter_;
+    const world::SyntaxColors& h = *highlighter_;
     Vec4 prev_color = kNoColor;
 
     if (in_region != -1 && line_length == 0) {
@@ -328,7 +328,7 @@ ColorMap CodeHighlight::line(std::u32string_view str, int& region) const {
     return {color_map.begin(), color_map.end()};
 }
 
-std::string color_region_error(const world::CodeHighlighter& highlighter, const std::string& key) {
+std::string color_region_error(const world::SyntaxColors& highlighter, const std::string& key) {
     const auto [start, end] = split_key(key);
     if (std::string error = key_error(start, end); !error.empty()) {
         return error;

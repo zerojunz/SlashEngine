@@ -14,7 +14,7 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-using world::CharacterBody3D;
+using world::CharacterMover3D;
 
 // Godot adds this to floor_max_angle and wall_min_slide_angle, so a surface right at the limit
 // counts.
@@ -55,11 +55,11 @@ float length_squared(Vec3 v) {
     return dot(v, v);
 }
 
-// One call of move_and_slide: the CharacterBody3D's members Godot keeps, loaded from the
+// One call of move_and_slide: the CharacterMover3D's members Godot keeps, loaded from the
 // component and the body, and written back when the move is done.
 class Mover {
 public:
-    Mover(const Space& space, Body& body, world::Affine3D& transform, CharacterBody3D& character)
+    Mover(const Space& space, Body& body, world::Affine3D& transform, CharacterMover3D& character)
         : space_(&space), body_(&body), transform_(&transform), c_(&character),
           grounded_mode_(character.motion_mode != "floating"),
           up_(normalized(character.up_direction)), margin_(character.safe_margin),
@@ -69,7 +69,7 @@ public:
 
     // CharacterBody3D::move_and_slide.
     void move_and_slide(float delta) {
-        CharacterBody3D& c = *c_;
+        CharacterMover3D& c = *c_;
         Vec3 current_platform_velocity = platform_velocity_;
 
         if ((c.on_floor || c.on_wall) && platform_ != entt::null) {
@@ -213,7 +213,7 @@ private:
     // CharacterBody3D::_move_and_slide_grounded.
     // NOLINTNEXTLINE(readability-function-cognitive-complexity): Godot's, kept whole
     void move_and_slide_grounded(float delta, bool was_on_floor) {
-        CharacterBody3D& c = *c_;
+        CharacterMover3D& c = *c_;
         Vec3 motion = c.velocity * delta;
         const Vec3 motion_slide_up = slide(motion, up_);
         const Vec3 prev_floor_normal = floor_normal_;
@@ -497,7 +497,7 @@ private:
 
     // CharacterBody3D::_move_and_slide_floating.
     void move_and_slide_floating(float delta) {
-        const CharacterBody3D& c = *c_;
+        const CharacterMover3D& c = *c_;
         Vec3 motion = c.velocity * delta;
 
         platform_ = entt::null;
@@ -666,7 +666,7 @@ private:
                 wall_depth = collision.depth;
                 wall_normal_ = collision.normal;
 
-                // Don't apply wall velocity when the collider is a CharacterBody3D.
+                // Don't apply wall velocity when the collider is a CharacterMover3D.
                 if (!collision.collider_is_character) {
                     set_platform_data(collision);
                 }
@@ -709,7 +709,7 @@ private:
     const Space* space_;
     Body* body_;
     world::Affine3D* transform_;
-    CharacterBody3D* c_;
+    CharacterMover3D* c_;
     bool grounded_mode_;
     Vec3 up_;
     float margin_;
@@ -727,7 +727,7 @@ private:
 } // namespace
 
 void move_character(const Space& space, Body& body, world::Affine3D& transform,
-                    CharacterBody3D& character, float seconds) {
+                    CharacterMover3D& character, float seconds) {
     Mover(space, body, transform, character).move_and_slide(seconds);
 }
 

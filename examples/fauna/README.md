@@ -19,7 +19,7 @@ grazers once it is hungry.
 [dog.creature.json](fauna/dog.creature.json) is a friendly dog that two bones tame and its owner
 can ride, [sparrow.creature.json](fauna/sparrow.creature.json) a timid flock bird and
 [minnow.creature.json](fauna/minnow.creature.json) a school fish. The scene is a meadow with a
-ranger (a `CharacterBody3D`, which creatures take for a person).
+ranger (a `CharacterMover3D`, which creatures take for a person).
 
 [calls.jsonl](calls.jsonl) works on the animals the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

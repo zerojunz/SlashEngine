@@ -2,23 +2,23 @@
   "entities": {
     "brightness": {
       "components": {
-        "Control": {
-          "size_flags_vertical": "expand_fill"
-        },
         "Slider": {
           "max_value": 1.0,
           "step": 0.1,
           "value": 0.5,
           "vertical": true
+        },
+        "Widget": {
+          "size_flags_vertical": "expand_fill"
         }
       }
     },
     "column": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "children": ["fullscreen", "subtitles", "quality", "vsync", "volume_row"],
           "size_flags_horizontal": "expand_fill"
         }
@@ -29,7 +29,7 @@
         "CheckBox": {
           "text": "Fullscreen"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "high": {
@@ -38,7 +38,7 @@
           "button_group": "quality",
           "text": "High"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "low": {
@@ -47,7 +47,7 @@
           "button_group": "quality",
           "text": "Low"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "medium": {
@@ -57,28 +57,29 @@
           "button_pressed": true,
           "text": "Medium"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "quality": {
       "components": {
-        "BoxContainer": {},
-        "Control": {
+        "StackBox": {},
+        "Widget": {
           "children": ["low", "medium", "high"]
         }
       }
     },
     "row": {
       "components": {
-        "BoxContainer": {},
-        "Control": {
+        "StackBox": {},
+        "Widget": {
           "children": ["column", "brightness"]
         }
       }
     },
     "screen": {
       "components": {
-        "Control": {
+        "MarginBox": {},
+        "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["row"],
@@ -88,8 +89,7 @@
             "margin_right": 8,
             "margin_top": 8
           }
-        },
-        "MarginContainer": {}
+        }
       }
     },
     "subtitles": {
@@ -98,46 +98,46 @@
           "button_pressed": true,
           "text": "Subtitles"
         },
-        "Control": {}
+        "Widget": {}
       }
     },
     "volume": {
       "components": {
-        "Control": {
-          "size_flags_horizontal": "expand_fill",
-          "size_flags_vertical": "shrink_center"
-        },
         "Slider": {
           "step": 5.0,
           "tick_count": 5,
           "ticks_on_borders": true,
           "value": 80.0
+        },
+        "Widget": {
+          "size_flags_horizontal": "expand_fill",
+          "size_flags_vertical": "shrink_center"
         }
       }
     },
     "volume_label": {
       "components": {
-        "Control": {},
         "Label": {
           "text": "Volume"
-        }
+        },
+        "Widget": {}
       }
     },
     "volume_row": {
       "components": {
-        "BoxContainer": {},
-        "Control": {
+        "StackBox": {},
+        "Widget": {
           "children": ["volume_label", "volume"]
         }
       }
     },
     "vsync": {
       "components": {
-        "CheckButton": {
+        "ToggleSwitch": {
           "button_pressed": true,
           "text": "V-Sync"
         },
-        "Control": {}
+        "Widget": {}
       }
     }
   },

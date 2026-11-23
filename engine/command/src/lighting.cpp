@@ -107,7 +107,7 @@ void add_lights(world::World& world, std::string_view type, std::vector<Light>& 
     for (const entt::entity entity : world.ecs().view<T>()) {
         const T& light = world.ecs().get<T>(entity);
         if constexpr (std::is_same_v<T, world::PointLight2D> ||
-                      std::is_same_v<T, world::DirectionalLight2D>) {
+                      std::is_same_v<T, world::SunLight2D>) {
             if (!light.enabled || light.energy == 0.0F) {
                 continue;
             }
@@ -116,7 +116,7 @@ void add_lights(world::World& world, std::string_view type, std::vector<Light>& 
                            .type = std::string(type),
                            .bake_mode = ""});
         } else {
-            if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+            if constexpr (std::is_same_v<T, world::SunLight3D>) {
                 if (light.sky_mode == "sky_only") {
                     continue; // lights only the sky
                 }
@@ -135,39 +135,39 @@ void add_lights(world::World& world, std::string_view type, std::vector<Light>& 
 // Every 3D and 2D light that shines and has an ID, in ID order.
 std::vector<Light> shining_lights(world::World& world) {
     std::vector<Light> lights;
-    add_lights<world::DirectionalLight3D>(world, "DirectionalLight3D", lights);
-    add_lights<world::OmniLight3D>(world, "OmniLight3D", lights);
+    add_lights<world::SunLight3D>(world, "SunLight3D", lights);
+    add_lights<world::PointLight3D>(world, "PointLight3D", lights);
     add_lights<world::SpotLight3D>(world, "SpotLight3D", lights);
     add_lights<world::PointLight2D>(world, "PointLight2D", lights);
-    add_lights<world::DirectionalLight2D>(world, "DirectionalLight2D", lights);
+    add_lights<world::SunLight2D>(world, "SunLight2D", lights);
     std::erase_if(lights, [](const Light& light) { return light.id.empty(); });
     std::ranges::sort(lights, {}, &Light::id);
     return lights;
 }
 
 float& energy_of(world::World& world, const Light& light) {
-    if (light.type == "DirectionalLight3D") {
-        return world.ecs().get<world::DirectionalLight3D>(light.entity).light_energy;
+    if (light.type == "SunLight3D") {
+        return world.ecs().get<world::SunLight3D>(light.entity).light_energy;
     }
-    if (light.type == "OmniLight3D") {
-        return world.ecs().get<world::OmniLight3D>(light.entity).light_energy;
+    if (light.type == "PointLight3D") {
+        return world.ecs().get<world::PointLight3D>(light.entity).light_energy;
     }
     if (light.type == "PointLight2D") {
         return world.ecs().get<world::PointLight2D>(light.entity).energy;
     }
-    if (light.type == "DirectionalLight2D") {
-        return world.ecs().get<world::DirectionalLight2D>(light.entity).energy;
+    if (light.type == "SunLight2D") {
+        return world.ecs().get<world::SunLight2D>(light.entity).energy;
     }
     return world.ecs().get<world::SpotLight3D>(light.entity).light_energy;
 }
 
 // What light.tune scales: a 3D light's lux or lumens with physical light units, else its energy.
 float& intensity_of(world::World& world, const Light& light, bool units) {
-    if (units && light.type == "DirectionalLight3D") {
-        return world.ecs().get<world::DirectionalLight3D>(light.entity).light_intensity_lux;
+    if (units && light.type == "SunLight3D") {
+        return world.ecs().get<world::SunLight3D>(light.entity).light_intensity_lux;
     }
-    if (units && light.type == "OmniLight3D") {
-        return world.ecs().get<world::OmniLight3D>(light.entity).light_intensity_lumens;
+    if (units && light.type == "PointLight3D") {
+        return world.ecs().get<world::PointLight3D>(light.entity).light_intensity_lumens;
     }
     if (units && light.type == "SpotLight3D") {
         return world.ecs().get<world::SpotLight3D>(light.entity).light_intensity_lumens;
@@ -176,13 +176,13 @@ float& intensity_of(world::World& world, const Light& light, bool units) {
 }
 
 std::string_view intensity_field(const Light& light, bool units) {
-    if (light.type == "PointLight2D" || light.type == "DirectionalLight2D") {
+    if (light.type == "PointLight2D" || light.type == "SunLight2D") {
         return "energy";
     }
     if (!units) {
         return "light_energy";
     }
-    return light.type == "DirectionalLight3D" ? "light_intensity_lux" : "light_intensity_lumens";
+    return light.type == "SunLight3D" ? "light_intensity_lux" : "light_intensity_lumens";
 }
 
 // The lights named by ids (a JSON array at path), or a reply naming the first unknown one.
@@ -259,7 +259,7 @@ Result<Pixels> draw_frame(Session& session, const canvas::CaptureOptions& option
 
 bool has_2d(const std::vector<Light>& lights) {
     return std::ranges::any_of(lights, [](const Light& light) {
-        return light.type == "PointLight2D" || light.type == "DirectionalLight2D";
+        return light.type == "PointLight2D" || light.type == "SunLight2D";
     });
 }
 
@@ -544,13 +544,13 @@ Reply light_tune(Session& session, const json::Value& params) {
     bool converged = false;
     int steps = 0;
     // The power brightness grows by: measured from each step after the first.
-    double power = std::ranges::all_of(lights,
-                                       [](const Light& light) {
-                                           return light.type == "PointLight2D" ||
-                                                  light.type == "DirectionalLight2D";
-                                       })
-                       ? 1.0
-                       : kGamma3D;
+    double power =
+        std::ranges::all_of(lights,
+                            [](const Light& light) {
+                                return light.type == "PointLight2D" || light.type == "SunLight2D";
+                            })
+            ? 1.0
+            : kGamma3D;
     // Every light's energy is its first times `total`, and a light with a share target's times
     // its own weight too. `low` and `high` bracket `total`: the largest seen too dark and the
     // smallest seen too bright or clipping (0 and infinity until seen). `best` is the total and

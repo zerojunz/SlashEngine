@@ -8,8 +8,8 @@
     },
     "tv": {
       "components": {
-        "Control": {"offset_left": 8, "offset_top": 8},
-        "VideoStreamPlayer": {"autoplay": true, "stream": "clip.ivf"}
+        "Widget": {"offset_left": 8, "offset_top": 8},
+        "Video": {"autoplay": true, "stream": "clip.ivf"}
       }
     }
   },

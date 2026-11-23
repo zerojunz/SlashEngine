@@ -775,7 +775,7 @@ TEST_CASE("SurfaceTool builds surfaces as Godot's") {
     // A second surface with a material; flipped normals.
     add_square(tool, 0.5F);
     tool.generate_normals(true);
-    slash::world::StandardMaterial3D red;
+    slash::world::Surface3D red;
     red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
     tool.set_material(red);
     REQUIRE(tool.commit(model).ok());
@@ -868,16 +868,16 @@ TEST_CASE("gameplay code makes textures and meshes that draw") {
     world::World bare{bare_components};
     CHECK_FALSE(slash::procedural::make_texture(bare, "dot", solid(1, {0, 0, 0, 0})).ok());
 
-    // A mesh drawn by a MeshInstance3D in front of the camera.
+    // A mesh drawn by a Model3D in front of the camera.
     MadeScene three;
     three.create("camera", R"({"Camera3D": {"current": true},
                                "Transform3D": {"position": [0, 0, 3]}})");
-    three.create("square", R"({"MeshInstance3D": {"mesh": "made:square"}, "Transform3D": {}})");
+    three.create("square", R"({"Model3D": {"mesh": "made:square"}, "Transform3D": {}})");
     CHECK(three.capture().meshes == 0);
     slash::scene3d::SurfaceTool tool;
     add_square(tool, 1.0F);
     tool.generate_normals();
-    slash::world::StandardMaterial3D red;
+    slash::world::Surface3D red;
     red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
     red.shading_mode = "unshaded";
     tool.set_material(red);
@@ -1138,19 +1138,19 @@ TEST_CASE("scatter keeps to slopes, heights and noise, and stands on normals") {
     CHECK(procedural::scatter(layer, 0, 3, false, {}, {}).places.empty());
 }
 
-TEST_CASE("MultiMeshInstance3D draws its mesh at each instance") {
+TEST_CASE("ModelInstances3D draws its mesh at each instance") {
     MadeScene scene;
     scene.create("camera", R"({"Camera3D": {"current": true, "projection": "orthogonal",
                                             "size": 4},
                                "Transform3D": {"position": [0, 0, 5]}})");
-    scene.create("many", R"({"MultiMeshInstance3D": {"mesh": "made:square", "instances": [
+    scene.create("many", R"({"ModelInstances3D": {"mesh": "made:square", "instances": [
                                  {"position": [-1, 0, 0]}, {"position": [1, 0, 0]},
                                  {"position": [0, 1.2, 0], "scale": [0.5, 0.5, 0.5]}]},
                              "Transform3D": {}})");
     slash::scene3d::SurfaceTool tool;
     add_square(tool, 0.4F);
     tool.generate_normals();
-    slash::world::StandardMaterial3D red;
+    slash::world::Surface3D red;
     red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
     red.shading_mode = "unshaded";
     tool.set_material(red);
@@ -1167,18 +1167,18 @@ TEST_CASE("MultiMeshInstance3D draws its mesh at each instance") {
 
     // visible_instance_count draws the first ones only.
     scene.world.ecs()
-        .get<world::MultiMeshInstance3D>(scene.world.find("many"))
+        .get<world::ModelInstances3D>(scene.world.find("many"))
         .visible_instance_count = 1;
     captured = scene.capture();
     CHECK(captured.meshes == 1);
     CHECK(pixel(captured.image, 24, 16)[0] < 30);
 
     // A mesh that isn't there is a problem at its field, once.
-    scene.create("broken", R"({"MultiMeshInstance3D": {"mesh": "tree.png",
+    scene.create("broken", R"({"ModelInstances3D": {"mesh": "tree.png",
                                  "instances": [{}, {}]}, "Transform3D": {}})");
     const auto problems = slash::scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 1);
-    CHECK(problems[0].path == "/components/MultiMeshInstance3D/mesh");
+    CHECK(problems[0].path == "/components/ModelInstances3D/mesh");
 }
 
 TEST_CASE("scatter.run places what scatter rules ask for") {
@@ -1189,7 +1189,7 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
         REQUIRE(slash::platform::write_file(root + "/" + file, text).ok());
     };
     write("rock.prefab.json", R"({"format": 1, "components": {
-        "BoxMesh": {"size": [0.5, 0.5, 0.5]}, "MeshInstance3D": {},
+        "BoxGeometry": {"size": [0.5, 0.5, 0.5]}, "Model3D": {},
         "Transform3D": {"position": [0, 0.25, 0]}}})");
     write("flower.prefab.json", R"({"format": 1, "components": {
         "Sprite2D": {"texture": "flower.png"}, "Transform2D": {}}})");
@@ -1215,7 +1215,7 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
         return session.call(name, parse(params));
     };
     REQUIRE(call("entity.create", R"({"id": "ground", "components": {
-        "PlaneMesh": {"size": [20, 20]}, "MeshInstance3D": {}, "Transform3D": {}}})")
+        "PlaneGeometry": {"size": [20, 20]}, "Model3D": {}, "Transform3D": {}}})")
                 .ok);
 
     command::Reply reply = call("scatter.run", R"({"path": "yard.scatter.json", "into": "yard"})");
@@ -1228,7 +1228,7 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
     REQUIRE(children.size() == 6);
     CHECK(world.id_of(children[0]) == "yard_trees");
     CHECK(world.id_of(children[1]) == "yard_rocks_1");
-    const auto& trees = world.ecs().get<world::MultiMeshInstance3D>(children[0]);
+    const auto& trees = world.ecs().get<world::ModelInstances3D>(children[0]);
     CHECK(trees.mesh == "made:tree");
     REQUIRE(trees.instances.size() == 12);
     std::vector<Vec3> tree_places;
@@ -1242,7 +1242,7 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
     for (std::size_t i = 1; i < children.size(); ++i) {
         REQUIRE(world.prefab_of(children[i]) != nullptr);
         CHECK(world.prefab_of(children[i])->path == "rock.prefab.json");
-        CHECK(world.ecs().all_of<world::BoxMesh>(children[i]));
+        CHECK(world.ecs().all_of<world::BoxGeometry>(children[i]));
         const Vec3 at = world.ecs().get<world::Transform3D>(children[i]).position;
         CHECK(at.x >= 0.0F);
         CHECK(at.z <= 10.0F);
@@ -1260,13 +1260,12 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
     REQUIRE_MESSAGE(reply.ok, reply.message);
     CHECK(world.ecs().get<world::Transform3D>(yard).children.size() == 6);
     CHECK_FALSE(world.valid(world.find("yard_rocks_6")));
-    const auto& moved = world.ecs().get<world::MultiMeshInstance3D>(world.find("yard_trees"));
+    const auto& moved = world.ecs().get<world::ModelInstances3D>(world.find("yard_trees"));
     CHECK(moved.instances[0].position.x == doctest::Approx(tree_places[0].x - 5.0F));
     REQUIRE(call("undo", "{}").ok);
-    CHECK(world.ecs()
-              .get<world::MultiMeshInstance3D>(world.find("yard_trees"))
-              .instances[0]
-              .position == tree_places[0]);
+    CHECK(
+        world.ecs().get<world::ModelInstances3D>(world.find("yard_trees")).instances[0].position ==
+        tree_places[0]);
 
     // Inline rules; a layer that can't fill up says why.
     reply = call("scatter.run", R"({"into": "crowd", "rules": {"format": 1, "layers": [
@@ -1277,7 +1276,7 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
     CHECK(posts.find("placed")->as_int() < 50);
     CHECK(posts.find("wanted")->as_int() == 50);
     CHECK(posts.find("rejected")->find("spacing")->as_int() > 0);
-    CHECK(world.ecs().get<world::MeshInstance3D>(world.find("crowd_posts_1")).mesh == "made:tree");
+    CHECK(world.ecs().get<world::Model3D>(world.find("crowd_posts_1")).mesh == "made:tree");
 
     // A dry run changes nothing.
     const std::size_t before = world.ids().size();
@@ -1289,7 +1288,7 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
 
     // 2D: flowers on the grass cells of a tile map.
     REQUIRE(call("entity.create", R"({"id": "map", "components": {
-        "TileMapLayer": {"tile_set": "ground.tileset.json", "legend": {"g": "grass", "r": "rock"},
+        "TileLayer2D": {"tile_set": "ground.tileset.json", "legend": {"g": "grass", "r": "rock"},
                          "rows": ["ggrr", "ggrr"]},
         "Transform2D": {"position": [100, 0]}}})")
                 .ok);
@@ -1325,6 +1324,6 @@ TEST_CASE("scatter.run places what scatter rules ask for") {
         "layers": [{"name": "a", "prefab": "flower.prefab.json", "on": ["ground"],
                     "count": 1}]}})");
     CHECK_FALSE(reply.ok);
-    CHECK(reply.message.find("has no TileMapLayer") != std::string::npos);
+    CHECK(reply.message.find("has no TileLayer2D") != std::string::npos);
     std::filesystem::remove_all(root);
 }

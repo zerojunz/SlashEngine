@@ -5,8 +5,8 @@
 {"id":5,"jsonrpc":"2.0","result":{"alive":29,"bounds":[1.6083,0.1352,-0.5898,1.1237,0.9726,0.9954],"particles":[{"age":0.9667,"angle":0,"color":[0.499,0.799,1,1],"position":[1.9999,0.8741,0.1567],"scale":[1,1.9798,1],"velocity":[-0.0819,-1.9348,0.2996]}]}}
 {"id":6,"jsonrpc":"2.0","result":{"colors":[[1,0.451,0.216,1],[0.937,0.635,0.235,1],[0.498,0.8,1,1],[0.051,0.071,0.149,1]],"drawn":{"meshes":4},"height":90,"width":160}}
 {"id":7,"jsonrpc":"2.0","result":{"drawn":{"meshes":4},"height":90,"path":"shots/gpu-particles.png","width":160}}
-{"id":8,"jsonrpc":"2.0","result":{"changed":{"GPUParticles3D":{"emitting":false}},"id":"sparks"}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"GpuEmitter3D":{"emitting":false}},"id":"sparks"}}
 {"id":9,"jsonrpc":"2.0","result":{"tick":120,"ticks":90}}
 {"id":10,"jsonrpc":"2.0","result":{"alive":0,"bounds":null}}
 {"id":11,"jsonrpc":"2.0","result":{"id":"embers"}}
-{"id":12,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"embers","message":"has no mesh to draw at its particles: set draw_pass_1 to a model file, or add a QuadMesh or another primitive mesh","path":"/components/GPUParticles3D/draw_pass_1"}],"viewport":[160,90]}}
+{"id":12,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"embers","message":"has no mesh to draw at its particles: set draw_pass_1 to a model file, or add a QuadGeometry or another primitive mesh","path":"/components/GpuEmitter3D/draw_pass_1"}],"viewport":[160,90]}}

@@ -17,21 +17,21 @@ namespace slash::world {
 
 class World;
 
-// A canvas: the world, or a CanvasLayer's.
+// A canvas: the world, or a ScreenLayer's.
 struct Canvas {
-    entt::entity layer = entt::null; // the CanvasLayer, or null for the world
-    int order = 0;                   // the CanvasLayer's layer; 0 for the world
+    entt::entity layer = entt::null; // the ScreenLayer, or null for the world
+    int order = 0;                   // the ScreenLayer's layer; 0 for the world
     bool visible = true;
     // Its pixels to the screen's, as Godot's RendererViewport places a canvas: the camera's
-    // canvas transform for the world, a CanvasLayer's own (canvas_layer_transform). Controls in
+    // canvas transform for the world, a ScreenLayer's own (canvas_layer_transform). Controls in
     // the world stay on the screen instead, as before canvas layers.
     Affine2D transform;
 };
 
-// Where a CanvasLayer draws, as Godot's RendererViewport draws its canvas: its offset, rotation
+// Where a ScreenLayer draws, as Godot's RendererViewport draws its canvas: its offset, rotation
 // and scale; following the viewport, after the world's canvas transform (the camera's) and then
 // scaled by follow_viewport_scale around the middle of a screen of screen_size pixels.
-[[nodiscard]] Affine2D canvas_layer_transform(const CanvasLayer& layer, const Affine2D& world,
+[[nodiscard]] Affine2D canvas_layer_transform(const ScreenLayer& layer, const Affine2D& world,
                                               Vec2 screen_size);
 
 // A world's canvases. Make one, use it and drop it, as a Tree2D; it keeps no reference to the
@@ -45,20 +45,20 @@ public:
     // CanvasLayers of one layer in the order their entities were made. The world is always
     // there.
     [[nodiscard]] const std::vector<Canvas>& all() const { return canvases_; }
-    // The place in all() of the canvas an entity draws in: that of the CanvasLayer whose
-    // children hold it or an entity above it (through Transform2D and Control children), else
+    // The place in all() of the canvas an entity draws in: that of the ScreenLayer whose
+    // children hold it or an entity above it (through Transform2D and Widget children), else
     // the world's. An entity two CanvasLayers list draws in the first made.
     [[nodiscard]] std::size_t of(entt::entity entity) const;
     // The place in all() of the world's canvas.
     [[nodiscard]] std::size_t world_canvas() const { return world_; }
-    // Whether any CanvasLayer holds anything: with none, everything is in the world.
+    // Whether any ScreenLayer holds anything: with none, everything is in the world.
     [[nodiscard]] bool layered() const { return !held_.empty(); }
 
 private:
     std::vector<Canvas> canvases_;
     std::size_t world_ = 0;
     std::unordered_map<entt::entity, std::size_t> held_;     // listed by a layer
-    std::unordered_map<entt::entity, entt::entity> parents_; // Transform2D's, then Control's
+    std::unordered_map<entt::entity, entt::entity> parents_; // Transform2D's, then Widget's
 };
 
 // The canvases of the world as they are now, for a screen of screen_size pixels: through the

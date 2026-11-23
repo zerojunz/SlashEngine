@@ -13,7 +13,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
           "ambient_light_energy": 0.5,
           "ambient_light_source": "color",
@@ -24,16 +24,16 @@
     },
     "face": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "models/face.gltf"
         },
         "Transform3D": {},
-        "XRFaceModifier3D": {}
+        "XRFace3D": {}
       }
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.4, -0.3, 0.0]
         }

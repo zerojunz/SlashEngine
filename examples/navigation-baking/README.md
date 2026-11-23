@@ -1,14 +1,14 @@
 # Navigation baking
 
-Navigation meshes baked from a scene, as Godot 4.6's `NavigationRegion3D.bake_navigation_mesh`
-and `NavigationRegion2D.bake_navigation_polygon` bake them. [main.scene.json](main.scene.json)
+Navigation meshes baked from a scene, as Godot 4.6's `NavArea3D.bake_navigation_mesh`
+and `NavArea2D.bake_navigation_polygon` bake them. [main.scene.json](main.scene.json)
 has a courtyard on the 3D map: a 12 by 12 meter ground, a wall, a well, and a platform a meter
 up with a ramp to it. They are under the `courtyard` region in its `Transform3D` children, as
 Godot bakes the nodes under a region:
 
 ```json
 "courtyard": {"components": {
-  "NavigationRegion3D": {"navigation_mesh": "nav/courtyard.navmesh.json"},
+  "NavArea3D": {"navigation_mesh": "nav/courtyard.navmesh.json"},
   "Transform3D": {"children": ["ground", "wall", "well", "platform", "ramp"]}
 }}
 ```
@@ -16,13 +16,13 @@ Godot bakes the nodes under a region:
 [nav/courtyard.navmesh.json](nav/courtyard.navmesh.json) holds only the bake's settings at
 first, with Godot's names and defaults (`cell_size`, `agent_radius`, `agent_max_slope` and the
 rest; here a taller `agent_height`). The ground, wall, platform and ramp are static bodies,
-whose shapes bake; the well is a `MeshInstance3D`, whose mesh bakes. Recast marks the triangles
+whose shapes bake; the well is a `Model3D`, whose mesh bakes. Recast marks the triangles
 flat enough to walk, voxelizes them, keeps agents `agent_radius` from every edge and gives back
 the walkable area as triangles, which the bake writes to the file's `vertices` and `polygons`.
 
 On the 2D map, [nav/garden.navpoly.json](nav/garden.navpoly.json) has an outline of a garden
-where agents may walk, and the `garden` region has a pond (a `CollisionPolygon2D`) and a tree
-(a circle `CollisionShape2D`) on static bodies under it. Clipper2 takes the obstructions out of
+where agents may walk, and the `garden` region has a pond (a `PolygonCollider2D`) and a tree
+(a circle `Collider2D`) on static bodies under it. Clipper2 takes the obstructions out of
 the outline and shrinks what is left by `agent_radius`, and PolyPartition splits it into convex
 polygons.
 

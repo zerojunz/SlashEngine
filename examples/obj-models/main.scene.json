@@ -14,7 +14,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.3, 0.35, 0.5, 1.0],
           "ambient_light_energy": 0.4,
           "ambient_light_source": "color",
@@ -25,7 +25,7 @@
     },
     "glow": {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_color": [1.0, 0.8, 0.45, 1.0],
           "light_energy": 2.0,
           "omni_range": 4.0
@@ -37,11 +37,11 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [20.0, 20.0]
         },
-        "StandardMaterial3D": {
+        "Surface3D": {
           "albedo_color": [0.4, 0.4, 0.42, 1.0]
         },
         "Transform3D": {}
@@ -49,7 +49,7 @@
     },
     "lamp": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "models/lamp.obj"
         },
         "Transform3D": {}
@@ -57,7 +57,7 @@
     },
     "moon": {
       "components": {
-        "DirectionalLight3D": {
+        "SunLight3D": {
           "light_color": [0.6, 0.65, 0.9, 1.0],
           "light_energy": 0.5
         },

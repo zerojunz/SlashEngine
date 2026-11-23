@@ -1,5 +1,5 @@
 // Particles colliding with baked shapes and the ground in 3D, as Godot's
-// GPUParticlesCollisionSDF3D and GPUParticlesCollisionHeightField3D: in main.scene.json snow falls
+// ParticleColliderSdf3D and ParticleColliderHeight3D: in main.scene.json snow falls
 // onto a yard with a mound in it, which a height field draws from above, and sparks fall onto a
 // round statue, whose signed distance field particles.bake_sdf bakes from its mesh.
 //
@@ -44,7 +44,7 @@ json::Value call(command::Session& session, std::string_view name, std::string_v
 std::vector<render::Particle3D> live(command::Session& session, std::string_view id) {
     const world::World& world = session.world();
     const entt::entity entity = world.find(id);
-    const auto& emitter = world.ecs().get<const world::GPUParticles3D>(entity);
+    const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(entity);
     const auto process =
         session.assets().load<slash::canvas::ProcessMaterial>(emitter.process_material);
     if (!process) {
@@ -123,7 +123,7 @@ int main() {
 
     // Without a texture an SDF collider holds nothing, as Godot's: the sparks fall through.
     call(session, "component.set",
-         R"({"id": "statue_sdf", "components": {"GPUParticlesCollisionSDF3D": {"texture": ""}}})");
+         R"({"id": "statue_sdf", "components": {"ParticleColliderSdf3D": {"texture": ""}}})");
     call(session, "step", R"({"ticks": 60})");
     count_sparks(session);
 
@@ -131,7 +131,7 @@ int main() {
     // along its x and z axes, as Godot's.
     call(session, "batch", R"({"commands": [
         {"command": "component.set", "params": {"id": "snowfield", "components": {
-            "GPUParticlesCollisionHeightField3D": {"follow_camera_enabled": true}}}},
+            "ParticleColliderHeight3D": {"follow_camera_enabled": true}}}},
         {"command": "component.set", "params": {"id": "camera", "components": {
             "Transform3D": {"position": [5.5, 3.0, 9.0]}}}}]})");
     call(session, "step", R"({"ticks": 1})");

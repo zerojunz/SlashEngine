@@ -50,10 +50,10 @@ Status: current · Updated: 2026-11-22
 | `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion, reflections and global illumination traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.reflections.sky_reflections.ggx_samples` | No | `32` | How many GGX samples each level of the sky's [radiance](scene-format.md#sky-light) cube blurs with, from 1 to 32, as Godot's `rendering/reflections/sky_reflections/ggx_samples`; levels take a quarter, a half, all and four times it, as Godot's. Fewer filter faster and look grainier |
-| `rendering.lightmapping.bake_quality` | No | 32, 128, 512, 2048 rays; probes 64, 256, 512, 2048 | The rays a [LightmapGI](scene-format.md#baked-lightmaps) bake traces at each `quality`: `low_quality_ray_count` (to `ultra_`) per texel for bounces and `low_quality_probe_ray_count` (to `ultra_`) per light probe, as Godot's `rendering/lightmapping/bake_quality/*` |
+| `rendering.lightmapping.bake_quality` | No | 32, 128, 512, 2048 rays; probes 64, 256, 512, 2048 | The rays a [BakedLighting3D](scene-format.md#baked-lightmaps) bake traces at each `quality`: `low_quality_ray_count` (to `ultra_`) per texel for bounces and `low_quality_probe_ray_count` (to `ultra_`) per light probe, as Godot's `rendering/lightmapping/bake_quality/*` |
 | `rendering.lightmapping.bake_performance` | No | 32, 64, 512 | How bakes split their work, as Godot's `bake_performance/*`: `max_rays_per_pass` and `max_rays_per_probe_pass` (rays a pass traces, each pass seeded afresh, so they change the noise) and `region_size` (a GPU bake's dispatch lights at most this many texels squared) |
 | `rendering.lightmapping.probe_capture.update_speed` | No | `15` | How fast a moving mesh's light from [light probes](scene-format.md#baked-lightmaps) follows it, a share a second, as Godot's `rendering/lightmapping/probe_capture/update_speed` |
-| `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
+| `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelLighting3D](#voxelgi) |
 | `rendering.global_illumination.sdfgi` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4), as Godot's project settings |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
 | `rendering.mesh_lod.lod_change.threshold_pixels` | No | `1` | How many pixels a model's coarser [LODs](scene-format.md#mesh-lods) may be off by where they draw: see [Mesh LODs](#mesh-lods) |
@@ -77,7 +77,7 @@ Status: current · Updated: 2026-11-22
 | `physics_3d.gravity_vector` | No | `[0, -1, 0]` | Gravity's direction, as `[x, y, z]`; y points up |
 | `physics_3d.linear_damp` | No | `0.1` | How fast 3D rigid bodies slow down, per second, combined with a body's own as in 2D |
 | `physics_3d.angular_damp` | No | `0.1` | How fast 3D rigid bodies stop turning, per second, combined the same way |
-| `physics_3d.areas_detect_static_bodies` | No | `false` | Whether `Area3D` reports static bodies, as Godot's `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` |
+| `physics_3d.areas_detect_static_bodies` | No | `false` | Whether `Zone3D` reports static bodies, as Godot's `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` |
 | `physics_3d.substeps` | No | `1` | Collision steps each physics tick, 1 to 16, as Chaos's substeps: more keep fast, small or stacked bodies steadier, at that many times the cost |
 | `physics_3d.break_budget` | No | `0` | The most pieces breaks from impacts cut each tick, as Chaos's break budget (the first always cuts; the rest wait for later ticks); 0 for no limit |
 | `physics_3d.velocity_steps`, `position_steps` | No | `10`, `2` | Solver iterations for velocities (2 to 100) and positions (1 to 100) each step, as Godot's `physics/jolt_physics_3d/simulation/` settings of those names, as every `physics_3d` row below |
@@ -114,16 +114,16 @@ Status: current · Updated: 2026-11-22
 | `gui.tooltip_position_offset` | No | `[10, 10]` | Where a tooltip shows from the pointer, as Godot's `display/mouse_cursor/tooltip_position_offset` |
 | `gui.accessibility_support` | No | `"auto"` | When controls serve a [screen reader](scene-format.md#accessibility), as Godot's `accessibility/general/accessibility_support`: while one is in use (`auto`), `always` or `disabled`, which also leaves the window with no screen reader adapter. Serving one, controls with `focus_mode` `accessibility` take focus |
 | `gui.drag_threshold` | No | `10` | Pixels the pointer moves with the left button held before a [drag](scene-format.md#tooltips-and-drag-and-drop) starts, as Godot's `Viewport.gui_drag_threshold` |
-| `gui.text_edit_idle_detect_sec` | No | `3` | Seconds without typing that end one undo step in a [`TextEdit`](scene-format.md#text-fields-of-several-lines), as Godot's `gui/timers/text_edit_idle_detect_sec`; typing before then merges into the step |
-| `gui.text_edit_undo_stack_max_size` | No | `1024` | Undo steps a `TextEdit` keeps, at least 1, as Godot's `gui/common/text_edit_undo_stack_max_size`; the oldest go first |
+| `gui.text_edit_idle_detect_sec` | No | `3` | Seconds without typing that end one undo step in a [`TextArea`](scene-format.md#text-fields-of-several-lines), as Godot's `gui/timers/text_edit_idle_detect_sec`; typing before then merges into the step |
+| `gui.text_edit_undo_stack_max_size` | No | `1024` | Undo steps a `TextArea` keeps, at least 1, as Godot's `gui/common/text_edit_undo_stack_max_size`; the oldest go first |
 | `gui.incremental_search_max_interval_msec` | No | `2000` | Milliseconds between key presses that still add to a popup menu's or tree's search by typing, as Godot's `gui/timers/incremental_search_max_interval_msec` |
 | `gui.button_shortcut_feedback_highlight_time` | No | `0.2` | Seconds a [button](scene-format.md#buttons) shows pressed after its shortcut, as Godot's `gui/timers/button_shortcut_feedback_highlight_time`; 0 shows none |
 | `audio.bus_layout` | No | | A [`.bus_layout.json`](scene-format.md#bus-layouts) file with the buses players mix into, as Godot's `audio/buses/default_bus_layout`. Without one, everything plays through Master. `project validate` checks it and `export` checks and ships it |
 | `audio.mix_rate` | No | `44100` | Frames of sound mixed per second, 8000 to 192000, as Godot's `audio/driver/mix_rate`. Sounds at other rates are resampled |
 | `audio.output_latency` | No | `15` | Milliseconds of sound queued ahead of the speakers, 1 to 500, as Godot's `audio/driver/output_latency`. More is steadier when frames run late; less answers sooner |
-| `audio.panning_strength_2d` | No | `0.5` | How far [`AudioStreamPlayer2D`](scene-format.md#audio) sounds pan left and right, 0 to 4, as Godot's `audio/general/2d_panning_strength`. Each player's `panning_strength` multiplies it |
+| `audio.panning_strength_2d` | No | `0.5` | How far [`SoundPlayer2D`](scene-format.md#audio) sounds pan left and right, 0 to 4, as Godot's `audio/general/2d_panning_strength`. Each player's `panning_strength` multiplies it |
 | `audio.speaker_mode` | No | `"auto"` | The speakers to mix for: `stereo`, `surround_31`, `surround_51`, `surround_71`, or `auto` for the output device's, as Godot asks its audio driver; stereo where nothing plays the sound, as headless. See [surround sound](scene-format.md#surround-sound) |
-| `audio.panning_strength_3d` | No | `0.5` | How far [`AudioStreamPlayer3D`](scene-format.md#3d-sound) sounds pan left and right, 0 to 4, as Godot's `audio/general/3d_panning_strength`. Each player's `panning_strength` multiplies it |
+| `audio.panning_strength_3d` | No | `0.5` | How far [`SoundPlayer3D`](scene-format.md#3d-sound) sounds pan left and right, 0 to 4, as Godot's `audio/general/3d_panning_strength`. Each player's `panning_strength` multiplies it |
 | `audio.channel_disable_threshold_db` | No | `-60` | A bus's speaker pair quieter than this, -80 to 0 dB, for `channel_disable_time` stops mixing its effects until sound comes again, as Godot's `audio/buses/channel_disable_threshold_db`. Lower lets reverb and delay tails ring longer |
 | `audio.channel_disable_time` | No | `2` | Seconds, 0 to 5, a bus's speaker pair stays under `channel_disable_threshold_db` before it stops, as Godot's `audio/buses/channel_disable_time` |
 | `audio.enable_input` | No | `false` | Let [microphone](scene-format.md#microphone) players record, as Godot's `audio/driver/enable_input`. Exports then ask for the microphone: `NSMicrophoneUsageDescription` in macOS and iOS apps, the `RECORD_AUDIO` permission on Android, and the `com.apple.security.device.audio-input` entitlement for a Mac app signed with a Developer ID and no `entitlements` file of its own (one that has its own needs that key) |
@@ -273,7 +273,7 @@ room. `0` (the default) keeps every page loaded.
 
 `rendering.occlusion_culling` is Godot's `rendering/occlusion_culling` settings. With
 `use_occlusion_culling` on, each frame leaves out the 3D meshes that
-[`OccluderInstance3D`s](scene-format.md#occlusion-culling) hide from the camera, by rays cast
+[`Occluder3D`s](scene-format.md#occlusion-culling) hide from the camera, by rays cast
 into the occluders through a small depth buffer.
 
 ```json
@@ -332,7 +332,7 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 
 ## SSAO
 
-`rendering.environment.ssao` says how a `WorldEnvironment`'s
+`rendering.environment.ssao` says how a `Environment3D`'s
 [ambient occlusion](scene-format.md#ambient-occlusion) is worked out, as Godot's
 `rendering/environment/ssao` settings.
 
@@ -350,7 +350,7 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 
 ## Screen-space reflections
 
-`rendering.environment.screen_space_reflection` says how a `WorldEnvironment`'s
+`rendering.environment.screen_space_reflection` says how a `Environment3D`'s
 [screen-space reflections](scene-format.md#screen-space-reflections) are worked out, as Godot's
 `rendering/environment/screen_space_reflection` settings.
 
@@ -380,7 +380,7 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 
 ## Volumetric fog
 
-`rendering.environment.volumetric_fog` says how finely a `WorldEnvironment`'s
+`rendering.environment.volumetric_fog` says how finely a `Environment3D`'s
 [volumetric fog](scene-format.md#volumetric-fog) is worked out, as Godot's
 `rendering/environment/volumetric_fog` settings.
 
@@ -434,7 +434,7 @@ one shows sharper reflections and costs more to draw and keep.
 | `reflection_size` | `256` | Texels across each face of a probe's cube: 32, 64, 128, 256, 512, 1024 or 2048 |
 | `reflection_count` | `64` | How many probes a frame draws, from 1 to 4096, at most 42 here; the largest are drawn first and the rest reflect nothing |
 
-## VoxelGI
+## VoxelLighting3D
 
 `rendering.global_illumination.voxel_gi.quality` says how meshes trace their ambient light
 through [VoxelGIs](scene-format.md#voxelgi), as Godot's
@@ -746,7 +746,7 @@ has a deadzone of 0.5 and Godot's bindings.
 | `ui_left`, `ui_right`, `ui_up`, `ui_down` | The arrow keys, the D-pad and the left stick |
 | `ui_page_up`, `ui_page_down`, `ui_home`, `ui_end` | PageUp, PageDown, Home, End |
 
-[Text fields](scene-format.md#text-fields) and [`TextEdit`s](scene-format.md#text-fields-of-several-lines)
+[Text fields](scene-format.md#text-fields) and [`TextArea`s](scene-format.md#text-fields-of-several-lines)
 edit with Godot's built-in text actions, bound to Ctrl
 on Windows, Linux, Android and the web, and to Command (and Option for words) on macOS and iOS,
 as Godot's `.macos` bindings. `input.state` and `input.actions` list them only when asked by
@@ -768,13 +768,13 @@ name.
 | `ui_text_select_all` | Ctrl+A | Command+A |
 | `ui_text_clear_carets_and_selection` | Escape | The same |
 | `ui_swap_input_direction` | Ctrl+` | Command+` |
-| `ui_text_newline` (TextEdit) | Enter, Kp Enter, with or without Shift | The same |
-| `ui_text_newline_blank`, `ui_text_newline_above` (TextEdit) | Ctrl+Enter, Ctrl+Shift+Enter (and Kp Enter) | Command instead of Ctrl |
-| `ui_text_indent`, `ui_text_dedent` (TextEdit) | Tab, Shift+Tab | The same |
-| `ui_text_scroll_up`, `ui_text_scroll_down` (TextEdit) | Ctrl+Up, Ctrl+Down | Command+Option+Up, Command+Option+Down |
-| `ui_text_select_word_under_caret` (TextEdit) | Alt+G | Ctrl+Command+G |
-| `ui_text_toggle_insert_mode` (TextEdit) | Insert | The same |
-| `ui_focus_mode` (TextEdit) | Ctrl+M | The same |
+| `ui_text_newline` (TextArea) | Enter, Kp Enter, with or without Shift | The same |
+| `ui_text_newline_blank`, `ui_text_newline_above` (TextArea) | Ctrl+Enter, Ctrl+Shift+Enter (and Kp Enter) | Command instead of Ctrl |
+| `ui_text_indent`, `ui_text_dedent` (TextArea) | Tab, Shift+Tab | The same |
+| `ui_text_scroll_up`, `ui_text_scroll_down` (TextArea) | Ctrl+Up, Ctrl+Down | Command+Option+Up, Command+Option+Down |
+| `ui_text_select_word_under_caret` (TextArea) | Alt+G | Ctrl+Command+G |
+| `ui_text_toggle_insert_mode` (TextArea) | Insert | The same |
+| `ui_focus_mode` (TextArea) | Ctrl+M | The same |
 | `ui_menu` | Menu | The same |
 
 `project validate` checks every binding, naming a misspelled key, button or axis with the closest

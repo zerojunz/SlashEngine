@@ -15,7 +15,7 @@ namespace slash::scene3d {
 
 entt::entity attachment_skeleton(const world::World& world, const world::Tree3D& tree,
                                  entt::entity attachment) {
-    const auto& c = world.ecs().get<const world::BoneAttachment3D>(attachment);
+    const auto& c = world.ecs().get<const world::BoneSocket3D>(attachment);
     const entt::entity skeleton =
         c.external_skeleton != entt::null ? c.external_skeleton : tree.parent(attachment);
     return skeleton != entt::null && world.valid(skeleton) ? skeleton : entt::null;
@@ -23,7 +23,7 @@ entt::entity attachment_skeleton(const world::World& world, const world::Tree3D&
 
 void place_attachments(world::World& world, const ModelLoader& load) {
     auto& ecs = world.ecs();
-    if (ecs.view<const world::BoneAttachment3D>().empty() || !load) {
+    if (ecs.view<const world::BoneSocket3D>().empty() || !load) {
         return;
     }
     const world::Tree3D tree(world);
@@ -31,12 +31,12 @@ void place_attachments(world::World& world, const ModelLoader& load) {
     // Parents first, then any without a Transform3D in the order they were made.
     std::vector<entt::entity> attachments;
     for (const entt::entity entity : tree.order()) {
-        if (ecs.all_of<world::BoneAttachment3D>(entity)) {
+        if (ecs.all_of<world::BoneSocket3D>(entity)) {
             attachments.push_back(entity);
         }
     }
     std::vector<entt::entity> rest;
-    for (const entt::entity entity : ecs.view<const world::BoneAttachment3D>()) {
+    for (const entt::entity entity : ecs.view<const world::BoneSocket3D>()) {
         if (!ecs.all_of<world::Transform3D>(entity)) {
             rest.push_back(entity);
         }
@@ -55,7 +55,7 @@ void place_attachments(world::World& world, const ModelLoader& load) {
         if (!added) {
             return at->second ? &*at->second : nullptr;
         }
-        const auto* instance = ecs.try_get<const world::MeshInstance3D>(skeleton);
+        const auto* instance = ecs.try_get<const world::Model3D>(skeleton);
         if (instance == nullptr || instance->mesh.empty()) {
             return nullptr;
         }
@@ -78,7 +78,7 @@ void place_attachments(world::World& world, const ModelLoader& load) {
             continue;
         }
         const int bone =
-            find_node(*found->model, ecs.get<const world::BoneAttachment3D>(entity).bone_name);
+            find_node(*found->model, ecs.get<const world::BoneSocket3D>(entity).bone_name);
         if (bone < 0) {
             continue;
         }
@@ -106,27 +106,26 @@ check_attachments(const world::World& world,
                   const std::function<const Model*(entt::entity)>& model_of) {
     std::vector<ModifierProblem> out;
     const auto& ecs = world.ecs();
-    std::vector<entt::entity> attachments(ecs.view<const world::BoneAttachment3D>().begin(),
-                                          ecs.view<const world::BoneAttachment3D>().end());
+    std::vector<entt::entity> attachments(ecs.view<const world::BoneSocket3D>().begin(),
+                                          ecs.view<const world::BoneSocket3D>().end());
     // In the order entities were made, so reports read the same each time.
     std::ranges::sort(attachments, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     const world::Tree3D tree(world);
     for (const entt::entity entity : attachments) {
-        const auto& c = ecs.get<const world::BoneAttachment3D>(entity);
+        const auto& c = ecs.get<const world::BoneSocket3D>(entity);
         const entt::entity skeleton = attachment_skeleton(world, tree, entity);
         const auto* instance =
-            skeleton != entt::null ? ecs.try_get<const world::MeshInstance3D>(skeleton) : nullptr;
+            skeleton != entt::null ? ecs.try_get<const world::Model3D>(skeleton) : nullptr;
         if (instance == nullptr || instance->mesh.empty()) {
             out.push_back(
                 {entity,
-                 c.external_skeleton != entt::null
-                     ? "/components/BoneAttachment3D/external_skeleton"
-                     : "/components/BoneAttachment3D",
+                 c.external_skeleton != entt::null ? "/components/BoneSocket3D/external_skeleton"
+                                                   : "/components/BoneSocket3D",
                  c.external_skeleton != entt::null
                      ? "follows an entity that draws no model file: name the entity whose "
-                       "MeshInstance3D draws the model"
+                       "Model3D draws the model"
                      : "follows a bone, but its Transform3D parent draws no model file: put it "
-                       "in the Transform3D children of the MeshInstance3D's entity, or name "
+                       "in the Transform3D children of the Model3D's entity, or name "
                        "that entity in external_skeleton"});
             continue;
         }
@@ -134,7 +133,7 @@ check_attachments(const world::World& world,
         if (model == nullptr) {
             continue;
         }
-        const std::string path = "/components/BoneAttachment3D/bone_name";
+        const std::string path = "/components/BoneSocket3D/bone_name";
         if (c.bone_name.empty()) {
             out.push_back({entity, path, "names no bone"});
             continue;

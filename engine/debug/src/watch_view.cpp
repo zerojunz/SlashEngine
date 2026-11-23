@@ -24,12 +24,12 @@ constexpr std::string_view kBar = R"({
   "format": 1,
   "entities": {
     "bar": {"components": {
-      "Control": {"children": ["status"], "anchor_right": 1, "mouse_filter": "ignore",
+      "Widget": {"children": ["status"], "anchor_right": 1, "mouse_filter": "ignore",
                   "theme_override_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
                                                       "content_margin": 6}}},
-      "PanelContainer": {}}},
+      "PanelBox": {}}},
     "status": {"components": {
-      "Control": {"mouse_filter": "ignore"},
+      "Widget": {"mouse_filter": "ignore"},
       "Label": {"text_overrun_behavior": "trim_ellipsis"}}}
   }
 })";
@@ -294,7 +294,7 @@ void WatchView::lay_out(Vec2 viewport) {
     entt::registry& registry = world_.ecs();
     const entt::entity status = world_.find("status");
     registry.get<world::Label>(status).text = status_;
-    registry.get<world::Control>(world_.find("bar")).visible = !status_.empty();
+    registry.get<world::Widget>(world_.find("bar")).visible = !status_.empty();
 
     // A box and a name tag per outline, made as more are needed and hidden when unused.
     while (shown_ < outlines_.size()) {
@@ -302,21 +302,21 @@ void WatchView::lay_out(Vec2 viewport) {
         const std::string name_id = box_id + "_name";
         const entt::entity box = world_.create(box_id).value();
         const entt::entity name = world_.create(name_id).value();
-        world::Control box_control;
+        world::Widget box_control;
         box_control.mouse_filter = "ignore";
-        registry.emplace<world::Control>(box, box_control);
+        registry.emplace<world::Widget>(box, box_control);
         registry.emplace<world::Panel>(box);
-        world::Control name_control;
+        world::Widget name_control;
         name_control.mouse_filter = "ignore";
-        registry.emplace<world::Control>(name, name_control);
+        registry.emplace<world::Widget>(name, name_control);
         registry.emplace<world::Label>(name);
         ++shown_;
     }
     for (std::size_t i = 0; i < shown_; ++i) {
         const std::string box_id = "outline_" + std::to_string(i);
-        world::Control& box = registry.get<world::Control>(world_.find(box_id));
+        world::Widget& box = registry.get<world::Widget>(world_.find(box_id));
         const entt::entity name_entity = world_.find(box_id + "_name");
-        world::Control& name = registry.get<world::Control>(name_entity);
+        world::Widget& name = registry.get<world::Widget>(name_entity);
         if (i >= outlines_.size()) {
             box.visible = false;
             name.visible = false;

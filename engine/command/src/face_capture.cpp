@@ -20,7 +20,7 @@
 // animation.import_face_capture: a face capture app's recording as a .anim.json animation of blend
 // shape tracks. SlashEngine's own (Godot reads face tracking live only): it reads the CSV files
 // Live Link Face and similar ARKit apps write, a time column then a column of weights per ARKit
-// shape, and names each track as XRFaceModifier3D would drive the shape.
+// shape, and names each track as XRFace3D would drive the shape.
 namespace slash::command {
 namespace {
 
@@ -338,7 +338,7 @@ Reply import_face_capture(Session& session, const json::Value& params) {
         }
         key_count += key_list.size();
         json::Value track;
-        track["path"] = "MeshInstance3D/blend_shapes/" + shape_name;
+        track["path"] = "Model3D/blend_shapes/" + shape_name;
         track["keys"] = std::move(key_list);
         track_list.push_back(std::move(track));
     }
@@ -409,7 +409,7 @@ void register_face_capture_commands(Registry& registry) {
     name["minLength"] = 1;
     json::Value model = property(
         "string", "The face model: tracks drive its blend shapes named in ARKit's, Unified "
-                  "Expressions', SRanipal's or Meta's standard, as XRFaceModifier3D does. "
+                  "Expressions', SRanipal's or Meta's standard, as XRFace3D does. "
                   "Default: a track per column, named as ARKit names it.");
     model["minLength"] = 1;
     json::Value fps = property("number", "Frames a second of the Timecode column. Default 60.");

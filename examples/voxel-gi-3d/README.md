@@ -1,6 +1,6 @@
-# VoxelGI 3D
+# VoxelLighting3D 3D
 
-Light bouncing around a room through a `VoxelGI`, as Godot 4.6's: the floor's sunlight lights a
+Light bouncing around a room through a `VoxelLighting3D`, as Godot 4.6's: the floor's sunlight lights a
 crate's shadowed side and the ball's underside, and the red wall tints the floor beside it.
 [main.scene.json](main.scene.json) is a floor, a red wall, a back wall, a crate and a ball seen
 through a `Camera3D` in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light.
@@ -21,10 +21,10 @@ voxel_gi.bake {"id":"gi"}
 
 - The first `frame.capture` reads the crate's shadowed side, the floor in its shadow, the floor by
   the red wall, the open floor and the ball's underside, with only the sun and the ambient light.
-  The VoxelGI has no data yet, so it gives nothing. `path` saves the frames as PNGs in `shots/`.
+  The VoxelLighting3D has no data yet, so it gives nothing. `path` saves the frames as PNGs in `shots/`.
 - `voxel_gi.bake` voxelizes the four static meshes into 12104 cells of a 64x32x64 grid, in an
   octree of 7 levels, writes them to `main.gi.voxelgi.json` beside the scene and sets the
-  VoxelGI's `data` to it.
+  VoxelLighting3D's `data` to it.
 - Traced, the crate's shadowed side turns from the ambient light's blue (0.17, 0.22, 0.37) to grey
   (0.36, 0.34, 0.36) with the light off the floor, and so does the floor in its shadow. The
   ball's underside warms from (0.63, 0.62, 0.64) to (0.76, 0.72, 0.67). The floor by the red wall
@@ -41,6 +41,6 @@ voxel_gi.bake {"id":"gi"}
 
 `voxel_gi.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
 Undo removes the file it made, or puts back the one it replaced. `slash-cli scene validate`
-checks a VoxelGI's `data`, and exports ship the file. VoxelGIs draw only in Forward+, the default
+checks a VoxelLighting3D's `data`, and exports ship the file. VoxelGIs draw only in Forward+, the default
 `rendering.rendering_method`; `rendering.global_illumination.voxel_gi.quality` in `project.json`
 picks Godot's four cones or six narrower ones.

@@ -5,7 +5,7 @@ A camera focusing, as Godot 4.6's depth of field in its Forward+ renderer, the d
 `Camera3D` in a 320x180 window: a yellow lantern 1.4 meters away, a red statue at 4 and a white
 fence with dark posts at 15.
 
-The camera's `CameraAttributesPractical` focuses on the statue, as Godot's camera `attributes` do:
+The camera's `CameraLens` focuses on the statue, as Godot's camera `attributes` do:
 
 - `dof_blur_far_enabled` blurs what is past `dof_blur_far_distance` 8, growing over
   `dof_blur_far_transition` 4 meters to the full blur, so the fence is fully blurred.

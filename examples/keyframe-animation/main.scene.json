@@ -2,7 +2,7 @@
   "entities": {
     "hero": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "walk",
           "library": "hero.anim.json",
           "targets": {

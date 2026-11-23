@@ -530,10 +530,10 @@ TEST_CASE("character: character.place draws a 3D character with its cloth and gr
     json::Value placed = project.ok(
         "character.place",
         R"({"recipe": "characters/knight.character.json", "id": "knight", "at": [0, 0, 0]})");
-    CHECK(placed["components"] == parse(R"(["Transform3D", "MeshInstance3D", "Cloth3D"])"));
+    CHECK(placed["components"] == parse(R"(["Transform3D", "Model3D", "Cloth3D"])"));
     // Its twist bones take half their limbs' turns, from a child.
     CHECK(placed["modifiers"] == parse(R"(["knight_twists"])"));
-    const auto& copy = project.session->world().ecs().get<world::CopyTransformModifier3D>(
+    const auto& copy = project.session->world().ecs().get<world::BoneCopy3D>(
         project.session->world().find("knight_twists"));
     CHECK(copy.settings.size() == 6);
     CHECK(scene3d::check_meshes(project.session->world()).empty());
@@ -544,7 +544,7 @@ TEST_CASE("character: character.place draws a 3D character with its cloth and gr
     placed = project.ok("character.place",
                         R"({"recipe": "groomed.character.json", "id": "groomed", "at": [1, 0, 0],
                             "yaw": 1, "look_at": "camera"})");
-    CHECK(placed["components"].as_array().back().as_string() == "HairInstance3D");
+    CHECK(placed["components"].as_array().back().as_string() == "Hair3D");
     // With look_at, its eyes turn toward it.
     CHECK(placed["modifiers"] ==
           parse(R"(["groomed_twists", "groomed_look_left", "groomed_look_right"])"));

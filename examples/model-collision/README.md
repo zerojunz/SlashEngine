@@ -12,7 +12,7 @@ hints and makes `Model::collision` of them:
 | `-convcolonly` | their convex hull | no |
 
 The hint can also be written `_col` or `$col`, in any case, and is left out of the name.
-A `MeshInstance3D` whose model has collision is a static body of those shapes, as the
+A `Model3D` whose model has collision is a static body of those shapes, as the
 `StaticBody3D` Godot's importer adds, unless it is a body itself or a child of one, which then
 takes them as its shapes.
 

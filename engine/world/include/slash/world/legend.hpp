@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-// Legend keys: the short keys a TileMapLayer's and a GridMap's rows of cells are written in,
+// Legend keys: the short keys a TileLayer2D's and a BlockMap3D's rows of cells are written in,
 // each standing for what the component's legend says. Keys of one legend are all the same
 // length, one to three characters, and "." (or "..", "...") is an empty cell.
 namespace slash::world {

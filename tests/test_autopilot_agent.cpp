@@ -59,7 +59,7 @@ fs::path write_project(std::string_view name) {
         "move_right": {"events": [{"physical_key": "D", "type": "key"}]}}})");
     write(root / "level.scene.json", R"({"format": 1, "entities": {
         "player": {"components": {"Transform2D": {"position": [100, 200]}}},
-        "hud": {"components": {"CanvasLayer": {"children": ["coins"]}}},
+        "hud": {"components": {"ScreenLayer": {"children": ["coins"]}}},
         "coins": {"components": {"Label": {"text": "Coins 4/3"}}}}})");
     return root;
 }

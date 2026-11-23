@@ -413,23 +413,23 @@ TEST_CASE("controls show their text translated in the game's locale") {
     Project project("controls", R"({"locale": {"translations": ["menu.csv"]}})",
                     {{"menu.csv", std::string(kMenuCsv)}},
                     R"({
-        "menu": {"components": {"BoxContainer": {"vertical": true},
-            "Control": {"anchor_right": 1.0, "anchor_bottom": 1.0,
+        "menu": {"components": {"StackBox": {"vertical": true},
+            "Widget": {"anchor_right": 1.0, "anchor_bottom": 1.0,
                         "children": ["play", "quit", "box", "level", "hint"]}}},
-        "play": {"components": {"Control": {}, "Button": {"text": "Play"}}},
-        "quit": {"components": {"Control": {"auto_translate_mode": "disabled"},
+        "play": {"components": {"Widget": {}, "Button": {"text": "Play"}}},
+        "quit": {"components": {"Widget": {"auto_translate_mode": "disabled"},
                                 "Button": {"text": "Quit"}}},
-        "box": {"components": {"Control": {"auto_translate_mode": "disabled",
+        "box": {"components": {"Widget": {"auto_translate_mode": "disabled",
                                            "children": ["inner", "always"]},
-                               "BoxContainer": {"vertical": true}}},
-        "inner": {"components": {"Control": {}, "Label": {"text": "Play"}}},
-        "always": {"components": {"Control": {"auto_translate_mode": "always"},
+                               "StackBox": {"vertical": true}}},
+        "inner": {"components": {"Widget": {}, "Label": {"text": "Play"}}},
+        "always": {"components": {"Widget": {"auto_translate_mode": "always"},
                                   "Label": {"text": "Play"}}},
-        "level": {"components": {"Control": {}, "OptionButton": {"items": [
+        "level": {"components": {"Widget": {}, "Dropdown": {"items": [
             {"text": "Easy"}, {"text": "Hard", "auto_translate_mode": "disabled"}],
             "selected": 0}}},
-        "hint": {"components": {"Control": {"tooltip_text": "Hint"},
-                                "LineEdit": {"placeholder_text": "Play"}}}
+        "hint": {"components": {"Widget": {"tooltip_text": "Hint"},
+                                "TextField": {"placeholder_text": "Play"}}}
     })");
     const std::string ids = R"(["play", "quit", "inner", "always", "level"])";
     CHECK(project.shown(ids) == "play: Play; quit: Quit; inner: Play; always: Play; level: Easy");
@@ -470,7 +470,7 @@ TEST_CASE("controls show their text translated in the game's locale") {
 TEST_CASE("the locale comes from the project, the player and the fallback") {
     Project tested("tested", R"({"locale": {"translations": ["menu.csv"], "test": "fr"}})",
                    {{"menu.csv", std::string(kMenuCsv)}},
-                   R"({"play": {"components": {"Control": {}, "Label": {"text": "Play"}}}})");
+                   R"({"play": {"components": {"Widget": {}, "Label": {"text": "Play"}}}})");
     CHECK(l10n::locale(tested.world()) == "fr");
     CHECK(tested.shown(R"(["play"])") == "play: Jouer");
 
@@ -537,7 +537,7 @@ TEST_CASE("plural lookups and pseudolocalization in a session") {
                     R"({"locale": {"translations": ["pl.po"], "test": "pl"},
                         "pseudolocalization": {"use_pseudolocalization": true}})",
                     {{"pl.po", po}},
-                    R"({"title": {"components": {"Control": {}, "Label": {"text": "Start"}}}})");
+                    R"({"title": {"components": {"Widget": {}, "Label": {"text": "Start"}}}})");
     world::World& world = project.world();
     CHECK(l10n::tr_n(world, "%d coin", "%d coins", 1) == "%d moneta");
     CHECK(l10n::tr_n(world, "%d coin", "%d coins", 14) == "%d monet");
@@ -555,9 +555,9 @@ TEST_CASE("plural lookups and pseudolocalization in a session") {
 
 TEST_CASE("layout direction follows Godot's root and forced settings") {
     const std::string scene = R"({
-        "root": {"components": {"Control": {"children": ["ltr", "inherits"]}, "BoxContainer": {}}},
-        "ltr": {"components": {"Control": {"layout_direction": "ltr"}, "Label": {"text": "A"}}},
-        "inherits": {"components": {"Control": {}, "Label": {"text": "B"}}}
+        "root": {"components": {"Widget": {"children": ["ltr", "inherits"]}, "StackBox": {}}},
+        "ltr": {"components": {"Widget": {"layout_direction": "ltr"}, "Label": {"text": "A"}}},
+        "inherits": {"components": {"Widget": {}, "Label": {"text": "B"}}}
     })";
     // A right-to-left box places its first child on the right.
     const auto first_on_right = [](Project& project) {
@@ -626,7 +626,7 @@ TEST_CASE("internationalization settings validate and translation files report p
 TEST_CASE("l10n.set_locale switches the game's language") {
     Project project("set", R"({"locale": {"translations": ["menu.csv"]}})",
                     {{"menu.csv", std::string(kMenuCsv)}},
-                    R"({"play": {"components": {"Control": {}, "Label": {"text": "Play"}}}})");
+                    R"({"play": {"components": {"Widget": {}, "Label": {"text": "Play"}}}})");
     REQUIRE(project.call("events.subscribe", R"({"kinds": ["translation_changed"]})").ok);
     command::Reply reply = project.call("l10n.set_locale", R"({"locale": "fr-CA"})");
     REQUIRE_MESSAGE(reply.ok, reply.message);
@@ -661,7 +661,7 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
         {{"menu.csv", "keys,fr\nPlay,Jouer\n"},
          {"pl.po", std::string(kPo)},
          {"hud.prefab.json",
-          R"({"format": 1, "components": {"Control": {"tooltip_text": "Health"},
+          R"({"format": 1, "components": {"Widget": {"tooltip_text": "Health"},
                                             "Label": {"text": "HP"}}})"},
          {"src/hud.cpp", "#include \"slash/l10n/l10n.hpp\"\n"
                          "void hud(slash::world::World& world, int coins) {\n"
@@ -670,13 +670,13 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
                          "    show(slash::l10n::tr_n(world, \"%d coin\", \"%d coins\", coins));\n"
                          "    show(slash::l10n::tr(world, name));\n"
                          "}\n"}},
-        R"({"menu": {"components": {"Control": {"children": ["play", "name"]}}},
-            "play": {"components": {"Control": {"tooltip_text": "Start a new game"},
+        R"({"menu": {"components": {"Widget": {"children": ["play", "name"]}}},
+            "play": {"components": {"Widget": {"tooltip_text": "Start a new game"},
                                     "Button": {"text": "Play"}}},
-            "name": {"components": {"Control": {"auto_translate_mode": "disabled"},
+            "name": {"components": {"Widget": {"auto_translate_mode": "disabled"},
                                     "Label": {"text": "Mira"},
-                                    "LineEdit": {"placeholder_text": "Your name"}}},
-            "difficulty": {"components": {"Control": {}, "OptionButton": {"items": [
+                                    "TextField": {"placeholder_text": "Your name"}}},
+            "difficulty": {"components": {"Widget": {}, "Dropdown": {"items": [
                 {"text": "Easy"}, {"text": "Hard", "auto_translate_mode": "disabled"}]}}}})");
     // A project's code is in gameplay.sources.
     project.write("project.json", R"({"format": 1, "name": "Menu",
@@ -759,10 +759,10 @@ TEST_CASE("l10n.check finds placeholders, missing messages and text that doesn't
                       "Hi {name},Salut {nom},Hallo {name}\n"
                       "Gone,Parti,Weg\n"
                       "Quit,Quitter,\n"}},
-        R"({"play": {"components": {"Control": {"offset_right": 60.0, "offset_bottom": 30.0},
+        R"({"play": {"components": {"Widget": {"offset_right": 60.0, "offset_bottom": 30.0},
                                     "Label": {"text": "Play", "clip_text": true}}},
-            "quit": {"components": {"Control": {"offset_top": 40.0}, "Label": {"text": "Quit"}}},
-            "hint": {"components": {"Control": {"offset_top": 80.0},
+            "quit": {"components": {"Widget": {"offset_top": 40.0}, "Label": {"text": "Quit"}}},
+            "hint": {"components": {"Widget": {"offset_top": 80.0},
                                     "Label": {"text": "Hint"}}}})");
     project.write("src/hud.cpp", "void hud(World& world) {\n"
                                  "    show(tr(world, \"%d of %s\"));\n"

@@ -2,7 +2,7 @@
   "entities": {
     "cat": {
       "components": {
-        "NavigationAgent2D": {
+        "NavAgent2D": {
           "target_position": [40.0, 120.0]
         },
         "Transform2D": {
@@ -12,7 +12,7 @@
     },
     "guard": {
       "components": {
-        "NavigationAgent3D": {
+        "NavAgent3D": {
           "path_desired_distance": 0.25,
           "target_desired_distance": 0.5,
           "target_position": [10.0, 0.0, 6.0]
@@ -24,7 +24,7 @@
     },
     "hatch": {
       "components": {
-        "NavigationLink3D": {
+        "NavLink3D": {
           "end_position": [9.0, 0.0, 2.0],
           "start_position": [3.0, 0.0, 2.0],
           "travel_cost": 1.5
@@ -34,7 +34,7 @@
     },
     "house": {
       "components": {
-        "NavigationRegion3D": {
+        "NavArea3D": {
           "navigation_mesh": "nav/house.navmesh.json"
         },
         "Transform3D": {}
@@ -42,7 +42,7 @@
     },
     "yard": {
       "components": {
-        "NavigationRegion2D": {
+        "NavArea2D": {
           "navigation_polygon": "nav/yard.navpoly.json"
         },
         "Transform2D": {

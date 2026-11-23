@@ -1,6 +1,6 @@
 // 2D physics, as Godot's: main.scene.json has ground and walls (StaticBody2D), a hill whose
-// outline is a concave CollisionPolygon2D, a one-way ledge, a crate (RigidBody2D), a lamp
-// swinging on a PinJoint2D, three coins (Area2D) and the hero (CharacterBody2D).
+// outline is a concave PolygonCollider2D, a one-way ledge, a crate (RigidBody2D), a lamp
+// swinging on a PinJoint2D, three coins (Zone2D) and the hero (CharacterMover2D).
 //
 // The hero's controls are plain C++ systems, as a game's would be: gravity, walking right, a
 // jump when a wall is in the way, and coins taken when the hero touches them. Then the program
@@ -39,7 +39,7 @@ constexpr float kFlag = 420.0F; // where the hero stops
 // velocity after this.
 void control_hero(world::World& world, double seconds) {
     const entt::entity hero = world.find("hero");
-    auto& body = world.ecs().get<world::CharacterBody2D>(hero);
+    auto& body = world.ecs().get<world::CharacterMover2D>(hero);
     if (!body.on_floor) {
         body.velocity.y += kGravity * static_cast<float>(seconds);
     }
@@ -54,7 +54,7 @@ void control_hero(world::World& world, double seconds) {
 void take_coins(world::World& world, double /*seconds*/) {
     const entt::entity hero = world.find("hero");
     std::vector<entt::entity> taken;
-    for (const entt::entity coin : world.ecs().view<world::Area2D>()) {
+    for (const entt::entity coin : world.ecs().view<world::Zone2D>()) {
         const physics2d::Contacts contacts = physics2d::contacts(world, coin);
         if (std::ranges::find(contacts.bodies, hero) != contacts.bodies.end()) {
             taken.push_back(coin);
@@ -80,7 +80,7 @@ json::Value call(command::Session& session, std::string_view name, std::string_v
 void print_hero(const world::World& world) {
     const entt::entity hero = world.find("hero");
     const auto& transform = world.ecs().get<world::Transform2D>(hero);
-    const auto& body = world.ecs().get<world::CharacterBody2D>(hero);
+    const auto& body = world.ecs().get<world::CharacterMover2D>(hero);
     std::printf("tick %llu: hero at (%.1f, %.1f)%s%s\n",
                 static_cast<unsigned long long>(world.tick()), transform.position.x,
                 transform.position.y, body.on_floor ? ", on the floor" : "",

@@ -45,7 +45,7 @@ struct Fracture {
     std::vector<Problem> problems; // why the mesh couldn't be cut
 };
 
-// Cuts the mesh of a CSGMesh3D tree (its model or primitive, with its material) by cuts, first
+// Cuts the mesh of a SolidMesh3D tree (its model or primitive, with its material) by cuts, first
 // to last: each earlier cut's piece (its index) is what the next one cuts, and the pieces are
 // the last cut's (whose index is not used). A cut's cells grow around the points its pattern
 // places in the bounds of what it cuts (world::fracture_sites). Children of the tree are left
@@ -59,8 +59,8 @@ struct Fracture {
 // The cuts that made a piece, its own last: its cuts, or its one voronoi cut.
 [[nodiscard]] std::vector<world::FractureCut> piece_cuts(const world::FracturePiece3D& piece);
 
-// The fracture of what an entity's MeshInstance3D draws, its primitive mesh or model with its
-// StandardMaterial3D, kept in the world (install_csg) while an entity with the same mesh and
+// The fracture of what an entity's Model3D draws, its primitive mesh or model with its
+// Surface3D, kept in the world (install_csg) while an entity with the same mesh and
 // cuts uses it. Fails, saying why, when the entity draws nothing that can be cut.
 [[nodiscard]] Result<std::shared_ptr<const Fracture>>
 fracture_of(const world::World& world, entt::entity entity,

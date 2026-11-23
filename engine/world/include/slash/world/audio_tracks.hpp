@@ -9,7 +9,7 @@
 #include <string_view>
 
 // Sound for animations' audio tracks, as Godot's AnimationMixer plays them through an
-// AudioStreamPlayer's AudioStreamPlaybackPolyphonic: engine/audio, which plays sound, sets it on
+// SoundPlayer's AudioStreamPlaybackPolyphonic: engine/audio, which plays sound, sets it on
 // the worlds it installs into, and engine/animation, which doesn't depend on audio, plays tracks
 // through it.
 namespace slash::world {
@@ -21,8 +21,8 @@ struct AudioTrackPlay {
 };
 
 struct AudioTrackSound {
-    // Starts a stream (a sound or a .audio.json file) on the entity's AudioStreamPlayer,
-    // AudioStreamPlayer2D or AudioStreamPlayer3D, from from_seconds into it, when audio next
+    // Starts a stream (a sound or a .audio.json file) on the entity's SoundPlayer,
+    // SoundPlayer2D or SoundPlayer3D, from from_seconds into it, when audio next
     // mixes, on a polyphonic stream that plays up to polyphony of them at once (the mixer's
     // audio_max_polyphony, 1 to 128). Fails if the entity has no player or the stream doesn't
     // load.

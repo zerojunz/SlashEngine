@@ -15,7 +15,7 @@
               "value": 40
             }
           ],
-          "path": "PathFollow3D/progress"
+          "path": "SplineFollower3D/progress"
         }
       ]
     }

@@ -5,7 +5,7 @@ SlashEngine has as a research spike on the CPU ([docs](../../docs/reference/sdfg
 [main.scene.json](main.scene.json) is the room of [ray-traced-gi-3d](../ray-traced-gi-3d/): no
 ceiling, a white floor and back wall, a red wall on the left, a green wall on the right and a white
 block, lit by a sun from above the right wall and a dim blue ambient light, seen through a
-`Camera3D` in a 320x180 window. Its `WorldEnvironment` turns SDFGI on with one cascade of
+`Camera3D` in a 320x180 window. Its `Environment3D` turns SDFGI on with one cascade of
 0.15-meter cells, 19.2 meters across, around the camera, with `sdfgi_use_occlusion` on so probes
 outside the walls don't light the room through them, and [project.json](project.json)'s
 `rendering.global_illumination.sdfgi` has each probe trace 16 rays a frame and average 20 frames,

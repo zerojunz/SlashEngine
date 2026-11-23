@@ -1,7 +1,7 @@
 # Particle collision in 3D
 
-`GPUParticles3D`s' particles collide with spheres and boxes, as Godot 4.6's
-`GPUParticlesCollisionSphere3D` and `GPUParticlesCollisionBox3D` nodes. In
+`GpuEmitter3D`s' particles collide with spheres and boxes, as Godot 4.6's
+`ParticleColliderSphere3D` and `ParticleColliderBox3D` nodes. In
 [main.scene.json](main.scene.json) a fountain of sparks falls onto a floor, a collision box, and
 bounces; rain falls round an umbrella, a collision sphere, which hides each drop it touches, so
 the ground under it stays dry. [main.cpp](main.cpp) steps the world, checks the sparks with

@@ -38,7 +38,7 @@ void describe_gradient(ComponentType& type, std::string_view field) {
                       {"color", {.doc = "Its color, as [r, g, b, a] from 0 to 1."}}});
 }
 
-// The items of a PopupMenu or MenuButton.
+// The items of a PopupList or MenuButton.
 void describe_menu_items(ComponentType& type) {
     describe_members(
         type, "items[]",
@@ -81,7 +81,7 @@ void register_physics_components(ComponentRegistry& registry) {
     const FieldMeta node_b{.doc = "ID of the second body."};
     const FieldMeta disable_collision{.doc = "The two bodies don't collide with each other."};
 
-    registry.add<CollisionShape2D>()
+    registry.add<Collider2D>()
         .set_doc("A shape of the entity's physics body or area, moved by position and rotation "
                  "and scaled by its Transform2D. On an entity with no body or area, a shape of "
                  "its parent's.")
@@ -93,14 +93,14 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("a", {.doc = "Segment start, in pixels."})
         .describe("b", {.doc = "Segment end, in pixels."})
         .describe("points", {.doc = "Polygon points in pixels; the shape is their convex hull. "
-                                    "Use CollisionPolygon2D for concave ones."})
+                                    "Use PolygonCollider2D for concave ones."})
         .describe("position", {.doc = "Moves the shape from the entity, in pixels."})
         .describe("rotation", {.doc = "Turns the shape, in radians clockwise."})
         .describe("disabled", {.doc = "Leave the shape out."})
         .describe("one_way_collision", one_way)
         .describe("one_way_collision_margin", one_way_margin);
 
-    registry.add<CollisionPolygon2D>()
+    registry.add<PolygonCollider2D>()
         .set_doc("A polygon shape of the entity's physics body or area (its parent's, on an "
                  "entity with neither): any simple polygon, filled or only its edges.")
         .describe("polygon", {.doc = "Points as [x, y] in pixels, from the entity."})
@@ -128,7 +128,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("constant_linear_velocity", constant_linear)
         .describe("constant_angular_velocity", constant_angular);
 
-    registry.add<AnimatableBody2D>()
+    registry.add<MovingBody2D>()
         .set_doc("A physics body that goes where its Transform2D says, such as a moving "
                  "platform, pushing bodies in its way.")
         .describe("collision_layer", layer)
@@ -190,7 +190,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("contact_monitor", {.doc = "Emit body_entered and body_exited events as "
                                              "bodies start and stop touching it."});
 
-    registry.add<CharacterBody2D>()
+    registry.add<CharacterMover2D>()
         .set_doc("A physics body moved by setting its velocity: each tick it slides along what "
                  "it hits, as Godot's move_and_slide, and reports floors, walls and ceilings.")
         .describe("collision_layer", layer)
@@ -243,7 +243,7 @@ void register_physics_components(ComponentRegistry& registry) {
                "\"replace_combine\" drops higher ones' and lets lower ones add.",
         .choices = {"disabled", "combine", "combine_replace", "replace", "replace_combine"}};
 
-    registry.add<Area2D>()
+    registry.add<Zone2D>()
         .set_doc("A region that emits body_entered, body_exited, area_entered and area_exited "
                  "events, and can change the gravity and damping of rigid bodies in it. It goes "
                  "where its Transform2D says.")
@@ -269,7 +269,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("angular_damp_space_override", override_mode)
         .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0})
         .describe("audio_bus_override",
-                  {.doc = "AudioStreamPlayer2D sounds in it play through audio_bus_name, when "
+                  {.doc = "SoundPlayer2D sounds in it play through audio_bus_name, when "
                           "its collision_layer is in their area_mask."})
         .describe("audio_bus_name", {.doc = "The bus sounds in it play through, from the "
                                             "project's bus layout."});
@@ -285,7 +285,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("motor_enabled", {.doc = "Turn node_b at motor_target_velocity."})
         .describe("motor_target_velocity", {.doc = "In radians per second."});
 
-    registry.add<DampedSpringJoint2D>()
+    registry.add<SpringJoint2D>()
         .set_doc("A spring from node_a at the entity's Transform2D to node_b, length pixels "
                  "along the entity's y axis.")
         .describe("node_a", node_a)
@@ -296,7 +296,7 @@ void register_physics_components(ComponentRegistry& registry) {
         .describe("stiffness", {.doc = "How hard it pulls.", .min = 0})
         .describe("damping", {.doc = "How fast it settles.", .min = 0});
 
-    registry.add<GrooveJoint2D>()
+    registry.add<TrackJoint2D>()
         .set_doc("Keeps node_b on a groove of node_a's, from the entity's Transform2D length "
                  "pixels along its y axis; node_b slides along it and turns freely.")
         .describe("node_a", node_a)
@@ -328,7 +328,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                             "radians per second about each axis, as [x, y, z]."};
     const FieldMeta axis_lock{.doc = "Never move or turn along this axis."};
 
-    registry.add<CollisionShape3D>()
+    registry.add<Collider3D>()
         .set_doc("A shape of the entity's 3D physics body or area, moved by position and "
                  "rotation and scaled by its Transform3D. On an entity with no body or area, a "
                  "shape of its parent's.")
@@ -369,7 +369,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("constant_linear_velocity", constant_linear)
         .describe("constant_angular_velocity", constant_angular);
 
-    registry.add<AnimatableBody3D>()
+    registry.add<MovingBody3D>()
         .set_doc("A 3D physics body that goes where its Transform3D says, such as a moving "
                  "platform, pushing rigid bodies in its way.")
         .describe("collision_layer", layer)
@@ -434,7 +434,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("contact_monitor", {.doc = "Emit body_entered and body_exited events as "
                                              "bodies start and stop touching it."});
 
-    registry.add<CharacterBody3D>()
+    registry.add<CharacterMover3D>()
         .set_doc("A 3D physics body moved by setting its velocity: each tick it slides along "
                  "what it hits, as Godot's move_and_slide, and reports floors, walls and "
                  "ceilings.")
@@ -486,7 +486,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                "\"replace_combine\" drops higher ones' and lets lower ones add.",
         .choices = {"disabled", "combine", "combine_replace", "replace", "replace_combine"}};
 
-    registry.add<Area3D>()
+    registry.add<Zone3D>()
         .set_doc("A 3D region that emits body_entered, body_exited, area_entered and "
                  "area_exited events, and can change the gravity and damping of rigid bodies in "
                  "it. It goes where its Transform3D says. It detects static bodies only when "
@@ -524,7 +524,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                   {.doc = "The entity whose global -Z its wind blows along, from its origin; "
                           "null blows no wind."})
         .describe("audio_bus_override",
-                  {.doc = "AudioStreamPlayer3D sounds in it play through audio_bus_name, when "
+                  {.doc = "SoundPlayer3D sounds in it play through audio_bus_name, when "
                           "its collision_layer is in their area_mask."})
         .describe("audio_bus_name", {.doc = "The bus sounds in it play through, from the "
                                             "project's bus layout."})
@@ -566,7 +566,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("motor_target_velocity", {.doc = "In radians per second."})
         .describe("motor_max_impulse", {.doc = "How hard the motor pushes each tick.", .min = 0});
 
-    registry.add<SliderJoint3D>()
+    registry.add<SlideJoint3D>()
         .set_doc("Lets two 3D bodies slide along the entity's x axis only, between the limits.")
         .describe("node_a", node_a)
         .describe("node_b", node_b)
@@ -575,7 +575,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("linear_limit_lower", {.doc = "How far it slides the other way, in meters; "
                                                 "above upper it slides freely."});
 
-    registry.add<ConeTwistJoint3D>()
+    registry.add<ConeJoint3D>()
         .set_doc("Lets two 3D bodies swing in a cone about the entity's x axis and twist about "
                  "it, as a shoulder or a rope's links.")
         .describe("node_a", node_a)
@@ -601,7 +601,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                "\"motor_target_velocity\" (radians per second), \"motor_force_limit\" "
                "(newton-meters, 300), \"spring_enabled\", \"spring_stiffness\", "
                "\"spring_damping\" (0), \"spring_equilibrium_point\" (radians)}."};
-    ComponentType& six_dof = registry.add<Generic6DOFJoint3D>();
+    ComponentType& six_dof = registry.add<SixAxisJoint3D>();
     six_dof
         .set_doc("Limits, drives or springs each way two 3D bodies move apart, along and about "
                  "the entity's axes. By default every axis is locked.")
@@ -643,8 +643,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
              {"spring_equilibrium_point", {.doc = "Where the spring rests, in radians."}}});
     }
 
-    registry.add<VehicleBody3D>()
-        .set_doc("A car: the RigidBody3D on the same entity rolls on the VehicleWheel3D entities "
+    registry.add<WheeledBody3D>()
+        .set_doc("A car: the RigidBody3D on the same entity rolls on the Wheel3D entities "
                  "right under it, forward along its z axis. Changes go to the wheels.")
         .describe("engine_force", {.doc = "Pushes forward through the wheels used as traction, "
                                           "in newtons; negative reverses."})
@@ -652,8 +652,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("steering", {.doc = "Turns the wheels used as steering, in radians; positive "
                                       "turns left."});
 
-    registry.add<VehicleWheel3D>()
-        .set_doc("A wheel of the VehicleBody3D right above it: its suspension is a ray down its "
+    registry.add<Wheel3D>()
+        .set_doc("A wheel of the WheeledBody3D right above it: its suspension is a ray down its "
                  "y axis and its axle its x axis. The physics step rolls, steers and lifts it "
                  "from where it is mounted and writes what it found.")
         .describe("engine_force", {.doc = "Pushes forward, in newtons; set by the vehicle when "
@@ -692,9 +692,9 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("rpm", {.doc = "How fast it rolls, in turns per minute."})
         .describe("skid_info", {.doc = "1 while it grips, toward 0 as it skids."});
 
-    registry.add<PhysicalBoneSimulator3D>()
+    registry.add<BoneSimulation3D>()
         .set_doc("The ragdoll of the model the entity (or its Transform3D parent) draws, as "
-                 "Godot's PhysicalBoneSimulator3D: its PhysicalBone3D children are bodies for "
+                 "Godot's PhysicalBoneSimulator3D: its SimulatedBone3D children are bodies for "
                  "the model's bones. While simulating, physics moves the bones it names and they "
                  "pose the model; the rest follow the pose as kinematic bodies while it is "
                  "active.")
@@ -712,9 +712,9 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("collision_exceptions",
                   {.doc = "Bodies its bones never collide with, such as the character's own."});
 
-    ComponentType& bone = registry.add<PhysicalBone3D>();
+    ComponentType& bone = registry.add<SimulatedBone3D>();
     bone.set_doc("A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child "
-                 "of a PhysicalBoneSimulator3D's entity, shaped by CollisionShape3D, at the "
+                 "of a BoneSimulation3D's entity, shaped by Collider3D, at the "
                  "bone times body_offset. Its joint holds it, at its bone's origin, to the body "
                  "of the nearest bone above its own that has one. The physics step writes its "
                  "Transform3D (top_level while it simulates) and velocities.")
@@ -794,8 +794,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     registry.add<Ragdoll3D>()
         .set_doc("A character's or creature's own ragdoll from a .ragdoll.json profile, after "
                  "Unreal's physics assets and physical animation, on the entity that draws the "
-                 "model. The ragdoll system keeps a PhysicalBoneSimulator3D on it and a "
-                 "PhysicalBone3D child (\"<id>_<bone>\") for each bone the profile names. Hits "
+                 "model. The ragdoll system keeps a BoneSimulation3D on it and a "
+                 "SimulatedBone3D child (\"<id>_<bone>\") for each bone the profile names. Hits "
                  "weaken muscles and can knock it down; once it lies still it gets up.")
         .describe("profile", {.doc = "Project path of a .ragdoll.json file."})
         .describe("overrides", {.doc = "A JSON merge patch over the profile for this one, as "
@@ -820,7 +820,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .set_doc("A 2D character's or creature's own ragdoll from a .ragdoll.json profile in "
                  "pixels, on the root of a cut-out character's Transform2D tree. Each profile "
                  "bone is an entity under it (by ID, without the ragdoll's own \"<id>/\"), which "
-                 "the ragdoll system makes a RigidBody2D with a CollisionShape2D joined to the "
+                 "the ragdoll system makes a RigidBody2D with a Collider2D joined to the "
                  "bone above by a PinJoint2D (\"<bone>_joint\"). Hits weaken muscles and can "
                  "knock it down; once it lies still it gets up.")
         .describe("profile", {.doc = "Project path of a .ragdoll.json file."})
@@ -968,8 +968,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                   "together, and a part torn off every point the skin holds "
                                   "still falls free."});
 
-    registry.add<HairInstance3D>()
-        .set_doc("Grows hair or fur over the model its entity's MeshInstance3D draws, as "
+    registry.add<Hair3D>()
+        .set_doc("Grows hair or fur over the model its entity's Model3D draws, as "
                  "Unreal's Groom: groom names a .groom.json file saying how its strands grow, "
                  "draw and move. Guide strands follow the model's skin and skeleton, are stepped "
                  "by 3D physics (gravity, WindSource3Ds' wind, PhysicsField3Ds, the shapes of "
@@ -982,8 +982,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                       "groomed shape on the skin."})
         .describe("collide", {.doc = "Keeps its strands out of the enabled sphere, capsule and "
                                      "box CollisionShape3Ds in its tree, but a "
-                                     "CharacterBody3D's."})
-        .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
+                                     "CharacterMover3D's."})
+        .describe("cast_shadow", {.doc = "As Model3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}});
     registry.add<Hair2D>()
         .set_doc("Grows hair along a line in its entity's space, for sprites and Skeleton2D "
@@ -1001,7 +1001,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                       "groomed shape."})
         .describe("collide", {.doc = "Keeps its strands out of the enabled circle, capsule and "
                                      "rectangle CollisionShape2Ds in its tree, but a "
-                                     "CharacterBody2D's."})
+                                     "CharacterMover2D's."})
         .describe("z_index", {.doc = "Drawn after lower values."})
         .describe("z_as_relative", {.doc = "z_index adds to its parents'; off makes it the "
                                            "whole of it."})
@@ -1057,7 +1057,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("expressions",
                   {.doc = "ARKit's expression shapes by name (\"eyeBlinkLeft\", "
                           "\"mouthSmileLeft\", ...), each 0 to 1, as a 3D character's "
-                          "MeshInstance3D blend_shapes: the face's outline, brow and near eye "
+                          "Model3D blend_shapes: the face's outline, brow and near eye "
                           "move, and jawOpen turns the jaw with jaw_open."})
         .describe("expressions{}", {.doc = "How far it is on, 0 to 1.", .min = 0.0, .max = 1.0});
 
@@ -1088,7 +1088,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     };
     describe_flesh(registry.add<Flesh3D>().set_doc(
         "A character's muscles simulated as flesh, after Unreal's Chaos Flesh: on the "
-        ".character.json model its MeshInstance3D draws, muscles keep their volume, so they "
+        ".character.json model its Model3D draws, muscles keep their volume, so they "
         "bulge as they shorten or are activated, jiggle as it moves and stay over their bones, "
         "and its skin follows them. Draw the model's ::muscles or ::skeleton to see them."));
     describe_flesh(registry.add<Flesh2D>().set_doc(
@@ -1130,8 +1130,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         registry.add<Creature3D>()
             .set_doc("An animal in 3D behaving as its .creature.json recipe says: it roams, "
                      "grazes, herds, flees, hunts, eats from hands, can be tamed and ridden. Its "
-                     "MeshInstance3D draws the recipe as a rigged model, whose animations its "
-                     "AnimationPlayer plays as it moves.")
+                     "Model3D draws the recipe as a rigged model, whose animations its "
+                     "Animator plays as it moves.")
             .describe("recipe", {.doc = "Project path of the .creature.json file."})
             .describe("enabled", {.doc = "Behaves when on; off leaves it standing."})
             .describe("motion", {.doc = "A JSON merge patch over its recipe's motion block, "
@@ -1339,7 +1339,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     describe_breaking(
         registry.add<Destructible3D>().set_doc(
             "Breaks its entity into pieces, as Unreal's geometry collections: the mesh its "
-            "MeshInstance3D draws is cut into cells, and when its health runs out (an impact, "
+            "Model3D draws is cut into cells, and when its health runs out (an impact, "
             "damage.apply, a strain field) or physics.break says so, the entity is replaced by a "
             "rigid body per piece (FracturePiece3D) moving as it moved. A profile (.damage.json) "
             "says how its material takes damage, how it looks as it does, how it breaks where it "
@@ -1403,8 +1403,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     describe_links(
         describe_cuts(
             registry.add<FracturePiece3D>()
-                .set_doc("One piece of a broken Destructible3D: its MeshInstance3D draws only "
-                         "this cell of its mesh's fracture, and its CollisionShape3D is the "
+                .set_doc("One piece of a broken Destructible3D: its Model3D draws only "
+                         "this cell of its mesh's fracture, and its Collider3D is the "
                          "cell's hull.")
                 .describe("pieces", {.doc = "The Destructible3D's pieces, which made the cells "
                                             "when cuts is empty.",
@@ -1419,28 +1419,28 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     describe_breaking(
         registry.add<Destructible2D>().set_doc(
             "Breaks a 2D body into pieces, as Destructible3D does in 3D: its outline (its "
-            "CollisionPolygon2D, else its CollisionShape2D, else its Sprite2D's rectangle) is "
-            "cut into cells, and each piece is a RigidBody2D with a CollisionPolygon2D and a "
+            "PolygonCollider2D, else its Collider2D, else its Sprite2D's rectangle) is "
+            "cut into cells, and each piece is a RigidBody2D with a PolygonCollider2D and a "
             "Polygon2D drawing that part of its look (FracturePiece2D). Its entity is a "
             "StaticBody2D or a RigidBody2D."),
         "kilogram-pixels per second");
     describe_links(
         registry.add<FracturePiece2D>()
-            .set_doc("One piece of a broken Destructible2D: its CollisionPolygon2D and "
+            .set_doc("One piece of a broken Destructible2D: its PolygonCollider2D and "
                      "Polygon2D hold its outline, in the body's space.")
             .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0}),
         "Pixels of the edge they share.");
     registry.add<DamageEffect>()
         .set_doc("Something a hit, a break, a death or a wreck left, made from a .damage.json "
-                 "profile's effects: debris or dust (a one-shot CPUParticles3D or "
-                 "CPUParticles2D), a decal (a Decal or a Sprite2D) or a sound (an "
-                 "AudioStreamPlayer3D or AudioStreamPlayer2D).")
+                 "profile's effects: debris or dust (a one-shot Emitter3D or "
+                 "Emitter2D), a decal (a Decal or a Sprite2D) or a sound (an "
+                 "SoundPlayer3D or SoundPlayer2D).")
         .describe("lifetime", {.doc = "Seconds left before it goes; 0 keeps it.", .min = 0})
         .describe("body", {.doc = "The ID of the body it came from."});
     registry.add<VisualEffect3D>()
         .set_doc("A visual effect playing a .vfx.json recipe at the entity's Transform3D, after "
                  "Unreal's Niagara components: each layer plays as an entity \"<id>_<layer>\" "
-                 "under it. Under a model with a BoneAttachment3D it follows a bone or point.")
+                 "under it. Under a model with a BoneSocket3D it follows a bone or point.")
         .describe("recipe", {.doc = "The .vfx.json recipe it plays."})
         .describe("parameters",
                   {.doc = "Values for the recipe's parameters by name, over its defaults."})
@@ -1537,8 +1537,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                      "and pushes and floats bodies, or rises, cools, burns and swirls.")
             .describe("visible", {.doc = "Drawn when on."})
             .describe("layers", {.doc = "The render layers it draws in, as "
-                                        "MeshInstance3D's."})
-            .describe("cast_shadow", {.doc = "As MeshInstance3D's; a gas casts none.",
+                                        "Model3D's."})
+            .describe("cast_shadow", {.doc = "As Model3D's; a gas casts none.",
                                       .choices = {"off", "on", "double_sided", "shadows_only"}}),
         false);
     describe_fluid(registry.add<Fluid2D>()
@@ -1598,10 +1598,10 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("size", {.doc = "A lake's area in meters (x, z), centered on the entity; an "
                                   "ocean's surface goes on past it, the size bounding only where "
                                   "its shore is measured; zero for none."})
-        .describe("path", {.doc = "A river's Path3D entity, which the river runs along."})
+        .describe("path", {.doc = "A river's Spline3D entity, which the river runs along."})
         .describe("width", {.doc = "A river's width in meters.", .min = 0})
         .describe("visible", {.doc = "Drawn when on."})
-        .describe("layers", {.doc = "The render layers it draws in, as MeshInstance3D's."});
+        .describe("layers", {.doc = "The render layers it draws in, as Model3D's."});
     registry.add<Water2D>()
         .set_doc("Water seen from the side in 2D from a .water.json recipe: its surface waves, "
                  "ripples and foams, and floats and drags bodies.")
@@ -1709,15 +1709,15 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     };
     describe_simulation(
         registry.add<ParticleSimulation3D>().set_doc(
-            "Simulation stages over the entity's CPUParticles3D, after Niagara's: flocking by "
+            "Simulation stages over the entity's Emitter3D, after Niagara's: flocking by "
             "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
             "GPUParticlesCollision3Ds or what the camera sees, attributes and events. Beside a "
-            "GPUParticles3D, its flocking, curl noise, drag and speed limits run on the device "
+            "GpuEmitter3D, its flocking, curl noise, drag and speed limits run on the device "
             "after each step."),
         false);
     describe_simulation(
         registry.add<ParticleSimulation2D>().set_doc(
-            "Simulation stages over the entity's CPUParticles2D, after Niagara's: flocking by "
+            "Simulation stages over the entity's Emitter2D, after Niagara's: flocking by "
             "neighbors found along a Morton curve, curl noise, drag, speed limits, collision with "
             "occluders, attributes and events."),
         true);
@@ -1762,7 +1762,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     registry.add<WindSource2D>()
         .set_doc("Blows wind along its entity's global x axis, or out from it with point_wind, "
                  "as WindSource3D does in 3D. Canvas shaders read the wind at their node as "
-                 "WIND and CPUParticles2D feel it by wind_influence; wind.sample measures it.")
+                 "WIND and Emitter2D feel it by wind_influence; wind.sample measures it.")
         .describe("enabled", {.doc = "false stops it blowing."})
         .describe("point_wind", {.doc = "Blows out from the entity in every direction, dying "
                                         "away to nothing at radius."})
@@ -1798,7 +1798,7 @@ void register_physics_3d_components(ComponentRegistry& registry) {
     const FieldMeta noise_frequency{.doc = "noise_force: times a second its push turns.", .min = 0};
     registry.add<PhysicsField3D>()
         .set_doc("Acts on every body in its reach at once, as Unreal's Chaos Fields: rigid "
-                 "bodies, ragdolls' bones, soft bodies and CPUParticles3D. Directional types act "
+                 "bodies, ragdolls' bones, soft bodies and Emitter3D. Directional types act "
                  "along its entity's global -Z.")
         .describe("enabled", {.doc = "false stops it acting."})
         .describe("type", type)
@@ -1816,9 +1816,9 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("falloff", falloff)
         .describe("collision_mask", field_mask)
         .describe("noise_frequency", noise_frequency)
-        .describe("particles", {.doc = "Forces also push CPUParticles3D."});
+        .describe("particles", {.doc = "Forces also push Emitter3D."});
     registry.add<PhysicsField2D>()
-        .set_doc("PhysicsField3D in a 2D world: acts on RigidBody2Ds and CPUParticles2D, "
+        .set_doc("PhysicsField3D in a 2D world: acts on RigidBody2Ds and Emitter2D, "
                  "directional types along its entity's global x axis. Strain does nothing in "
                  "2D yet.")
         .describe("enabled", {.doc = "false stops it acting."})
@@ -1836,11 +1836,11 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("falloff", falloff)
         .describe("collision_mask", field_mask)
         .describe("noise_frequency", noise_frequency)
-        .describe("particles", {.doc = "Forces also push CPUParticles2D."});
+        .describe("particles", {.doc = "Forces also push Emitter2D."});
 }
 
-// The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D, JacobianIK3D,
-// LookAtModifier3D and CopyTransformModifier3D.
+// The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FabrikIK3D, CcdIK3D, JacobianIK3D,
+// BoneLookAt3D and BoneCopy3D.
 void register_ik_components(ComponentRegistry& registry) {
     const FieldMeta active{.doc = "Whether it turns bones."};
     const FieldMeta influence{
@@ -1942,16 +1942,16 @@ void register_ik_components(ComponentRegistry& registry) {
                       axes + ", or \"custom\" (limitation_right_axis_vector)."}},
              {"limitation_right_axis_vector", {.doc = "The custom limitation_right_axis."}}});
     };
-    chain(registry.add<FABRIK3D>(),
+    chain(registry.add<FabrikIK3D>(),
           "Turns a chain of bones so its end reaches a target by forward and backward reaching, "
           "as Godot's FABRIK3D.");
-    chain(registry.add<CCDIK3D>(), "Turns a chain of bones so its end reaches a target, one "
+    chain(registry.add<CcdIK3D>(), "Turns a chain of bones so its end reaches a target, one "
                                    "joint at a time from the end, as Godot's CCDIK3D.");
     chain(registry.add<JacobianIK3D>(), "Turns a chain of bones so its end reaches a target by "
                                         "the Jacobian transpose, as Godot's JacobianIK3D.");
 
     const std::string limit = " in radians";
-    registry.add<LookAtModifier3D>()
+    registry.add<BoneLookAt3D>()
         .set_doc("Turns one bone of the model the entity (or its Transform3D parent) draws so "
                  "its forward_axis points at a target, as Godot's LookAtModifier3D: eyes, a head "
                  "or a turret.")
@@ -2018,7 +2018,7 @@ void register_ik_components(ComponentRegistry& registry) {
         .describe("influence", influence)
         .describe("active", active);
 
-    ComponentType& copy = registry.add<CopyTransformModifier3D>();
+    ComponentType& copy = registry.add<BoneCopy3D>();
     copy.set_doc("Copies bones' transforms onto other bones of the model the entity (or its "
                  "Transform3D parent) draws, as Godot's CopyTransformModifier3D: twist bones "
                  "taking a share of a hand's roll, an eyelid following its eye.")
@@ -2049,7 +2049,7 @@ void register_ik_components(ComponentRegistry& registry) {
                   "copies the pose itself. A node reference is never relative."}},
          {"additive", {.doc = "Adds the copy to apply_bone's pose."}}});
 
-    registry.add<BoneAttachment3D>()
+    registry.add<BoneSocket3D>()
         .set_doc("Puts the entity where a bone of a model is posed each tick, after animations "
                  "and skeleton modifiers, as Godot's BoneAttachment3D, so its Transform3D "
                  "children move with the bone.")
@@ -2084,13 +2084,13 @@ void register_navigation_components(ComponentRegistry& registry) {
             .describe("enter_cost", enter_cost)
             .describe("travel_cost", travel_cost);
     };
-    region(registry.add<NavigationRegion2D>(),
+    region(registry.add<NavArea2D>(),
            "Places a navigation polygon on the 2D map at the entity's Transform2D, as Godot's "
-           "NavigationRegion2D. Regions join where their edges meet.",
+           "NavArea2D. Regions join where their edges meet.",
            "navigation_polygon", "The .navpoly.json file.");
-    region(registry.add<NavigationRegion3D>(),
+    region(registry.add<NavArea3D>(),
            "Places a navigation mesh on the 3D map at the entity's Transform3D, as Godot's "
-           "NavigationRegion3D. Regions join where their edges meet.",
+           "NavArea3D. Regions join where their edges meet.",
            "navigation_mesh", "The .navmesh.json file.");
     const auto link = [&](ComponentType& added, const std::string& doc, const std::string& unit) {
         added.set_doc(doc)
@@ -2104,11 +2104,11 @@ void register_navigation_components(ComponentRegistry& registry) {
             .describe("enter_cost", enter_cost)
             .describe("travel_cost", travel_cost);
     };
-    link(registry.add<NavigationLink2D>(),
+    link(registry.add<NavLink2D>(),
          "A way between two places on the 2D map that regions don't join, such as a jump, as "
          "Godot's NavigationLink2D.",
          "[x, y] pixels");
-    link(registry.add<NavigationLink3D>(),
+    link(registry.add<NavLink3D>(),
          "A way between two places on the 3D map that regions don't join, such as a ladder, as "
          "Godot's NavigationLink3D.",
          "[x, y, z] meters");
@@ -2183,7 +2183,7 @@ void register_navigation_components(ComponentRegistry& registry) {
                        .min = 0,
                        .max = 1});
     };
-    avoidance(agent(registry.add<NavigationAgent2D>(),
+    avoidance(agent(registry.add<NavAgent2D>(),
                     "Finds a path on the 2D map from the entity's Transform2D to target_position "
                     "and follows how far along it the entity is, as Godot's NavigationAgent2D. "
                     "Gameplay code moves the entity toward navigation::next_path_position; it "
@@ -2192,7 +2192,7 @@ void register_navigation_components(ComponentRegistry& registry) {
                     "velocity_computed with a safe velocity near velocity.",
                     "[x, y] pixels"),
               "pixels");
-    avoidance(agent(registry.add<NavigationAgent3D>(),
+    avoidance(agent(registry.add<NavAgent3D>(),
                     "Finds a path on the 3D map from the entity's Transform3D to target_position "
                     "and follows how far along it the entity is, as Godot's NavigationAgent3D. "
                     "Gameplay code moves the entity toward navigation::next_path_position; it "
@@ -2231,11 +2231,11 @@ void register_navigation_components(ComponentRegistry& registry) {
                       {.doc = "The bake takes it out exactly as it is, not shrunk around by the "
                               "agent_radius."});
     };
-    obstacle(registry.add<NavigationObstacle2D>(),
+    obstacle(registry.add<NavObstacle2D>(),
              "Something agents keep clear of on the 2D map, at the entity's Transform2D, as "
              "Godot's NavigationObstacle2D: a moving circle and an outline.",
              "[x, y] pixels");
-    obstacle(registry.add<NavigationObstacle3D>(),
+    obstacle(registry.add<NavObstacle3D>(),
              "Something agents keep clear of on the 3D map, at the entity's Transform3D, as "
              "Godot's NavigationObstacle3D: a moving circle and an outline on the ground that "
              "reaches height up. Only its turn about y counts.",
@@ -2336,13 +2336,13 @@ void register_ui_components(ComponentRegistry& registry) {
     const FieldMeta focus_neighbor{
         .doc = "The control the ui_left, ui_up, ui_right or ui_down action moves focus to from "
                "this one; null for the closest one that way."};
-    registry.add<Control>()
+    registry.add<Widget>()
         .set_doc("A UI element's rect, as Godot's Control: placed in its parent's rect by "
-                 "anchors and offsets, or in the viewport when no Control lists it in children. "
-                 "Label, ColorRect and the other UI components draw in it; they lay out with "
-                 "these defaults when the entity has no Control. A container component places "
+                 "anchors and offsets, or in the viewport when no Widget lists it in children. "
+                 "Label, ColorFill and the other UI components draw in it; they lay out with "
+                 "these defaults when the entity has no Widget. A container component places "
                  "its children by size flags instead of their anchors and offsets. Controls "
-                 "draw above the world, or in the CanvasLayer that holds them, parents before "
+                 "draw above the world, or in the ScreenLayer that holds them, parents before "
                  "children.")
         .describe("children",
                   {.doc = "Controls laid out in its rect, drawn over it in this order."})
@@ -2418,7 +2418,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("mouse_filter",
                   {.doc = "Whether clicks and touches stop at it, go on to its parent too (pass) "
                           "or pass it by (ignore); \"\" takes its type's: ignore for Label and "
-                          "NinePatchRect, pass for containers and TextureRect, stop for the rest.",
+                          "NineSlice, pass for containers and Picture, stop for the rest.",
                    .choices = {"", "stop", "pass", "ignore"}})
         .describe("tooltip_text",
                   {.doc = "Shown in a box beside the pointer once it rests on the control for "
@@ -2537,14 +2537,14 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("text_direction", text_direction)
         .describe("language", language);
 
-    registry.add<ColorRect>()
+    registry.add<ColorFill>()
         .set_doc("Fills the control's rect with one color, as Godot's ColorRect.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
 
     registry.add<Panel>().set_doc(
         "Draws the theme's panel style box in the control's rect, as Godot's Panel.");
 
-    registry.add<TextureRect>()
+    registry.add<Picture>()
         .set_doc("Draws a texture in the control's rect, as Godot's TextureRect.")
         .describe("texture",
                   {.doc = "Project path of a PNG, BMP or KTX2 file; \"\" draws nothing."})
@@ -2563,7 +2563,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("flip_h", {.doc = "Draw it mirrored left to right."})
         .describe("flip_v", {.doc = "Draw it upside down."});
 
-    registry.add<VideoStreamPlayer>()
+    registry.add<Video>()
         .set_doc("Plays an AV1 video in the control's rect, and its sound on an audio bus, as "
                  "Godot's VideoStreamPlayer. Emits finished at the end unless it loops; stopped "
                  "or paused, it shows the frame at stream_position.")
@@ -2585,9 +2585,9 @@ void register_ui_components(ComponentRegistry& registry) {
 
     const FieldMeta patch_margin{.doc = "Pixels of the texture on this side that don't stretch.",
                                  .min = 0};
-    registry.add<NinePatchRect>()
+    registry.add<NineSlice>()
         .set_doc("Draws a texture cut into nine parts in the control's rect, as Godot's "
-                 "NinePatchRect: the corners keep their size, the sides stretch along and the "
+                 "NineSlice: the corners keep their size, the sides stretch along and the "
                  "middle both ways. Its minimum size is its margins.")
         .describe("texture",
                   {.doc = "Project path of a PNG, BMP or KTX2 file; \"\" draws nothing."})
@@ -2715,7 +2715,7 @@ void register_ui_components(ComponentRegistry& registry) {
         "font_focus_color, font_disabled_color, icon_*_color for the same states, font, "
         "font_size, outline_size, font_outline_color, h_separation, icon_max_width, "
         "align_to_largest_stylebox, line_spacing and click_margin.");
-    // A Button's fields but its text and icon, which an OptionButton takes from its options.
+    // A Button's fields but its text and icon, which an Dropdown takes from its options.
     const auto describe_button_look = [&](ComponentType& type) -> ComponentType& {
         return describe_base(type)
             .describe("flat", {.doc = "Draw no style box, only the text and icon."})
@@ -2756,9 +2756,9 @@ void register_ui_components(ComponentRegistry& registry) {
         "is, with the same events. Theme items: Button's, plus the icons checked, unchecked, "
         "radio_checked, radio_unchecked and each one's _disabled, checkbox_checked_color, "
         "checkbox_unchecked_color and check_v_offset."));
-    describe_button(registry.add<CheckButton>().set_doc(
+    describe_button(registry.add<ToggleSwitch>().set_doc(
         "A toggle button with a switch at its end showing whether it is on, as Godot's "
-        "CheckButton. Pressed as Button is, with the same events. Theme items: Button's, plus "
+        "ToggleSwitch. Pressed as Button is, with the same events. Theme items: Button's, plus "
         "the icons checked, unchecked, checked_disabled and unchecked_disabled and each one's "
         "_mirrored (drawn right to left), button_checked_color, button_unchecked_color and "
         "check_v_offset."));
@@ -2768,14 +2768,14 @@ void register_ui_components(ComponentRegistry& registry) {
                                  "its index), \"disabled\", \"separator\", \"indent\", "
                                  "\"tooltip\", \"auto_translate_mode\": \"inherit\" (as the "
                                  "menu), \"always\" or \"disabled\"}."};
-    registry.add<PopupMenu>()
+    registry.add<PopupList>()
         .set_doc("A list of items shown over everything at a point of the viewport while "
                  "visible, as Godot's PopupMenu: picked with a click, the arrow keys and "
                  "ui_accept, or by typing an item's first letters. Picking an item emits "
                  "id_pressed and index_pressed (data {\"id\", \"index\"}) and closes it; so do "
                  "a click outside and ui_cancel. Opening and closing emit about_to_popup and "
                  "popup_hide, and moving to an item with the keys id_focused. Theme items "
-                 "(type PopupMenu): panel, hover, separator, labeled_separator_left and "
+                 "(type PopupList): panel, hover, separator, labeled_separator_left and "
                  "labeled_separator_right styles, the check box and radio icons, font, "
                  "font_size, font_separator, font_separator_size, font_color, "
                  "font_hover_color, font_disabled_color, font_separator_color, the outline "
@@ -2796,14 +2796,14 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "Which way it lays out; inherited goes by the project's "
                           "internationalization.rendering.root_node_layout_direction.",
                    .choices = {"inherited", "application_locale", "ltr", "rtl", "system_locale"}});
-    describe_menu_items(*registry.find_mutable("PopupMenu"));
-    describe_button_look(registry.add<OptionButton>().set_doc(
+    describe_menu_items(*registry.find_mutable("PopupList"));
+    describe_button_look(registry.add<Dropdown>().set_doc(
                              "A button showing the option picked, which opens a list of its "
                              "options below it when pressed, as Godot's OptionButton. Picking "
                              "one sets selected and emits item_selected (data {\"index\"}); "
                              "moving to one with the keys emits item_focused. Theme items: "
                              "Button's, plus the arrow icon, arrow_margin and modulate_arrow, "
-                             "and PopupMenu's for the list."))
+                             "and PopupList's for the list."))
         .describe("items", {.doc = "The options, in order: {\"text\", \"icon\", \"id\" (-1 "
                                    "for its index), \"disabled\", \"separator\", "
                                    "\"tooltip\", \"auto_translate_mode\": \"inherit\" (as "
@@ -2814,7 +2814,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("allow_reselect",
                   {.doc = "Picking the option already shown emits item_selected again."});
     describe_members(
-        *registry.find_mutable("OptionButton"), "items[]",
+        *registry.find_mutable("Dropdown"), "items[]",
         {{"text", {.doc = "What it says; with separator, the label in the line."}},
          {"icon",
           {.doc = "Project path of a PNG, BMP or KTX2 file shown before the text; \"\" "
@@ -2832,7 +2832,7 @@ void register_ui_components(ComponentRegistry& registry) {
                         "(data {\"id\", \"index\"}) from the button; it also emits "
                         "about_to_popup and popup_hide as the menu opens and closes, and "
                         "id_focused when the keys move to an item. Theme items: Button's, and "
-                        "PopupMenu's for the menu."))
+                        "PopupList's for the menu."))
         .describe("items", items)
         .describe("switch_on_hover",
                   {.doc = "While another MenuButton's menu is open, moving onto this one opens "
@@ -2841,7 +2841,7 @@ void register_ui_components(ComponentRegistry& registry) {
 
     const FieldMeta button_texture{.doc =
                                        "Project path of a PNG, BMP or KTX2 file; \"\" for none."};
-    auto& texture_button = registry.add<TextureButton>().set_doc(
+    auto& texture_button = registry.add<ImageButton>().set_doc(
         "A button drawn with a texture per state, as Godot's TextureButton: texture_normal, "
         "then texture_pressed, texture_hover and texture_disabled when they are set, and "
         "texture_focused over them while it has focus. Pressed as Button is, with the same "
@@ -2862,7 +2862,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("flip_h", {.doc = "Draw it mirrored left to right."})
         .describe("flip_v", {.doc = "Draw it upside down."});
 
-    registry.add<LineEdit>()
+    registry.add<TextField>()
         .set_doc("A one-line text field, as Godot's LineEdit: a click, focus or ui_text_submit "
                  "starts editing; typing, an input method and the on-screen keyboard insert at "
                  "the caret; ui_text_* actions move the caret, select and delete; ui_cut, "
@@ -2929,13 +2929,13 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("text_direction", text_direction)
         .describe("language", language);
 
-    registry.add<TextEdit>()
+    registry.add<TextArea>()
         .set_doc("A text field of several lines, as Godot's TextEdit: a click or focus puts the "
                  "caret in it; typing, an input method and the on-screen keyboard insert at the "
                  "caret; ui_text_newline breaks the line; ui_text_* actions move the caret, "
                  "select, delete and scroll; ui_cut, ui_copy, ui_paste, ui_undo and ui_redo "
                  "work the clipboard and undo; its scroll bars page, drag and take the wheel. "
-                 "A CodeHighlighter on the entity colors its text and a CodeEdit makes it a code "
+                 "A SyntaxColors on the entity colors its text and a CodeEditor makes it a code "
                  "editor. Emits text_changed, text_set, lines_edited_from {\"from_line\", "
                  "\"to_line\"}, caret_changed and, for a click on a gutter, gutter_clicked "
                  "{\"line\", \"gutter\"} with the gutter's name. Theme "
@@ -3012,18 +3012,18 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("text_direction", text_direction)
         .describe("language", language)
         .describe("gutters",
-                  {.doc = "Columns left of the text, after a CodeEdit's: {\"name\", \"type\" "
+                  {.doc = "Columns left of the text, after a CodeEditor's: {\"name\", \"type\" "
                           "(\"string\" or \"icon\"), \"width\" (24), \"draw\", \"lines\": "
                           "[{\"line\", \"text\", \"icon\", \"color\"}]}. Entries move with "
                           "their lines as the text is typed in, and go with a deleted line."});
-    describe_members(*registry.find_mutable("TextEdit"), "gutters[]",
+    describe_members(*registry.find_mutable("TextArea"), "gutters[]",
                      {{"name", {.doc = "What gutter_clicked names it by."}},
                       {"type", {.doc = R"("string" (text) or "icon".)"}},
                       {"width", {.doc = "In pixels."}},
                       {"draw", {.doc = "Shown; false hides it."}},
                       {"lines", {.doc = "What it shows by the lines that have something."}}});
     describe_members(
-        *registry.find_mutable("TextEdit"), "gutters[].lines[]",
+        *registry.find_mutable("TextArea"), "gutters[].lines[]",
         {{"line", {.doc = "The line, from 0."}},
          {"text", {.doc = "What a \"string\" gutter shows on the line."}},
          {"icon",
@@ -3031,11 +3031,11 @@ void register_ui_components(ComponentRegistry& registry) {
                   "built-in icon."}},
          {"color", {.doc = "Its text or icon's color, as [r, g, b, a] from 0 to 1."}}});
 
-    registry.add<CodeHighlighter>()
-        .set_doc("Colors the text of the TextEdit on its entity as code, as Godot's "
-                 "CodeHighlighter: keywords, then members not after a '.', function names before "
+    registry.add<SyntaxColors>()
+        .set_doc("Colors the text of the TextArea on its entity as code, as Godot's "
+                 "SyntaxColors: keywords, then members not after a '.', function names before "
                  "'(', member variables after '.', symbols and numbers (hex, floats, exponents) "
-                 "in their colors, the rest in the TextEdit's font_color. A color region colors "
+                 "in their colors, the rest in the TextArea's font_color. A color region colors "
                  "from its start key to its end key, over several lines, or to the line's end; a "
                  "'\\' escapes the next character in a region that starts with a quote.")
         .describe("number_color", {.doc = "Numbers."})
@@ -3051,14 +3051,14 @@ void register_ui_components(ComponentRegistry& registry) {
                           "string color, \"/* */\": comment color}; a key with no end, e.g. "
                           "\"#\", runs to the line's end. Longer start keys are tried first."});
 
-    registry.add<CodeEdit>()
-        .set_doc("Makes the TextEdit on its entity a code editor, as Godot's CodeEdit: line "
+    registry.add<CodeEditor>()
+        .set_doc("Makes the TextArea on its entity a code editor, as Godot's CodeEdit: line "
                  "numbers, and a gutter left of them for breakpoints, bookmarks and executing "
                  "lines, which move with their lines as the text is typed in. A click on that "
                  "gutter toggles a breakpoint (with Shift, a bookmark) and emits "
                  "breakpoint_toggled {\"line\"}, as an edit moving or deleting one does; a "
-                 "click on a line number selects the line. Theme items (type CodeEdit, then "
-                 "TextEdit's): breakpoint, bookmark and executing_line icons, breakpoint_color, "
+                 "click on a line number selects the line. Theme items (type CodeEditor, then "
+                 "TextArea's): breakpoint, bookmark and executing_line icons, breakpoint_color, "
                  "bookmark_color, executing_line_color, line_number_color and "
                  "line_length_guideline_color.")
         .describe("gutters_draw_breakpoints_gutter",
@@ -3078,29 +3078,29 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("bookmarked_lines", {.doc = "Lines with a bookmark, from 0.", .min = 0})
         .describe("executing_lines", {.doc = "Lines marked as executing, from 0.", .min = 0});
 
-    registry.add<BoxContainer>()
+    registry.add<StackBox>()
         .set_doc("Lays out its children in a row, or a column when vertical, as Godot's "
                  "HBoxContainer and VBoxContainer: each at its minimum size along it, plus a share "
                  "of the space left for those that expand. Theme constant: separation.")
         .describe("vertical", {.doc = "A column instead of a row."})
         .describe("alignment", alignment);
 
-    registry.add<GridContainer>()
+    registry.add<GridBox>()
         .set_doc("Lays out its children in a grid, as Godot's GridContainer: left to right, a new "
                  "row every columns children. Theme constants: h_separation and v_separation.")
         .describe("columns", {.doc = "Children per row.", .min = 1, .max = 1024});
 
-    registry.add<MarginContainer>().set_doc(
+    registry.add<MarginBox>().set_doc(
         "Fits its children in its rect less margins, as Godot's MarginContainer. Theme "
         "constants: margin_left, margin_top, margin_right and margin_bottom.");
 
-    registry.add<CenterContainer>()
+    registry.add<CenterBox>()
         .set_doc("Keeps its children at their minimum sizes in its center, as Godot's "
-                 "CenterContainer.")
+                 "CenterBox.")
         .describe("use_top_left",
                   {.doc = "Center them on its top-left corner, and need no space for them."});
 
-    registry.add<FlowContainer>()
+    registry.add<FlowBox>()
         .set_doc("Lays out its children in rows that wrap to its width, or columns that wrap to "
                  "its height when vertical, as Godot's HFlowContainer and VFlowContainer. Theme "
                  "constants: h_separation and v_separation.")
@@ -3112,7 +3112,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("reverse_fill",
                   {.doc = "Fill rows from the bottom up, or columns from the right."});
 
-    registry.add<PanelContainer>().set_doc(
+    registry.add<PanelBox>().set_doc(
         "Draws the theme's panel style box and fits its children inside the style's margins, "
         "as Godot's PanelContainer.");
 
@@ -3122,7 +3122,7 @@ void register_ui_components(ComponentRegistry& registry) {
                "with room kept for the bar.",
         .choices = {"disabled", "auto", "always", "never", "reserve"}};
     const FieldMeta custom_step{.doc = "What its bar's arrows step by; -1 for none.", .min = -1};
-    registry.add<ScrollContainer>()
+    registry.add<ScrollBox>()
         .set_doc("Shows its children through its rect, scrolled, with scroll bars when they "
                  "don't fit, as Godot's ScrollContainer. Each child takes its minimum size, or "
                  "the whole visible width or height on an axis its size flags expand. The "
@@ -3158,7 +3158,7 @@ void register_particle_components(ComponentRegistry& registry) {
             .describe(name + "_max", {.doc = what + ", at most.", .min = min, .max = max});
     };
     ComponentType& type =
-        registry.add<CPUParticles2D>()
+        registry.add<Emitter2D>()
             .set_doc("Emits particles from the entity's Transform2D, moves and draws them, as "
                      "Godot's CPUParticles2D. Each takes a random value between each _min and "
                      "_max when emitted; a _curve multiplies it as it ages. Emits finished when "
@@ -3267,11 +3267,11 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("anim_offset_curve", curve);
 
     ComponentType& type3d =
-        registry.add<CPUParticles3D>()
+        registry.add<Emitter3D>()
             .set_doc("Emits particles from the entity's Transform3D, moves them and draws its "
                      "primitive mesh, or the model mesh names, at each, as Godot's "
-                     "CPUParticles3D; a StandardMaterial3D with billboard_mode \"particles\" "
-                     "faces them to the camera. Ranges and curves as CPUParticles2D's; lengths "
+                     "Emitter3D; a Surface3D with billboard_mode \"particles\" "
+                     "faces them to the camera. Ranges and curves as Emitter2D's; lengths "
                      "in meters. Emits finished when a one_shot's last particle dies.")
             .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a "
                                           "one_shot."})
@@ -3310,8 +3310,8 @@ void register_particle_components(ComponentRegistry& registry) {
                        .choices = {"index", "lifetime", "view_depth"}})
             .describe("mesh", {.doc = "A model file drawn at each particle in place of the "
                                       "entity's primitive mesh; \"\" for none."})
-            .describe("layers", {.doc = "As MeshInstance3D's.", .min = 0, .max = kMaxMask})
-            .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
+            .describe("layers", {.doc = "As Model3D's.", .min = 0, .max = kMaxMask})
+            .describe("cast_shadow", {.doc = "As Model3D's.",
                                       .choices = {"off", "on", "double_sided", "shadows_only"}})
             .describe("emission_shape",
                       {.doc = "Where particles start: at the entity, in a sphere, on its surface, "
@@ -3380,7 +3380,7 @@ void register_particle_components(ComponentRegistry& registry) {
     range(type3d, "anim_offset", "The frame it starts on, as a fraction of the frames", 0, 1)
         .describe("anim_offset_curve", curve);
 
-    registry.add<GPUParticles2D>()
+    registry.add<GpuEmitter2D>()
         .set_doc("Emits particles from the entity's Transform2D and moves them on the GPU, as "
                  "Godot's GPUParticles2D, as its process_material file says. Emits finished "
                  "when a one_shot's cycle has had time to end.")
@@ -3392,7 +3392,7 @@ void register_particle_components(ComponentRegistry& registry) {
                              .max = 1000000})
         .describe("amount_ratio", {.doc = "The share of amount it emits.", .min = 0, .max = 1})
         .describe("sub_emitter",
-                  {.doc = "ID of another GPUParticles2D its particles start particles in, as "
+                  {.doc = "ID of another GpuEmitter2D its particles start particles in, as "
                           "its process material's sub_emitter_mode says; that one then emits "
                           "only those, stepping with this one. null for none."})
         .describe("process_material",
@@ -3426,7 +3426,7 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("fract_delta", {.doc = "A particle emitted partway through a step moves for "
                                          "that part only, so emission is smooth."})
         .describe("collision_base_size",
-                  {.doc = "How near, in pixels, a particle comes to a LightOccluder2D before it "
+                  {.doc = "How near, in pixels, a particle comes to a Occluder2D before it "
                           "collides, when its process material collides; times half the "
                           "texture's average side.",
                    .min = 0.0})
@@ -3462,10 +3462,10 @@ void register_particle_components(ComponentRegistry& registry) {
 
     const FieldMeta pass{.doc = "Project path of a .gltf, .glb, .obj, .fbx, .blend or .model.json "
                                 "file drawn at each particle; \"\" for none."};
-    registry.add<GPUParticles3D>()
+    registry.add<GpuEmitter3D>()
         .set_doc("Emits particles from the entity's Transform3D and moves them on the device, as "
                  "Godot's GPUParticles3D, as its process_material file says, drawing each draw "
-                 "pass's mesh at every particle; a StandardMaterial3D on the entity takes the "
+                 "pass's mesh at every particle; a Surface3D on the entity takes the "
                  "place of the meshes' materials. Lengths in meters. Emits finished when a "
                  "one_shot's cycle has had time to end.")
         .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a one_shot, "
@@ -3492,14 +3492,14 @@ void register_particle_components(ComponentRegistry& registry) {
             {.doc = "0 spreads emission over the cycle; 1 emits all at once.", .min = 0, .max = 1})
         .describe("randomness",
                   {.doc = "Randomizes when each particle is emitted, 0 to 1.", .min = 0, .max = 1})
-        .describe("use_fixed_seed", {.doc = "As GPUParticles2D's."})
+        .describe("use_fixed_seed", {.doc = "As GpuEmitter2D's."})
         .describe("seed", {.doc = "The random seed; see use_fixed_seed."})
         .describe("fixed_fps", {.doc = "Steps per second the particles move in; 0 steps once a "
                                        "tick.",
                                 .min = 0,
                                 .max = 1000})
         .describe("interpolate", {.doc = "Draw particles where they are between steps."})
-        .describe("fract_delta", {.doc = "As GPUParticles2D's."})
+        .describe("fract_delta", {.doc = "As GpuEmitter2D's."})
         .describe("collision_base_size",
                   {.doc = "How near a particle comes to a GPUParticlesCollision3D before it "
                           "touches, in meters.",
@@ -3528,12 +3528,12 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("draw_pass_1",
                   {.doc = "Project path of a .gltf, .glb, .obj, .fbx, .blend or .model.json file "
                           "drawn at each particle; \"\" draws the entity's primitive mesh, such "
-                          "as a QuadMesh."})
+                          "as a QuadGeometry."})
         .describe("draw_pass_2", pass)
         .describe("draw_pass_3", pass)
         .describe("draw_pass_4", pass)
-        .describe("layers", {.doc = "As MeshInstance3D's.", .min = 0, .max = kMaxMask})
-        .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
+        .describe("layers", {.doc = "As Model3D's.", .min = 0, .max = kMaxMask})
+        .describe("cast_shadow", {.doc = "As Model3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}});
 
     const FieldMeta strength{.doc = "How hard it pulls particles toward it; negative pushes."};
@@ -3547,24 +3547,24 @@ void register_particle_components(ComponentRegistry& registry) {
     const FieldMeta cull_mask{
         .doc = "Acts on GPUParticles3Ds whose layers share a bit.", .min = 0, .max = kMaxMask};
     const FieldMeta box{.doc = "The box's size in meters, centered on the entity.", .min = 0};
-    registry.add<GPUParticlesAttractorSphere3D>()
+    registry.add<ParticleAttractorSphere3D>()
         .set_doc("Pulls the particles of GPUParticles3Ds inside a sphere, as Godot's "
-                 "GPUParticlesAttractorSphere3D, when their process material has "
+                 "ParticleAttractorSphere3D, when their process material has "
                  "attractor_interaction_enabled; at most 32 attractors act on an emitter.")
         .describe("strength", strength)
         .describe("attenuation", attenuation)
         .describe("directionality", directionality)
         .describe("cull_mask", cull_mask)
         .describe("radius", {.doc = "The sphere's radius in meters.", .min = 0});
-    registry.add<GPUParticlesAttractorBox3D>()
+    registry.add<ParticleAttractorBox3D>()
         .set_doc("Pulls the particles of GPUParticles3Ds inside a box, as Godot's "
-                 "GPUParticlesAttractorBox3D.")
+                 "ParticleAttractorBox3D.")
         .describe("strength", strength)
         .describe("attenuation", attenuation)
         .describe("directionality", directionality)
         .describe("cull_mask", cull_mask)
         .describe("size", box);
-    registry.add<GPUParticlesAttractorVectorField3D>()
+    registry.add<ParticleFlowField3D>()
         .set_doc("Pushes the particles of GPUParticles3Ds inside a box along a 3D texture of "
                  "directions, as Godot's GPUParticlesAttractorVectorField3D; at most 7 vector "
                  "fields act on an emitter.")
@@ -3587,18 +3587,18 @@ void register_particle_components(ComponentRegistry& registry) {
     const FieldMeta collides{.doc = "Collides with GPUParticles3Ds whose layers share a bit.",
                              .min = 0,
                              .max = kMaxMask};
-    registry.add<GPUParticlesCollisionSphere3D>()
+    registry.add<ParticleColliderSphere3D>()
         .set_doc("A sphere the particles of GPUParticles3Ds collide with, as Godot's "
-                 "GPUParticlesCollisionSphere3D, when their process material's collision_mode "
+                 "ParticleColliderSphere3D, when their process material's collision_mode "
                  "is rigid or hide_on_contact; at most 32 colliders act on an emitter.")
         .describe("cull_mask", collides)
         .describe("radius", {.doc = "The sphere's radius in meters.", .min = 0});
-    registry.add<GPUParticlesCollisionBox3D>()
+    registry.add<ParticleColliderBox3D>()
         .set_doc("A box the particles of GPUParticles3Ds collide with, as Godot's "
-                 "GPUParticlesCollisionBox3D.")
+                 "ParticleColliderBox3D.")
         .describe("cull_mask", collides)
         .describe("size", box);
-    registry.add<GPUParticlesCollisionSDF3D>()
+    registry.add<ParticleColliderSdf3D>()
         .set_doc("The shape of the meshes in a box, which the particles of GPUParticles3Ds "
                  "collide with, as Godot's GPUParticlesCollisionSDF3D: particles.bake_sdf "
                  "writes its signed distance field.")
@@ -3620,7 +3620,7 @@ void register_particle_components(ComponentRegistry& registry) {
                    .max = 512})
         .describe("slices_vertical",
                   {.doc = "Slices down the texture, the cells' depth.", .min = 1, .max = 512});
-    registry.add<GPUParticlesCollisionHeightField3D>()
+    registry.add<ParticleColliderHeight3D>()
         .set_doc("The ground under a box, drawn from above, which the particles of "
                  "GPUParticles3Ds collide with, as Godot's GPUParticlesCollisionHeightField3D; "
                  "one acts on an emitter.")
@@ -3657,7 +3657,7 @@ void register_audio_components(ComponentRegistry& registry) {
                "switch_to_clip, a clip's name, which the music moves to as its transition says "
                "and which then follows the clip it goes to. Synchronized streams: "
                "stream_<index>_volume_db, a layer's volume."};
-    registry.add<AudioStreamPlayer>()
+    registry.add<SoundPlayer>()
         .set_doc("Plays a sound through a bus, as Godot's AudioStreamPlayer, the same wherever "
                  "the entity is. Emits finished when a sound ends.")
         .describe("stream", stream)
@@ -3673,9 +3673,9 @@ void register_audio_components(ComponentRegistry& registry) {
                           "speaker, or the center and LFE. Stereo plays it on both.",
                    .choices = {"stereo", "surround", "center"}})
         .describe("parameters", parameters);
-    registry.add<AudioStreamPlayer2D>()
+    registry.add<SoundPlayer2D>()
         .set_doc("Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: "
-                 "fading with distance from the AudioListener2D (or the middle of the screen) "
+                 "fading with distance from the Listener2D (or the middle of the screen) "
                  "and panned by its offset across the screen. Emits finished when a sound ends.")
         .describe("stream", stream)
         .describe("volume_db", volume)
@@ -3693,23 +3693,23 @@ void register_audio_components(ComponentRegistry& registry) {
             "panning_strength",
             {.doc = "Times the project's audio.panning_strength_2d; 0 for no panning.", .min = 0})
         .describe("bus", bus)
-        .describe("area_mask", {.doc = "Area2D layers, as bits, whose audio_bus_override "
+        .describe("area_mask", {.doc = "Zone2D layers, as bits, whose audio_bus_override "
                                        "changes its bus while it is inside; the first such area "
                                        "by ID wins. 0 ignores areas."})
         .describe("parameters", parameters);
-    registry.add<AudioListener2D>()
-        .set_doc("Where AudioStreamPlayer2D sounds are heard from, as Godot's AudioListener2D, "
+    registry.add<Listener2D>()
+        .set_doc("Where SoundPlayer2D sounds are heard from, as Godot's AudioListener2D, "
                  "at its Transform2D and turned with it. The first current one by ID is used; "
                  "with none, the middle of the viewport.")
         .describe("current", {.doc = "Whether it is the listener."});
     const FieldMeta doppler{.doc = "Follows how fast it moves for doppler: \"idle_step\" and "
                                    "\"physics_step\" both measure it each tick.",
                             .choices = {"disabled", "idle_step", "physics_step"}};
-    registry.add<AudioStreamPlayer3D>()
+    registry.add<SoundPlayer3D>()
         .set_doc("Plays a sound at the entity's Transform3D, as Godot's AudioStreamPlayer3D, "
-                 "heard from the AudioListener3D or else the current Camera3D: quieter and "
+                 "heard from the Listener3D or else the current Camera3D: quieter and "
                  "muffled with distance, panned by where it is around the listener, muffled "
-                 "outside its emission cone, pitched by doppler, and routed by an Area3D it is "
+                 "outside its emission cone, pitched by doppler, and routed by an Zone3D it is "
                  "in. Emits finished when a sound ends.")
         .describe("stream", stream)
         .describe(
@@ -3736,7 +3736,7 @@ void register_audio_components(ComponentRegistry& registry) {
             "panning_strength",
             {.doc = "Times the project's audio.panning_strength_3d; 0 for no panning.", .min = 0})
         .describe("bus", bus)
-        .describe("area_mask", {.doc = "Area3D layers, as bits, whose audio_bus_override and "
+        .describe("area_mask", {.doc = "Zone3D layers, as bits, whose audio_bus_override and "
                                        "reverb bus apply while it is inside; the first such "
                                        "area by ID wins. 0 ignores areas."})
         .describe("emission_angle_enabled",
@@ -3759,8 +3759,8 @@ void register_audio_components(ComponentRegistry& registry) {
                    .max = 0})
         .describe("doppler_tracking", doppler)
         .describe("parameters", parameters);
-    registry.add<AudioListener3D>()
-        .set_doc("Where AudioStreamPlayer3D sounds are heard from, as Godot's AudioListener3D, "
+    registry.add<Listener3D>()
+        .set_doc("Where SoundPlayer3D sounds are heard from, as Godot's AudioListener3D, "
                  "at its Transform3D and turned with it, in place of the current Camera3D. The "
                  "first current one by ID is used, else the first one.")
         .describe("current", {.doc = "Makes it the listener."})
@@ -3774,20 +3774,20 @@ void register_path_components(ComponentRegistry& registry) {
     const FieldMeta cubic_interp{.doc = "Moves between baked points on a curve rather than a "
                                         "line."};
     const FieldMeta loop{.doc = "Progress past either end goes round to the other."};
-    registry.add<Path2D>()
+    registry.add<Spline2D>()
         .set_doc("A curve of Bezier segments in the entity's space, as Godot's Path2D with its "
-                 "Curve2D; PathFollow2D children move along it.")
+                 "Curve2D; SplineFollower2D children move along it.")
         .describe("points", {.doc = "Points as {\"position\", \"in\", \"out\"} in pixels, in "
                                     "and out the control handles before and after each, "
                                     "relative to it."})
         .describe("bake_interval",
                   {.doc = "Pixels between the points the curve is baked into.", .min = 0.01});
-    describe_members(*registry.find_mutable("Path2D"), "points[]",
+    describe_members(*registry.find_mutable("Spline2D"), "points[]",
                      {{"position", {.doc = "Where it is, as [x, y] pixels."}},
                       {"in", {.doc = "The control handle before it, relative to it."}},
                       {"out", {.doc = "The control handle after it, relative to it."}}});
-    registry.add<PathFollow2D>()
-        .set_doc("Places the entity on its Transform2D parent's Path2D curve each tick, as "
+    registry.add<SplineFollower2D>()
+        .set_doc("Places the entity on its Transform2D parent's Spline2D curve each tick, as "
                  "Godot's PathFollow2D.")
         .describe("progress", progress)
         .describe("h_offset", {.doc = "Pixels along the curve."})
@@ -3795,9 +3795,9 @@ void register_path_components(ComponentRegistry& registry) {
         .describe("rotates", {.doc = "Turns it so +x faces the way the curve goes."})
         .describe("cubic_interp", cubic_interp)
         .describe("loop", loop);
-    registry.add<Path3D>()
+    registry.add<Spline3D>()
         .set_doc("A curve of Bezier segments in the entity's space, as Godot's Path3D with its "
-                 "Curve3D; PathFollow3D children and CSGPolygon3D's path mode use it.")
+                 "Curve3D; SplineFollower3D children and SolidExtrusion3D's path mode use it.")
         .describe("points", {.doc = "Points as {\"position\", \"in\", \"out\", \"tilt\"} in "
                                     "meters, in and out the control handles before and after "
                                     "each, relative to it, and tilt the radians it rolls there."})
@@ -3807,13 +3807,13 @@ void register_path_components(ComponentRegistry& registry) {
         .describe("up_vector_enabled",
                   {.doc = "Carries an up vector along the curve, for \"oriented\" followers "
                           "and rolling along it."});
-    describe_members(*registry.find_mutable("Path3D"), "points[]",
+    describe_members(*registry.find_mutable("Spline3D"), "points[]",
                      {{"position", {.doc = "Where it is, as [x, y, z] meters."}},
                       {"in", {.doc = "The control handle before it, relative to it."}},
                       {"out", {.doc = "The control handle after it, relative to it."}},
                       {"tilt", {.doc = "Radians the curve rolls there about the way it goes."}}});
-    registry.add<PathFollow3D>()
-        .set_doc("Places the entity on its Transform3D parent's Path3D curve each tick, as "
+    registry.add<SplineFollower3D>()
+        .set_doc("Places the entity on its Transform3D parent's Spline3D curve each tick, as "
                  "Godot's PathFollow3D.")
         .describe("progress", progress)
         .describe("h_offset", {.doc = "Meters to the side of the curve."})
@@ -3839,28 +3839,28 @@ void register_csg_components(ComponentRegistry& registry) {
                       {.doc = "A root shape is a static body of its triangles, as Godot's."})
             .describe("collision_layer", {.doc = "The root's physics layers."})
             .describe("collision_mask", {.doc = "The layers the root's body collides with."})
-            .describe("layers", {.doc = "The root's render layers, as MeshInstance3D's."})
-            .describe("cast_shadow", {.doc = "Which shadows the root casts, as MeshInstance3D's.",
+            .describe("layers", {.doc = "The root's render layers, as Model3D's."})
+            .describe("cast_shadow", {.doc = "Which shadows the root casts, as Model3D's.",
                                       .choices = {"off", "on", "double_sided", "shadows_only"}});
     };
     const FieldMeta flip_faces{.doc = "Its faces point in, so its inside shows."};
     const FieldMeta smooth_faces{.doc = "Shades smoothly across its faces' edges."};
     const FieldMeta sides{.doc = "Faces around its axis.", .min = 3};
-    shape(registry.add<CSGCombiner3D>().set_doc(
+    shape(registry.add<SolidGroup3D>().set_doc(
         "A CSG shape with no shape of its own, only its children's, as Godot's CSGCombiner3D."));
     shape(
-        registry.add<CSGBox3D>()
+        registry.add<SolidBox3D>()
             .set_doc("A box centered on the entity, as Godot's CSGBox3D.")
             .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})
             .describe("flip_faces", flip_faces));
-    shape(registry.add<CSGSphere3D>()
+    shape(registry.add<SolidSphere3D>()
               .set_doc("A sphere centered on the entity, as Godot's CSGSphere3D.")
               .describe("radius", {.doc = "Meters.", .min = 0.001})
               .describe("radial_segments", {.doc = "Faces around y.", .min = 4})
               .describe("rings", {.doc = "Rows of faces from pole to pole.", .min = 1})
               .describe("smooth_faces", smooth_faces)
               .describe("flip_faces", flip_faces));
-    shape(registry.add<CSGCylinder3D>()
+    shape(registry.add<SolidCylinder3D>()
               .set_doc("A cylinder along y centered on the entity, or a cone pointing up, as "
                        "Godot's CSGCylinder3D.")
               .describe("radius", {.doc = "Meters.", .min = 0.001})
@@ -3869,7 +3869,7 @@ void register_csg_components(ComponentRegistry& registry) {
               .describe("cone", {.doc = "Its top is a point."})
               .describe("smooth_faces", smooth_faces)
               .describe("flip_faces", flip_faces));
-    shape(registry.add<CSGTorus3D>()
+    shape(registry.add<SolidTorus3D>()
               .set_doc("A ring around y, as Godot's CSGTorus3D.")
               .describe("inner_radius", {.doc = "Meters from the center to its inside.", .min = 0})
               .describe("outer_radius", {.doc = "Meters from the center to its outside.", .min = 0})
@@ -3878,9 +3878,9 @@ void register_csg_components(ComponentRegistry& registry) {
               .describe("smooth_faces", smooth_faces)
               .describe("flip_faces", flip_faces));
     shape(
-        registry.add<CSGPolygon3D>()
+        registry.add<SolidExtrusion3D>()
             .set_doc("A polygon in the entity's xy plane pushed along -z, turned around y or "
-                     "pushed along a Path3D, as Godot's CSGPolygon3D.")
+                     "pushed along a Spline3D, as Godot's CSGPolygon3D.")
             .describe("polygon",
                       {.doc = "Corners in meters, as [[x, y], ...]; at least 3, its edges not "
                               "crossing."})
@@ -3893,7 +3893,7 @@ void register_csg_components(ComponentRegistry& registry) {
                 "spin_degrees",
                 {.doc = "How far it turns, in spin mode; 360 closes it.", .min = 0.01, .max = 360})
             .describe("spin_sides", {.doc = "Steps it turns in, in spin mode.", .min = 3})
-            .describe("path_node", {.doc = "ID of the entity whose Path3D it follows, in path "
+            .describe("path_node", {.doc = "ID of the entity whose Spline3D it follows, in path "
                                            "mode."})
             .describe("path_interval_type",
                       {.doc = "Cuts the path every path_interval meters (\"distance\") or "
@@ -3912,7 +3912,7 @@ void register_csg_components(ComponentRegistry& registry) {
                       {.doc = "Turns it by the curve's own directions instead of the line "
                               "between cuts."})
             .describe("path_local",
-                      {.doc = "Starts at the CSGPolygon3D instead of where the path is in the "
+                      {.doc = "Starts at the SolidExtrusion3D instead of where the path is in the "
                               "world."})
             .describe("path_continuous_u",
                       {.doc = "Texture u runs along the whole path instead of 0 to 1 on each "
@@ -3925,7 +3925,7 @@ void register_csg_components(ComponentRegistry& registry) {
             .describe("smooth_faces", smooth_faces)
             .describe("flip_faces", flip_faces));
     shape(
-        registry.add<CSGMesh3D>()
+        registry.add<SolidMesh3D>()
             .set_doc("A closed mesh as a CSG shape, as Godot's CSGMesh3D: a model's meshes, or "
                      "the entity's primitive mesh.")
             .describe(
@@ -3933,14 +3933,14 @@ void register_csg_components(ComponentRegistry& registry) {
                 {.doc =
                      "Project path of a .gltf, .glb, .obj, .fbx, .blend or .model.json model, its "
                      "meshes placed as its nodes place them at rest, with its "
-                     "materials unless the entity has a StandardMaterial3D; \"\" for "
-                     "the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, "
-                     "PrismMesh or TorusMesh."})
+                     "materials unless the entity has a Surface3D; \"\" for "
+                     "the entity's BoxGeometry, SphereGeometry, CylinderGeometry, CapsuleGeometry, "
+                     "PrismGeometry or TorusGeometry."})
             .describe("flip_faces", flip_faces));
 }
 
 void register_network_components(ComponentRegistry& registry) {
-    registry.add<MultiplayerSpawner>()
+    registry.add<NetSpawner>()
         .set_doc("Spawns, on every peer, the entities its multiplayer authority places under "
                  "spawn_path that extend one of spawnable_scenes, and despawns them when they "
                  "go, as Godot's MultiplayerSpawner.")
@@ -3950,7 +3950,7 @@ void register_network_components(ComponentRegistry& registry) {
                                         "children it spawns and despawns."})
         .describe("spawn_limit",
                   {.doc = "How many it may have spawned at once; 0 for no limit.", .min = 0});
-    registry.add<MultiplayerSynchronizer>()
+    registry.add<NetSync>()
         .set_doc("Replicates its root entity's properties from its multiplayer authority to "
                  "the peers it is visible to, as Godot's MultiplayerSynchronizer.")
         .describe("root_path", {.doc = "ID of the entity it replicates; null for its own entity."})
@@ -3971,18 +3971,18 @@ void register_network_components(ComponentRegistry& registry) {
                   {.doc = "What it replicates: each {\"path\": \"Component/field\", \"spawn\", "
                           "\"replication_mode\": \"never\" | \"always\" | \"on_change\"}."});
     describe_members(
-        *registry.find_mutable("MultiplayerSynchronizer"), "properties[]",
+        *registry.find_mutable("NetSync"), "properties[]",
         {{"path",
           {.doc = "\"Component/field\", or part of one (\"Transform2D/position/x\"), on "
                   "the root."}},
-         {"spawn", {.doc = "Sent with the entity when a MultiplayerSpawner spawns it."}},
+         {"spawn", {.doc = "Sent with the entity when a NetSpawner spawns it."}},
          {"replication_mode",
           {.doc = "\"never\", \"always\" (in every sync, unreliably) or "
                   "\"on_change\" (reliably, when it changes)."}}});
 }
 
 void register_gridmap_components(ComponentRegistry& registry) {
-    registry.add<GridMap>()
+    registry.add<BlockMap3D>()
         .set_doc("Items of a .meshlib.json mesh library in a grid of cells in the entity's space, "
                  "as Godot's GridMap: each cell draws its item's mesh, collides as its shapes "
                  "and, with bake_navigation, is a navigation region of its navigation mesh.")
@@ -4011,7 +4011,7 @@ void register_gridmap_components(ComponentRegistry& registry) {
                           "keys toward +x, each row one cell further toward +z, \".\" for an "
                           "empty cell."});
     describe_members(
-        *registry.find_mutable("GridMap"), "floors[]",
+        *registry.find_mutable("BlockMap3D"), "floors[]",
         {{"y", {.doc = "The cells' height, in cells."}},
          {"origin", {.doc = "[x, z] of the cell the first key of the first row stands for."}},
          {"rows",
@@ -4020,11 +4020,12 @@ void register_gridmap_components(ComponentRegistry& registry) {
 }
 
 void register_terrain_components(ComponentRegistry& registry) {
-    registry.add<HTerrain>()
-        .set_doc("A heightmap terrain, as the HTerrain plugin for Godot: heights a cell apart from "
-                 "a 16-bit PNG, four ground textures weighed by a splat map and tinted by a color "
-                 "map whose alpha cuts holes, drawn in chunks coarser with distance, colliding as "
-                 "a height field and walked on by navigation bakes.")
+    registry.add<Terrain3D>()
+        .set_doc(
+            "A heightmap terrain, as the Terrain3D plugin for Godot: heights a cell apart from "
+            "a 16-bit PNG, four ground textures weighed by a splat map and tinted by a color "
+            "map whose alpha cuts holes, drawn in chunks coarser with distance, colliding as "
+            "a height field and walked on by navigation bakes.")
         .describe("heightmap", {.doc = "Project path of a .height.png file, 16-bit gray; one that "
                                        "doesn't exist yet is flat."})
         .describe("resolution", {.doc = "Heights along each side, which every map's size "
@@ -4046,7 +4047,7 @@ void register_terrain_components(ComponentRegistry& registry) {
                           "map tints it (1)."})
         .describe("depth_blending",
                   {.doc = "Where textures meet, the one whose bump stands higher shows, as "
-                          "HTerrain's depth blending."})
+                          "Terrain3D's depth blending."})
         .describe("specular", {.doc = "How bright highlights are.", .min = 0, .max = 1})
         .describe("map_scale", {.doc = "Meters a cell covers along x and z, and what heights are "
                                        "multiplied by, as [x, y, z].",
@@ -4065,8 +4066,8 @@ void register_terrain_components(ComponentRegistry& registry) {
         .describe("collision_mask", {.doc = "The layers it collides with."})
         .describe("friction", {.doc = "Its physics material's friction.", .min = 0, .max = 1})
         .describe("bounce", {.doc = "Its physics material's bounce.", .min = 0, .max = 1})
-        .describe("render_layers", {.doc = "Render layers, as MeshInstance3D's layers."})
-        .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
+        .describe("render_layers", {.doc = "Render layers, as Model3D's layers."})
+        .describe("cast_shadow", {.doc = "Which shadows it casts, as Model3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}})
         .describe("craters",
                   {.doc = "Craters blasts left (damage.apply's explosive damage, with a "
@@ -4077,7 +4078,7 @@ void register_terrain_components(ComponentRegistry& registry) {
         .describe("craters[].depth",
                   {.doc = "Meters its middle goes down, before map_scale's y.", .min = 0});
     describe_members(
-        *registry.find_mutable("HTerrain"), "textures[]",
+        *registry.find_mutable("Terrain3D"), "textures[]",
         {{"albedo_bump",
           {.doc = "Project path of an sRGB albedo image with its bump in alpha; "
                   "\"\" is white."}},
@@ -4123,14 +4124,14 @@ void register_3d_components(ComponentRegistry& registry) {
         .min = -16,
         .max = 16};
 
-    registry.add<MeshInstance3D>()
-        .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
-                 "Transform3D, as Godot's MeshInstance3D, with its StandardMaterial3D if it has "
+    registry.add<Model3D>()
+        .set_doc("Draws the entity's primitive mesh (BoxGeometry, SphereGeometry, ...) at its "
+                 "Transform3D, as Godot's MeshInstance3D, with its Surface3D if it has "
                  "one; or a model's meshes.")
         .describe("mesh", {.doc = "Project path of a .gltf, .glb, .obj, .fbx, .blend or "
                                   ".model.json model drawn in place of a "
                                   "primitive mesh, with its materials unless the entity has a "
-                                  "StandardMaterial3D; \"\" for none."})
+                                  "Surface3D; \"\" for none."})
         .describe("layers", {.doc = "Render layers: cameras whose cull_mask and lights whose "
                                     "light_cull_mask share a bit see and light it."})
         .describe("cast_shadow",
@@ -4138,11 +4139,12 @@ void register_3d_components(ComponentRegistry& registry) {
                           "shares a bit with its layers, culled as its material culls; "
                           "double_sided culls no faces; shadows_only casts but isn't seen.",
                    .choices = {"off", "on", "double_sided", "shadows_only"}})
-        .describe("gi_mode",
-                  {.doc = "\"static\" meshes are baked into a LightmapGI's lightmap and lit by "
-                          "it, and voxelized by a VoxelGI's bake; \"dynamic\" ones take ambient "
-                          "light from its light probes; \"disabled\" ones from neither.",
-                   .choices = {"disabled", "static", "dynamic"}})
+        .describe(
+            "gi_mode",
+            {.doc = "\"static\" meshes are baked into a BakedLighting3D's lightmap and lit by "
+                    "it, and voxelized by a VoxelLighting3D's bake; \"dynamic\" ones take ambient "
+                    "light from its light probes; \"disabled\" ones from neither.",
+             .choices = {"disabled", "static", "dynamic"}})
         .describe("gi_lightmap_texel_scale",
                   {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0})
         .describe("lod_bias", {.doc = "Times its size when picking a model's coarser LODs: "
@@ -4157,7 +4159,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("material_override",
                   {.doc = "Project path of a spatial .material.json file (a game's shader) or a "
                           ".standard_material.json file drawn in place of every surface's "
-                          "material, before a StandardMaterial3D; \"\" for none."})
+                          "material, before a Surface3D; \"\" for none."})
         .describe("material_params",
                   {.doc = "Values for the spatial material's params by name, replacing their "
                           "defaults, e.g. {\"speed\": 2}."})
@@ -4167,11 +4169,11 @@ void register_3d_components(ComponentRegistry& registry) {
                           "that shape in every mesh of the model, and shapes not named keep "
                           "their mesh's weight; 0 leaves a shape out and 1 applies it whole "
                           "(Godot's editor offers -1 to 1). Animations blend from these."});
-    registry.add<MultiMeshInstance3D>()
+    registry.add<ModelInstances3D>()
         .set_doc("Draws a model once per instance, each placed by its own transform in the "
                  "entity's space, as Godot's MultiMeshInstance3D; scatter.run makes them.")
         .describe("mesh", {.doc = "Project path of the model each instance draws, as "
-                                  "MeshInstance3D's mesh."})
+                                  "Model3D's mesh."})
         .describe("instances", {.doc = "Each instance as {\"position\", \"rotation\", "
                                        "\"scale\"}, a Transform3D's fields in the entity's "
                                        "space."})
@@ -4182,10 +4184,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("instances[].scale", {.doc = "Its scale on each axis, as [x, y, z]."})
         .describe("visible_instance_count",
                   {.doc = "How many instances draw, from the first; -1 for all.", .min = -1})
-        .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
-        .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
+        .describe("layers", {.doc = "Render layers, as Model3D's."})
+        .describe("cast_shadow", {.doc = "Which shadows it casts, as Model3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}})
-        .describe("lod_bias", {.doc = "As MeshInstance3D's.", .min = 0.001});
+        .describe("lod_bias", {.doc = "As Model3D's.", .min = 0.001});
     registry.add<Foliage3D>()
         .set_doc("Painted plants and rocks, after Unreal's foliage: each group's instances draw "
                  "their .foliage.json type's model, bend in WindSource3Ds' wind, part for "
@@ -4196,13 +4198,13 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("groups[].instances",
                   {.doc = "Seven numbers an instance: x, y, z, rotation x, y, z in radians "
                           "(Godot's YXZ) and scale, in the entity's space."})
-        .describe("layers", {.doc = "Render layers, as MeshInstance3D's."})
+        .describe("layers", {.doc = "Render layers, as Model3D's."})
         .describe("collision_layer", {.doc = "The physics layers instances whose type has "
                                              "collision are on."})
         .describe("collision_mask", {.doc = "The physics layers they scan, as a static body's."})
-        .describe("lod_bias", {.doc = "As MeshInstance3D's.", .min = 0.001});
+        .describe("lod_bias", {.doc = "As Model3D's.", .min = 0.001});
     registry.add<Skeleton3D>()
-        .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "
+        .set_doc("Poses bones of the model the entity's Model3D draws, by name, in place of "
                  "their animation or rest pose, as Godot's Skeleton3D bone poses.")
         .describe("bone_positions",
                   {.doc = "Bone name -> position in its parent's space, as [x, y, z] meters."})
@@ -4212,23 +4214,23 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("show_rest_only",
                   {.doc = "Shows the rest pose, leaving out animations and these maps."});
     register_ik_components(registry);
-    registry.add<BoxMesh>()
-        .set_doc("A box centered on the entity, as Godot's BoxMesh; MeshInstance3D draws it.")
+    registry.add<BoxGeometry>()
+        .set_doc("A box centered on the entity, as Godot's BoxMesh; Model3D draws it.")
         .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})
         .describe("subdivide_width", subdivide)
         .describe("subdivide_height", subdivide)
         .describe("subdivide_depth", subdivide)
         .describe("flip_faces", flip_faces);
-    registry.add<SphereMesh>()
-        .set_doc("A sphere, as Godot's SphereMesh; MeshInstance3D draws it.")
+    registry.add<SphereGeometry>()
+        .set_doc("A sphere, as Godot's SphereMesh; Model3D draws it.")
         .describe("radius", {.doc = "Meters around y.", .min = 0.001})
         .describe("height", {.doc = "Meters along y; twice radius is round.", .min = 0.001})
         .describe("radial_segments", radial)
         .describe("rings", {.doc = "Rows of corners from top to bottom.", .min = 1})
         .describe("is_hemisphere", {.doc = "Only its top half, closed underneath."})
         .describe("flip_faces", flip_faces);
-    registry.add<CylinderMesh>()
-        .set_doc("A cylinder or cone along y, as Godot's CylinderMesh; MeshInstance3D draws it.")
+    registry.add<CylinderGeometry>()
+        .set_doc("A cylinder or cone along y, as Godot's CylinderMesh; Model3D draws it.")
         .describe("top_radius", {.doc = "Meters; 0 makes a cone.", .min = 0})
         .describe("bottom_radius", {.doc = "Meters; 0 makes a cone.", .min = 0})
         .describe("height", {.doc = "Meters along y.", .min = 0.001})
@@ -4237,31 +4239,31 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("cap_top", {.doc = "Closes its top."})
         .describe("cap_bottom", {.doc = "Closes its bottom."})
         .describe("flip_faces", flip_faces);
-    registry.add<CapsuleMesh>()
-        .set_doc("A capsule along y, as Godot's CapsuleMesh; MeshInstance3D draws it.")
+    registry.add<CapsuleGeometry>()
+        .set_doc("A capsule along y, as Godot's CapsuleMesh; Model3D draws it.")
         .describe("radius", {.doc = "Meters.", .min = 0.001})
         .describe("height", {.doc = "Meters end to end, at least twice radius.", .min = 0.001})
         .describe("radial_segments", radial)
         .describe("rings", {.doc = "Extra rows of corners along each part.", .min = 0})
         .describe("flip_faces", flip_faces);
-    registry.add<PlaneMesh>()
-        .set_doc("A flat rectangle, as Godot's PlaneMesh; MeshInstance3D draws it.")
+    registry.add<PlaneGeometry>()
+        .set_doc("A flat rectangle, as Godot's PlaneMesh; Model3D draws it.")
         .describe("size", {.doc = "Meters across and deep, as [x, y].", .min = 0})
         .describe("subdivide_width", subdivide)
         .describe("subdivide_depth", subdivide)
         .describe("center_offset", offset)
         .describe("orientation", orientation)
         .describe("flip_faces", flip_faces);
-    registry.add<QuadMesh>()
-        .set_doc("A flat rectangle facing z, as Godot's QuadMesh; MeshInstance3D draws it.")
+    registry.add<QuadGeometry>()
+        .set_doc("A flat rectangle facing z, as Godot's QuadMesh; Model3D draws it.")
         .describe("size", {.doc = "Meters across and high, as [x, y].", .min = 0})
         .describe("subdivide_width", subdivide)
         .describe("subdivide_depth", subdivide)
         .describe("center_offset", offset)
         .describe("orientation", orientation)
         .describe("flip_faces", flip_faces);
-    registry.add<PrismMesh>()
-        .set_doc("A wedge, as Godot's PrismMesh; MeshInstance3D draws it.")
+    registry.add<PrismGeometry>()
+        .set_doc("A wedge, as Godot's PrismMesh; Model3D draws it.")
         .describe("left_to_right",
                   {.doc = "Where its top edge is, from 0 (over the left) to 1 (over the right).",
                    .min = -2,
@@ -4271,15 +4273,15 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("subdivide_height", subdivide)
         .describe("subdivide_depth", subdivide)
         .describe("flip_faces", flip_faces);
-    registry.add<TorusMesh>()
-        .set_doc("A ring around y, as Godot's TorusMesh; MeshInstance3D draws it.")
+    registry.add<TorusGeometry>()
+        .set_doc("A ring around y, as Godot's TorusMesh; Model3D draws it.")
         .describe("inner_radius", {.doc = "Meters to its inside edge.", .min = 0.001})
         .describe("outer_radius", {.doc = "Meters to its outside edge.", .min = 0.001})
         .describe("rings", {.doc = "Corners around y.", .min = 3})
         .describe("ring_segments", {.doc = "Corners around its tube.", .min = 3})
         .describe("flip_faces", flip_faces);
 
-    registry.add<StandardMaterial3D>()
+    registry.add<Surface3D>()
         .set_doc("What the entity's mesh is made of, as Godot's StandardMaterial3D: lit by "
                  "Burley diffuse and GGX specular, as Godot's Compatibility renderer.")
         .describe("transparency",
@@ -4331,7 +4333,7 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps"}})
         .describe("texture_repeat", {.doc = "Textures tile past their edges; false stretches "
                                             "the edge pixels."})
-        .describe("disable_fog", {.doc = "The WorldEnvironment's fog leaves it alone."})
+        .describe("disable_fog", {.doc = "The Environment3D's fog leaves it alone."})
         .describe("billboard_mode",
                   {.doc = "Turns it to face the camera: \"fixed_y\" about y only, "
                           "\"particles\" each particle, rotated by its angle.",
@@ -4407,7 +4409,7 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"disabled", "idle_step", "physics_step"}})
         .describe("compositor",
                   {.doc = "Project path of a .pipeline.json file, as Godot's Camera3D.compositor: "
-                          "its passes and effects in place of the WorldEnvironment's while the "
+                          "its passes and effects in place of the Environment3D's while the "
                           "camera is current. \"\" for the environment's."});
     registry.add<XROrigin3D>()
         .set_doc("Where the player's play space is in the world, as Godot's XROrigin3D: XR "
@@ -4438,19 +4440,19 @@ void register_3d_components(ComponentRegistry& registry) {
     registry.add<XRCamera3D>().set_doc(
         "The headset, as Godot's XRCamera3D: the entity's Camera3D follows the \"head\" "
         "tracker under its XROrigin3D.");
-    registry.add<XRFaceModifier3D>()
+    registry.add<XRFace3D>()
         .set_doc("Moves a face by a face tracker, as Godot's XRFaceModifier3D: each blend shape "
                  "of the target's model named in Unified Expressions, ARKit (\"jawOpen\"), "
                  "SRanipal or Meta's standard follows the tracker's weight for it, set in the "
-                 "target's MeshInstance3D blend_shapes.")
+                 "target's Model3D blend_shapes.")
         .describe("face_tracker", {.doc = "The face tracker it follows."})
         .describe("target", {.doc = "The entity drawing the face, by ID; \"\" for this one."});
 
-    // Baking into a LightmapGI, as Godot's Light3D.
+    // Baking into a BakedLighting3D, as Godot's Light3D.
     const FieldMeta indirect_energy{
         .doc = "Times its light in a lightmap's bounces.", .min = 0.0, .max = 16.0};
     const FieldMeta bake_mode{
-        .doc = "How a LightmapGI bakes it: \"disabled\" leaves it out; \"dynamic\" bakes its "
+        .doc = "How a BakedLighting3D bakes it: \"disabled\" leaves it out; \"dynamic\" bakes its "
                "bounces only and it lights live; \"static\" bakes it whole and it doesn't light "
                "lightmapped meshes live. VoxelGIs light their cells with lights not disabled.",
         .choices = {"disabled", "static", "dynamic"}};
@@ -4469,7 +4471,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .doc = "Lumens it gives out, which light_energy multiplies, with physical light units: "
                "800 is a household bulb.",
         .min = 0};
-    registry.add<DirectionalLight3D>()
+    registry.add<SunLight3D>()
         .set_doc("Light from one direction everywhere, such as the sun, shining down the "
                  "entity's -z, as Godot's DirectionalLight3D.")
         .describe("light_color", color)
@@ -4530,9 +4532,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .doc = "Moves the projector's texture coordinates by this much a second, wrapping."};
     const FieldMeta ies{.doc = "Forward+: project path of an IES profile (.ies) whose pattern "
                                "it shines in, baked into its projector; \"\" for none."};
-    registry.add<OmniLight3D>()
+    registry.add<PointLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
-                 "OmniLight3D.")
+                 "PointLight3D.")
         .describe("light_color", color)
         .describe("light_energy", energy)
         .describe("light_specular", light_specular)
@@ -4592,10 +4594,10 @@ void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
     const FieldMeta debanding{.doc = "Adds a little noise so smooth gradients show no bands."};
-    registry.add<ProceduralSkyMaterial>()
+    registry.add<SkyGradient>()
         .set_doc("A sky from its top through the horizon to the ground, with each "
-                 "DirectionalLight3D's sun on it, as Godot's ProceduralSkyMaterial. It goes on a "
-                 "WorldEnvironment's entity, whose background_mode is \"sky\".")
+                 "SunLight3D's sun on it, as Godot's ProceduralSkyMaterial. It goes on a "
+                 "Environment3D's entity, whose background_mode is \"sky\".")
         .describe("sky_top_color", color)
         .describe("sky_horizon_color", color)
         .describe("sky_curve", curve)
@@ -4611,9 +4613,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("sun_curve", curve)
         .describe("use_debanding", debanding)
         .describe("energy_multiplier", energy);
-    registry.add<PhysicalSkyMaterial>()
-        .set_doc("A sky of the first DirectionalLight3D's light scattered by the air, as Godot's "
-                 "PhysicalSkyMaterial. It goes on a WorldEnvironment's entity, whose "
+    registry.add<SkyScattering>()
+        .set_doc("A sky of the first SunLight3D's light scattered by the air, as Godot's "
+                 "SkyScattering. It goes on a Environment3D's entity, whose "
                  "background_mode is \"sky\".")
         .describe("rayleigh_coefficient",
                   {.doc = "How much the air scatters, which colors the sky.", .min = 0, .max = 64})
@@ -4632,9 +4634,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("energy_multiplier", energy)
         .describe("use_debanding", debanding)
         .describe("night_sky", {.doc = "A panorama behind the sky, such as stars. " + texture.doc});
-    registry.add<PanoramaSkyMaterial>()
+    registry.add<SkyPanorama>()
         .set_doc("A sky of an equirectangular texture all round, as Godot's "
-                 "PanoramaSkyMaterial. It goes on a WorldEnvironment's entity, whose "
+                 "SkyPanorama. It goes on a Environment3D's entity, whose "
                  "background_mode is \"sky\".")
         .describe("panorama", texture)
         .describe("filter", {.doc = "Samples it smoothly; false takes its nearest texel."})
@@ -4667,7 +4669,7 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"disabled", "environment", "color"}})
         .describe("ambient_color", {.doc = "sRGB, for ambient_mode \"color\"."})
         .describe("ambient_color_energy", {.doc = "ambient_color's energy.", .min = 0.0});
-    registry.add<LightmapGI>()
+    registry.add<BakedLighting3D>()
         .set_doc("Light baked into lightmaps, as Godot's LightmapGI: lightmap.bake traces the "
                  "static MeshInstance3Ds and baked lights under its entity's parent (all of a "
                  "root's world) into light_data, and those meshes then take ambient light from "
@@ -4702,13 +4704,13 @@ void register_3d_components(ComponentRegistry& registry) {
                    .max = 16384})
         .describe("environment_mode",
                   {.doc = "The light rays leaving the world bring: none, the "
-                          "WorldEnvironment's ambient light or environment_custom_color.",
+                          "Environment3D's ambient light or environment_custom_color.",
                    .choices = {"disabled", "scene", "custom_color"}})
         .describe("environment_custom_color", {.doc = "Linear RGB, for \"custom_color\"."})
         .describe("environment_custom_energy",
                   {.doc = "environment_custom_color's energy.", .min = 0, .max = 64})
         .describe("camera_attributes",
-                  {.doc = "ID of the entity whose CameraAttributesPractical's exposure_multiplier "
+                  {.doc = "ID of the entity whose CameraLens's exposure_multiplier "
                           "light is baked with; \"\" for 1."})
         .describe("generate_probes_subdiv",
                   {.doc = "Light probes for moving meshes: 8 at the corners, or an octree's cells "
@@ -4716,10 +4718,10 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"disabled", "4", "8", "16", "32"}})
         .describe("light_data",
                   {.doc = "Project path of the .lightmap.json file lightmap.bake writes."});
-    registry.add<LightmapProbe>().set_doc(
-        "A place a LightmapGI bakes a light probe, under its parent as its meshes are, as "
+    registry.add<LightProbe3D>().set_doc(
+        "A place a BakedLighting3D bakes a light probe, under its parent as its meshes are, as "
         "Godot's LightmapProbe: where moving meshes' light changes quickly.");
-    registry.add<VoxelGI>()
+    registry.add<VoxelLighting3D>()
         .set_doc("Light bounced around a box of the world in real time, as Godot's VoxelGI: "
                  "voxel_gi.bake voxelizes the static MeshInstance3Ds under its entity's parent "
                  "in the box into data, lights are injected as they change, and meshes in the box "
@@ -4728,7 +4730,7 @@ void register_3d_components(ComponentRegistry& registry) {
                              .choices = {"64", "128", "256", "512"}})
         .describe("size", {.doc = "The box, centered on the entity, in its space."})
         .describe("camera_attributes",
-                  {.doc = "ID of the entity whose CameraAttributesPractical's exposure_multiplier "
+                  {.doc = "ID of the entity whose CameraLens's exposure_multiplier "
                           "emission is baked with; \"\" for 1."})
         .describe("data", {.doc = "Project path of the .voxelgi.json file voxel_gi.bake writes."})
         .describe("dynamic_range",
@@ -4744,9 +4746,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("use_two_bounces", {.doc = "Light bounces twice inside the cells, not once."})
         .describe("interior",
                   {.doc = "Leaves out the environment's light: meshes take only the cells'."});
-    registry.add<OccluderInstance3D>()
+    registry.add<Occluder3D>()
         .set_doc("A shape that hides the meshes behind it from the camera, as Godot's "
-                 "OccluderInstance3D, while project.json's "
+                 "Occluder3D, while project.json's "
                  "rendering.occlusion_culling.use_occlusion_culling is on. It draws nothing.")
         .describe("shape", {.doc = "Godot's occluder: quad (size's x and y, facing +Z), box "
                                    "(size), sphere (radius), polygon or array (as occluder.bake "
@@ -4795,7 +4797,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("sorting_offset",
                   {.doc = "Meters taken off its distance from the camera, to draw it over "
                           "nearer decals."});
-    registry.add<GaussianSplat3D>()
+    registry.add<Splat3D>()
         .set_doc("Research: a cloud of 3D Gaussians captured from a real place or thing (a 3D "
                  "Gaussian Splatting .ply file, as Postshot, Polycam or nerfstudio write), "
                  "blended over the opaque meshes in Forward+. Only the software device draws "
@@ -4810,8 +4812,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("layers", {.doc = "Cameras whose cull_mask shares a bit see it."});
     registry.add<FogVolume>()
         .set_doc("Forward+: a place where the volumetric fog is thicker, thinner or glows, as "
-                 "Godot's FogVolume, filled as the FogMaterial on the entity says (with none, a "
-                 "density of 1). Shows while the WorldEnvironment has volumetric fog.")
+                 "Godot's FogVolume, filled as the FogVolumeLook on the entity says (with none, a "
+                 "density of 1). Shows while the Environment3D has volumetric fog.")
         .describe("size",
                   {.doc = "The shape's size, centered on the entity, in its space; not used by "
                           "\"world\".",
@@ -4819,7 +4821,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("shape", {.doc = "Its shape; \"world\" fills the whole fog.",
                             .choices = {"ellipsoid", "cone", "cylinder", "box", "world"}})
         .describe("layers", {.doc = "Cameras whose cull_mask shares a bit see it."});
-    registry.add<FogMaterial>()
+    registry.add<FogVolumeLook>()
         .set_doc("How the FogVolume on the entity fills its shape, as Godot's FogMaterial.")
         .describe("density", {.doc = "Added to the fog's density; below 0 takes fog away."})
         .describe("albedo", {.doc = "The color it scatters light with. " + color.doc})
@@ -4829,7 +4831,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe(
             "edge_fade",
             {.doc = "How it fades toward the shape's edges: the curve's power; 0 none.", .min = 0});
-    registry.add<WorldEnvironment>()
+    registry.add<Environment3D>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "
                  "background "
@@ -4837,7 +4839,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("background_mode",
                   {.doc = "\"clear_color\" is the project's rendering.clear_color; \"color\" is "
                           "background_color; \"sky\" is the entity's sky material, or a "
-                          "default ProceduralSkyMaterial.",
+                          "default SkyGradient.",
                    .choices = {"clear_color", "color", "sky"}})
         .describe("background_color", color)
         .describe("background_energy_multiplier", energy)
@@ -5050,9 +5052,9 @@ void register_3d_components(ComponentRegistry& registry) {
                           "the world. A current Camera3D's compositor takes its place. \"\" for "
                           "none."});
 
-    registry.add<CameraAttributesPractical>()
+    registry.add<CameraLens>()
         .set_doc("How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: "
-                 "on a Camera3D's entity for that camera, or on the WorldEnvironment's for "
+                 "on a Camera3D's entity for that camera, or on the Environment3D's for "
                  "cameras without their own.")
         .describe("exposure_sensitivity",
                   {.doc = "The camera's ISO, which the auto exposure sensitivities are over.",
@@ -5110,7 +5112,7 @@ void register_builtin_components(ComponentRegistry& registry) {
     const FieldMeta z_max{
         .doc = "Lights sprites and layers with at most this z_index.", .min = -4096, .max = 4096};
     const FieldMeta layer_min{.doc = "Lights canvases with at least this layer: the world is 0, "
-                                     "a CanvasLayer its layer.",
+                                     "a ScreenLayer its layer.",
                               .min = -512,
                               .max = 512};
     const FieldMeta layer_max{
@@ -5118,7 +5120,7 @@ void register_builtin_components(ComponentRegistry& registry) {
     const FieldMeta cull_mask{.doc = "Lights sprites and layers whose light_mask shares a bit.",
                               .min = 0,
                               .max = kMaxMask};
-    const FieldMeta shadow_enabled{.doc = "LightOccluder2D polygons and tiles' occluders cast "
+    const FieldMeta shadow_enabled{.doc = "Occluder2D polygons and tiles' occluders cast "
                                           "shadows from it."};
     const FieldMeta shadow_color{.doc = "What shadowed pixels get instead of the light, as [r, g, "
                                         "b, a]; alpha is times the light's.",
@@ -5216,7 +5218,7 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("specular_shininess",
                   {.doc = "Multiplies the specular map's shininess.", .min = 0, .max = 1});
 
-    registry.add<AnimatedSprite2D>()
+    registry.add<Flipbook2D>()
         .set_doc("Plays an animation from a .frames.json file on the entity's Sprite2D, which it "
                  "adds if missing. Emits animation_finished when an animation that doesn't loop "
                  "ends.")
@@ -5229,10 +5231,10 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("frame_progress",
                   {.doc = "How far through the current frame, from 0 to 1.", .min = 0, .max = 1});
 
-    registry.add<AnimationPlayer>()
+    registry.add<Animator>()
         .set_doc("Plays a keyframe animation from a .anim.json file on the entity's components, "
                  "and on the entities its targets name, or a model file's animation on the "
-                 "skeleton of the model its MeshInstance3D draws. Emits animation_finished when "
+                 "skeleton of the model its Model3D draws. Emits animation_finished when "
                  "an animation that doesn't loop ends, and the events of its event tracks.")
         .describe("library", {.doc = "Project path of a .anim.json file, or of a .gltf, .glb or "
                                      ".blend model whose animations it plays."})
@@ -5251,11 +5253,11 @@ void register_builtin_components(ComponentRegistry& registry) {
                    .min = 1,
                    .max = 128});
 
-    registry.add<AnimationTree>()
+    registry.add<AnimationGraph>()
         .set_doc("Blends the animations of its libraries as a .animtree.json tree says (blend "
                  "trees, blend spaces, one-shots, transitions), as Godot's AnimationTree, into "
                  "the entity's components, its targets' and the skeleton of the model its "
-                 "MeshInstance3D draws. Emits animation_started and animation_finished, and the "
+                 "Model3D draws. Emits animation_started and animation_finished, and the "
                  "events of event tracks.")
         .describe("tree_root", {.doc = "Project path of a .animtree.json file."})
         .describe("libraries",
@@ -5309,7 +5311,7 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("root_motion_scale_accumulator",
                   {.doc = "The scale the animations give the root motion track."});
 
-    registry.add<TileMapLayer>()
+    registry.add<TileLayer2D>()
         .set_doc("A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D "
                  "if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them "
                  "with tilemap.paint and tilemap.set.")
@@ -5350,7 +5352,7 @@ void register_builtin_components(ComponentRegistry& registry) {
         .set_doc("A light shining from the entity's Transform2D through a texture. It lights "
                  "sprites and tile map layers whose light_mask shares a bit with "
                  "range_item_cull_mask, in canvases its layer range holds; with shadow_enabled, "
-                 "LightOccluder2D polygons and tiles' occluders cast shadows from it.")
+                 "Occluder2D polygons and tiles' occluders cast shadows from it.")
         .describe("enabled", {.doc = "Shine."})
         .describe("texture",
                   {.doc = "Project path of a PNG, BMP or KTX2 file whose color and alpha "
@@ -5382,7 +5384,7 @@ void register_builtin_components(ComponentRegistry& registry) {
                    .min = 0,
                    .max = 20000});
 
-    registry.add<DirectionalLight2D>()
+    registry.add<SunLight2D>()
         .set_doc("Light from one direction over everything, such as the sun. It shines down the "
                  "screen, turned by the entity's Transform2D rotation. Masks, ranges and shadows "
                  "work as PointLight2D's.")
@@ -5412,7 +5414,7 @@ void register_builtin_components(ComponentRegistry& registry) {
                    .min = 0,
                    .max = 20000});
 
-    registry.add<LightOccluder2D>()
+    registry.add<Occluder2D>()
         .set_doc("A polygon that casts shadows from lights with shadow_enabled, placed by the "
                  "entity's Transform2D.")
         .describe("polygon", {.doc = "Points as [x, y] in pixels."})
@@ -5429,8 +5431,8 @@ void register_builtin_components(ComponentRegistry& registry) {
                    .min = 0,
                    .max = kMaxMask});
 
-    registry.add<CanvasModulate>()
-        .set_doc("Tints everything lit in its canvas: the light the world, or the CanvasLayer "
+    registry.add<AmbientTint2D>()
+        .set_doc("Tints everything lit in its canvas: the light the world, or the ScreenLayer "
                  "it is in, has where no light reaches. One per canvas.")
         .describe("color", {.doc = "As [r, g, b, a] from 0 to 1.", .min = 0, .max = 1});
 
@@ -5510,14 +5512,14 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("drag_right_margin", drag_margin)
         .describe("drag_bottom_margin", drag_margin);
 
-    registry.add<CanvasLayer>()
+    registry.add<ScreenLayer>()
         .set_doc("A canvas of its own over or under the world, as Godot's CanvasLayer: the "
                  "entities in its children, and theirs, draw in it, moved by its offset, "
                  "rotation and scale instead of the camera. Canvases draw in order of layer; the "
                  "world is layer 0. Its controls lay out in the viewport. Lights whose layer "
-                 "range holds its layer shade it; a CanvasModulate in it tints only it.")
+                 "range holds its layer shade it; a AmbientTint2D in it tints only it.")
         .describe("layer", {.doc = "Draws over canvases with a lower layer; the world is 0, under "
-                                   "a CanvasLayer of 0. Negative layers draw behind the world."})
+                                   "a ScreenLayer of 0. Negative layers draw behind the world."})
         .describe("visible", {.doc = "Hides everything in it when false."})
         .describe("offset", {.doc = "Moves it, in pixels, as [x, y]."})
         .describe("rotation", {.doc = "Turns it around its top left, in radians."})
@@ -5555,7 +5557,7 @@ void register_builtin_components(ComponentRegistry& registry) {
                   {.doc = "Top left of the views it scrolls for, in pixels; past it, it stops."})
         .describe("limit_end", {.doc = "Bottom right of the views it scrolls for, in pixels."})
         .describe("follow_viewport",
-                  {.doc = "Off for one in a CanvasLayer that doesn't follow the viewport, so it "
+                  {.doc = "Off for one in a ScreenLayer that doesn't follow the viewport, so it "
                           "scrolls as if it did."})
         .describe("ignore_camera_scroll",
                   {.doc = "Leave screen_offset alone, so code or an animation scrolls it."})

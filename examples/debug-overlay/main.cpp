@@ -1,7 +1,7 @@
 // The debug overlay and collision shapes: what a person watching a running game sees, and what
 // an agent sees of the same shapes in a captured frame.
 //
-// The scene has ground, a hill whose outline is a concave CollisionPolygon2D, a one-way ledge, a
+// The scene has ground, a hill whose outline is a concave PolygonCollider2D, a one-way ledge, a
 // crate that falls onto it, a coin (an area) and a disabled gate. An agent first captures a frame
 // with the shapes drawn, as frame.capture's "collisions" draws them. Then a person runs the game
 // as slash-cli run --debug-overlay shows it: the host hands each input event to the overlay

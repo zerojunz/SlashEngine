@@ -95,7 +95,7 @@
     },
     {
       "components": {
-        "OmniLight3D": {
+        "PointLight3D": {
           "light_energy": {
             "$pick": [1.5, 2, 2.5]
           }

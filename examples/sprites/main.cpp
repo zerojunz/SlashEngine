@@ -1,5 +1,5 @@
 // Sprites and flipbook animation, as in Godot: Sprite2D draws a texture, or one frame of a sprite
-// sheet, and AnimatedSprite2D plays the animations in a .frames.json file on it.
+// sheet, and Flipbook2D plays the animations in a .frames.json file on it.
 //
 // main.scene.json has three sprites and hero.frames.json two animations of the same sheet. This
 // program writes the sheet, plays the hero's animations with the commands an agent sends, then
@@ -92,14 +92,14 @@ int main() {
     // ticks. The animated_sprite_2d system sets the hero's Sprite2D to the frame to draw; the
     // hero had no Sprite2D, so it gave it one.
     call(session, "step", R"({"ticks": 3, "tick_seconds": 0.0625})");
-    call(session, "entity.get", R"({"id": "hero", "components": ["AnimatedSprite2D", "Sprite2D"],
+    call(session, "entity.get", R"({"id": "hero", "components": ["Flipbook2D", "Sprite2D"],
         "omit_defaults": true})");
     // "jump" doesn't loop: it stops on its last frame and emits animation_finished.
-    call(session, "component.set", R"({"id": "hero", "components": {"AnimatedSprite2D":
+    call(session, "component.set", R"({"id": "hero", "components": {"Flipbook2D":
         {"animation": "jump", "frame": 0, "frame_progress": 0}}})");
-    call(session, "run.until", R"({"with": ["AnimatedSprite2D"], "tick_seconds": 0.0625,
-        "where": [{"component": "AnimatedSprite2D", "field": "playing", "op": "==", "value": false}],
-        "include": ["AnimatedSprite2D"]})");
+    call(session, "run.until", R"({"with": ["Flipbook2D"], "tick_seconds": 0.0625,
+        "where": [{"component": "Flipbook2D", "field": "playing", "op": "==", "value": false}],
+        "include": ["Flipbook2D"]})");
     call(session, "events.read", R"({"subscription": "events_1"})");
 
     // The two triangles the sign draws: frame 3 of the 64x16 sheet, centered on its position,

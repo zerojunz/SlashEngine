@@ -15,7 +15,7 @@
 {"jsonrpc":"2.0","id":15,"method":"step","params":{"ticks":180}}
 {"jsonrpc":"2.0","id":16,"method":"vehicle.state","params":{"vehicle":"car"}}
 {"jsonrpc":"2.0","id":17,"method":"vehicle.control","params":{"vehicle":"car","action":"exit","rider":"driver"}}
-{"jsonrpc":"2.0","id":18,"method":"entity.get","params":{"id":"walker","components":["CharacterBody3D"]}}
+{"jsonrpc":"2.0","id":18,"method":"entity.get","params":{"id":"walker","components":["CharacterMover3D"]}}
 {"jsonrpc":"2.0","id":19,"method":"vehicle.tune","params":{"vehicle":"car","physics":{"gears":{"ratios":[3.4,3.6]}}}}
 {"jsonrpc":"2.0","id":20,"method":"vehicle.tune","params":{"vehicle":"car","physics":{"engine":{"max_torque":360},"tires":{"friction":12}}}}
 {"jsonrpc":"2.0","id":21,"method":"vehicle.check","params":{"vehicle":"car"}}

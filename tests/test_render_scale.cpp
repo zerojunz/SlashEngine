@@ -113,14 +113,14 @@ struct Scene {
         files.files["green.png"] = square_png({0, 255, 0, 255}, 4);
         create("box", R"({"Transform2D": {"position": [4, 0]},
                           "Sprite2D": {"texture": "white.png", "centered": false}})");
-        create("bar", R"({"Control": {"offset_left": 10, "offset_right": 14, "offset_bottom": 3},
-                          "ColorRect": {"color": [1, 0, 0, 1]}})");
+        create("bar", R"({"Widget": {"offset_left": 10, "offset_right": 14, "offset_bottom": 3},
+                          "ColorFill": {"color": [1, 0, 0, 1]}})");
         create("back_sprite", R"({"Transform2D": {"position": [12, 4]},
                                   "Sprite2D": {"texture": "green.png", "centered": false}})");
-        create("back", R"({"CanvasLayer": {"layer": -1, "children": ["back_sprite"]}})");
+        create("back", R"({"ScreenLayer": {"layer": -1, "children": ["back_sprite"]}})");
         create("top_sprite", R"({"Transform2D": {"position": [0, 4]},
                                  "Sprite2D": {"texture": "white.png", "centered": false}})");
-        create("top", R"({"CanvasLayer": {"layer": 1, "children": ["top_sprite"]}})");
+        create("top", R"({"ScreenLayer": {"layer": 1, "children": ["top_sprite"]}})");
         scale({});
     }
 

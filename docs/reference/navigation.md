@@ -6,16 +6,16 @@ Status: current · Updated: 2026-11-20
 
 `engine/navigation` is navigation, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`,
 ported from Godot's `modules/navigation` (each function names the one it follows). Each world
-has a 2D and a 3D map built from components: `NavigationRegion3D` and `NavigationRegion2D` place
+has a 2D and a 3D map built from components: `NavArea3D` and `NavArea2D` place
 `.navmesh.json` and `.navpoly.json` files (`$cli schema navmesh`; convex polygons over shared
-vertices, as Godot's `NavigationMesh` and `NavigationPolygon`), and `NavigationLink3D` and
-`NavigationLink2D` join places the regions don't. `src/core.cpp` is the map: regions' polygons
+vertices, as Godot's `NavigationMesh` and `NavigationPolygon`), and `NavLink3D` and
+`NavLink2D` join places the regions don't. `src/core.cpp` is the map: regions' polygons
 and edges keyed to the map's merge cells, edge connections across regions, links joined to the
 closest polygons, and Godot's A* (`query_path`) with its corridor funnel, edge centering, path
 clipping and simplification, `closest_point` and `random_point`. The 2D map is the 3D one with
 points at (x, 0, y), as Godot's 2D server was before 4.5. The `navigation` system (priority
 960, after physics) rebuilds a map only when its regions, links, files or settings change (its
-`iteration_id` goes up), then updates each `NavigationAgent3D` and `NavigationAgent2D` as
+`iteration_id` goes up), then updates each `NavAgent3D` and `NavAgent2D` as
 Godot's agent nodes do and emits `path_changed`, `waypoint_reached`, `link_reached`,
 `target_reached` and `navigation_finished`; agents move nothing, gameplay code moves them toward
 `next_path_position_3d`. Agents' paths live beside the components by entity ID
@@ -40,7 +40,7 @@ the walkable slope's cosine comes from `slash::cos_sin`, so bakes are the same e
 Avoidance follows Godot 4.6's, on its changed RVO2 and RVO2-3D (`src/rvo2.hpp`,
 `rvo2_2d.cpp`, `rvo2_3d.cpp`; Apache 2.0, notice kept): last in each navigation step,
 `AvoidanceStep` in `src/navigation.cpp` puts every agent with `avoidance_enabled` and every
-`NavigationObstacle2D` and 3D into a simulation as Godot's `NavMap` does (3D agents on the ground
+`NavObstacle2D` and 3D into a simulation as Godot's `NavMap` does (3D agents on the ground
 by elevation and height unless `use_3d_avoidance`; obstacles as agents that avoid nothing, plus
 outlines), steps it, and emits `velocity_computed` with each agent's safe velocity, which
 `safe_velocity_2d` and `_3d` return. Agents submit their `velocity` only while they follow a

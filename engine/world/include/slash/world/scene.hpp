@@ -70,25 +70,25 @@ inline constexpr std::string_view kPrefabType = "prefab";
 // such as references to entities that exist and prefabs that load. Returns every schema error,
 // or the first load error. Prefabs are read with reader; without one, extending fails.
 [[nodiscard]] std::vector<json::ValidationError> validate_scene(const ComponentRegistry& components,
-                                                                const json::Value& scene,
+                                                                const json::Value& given,
                                                                 const FileReader& reader = {});
 
 // The same for a parsed prefab file.
 [[nodiscard]] std::vector<json::ValidationError>
-validate_prefab(const ComponentRegistry& components, const json::Value& prefab,
+validate_prefab(const ComponentRegistry& components, const json::Value& given,
                 const FileReader& reader = {});
 
 // Adds the scene's entities to the world and returns how many were added. The scene is validated
 // first; on any error the world is left unchanged and the error names the offending path.
 // Entities in links take their prefab from there rather than from the file, as when restoring a
 // world's saved entities (World::prefab_links) exactly as they were.
-[[nodiscard]] Result<std::size_t> load_scene(World& world, const json::Value& scene,
+[[nodiscard]] Result<std::size_t> load_scene(World& world, const json::Value& given,
                                              const PrefabLinks& links = {});
 
 // Puts back entities that save_scene saved from a world with the same components, exactly as they
 // were. Unlike load_scene it skips the schema check: systems may have moved a field outside its
 // documented range, such as hit points below a minimum of 0, and the world must still restore.
-[[nodiscard]] Result<std::size_t> restore_scene(World& world, const json::Value& saved,
+[[nodiscard]] Result<std::size_t> restore_scene(World& world, const json::Value& given,
                                                 const PrefabLinks& links);
 
 // Every entity that has an ID, with the registered components it carries. An entity that extends

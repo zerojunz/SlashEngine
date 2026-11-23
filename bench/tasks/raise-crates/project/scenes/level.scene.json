@@ -2,7 +2,7 @@
   "entities": {
     "crate_1": {
       "components": {
-        "CollisionShape2D": {},
+        "Collider2D": {},
         "RigidBody2D": {},
         "Transform2D": {
           "position": [100.0, 200.0]
@@ -11,7 +11,7 @@
     },
     "crate_2": {
       "components": {
-        "CollisionShape2D": {},
+        "Collider2D": {},
         "RigidBody2D": {},
         "Transform2D": {
           "position": [140.0, 200.0]
@@ -20,7 +20,7 @@
     },
     "crate_3": {
       "components": {
-        "CollisionShape2D": {},
+        "Collider2D": {},
         "RigidBody2D": {},
         "Transform2D": {
           "position": [180.0, 180.0]
@@ -29,7 +29,7 @@
     },
     "crate_4": {
       "components": {
-        "CollisionShape2D": {},
+        "Collider2D": {},
         "RigidBody2D": {},
         "Transform2D": {
           "position": [220.0, 160.0]
@@ -38,7 +38,7 @@
     },
     "floor": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [640.0, 32.0]
         },
         "StaticBody2D": {},

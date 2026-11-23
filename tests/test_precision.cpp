@@ -126,18 +126,18 @@ TEST_CASE("a world far from the origin draws as it does near it, in double-preci
     const auto make = [](Scene& scene) {
         scene.create("camera",
                      R"({"Transform3D": {"position": [0, 1, 4]}, "Camera3D": {"far": 100}})");
-        scene.create("env", R"({"WorldEnvironment": {"background_mode": "color",
+        scene.create("env", R"({"Environment3D": {"background_mode": "color",
             "background_color": [0.1, 0.2, 0.4, 1], "fog_enabled": true, "fog_density": 0.02,
             "fog_height": 0.5, "fog_height_density": 0.3}})");
-        scene.create("floor", R"({"Transform3D": {"scale": [6, 0.2, 6]}, "MeshInstance3D": {},
-                                  "BoxMesh": {}})");
+        scene.create("floor", R"({"Transform3D": {"scale": [6, 0.2, 6]}, "Model3D": {},
+                                  "BoxGeometry": {}})");
         scene.create("cube", R"({"Transform3D": {"position": [0.3, 0.6, 0],
-            "rotation": [0, 0.5, 0]}, "MeshInstance3D": {}, "BoxMesh": {},
-            "StandardMaterial3D": {"albedo_color": [0.9, 0.4, 0.2, 1]}})");
+            "rotation": [0, 0.5, 0]}, "Model3D": {}, "BoxGeometry": {},
+            "Surface3D": {"albedo_color": [0.9, 0.4, 0.2, 1]}})");
         scene.create("lamp", R"({"Transform3D": {"position": [-1, 2, 1]},
-                                 "OmniLight3D": {"shadow_enabled": true, "omni_range": 6}})");
+                                 "PointLight3D": {"shadow_enabled": true, "omni_range": 6}})");
         scene.create("sun", R"({"Transform3D": {"rotation": [-0.8, 0.4, 0]},
-                                "DirectionalLight3D": {"light_energy": 0.4}})");
+                                "SunLight3D": {"light_energy": 0.4}})");
     };
     Scene near;
     make(near);

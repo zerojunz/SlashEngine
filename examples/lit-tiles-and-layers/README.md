@@ -2,7 +2,7 @@
 
 A dungeon floor lit by a torch, and a HUD lit by a lantern of its own, as Godot's 2D lights. In
 [main.scene.json](main.scene.json) the floor is a tile map layer, `night` darkens the world and a
-`CanvasLayer` named `hud` holds a panel, its own `CanvasModulate` and a lantern.
+`ScreenLayer` named `hud` holds a panel, its own `AmbientTint2D` and a lantern.
 [main.cpp](main.cpp) draws the textures, then makes the calls an agent would make over MCP or
 JSON-RPC; [expected.txt](expected.txt) holds the replies.
 
@@ -17,11 +17,11 @@ light.sample {"id":"panel"}
   bevels each block's edges, so the edge facing the torch is bright and the one facing away is
   dim; the specular map makes the middle of each block shine with `specular_color` and
   `specular_shininess`.
-- Each canvas has its own `CanvasModulate`: `night` tints only the world and `hud_dim` only the
+- Each canvas has its own `AmbientTint2D`: `night` tints only the world and `hud_dim` only the
   HUD.
 - A light reaches the canvases whose layer is in `range_layer_min` to `range_layer_max`: the
   world is layer 0 and `hud` is layer 1. The lantern's range is 1 to 1, so it lights the panel
   and not the floor; the torch's is 0 to 0 until `component.set` widens it, and then it lights
-  the panel too. Lights in a `CanvasLayer` are placed in that layer's canvas.
+  the panel too. Lights in a `ScreenLayer` are placed in that layer's canvas.
 - `light.sample` with an `id` samples the entity where it is in its own canvas and names the
   layer it is in.

@@ -25,7 +25,7 @@
 // are the same on every machine, and so are the particles they make on every device. Particles
 // are not part of the world's components, so scenes, snapshots and undo leave them as they are.
 //
-// A process material with a collision_mode collides with the LightOccluder2D outlines that have
+// A process material with a collision_mode collides with the Occluder2D outlines that have
 // sdf_collision, and tile occluders in occlusion layers that have it, in every visible canvas,
 // as Godot's particles collide with the signed distance field its viewport draws from them:
 // each step carries the shapes, in the world canvas's coordinates, the nearest first up to
@@ -61,7 +61,7 @@ inline constexpr std::string_view kProcessMaterialSuffix = ".process_material.js
 // The process a .process_material.json document describes, or its first error.
 [[nodiscard]] Result<render::ParticleProcess> parse_process_material(const json::Value& doc);
 
-// The process the document describes for 3D (GPUParticles3D), or its first error. Particle
+// The process the document describes for 3D (GpuEmitter3D), or its first error. Particle
 // graphs, collision and sub-emitters are 2D's only for now.
 [[nodiscard]] Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& doc);
 
@@ -108,12 +108,12 @@ struct ParticleChainMember {
     ParticleSteps steps;
 };
 
-// Adds the "gpu_particles_2d" system, which steps every GPUParticles2D's emission each tick after
+// Adds the "gpu_particles_2d" system, which steps every GpuEmitter2D's emission each tick after
 // the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
 // end, as Godot's: lifetime times 2 - explosiveness after it started. Emitters collide only with
 // assets to load their process materials, textures and tile sets from.
 //
-// A GPUParticles2D's sub_emitter names another that its particles start particles in, as its
+// A GpuEmitter2D's sub_emitter names another that its particles start particles in, as its
 // process material's sub_emitter_mode says, and that one's sub_emitter can name a third, up to
 // render::kMaxParticleChain. A chain steps together, each sub-emitter a step for each of its
 // root's, as long as its speed_scale makes it, and emitting only what the particles before it
@@ -124,41 +124,41 @@ struct ParticleChainMember {
 // here they always see the step's.
 void add_gpu_particles_system(world::World& world, asset::Assets* assets = nullptr);
 
-// A GPUParticles2D's sub_emitter that no chain takes: the emitter's ID and why.
+// A GpuEmitter2D's sub_emitter that no chain takes: the emitter's ID and why.
 struct SubEmitterProblem {
     std::string id;
     std::string message;
 };
 
-// The sub_emitters a world's GPUParticles2D name that add_gpu_particles_system leaves out: one
-// naming its own entity or one with no GPUParticles2D, one another emitter whose ID sorts first
+// The sub_emitters a world's GpuEmitter2D name that add_gpu_particles_system leaves out: one
+// naming its own entity or one with no GpuEmitter2D, one another emitter whose ID sorts first
 // already names, and one that would loop back or make a chain longer than
 // render::kMaxParticleChain. In the order of the emitters' IDs.
 [[nodiscard]] std::vector<SubEmitterProblem> check_sub_emitters(const world::World& world);
 
-// The same in a parsed scene file, each at "/entities/<id>/components/GPUParticles2D/sub_emitter".
+// The same in a parsed scene file, each at "/entities/<id>/components/GpuEmitter2D/sub_emitter".
 // Prefabs and instanced scenes are read with reader. A scene that doesn't load has none:
 // world::validate_scene reports why.
 [[nodiscard]] std::vector<json::ValidationError>
 check_sub_emitters(const world::ComponentRegistry& components, const json::Value& scene,
                    const world::FileReader& reader);
 
-// The steps an entity's GPUParticles2D has kept; none if it has no GPUParticles2D, hasn't been
+// The steps an entity's GpuEmitter2D has kept; none if it has no GpuEmitter2D, hasn't been
 // stepped or the world has no gpu_particles_2d system.
 [[nodiscard]] std::optional<ParticleSteps> particle_steps(const world::World& world,
                                                           entt::entity entity);
 
-// The chain of sub-emitters an entity's GPUParticles2D is in, the root first, each with its steps
+// The chain of sub-emitters an entity's GpuEmitter2D is in, the root first, each with its steps
 // kept (as many each, from the same first); none if it is in none.
 [[nodiscard]] std::vector<ParticleChainMember> particle_chain(const world::World& world,
                                                               entt::entity entity);
 
-// The seed an entity's GPUParticles2D steps with: seed itself with use_fixed_seed, otherwise
+// The seed an entity's GpuEmitter2D steps with: seed itself with use_fixed_seed, otherwise
 // particle_seed of the ID and seed, varied by each one_shot restart.
-[[nodiscard]] std::uint32_t gpu_particle_seed(const world::GPUParticles2D& settings,
+[[nodiscard]] std::uint32_t gpu_particle_seed(const world::GpuEmitter2D& settings,
                                               std::string_view id, std::uint32_t restarts);
 
-// How a GPUParticles2D's draw_order draws.
+// How a GpuEmitter2D's draw_order draws.
 [[nodiscard]] render::ParticleOrder particle_order(std::string_view draw_order);
 
 // Runs steps on a system of amount particles, each with trail - 1 copies after them for trails,
@@ -189,7 +189,7 @@ struct ParticleTrail {
     std::vector<render::Particle> copies;
 };
 
-// The particles an entity's GPUParticles2D has after the last tick, run on the CPU from the
+// The particles an entity's GpuEmitter2D has after the last tick, run on the CPU from the
 // steps kept with its process material (and its chain's, for one in a chain of sub-emitters), in
 // draw order, live ones only; none if it has none. With trails, trails gets the trails that draw,
 // in the same order. Fails if a process material doesn't load.
@@ -197,11 +197,11 @@ struct ParticleTrail {
 gpu_particles(const world::World& world, entt::entity entity, asset::Assets& assets,
               std::vector<ParticleTrail>* trails = nullptr);
 
-// Runs a GPUParticles2D's settings from the start for seconds, in ticks of tick_seconds, from a
+// Runs a GpuEmitter2D's settings from the start for seconds, in ticks of tick_seconds, from a
 // transform that stays put, apart from any world, and returns the live particles in draw order:
 // what it would have after that long. With trails, trails gets the trails that draw.
 [[nodiscard]] std::vector<render::Particle>
-simulate(const world::GPUParticles2D& settings, const render::ParticleProcess& process,
+simulate(const world::GpuEmitter2D& settings, const render::ParticleProcess& process,
          const world::Transform2D& transform, std::string_view id, double seconds,
          double tick_seconds, std::vector<ParticleTrail>* trails = nullptr);
 

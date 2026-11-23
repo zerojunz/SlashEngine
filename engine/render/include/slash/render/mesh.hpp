@@ -17,7 +17,7 @@
 
 // 3D meshes and what a frame sees them from and lights them by, as Godot's Compatibility
 // renderer: a forward pass over a depth buffer, before the frame's 2D draws, that lights each mesh
-// with the frame's lights and a StandardMaterial3D (Material3D, in device.hpp).
+// with the frame's lights and a Surface3D (Material3D, in device.hpp).
 //
 //   auto mesh = device->create_mesh(vertices, indices);
 //   render::Scene3D scene{.camera = render::look_at({0, 2, 5}, {0, 0, 0}, {0, 1, 0}),
@@ -165,7 +165,7 @@ enum class ShadowCasting : std::uint8_t {
 };
 
 // How a directional light's shadow map covers what the camera sees, as Godot's
-// DirectionalLight3D.directional_shadow_mode: in one piece, or in cascades split by distance.
+// SunLight3D.directional_shadow_mode: in one piece, or in cascades split by distance.
 enum class DirectionalShadowMode : std::uint8_t { Orthogonal, Parallel2Splits, Parallel4Splits };
 
 // How soft shadows' edges are, as Godot's soft_shadow_filter_quality in the Compatibility
@@ -204,7 +204,7 @@ struct Light3D {
     // Its node's +Y, square to direction: how its shadow maps are turned.
     std::array<float, 3> up{0.0F, 1.0F, 0.0F};
 
-    // Shadows, with Light3D's defaults (a DirectionalLight3D's normal bias is 2 and a
+    // Shadows, with Light3D's defaults (a SunLight3D's normal bias is 2 and a
     // SpotLight3D's bias 0.03).
     bool shadow = false;
     float shadow_bias = 0.1F;        // pushes depths away from the light, against acne
@@ -505,15 +505,15 @@ struct PostProcess {
 enum class SkyKind : std::uint8_t {
     None,       // the clear color, untouched
     Color,      // color: the clear color or background color, fogged as a sky is
-    Procedural, // a ProceduralSkyMaterial
-    Physical,   // a PhysicalSkyMaterial
-    Panorama,   // a PanoramaSkyMaterial
+    Procedural, // a SkyGradient
+    Physical,   // a SkyScattering
+    Panorama,   // a SkyPanorama
 };
 
 // A sky shows the sun of at most this many directional lights, as Godot's Compatibility renderer.
 inline constexpr std::size_t kMaxSkyLights = 4;
 
-// A DirectionalLight3D the sky shows: its sun's place and size in the sky.
+// A SunLight3D the sky shows: its sun's place and size in the sky.
 struct SkyLight {
     std::array<float, 3> direction{0.0F, 0.0F, -1.0F}; // the way it shines, in the world
     std::array<float, 3> color{1.0F, 1.0F, 1.0F};      // sRGB
@@ -628,7 +628,7 @@ struct VolumetricFogSettings {
 enum class FogVolumeShape : std::uint8_t { Ellipsoid, Cone, Cylinder, Box, World };
 
 // A place where volumetric fog is thicker, thinner or glows, as Godot's FogVolume with its
-// FogMaterial (material set) or its default fog material (density 1, white albedo, no fade).
+// FogVolumeLook (material set) or its default fog material (density 1, white albedo, no fade).
 struct FogVolume3D {
     // Its place, turn and scale in the world (column-major, as Mat4); a World shape's isn't used.
     std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
@@ -647,17 +647,18 @@ struct FogVolume3D {
 // The most fog volumes a frame fills its fog with; those past it are left out.
 inline constexpr std::size_t kMaxFogVolumes = 32;
 
-// The most levels a VoxelGI's light has: ten for Godot's 512 subdivision, from 512 texels across
-// down to 1.
+// The most levels a VoxelLighting3D's light has: ten for Godot's 512 subdivision, from 512 texels
+// across down to 1.
 inline constexpr std::size_t kMaxVoxelGILevels = 10;
-// The most texels along each axis of a VoxelGI's level 0 a device traces.
+// The most texels along each axis of a VoxelLighting3D's level 0 a device traces.
 inline constexpr std::uint32_t kMaxVoxelGICells = 1024;
 
-// A VoxelGI a mesh traces cones through for its ambient light and reflections, as Godot's
-// Forward+ renderer pairs a VoxelGI with the meshes it reaches (servers/rendering/renderer_rd/
-// shaders/environment/gi.glsl): its light, RGBA8 (the light over its dynamic range, and how much
-// of each cell is solid), is a 3D texture of size texels at level 0 and half as many along each
-// axis each level after (at least 1), kept in an atlas as each level's z slices side by side.
+// A VoxelLighting3D a mesh traces cones through for its ambient light and reflections, as Godot's
+// Forward+ renderer pairs a VoxelLighting3D with the meshes it reaches
+// (servers/rendering/renderer_rd/ shaders/environment/gi.glsl): its light, RGBA8 (the light over
+// its dynamic range, and how much of each cell is solid), is a 3D texture of size texels at level 0
+// and half as many along each axis each level after (at least 1), kept in an atlas as each level's
+// z slices side by side.
 struct VoxelGIProbe {
     // The world to its cells' space, a row each of a 3x4 matrix: a unit a texel of level 0, its
     // box from 0 to size.

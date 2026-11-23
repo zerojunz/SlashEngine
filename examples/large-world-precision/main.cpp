@@ -37,12 +37,12 @@ Vec3 drop_crate(Vec3 at) {
     const entt::entity floor = world.create("floor").value();
     world.ecs().emplace<world::Transform3D>(floor).position = at + Vec3{0.0F, -0.5F, 0.0F};
     world.ecs().emplace<world::StaticBody3D>(floor);
-    world.ecs().emplace<world::CollisionShape3D>(floor).size = {20.0F, 1.0F, 20.0F};
+    world.ecs().emplace<world::Collider3D>(floor).size = {20.0F, 1.0F, 20.0F};
 
     const entt::entity crate = world.create("crate").value();
     world.ecs().emplace<world::Transform3D>(crate).position = at + Vec3{0.3F, 3.0F, -0.2F};
     world.ecs().emplace<world::RigidBody3D>(crate);
-    world.ecs().emplace<world::CollisionShape3D>(crate).size = {1.0F, 1.0F, 1.0F};
+    world.ecs().emplace<world::Collider3D>(crate).size = {1.0F, 1.0F, 1.0F};
 
     for (int tick = 0; tick < 240; ++tick) {
         world.step(1.0 / 60.0);

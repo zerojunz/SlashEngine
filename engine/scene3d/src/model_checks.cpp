@@ -122,8 +122,8 @@ json::Value model_checks_schema() {
     properties["nodes"] =
         names("Node names it must have: parts that move or attach, attachment points.");
     properties["bones"] = names("Bones a skin of it must have, as animations and "
-                                "BoneAttachment3D name them.");
-    properties["animations"] = names("Animations it must have, as AnimationPlayer plays them.");
+                                "BoneSocket3D name them.");
+    properties["animations"] = names("Animations it must have, as Animator plays them.");
     return schema;
 }
 

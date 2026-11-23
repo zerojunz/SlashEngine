@@ -233,7 +233,7 @@ json::Value settings_schema() {
     detect_static["type"] = "boolean";
     detect_static["default"] = defaults.areas_detect_static_bodies;
     detect_static["description"] =
-        "Whether Area3D reports static bodies entering it, which Godot's Jolt module leaves off.";
+        "Whether Zone3D reports static bodies entering it, which Godot's Jolt module leaves off.";
 
     json::Value schema;
     schema["type"] = "object";
@@ -410,7 +410,7 @@ std::vector<entt::entity> overlap_point(world::World& world, Vec3 point, const Q
     return sorted(world, std::move(found), max_results);
 }
 
-std::vector<entt::entity> overlap_shape(world::World& world, const world::CollisionShape3D& shape,
+std::vector<entt::entity> overlap_shape(world::World& world, const world::Collider3D& shape,
                                         Vec3 position, Vec3 rotation, const QueryFilter& filter,
                                         std::size_t max_results) {
     Space* space = synced(world);
@@ -554,8 +554,8 @@ std::optional<SoftBodyPoints> soft_body_points(world::World& world, entt::entity
 bool has_body(const world::World& world, entt::entity entity) {
     return world.valid(entity) &&
            world.ecs()
-               .any_of<world::RigidBody3D, world::CharacterBody3D, world::AnimatableBody3D,
-                       world::StaticBody3D, world::Area3D, world::PhysicalBone3D>(entity);
+               .any_of<world::RigidBody3D, world::CharacterMover3D, world::MovingBody3D,
+                       world::StaticBody3D, world::Zone3D, world::SimulatedBone3D>(entity);
 }
 
 void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 offset) {

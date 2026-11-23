@@ -29,8 +29,8 @@ namespace slash::physics2d {
 
 namespace {
 
-using world::AnimationPlayer;
-using world::CollisionShape2D;
+using world::Animator;
+using world::Collider2D;
 using world::PinJoint2D;
 using world::Polygon2D;
 using world::RigidBody2D;
@@ -288,8 +288,8 @@ RigidBody2D body_of(const RigidBody2D& old, const world::RagdollBone& bone,
     return out;
 }
 
-CollisionShape2D shape_of(const CollisionShape2D& old, const world::RagdollBone& bone) {
-    CollisionShape2D out = old;
+Collider2D shape_of(const Collider2D& old, const world::RagdollBone& bone) {
+    Collider2D out = old;
     out.shape = bone.shape;
     if (bone.shape == "sphere") {
         out.shape = "circle";
@@ -324,7 +324,7 @@ float spring(float v, float x, float stiffness, float damping, float limit, floa
 }
 
 // Turns a limp ragdoll toward getting up: moves its entity under where it lies, starts the
-// get-up animation for how it lies on its AnimationPlayer, and reports which.
+// get-up animation for how it lies on its Animator, and reports which.
 std::string start_getting_up(world::World& world, entt::entity entity,
                              const world::RagdollProfile& profile,
                              const std::map<std::string, entt::entity>& bones) {
@@ -350,8 +350,7 @@ std::string start_getting_up(world::World& world, entt::entity entity,
     const Transform2D root = tree.global(entity);
     tree.set_global_position(world, entity, {placed.origin.x, root.position.y});
     const std::string& animation = face_up ? profile.get_up.face_up : profile.get_up.face_down;
-    if (auto* player = ecs.try_get<AnimationPlayer>(entity);
-        player != nullptr && !animation.empty()) {
+    if (auto* player = ecs.try_get<Animator>(entity); player != nullptr && !animation.empty()) {
         player->animation = animation;
         player->time = 0.0;
         player->playing = true;
@@ -532,11 +531,10 @@ void run_ragdoll(world::World& world, entt::entity entity, Ragdoll& state, float
             body.freeze_mode != old_body->freeze_mode || body.can_sleep != old_body->can_sleep) {
             ecs.emplace_or_replace<RigidBody2D>(part, body);
         }
-        const auto* old_shape = ecs.try_get<const CollisionShape2D>(part);
-        const CollisionShape2D shape =
-            shape_of(old_shape != nullptr ? *old_shape : CollisionShape2D{}, bone);
+        const auto* old_shape = ecs.try_get<const Collider2D>(part);
+        const Collider2D shape = shape_of(old_shape != nullptr ? *old_shape : Collider2D{}, bone);
         if (old_shape == nullptr || !(*old_shape == shape)) {
-            ecs.emplace_or_replace<CollisionShape2D>(part, shape);
+            ecs.emplace_or_replace<Collider2D>(part, shape);
         }
 
         // The joint to the bone above, made where the bone is when it is first made, so its

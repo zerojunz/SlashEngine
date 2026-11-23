@@ -1,6 +1,6 @@
 # UI and text
 
-UI, as Godot's `Control`, `Label` and `ColorRect`. [main.scene.json](main.scene.json) is a pause
+UI, as Godot's `Control`, `Label` and `ColorFill`. [main.scene.json](main.scene.json) is a pause
 screen: a dark rect over the whole window, a panel centered on it holding a title in a distance
 field font with an outline, a paragraph that wraps, a quest line cut to one line with an ellipsis
 and a hint with a shadow in its bottom-right corner, plus a score and a sign in the window's
@@ -12,7 +12,7 @@ draws the screen into a texture. [expected.txt](expected.txt) holds its output.
 ui.layout {"ids":["hint"]}
 {"controls":[{"id":"hint","lines":["Esc: resume"],"rect":[373,238,85,22]}],"problems":[
   {"id":"hint","message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?",
-   "path":"/components/Control/theme_override_colors/font_colour"}],"viewport":[640,360]}
+   "path":"/components/Widget/theme_override_colors/font_colour"}],"viewport":[640,360]}
 ```
 
 - A control's rect is placed in its parent's by anchors and offsets: each edge is at its

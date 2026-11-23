@@ -10,7 +10,7 @@
 {"jsonrpc":"2.0","id":10,"method":"animation.tree","params":{"id":"hero"}}
 {"jsonrpc":"2.0","id":11,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"grounded":true}}}
 {"jsonrpc":"2.0","id":12,"method":"step","params":{"ticks":10}}
-{"jsonrpc":"2.0","id":13,"method":"entity.get","params":{"id":"hero","components":["Transform2D","AnimationTree"]}}
+{"jsonrpc":"2.0","id":13,"method":"entity.get","params":{"id":"hero","components":["Transform2D","AnimationGraph"]}}
 {"jsonrpc":"2.0","id":14,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"speed":0}}}
 {"jsonrpc":"2.0","id":15,"method":"step","params":{"ticks":40}}
 {"jsonrpc":"2.0","id":16,"method":"events.read","params":{"subscription":"events_1"}}

@@ -121,8 +121,8 @@ struct Scene {
     const world::Sprite2D& sprite(entt::entity entity) {
         return world.ecs().get<world::Sprite2D>(entity);
     }
-    const world::AnimatedSprite2D& player(entt::entity entity) {
-        return world.ecs().get<world::AnimatedSprite2D>(entity);
+    const world::Flipbook2D& player(entt::entity entity) {
+        return world.ecs().get<world::Flipbook2D>(entity);
     }
 };
 
@@ -188,7 +188,7 @@ TEST_CASE("sprite frames files are checked, and frame numbers need a sheet") {
     CHECK_FALSE(idle.loop);
 }
 
-TEST_CASE("AnimatedSprite2D plays its animation on the entity's Sprite2D") {
+TEST_CASE("Flipbook2D plays its animation on the entity's Sprite2D") {
     Scene scene;
     scene.files.write("hero.frames.json", R"({"format": 1, "animations": {
         "walk": {"texture": "hero.png", "hframes": 4, "fps": 10},
@@ -196,8 +196,7 @@ TEST_CASE("AnimatedSprite2D plays its animation on the entity's Sprite2D") {
     std::vector<world::Event> events;
     scene.world.set_event_listener([&](const world::Event& event) { events.push_back(event); });
     const entt::entity hero = scene.create(
-        "hero",
-        R"({"AnimatedSprite2D": {"sprite_frames": "hero.frames.json", "animation": "walk"}})");
+        "hero", R"({"Flipbook2D": {"sprite_frames": "hero.frames.json", "animation": "walk"}})");
 
     // Ticks of 1/20 s at 10 frames per second: a new frame every other tick.
     scene.world.step(0.05);
@@ -215,13 +214,13 @@ TEST_CASE("AnimatedSprite2D plays its animation on the entity's Sprite2D") {
     CHECK(scene.sprite(hero).frame == 0);
 
     // Backwards, wrapping to the last frame.
-    scene.world.ecs().get<world::AnimatedSprite2D>(hero).speed_scale = -1.0F;
-    scene.world.ecs().get<world::AnimatedSprite2D>(hero).frame_progress = 0.0F;
+    scene.world.ecs().get<world::Flipbook2D>(hero).speed_scale = -1.0F;
+    scene.world.ecs().get<world::Flipbook2D>(hero).frame_progress = 0.0F;
     scene.world.step(0.05);
     CHECK(scene.player(hero).frame == 3);
 
     // An animation that doesn't loop stops on its last frame and says so.
-    auto& player = scene.world.ecs().get<world::AnimatedSprite2D>(hero);
+    auto& player = scene.world.ecs().get<world::Flipbook2D>(hero);
     player = {.sprite_frames = "hero.frames.json",
               .animation = "jump",
               .playing = true,
@@ -242,15 +241,15 @@ TEST_CASE("AnimatedSprite2D plays its animation on the entity's Sprite2D") {
     CHECK(events.back().data == parse(R"({"animation": "jump"})"));
 }
 
-TEST_CASE("an AnimatedSprite2D that can't play leaves its sprite alone") {
+TEST_CASE("an Flipbook2D that can't play leaves its sprite alone") {
     Scene scene;
     scene.files.write("hero.frames.json",
                       R"({"format": 1, "animations": {"walk": {"frames": ["a.png"]}}})");
     const entt::entity typo = scene.create(
-        "typo", R"({"AnimatedSprite2D": {"sprite_frames": "hero.frames.json", "animation": "wlak"},
+        "typo", R"({"Flipbook2D": {"sprite_frames": "hero.frames.json", "animation": "wlak"},
                    "Sprite2D": {"texture": "still.png"}})");
     const entt::entity missing =
-        scene.create("missing", R"({"AnimatedSprite2D": {"sprite_frames": "gone.frames.json"}})");
+        scene.create("missing", R"({"Flipbook2D": {"sprite_frames": "gone.frames.json"}})");
     scene.world.step(0.05);
     CHECK(scene.sprite(typo).texture == "still.png");
     CHECK(scene.sprite(missing).texture.empty());
@@ -430,18 +429,18 @@ struct Warnings {
 
 } // namespace
 
-TEST_CASE("the canvas draws each visible CPUParticles2D's live particles") {
+TEST_CASE("the canvas draws each visible Emitter2D's live particles") {
     Scene scene;
     scene.files.write("red.png", strip_png({{255, 0, 0, 255}}, 4));
     const auto device = render::create_null_device();
     canvas::CanvasRenderer renderer(*device, scene.assets);
-    scene.create("dots", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 4,
+    scene.create("dots", R"({"Transform2D": {}, "Emitter2D": {"amount": 4,
                              "explosiveness": 1}})");
-    scene.create("sparks", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 3,
+    scene.create("sparks", R"({"Transform2D": {}, "Emitter2D": {"amount": 3,
                                "explosiveness": 1, "texture": "red.png", "z_index": 1}})");
-    scene.create("hidden", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 5,
+    scene.create("hidden", R"({"Transform2D": {}, "Emitter2D": {"amount": 5,
                                "explosiveness": 1, "visible": false}})");
-    scene.create("missing", R"({"Transform2D": {}, "CPUParticles2D": {"amount": 6,
+    scene.create("missing", R"({"Transform2D": {}, "Emitter2D": {"amount": 6,
                                 "explosiveness": 1, "texture": "gone.png"}})");
     // Nothing has been emitted before the first tick.
     REQUIRE(renderer.draw(scene.world, {}).ok());
@@ -698,12 +697,12 @@ TEST_CASE("particles draw their frame, color and scale on the software device an
         scene.files.write("sheet.png", strip_png({{255, 0, 0, 255}, {0, 0, 255, 255}}, 8));
         // A white pixel scaled to 8x8 and colored green.
         scene.create("green", R"({"Transform2D": {"position": [12, 12]},
-                              "CPUParticles2D": {"amount": 1, "gravity": [0, 0],
+                              "Emitter2D": {"amount": 1, "gravity": [0, 0],
                                                  "scale_amount_min": 8, "scale_amount_max": 8,
                                                  "color": [0, 1, 0, 1]}})");
         // The second frame of the sheet, picked by anim_offset.
         scene.create("blue", R"({"Transform2D": {"position": [36, 36]},
-                             "CPUParticles2D": {"amount": 1, "gravity": [0, 0],
+                             "Emitter2D": {"amount": 1, "gravity": [0, 0],
                                                 "texture": "sheet.png", "hframes": 2,
                                                 "texture_filter": "nearest",
                                                 "anim_offset_min": 0.5,
@@ -812,7 +811,7 @@ TEST_CASE("a game's shaders draw lit on the software device and a GPU, and reloa
             "params": {"tint": {"type": "color", "value": [1, 0.5, 0.25, 1]}},
             "shader": "shaders/tint.hlsl"})");
         scene.files.write("bump.material.json", R"({"format": 1, "shader": "shaders/bump.hlsl"})");
-        scene.create("dark", R"({"CanvasModulate": {"color": [0.25, 0.25, 0.25, 1]}})");
+        scene.create("dark", R"({"AmbientTint2D": {"color": [0.25, 0.25, 0.25, 1]}})");
         scene.create("lamp", R"({"Transform2D": {"position": [30, 24]},
             "PointLight2D": {"texture": "white.png", "texture_scale": 4, "height": 4}})");
         const std::string sprite =
@@ -1020,9 +1019,9 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
     CHECK_FALSE(canvas::collect_lighting(scene.world, images, {}, problems).lit);
     CHECK(problems.empty());
 
-    scene.create("dark", R"({"CanvasModulate": {"color": [0.1, 0.2, 0.3, 1]}})");
+    scene.create("dark", R"({"AmbientTint2D": {"color": [0.1, 0.2, 0.3, 1]}})");
     const entt::entity second =
-        scene.create("darker", R"({"CanvasModulate": {"color": [0, 0, 0, 1]}})");
+        scene.create("darker", R"({"AmbientTint2D": {"color": [0, 0, 0, 1]}})");
     // A lamp turned a quarter turn and stretched: its texture still centers on it.
     const entt::entity lamp =
         scene.create("lamp", R"({"Transform2D": {"position": [100, 50], "rotation": 1.5707964,
@@ -1032,7 +1031,7 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
                                      "blend_mode": "sub", "range_item_cull_mask": 6,
                                      "shadow_enabled": true}})");
     const entt::entity sun =
-        scene.create("sun", R"({"DirectionalLight2D": {"height": 3, "shadow_enabled": true,
+        scene.create("sun", R"({"SunLight2D": {"height": 3, "shadow_enabled": true,
                                           "shadow_filter": "pcf13"}})");
     const entt::entity gone =
         scene.create("gone", R"({"Transform2D": {}, "PointLight2D": {"texture": "gone.png"}})");
@@ -1040,12 +1039,11 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
         scene.create("flat", R"({"Transform2D": {"scale": [0, 1]}, "PointLight2D": {}})");
     const entt::entity typo =
         scene.create("typo", R"({"Transform2D": {}, "PointLight2D": {"blend_mode": "mul"}})");
-    const entt::entity bad_cull =
-        scene.create("bad_cull", R"({"Transform2D": {}, "LightOccluder2D": {
+    const entt::entity bad_cull = scene.create("bad_cull", R"({"Transform2D": {}, "Occluder2D": {
                        "polygon": [[0, 0], [1, 0]], "cull_mode": "both"}})");
     // A wall between the lamp and the bottom of the screen.
     const entt::entity wall =
-        scene.create("wall", R"({"Transform2D": {"position": [100, 60]}, "LightOccluder2D": {
+        scene.create("wall", R"({"Transform2D": {"position": [100, 60]}, "Occluder2D": {
                    "polygon": [[-5, 0], [5, 0]], "closed": false}})");
 
     canvas::SceneLighting lighting = canvas::collect_lighting(scene.world, images, {}, problems);
@@ -1085,7 +1083,7 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
         messages.emplace(problem.entity, problem.message);
     }
     REQUIRE(messages.size() == 5);
-    CHECK(messages[second] == "a canvas has one CanvasModulate, and \"dark\" is the one used");
+    CHECK(messages[second] == "a canvas has one AmbientTint2D, and \"dark\" is the one used");
     CHECK(messages[gone].starts_with("gone.png: "));
     CHECK(messages[flat] == "its texture_scale or Transform2D scale is 0, so it lights nothing");
     CHECK(messages[typo].find("\"mul\"") != std::string::npos);
@@ -1093,7 +1091,7 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
 
     // Culling and masks decide which occluders cast. Seen from the lamp, the wall runs
     // counterclockwise on screen, so culling counterclockwise edges leaves the lamp unshadowed.
-    auto& occluder = scene.world.ecs().get<world::LightOccluder2D>(wall);
+    auto& occluder = scene.world.ecs().get<world::Occluder2D>(wall);
     occluder.cull_mode = "counter_clockwise";
     problems.clear();
     lighting = canvas::collect_lighting(scene.world, images, {}, problems);
@@ -1119,7 +1117,7 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
     const canvas::SceneLighting moved =
         canvas::collect_lighting(scene.world, images, {}, problems, &cache);
     CHECK(moved.shadow_pixels != first.shadow_pixels);
-    scene.world.ecs().remove<world::LightOccluder2D>(wall);
+    scene.world.ecs().remove<world::Occluder2D>(wall);
     (void)canvas::collect_lighting(scene.world, images, {}, problems, &cache);
     CHECK(cache.rows.empty());
 }
@@ -1185,7 +1183,7 @@ TEST_CASE("the canvas counts lights and shadows, and makes their textures only w
     scene.create("lamp", R"({"Transform2D": {"position": [4, 4]},
                              "PointLight2D": {"shadow_enabled": true}})");
     const entt::entity wall =
-        scene.create("wall", R"({"Transform2D": {"position": [10, 4]}, "LightOccluder2D": {
+        scene.create("wall", R"({"Transform2D": {"position": [10, 4]}, "Occluder2D": {
                    "polygon": [[0, -2], [0, 2]], "closed": false}})");
     Warnings warnings;
     scene.create("gone", R"({"Transform2D": {}, "PointLight2D": {"texture": "gone.png"}})");
@@ -1204,7 +1202,7 @@ TEST_CASE("the canvas counts lights and shadows, and makes their textures only w
     CHECK(warnings.lines.size() == 1);
 
     // No occluder, no shadow map; no lights, no atlas.
-    scene.world.ecs().remove<world::LightOccluder2D>(wall);
+    scene.world.ecs().remove<world::Occluder2D>(wall);
     REQUIRE(renderer.draw(scene.world, options).ok());
     CHECK(renderer.shadows_drawn() == 0);
     CHECK(device->stats().textures == 3);
@@ -1222,7 +1220,7 @@ TEST_CASE("lights shade sprites on the software device and a GPU, as their masks
         Scene scene;
         scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
         scene.files.write("flat.material.json", R"({"format": 1, "light_mode": "unshaded"})");
-        scene.create("dark", R"({"CanvasModulate": {"color": [0.5, 0.5, 0.5, 1]}})");
+        scene.create("dark", R"({"AmbientTint2D": {"color": [0.5, 0.5, 0.5, 1]}})");
         // A red light over the right half: 16 across and, stretched, 32 down.
         scene.create("lamp", R"({"Transform2D": {"position": [24, 16], "scale": [1, 2]},
                              "PointLight2D": {"texture": "white.png", "texture_scale": 2,
@@ -1261,7 +1259,7 @@ TEST_CASE("lights shade sprites on the software device and a GPU, as their masks
 
         // A wall just under the lamp shadows everything below it.
         scene.world.ecs().get<world::Sprite2D>(masked).light_mask = 1;
-        scene.create("wall", R"({"Transform2D": {"position": [24, 17]}, "LightOccluder2D": {
+        scene.create("wall", R"({"Transform2D": {"position": [24, 17]}, "Occluder2D": {
                              "polygon": [[-16, 0], [16, 0]], "closed": false}})");
         REQUIRE(renderer.draw(scene.world, options).ok());
         CHECK(renderer.shadows_drawn() == 1);
@@ -1269,7 +1267,7 @@ TEST_CASE("lights shade sprites on the software device and a GPU, as their masks
         REQUIRE(image.ok());
         CHECK(near(pixel(image.value(), 20, 4), {255, 128, 128, 255}));
         CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255}));
-        scene.world.ecs().remove<world::LightOccluder2D>(scene.world.find("wall"));
+        scene.world.ecs().remove<world::Occluder2D>(scene.world.find("wall"));
         REQUIRE(renderer.draw(scene.world, options).ok());
         image = device->read_texture(target.value());
         REQUIRE(image.ok());
@@ -1342,7 +1340,7 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
 
     SUBCASE("a rectangle fills two triangles and has a one-pixel outline") {
         scene.create("crate", R"({"Transform2D": {"position": [100, 50]},
-                              "CollisionShape2D": {"size": [20, 10]}})");
+                              "Collider2D": {"size": [20, 10]}})");
         const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
         CHECK(drawn.shapes == 1);
         REQUIRE(drawn.vertices.size() == 6 + (4 * 6));
@@ -1363,7 +1361,7 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
         // across, so the shape ends up 20 below it, 20 high and 10 wide.
         scene.create("body", R"({"Transform2D": {"position": [100, 50], "rotation": 1.5707964,
                                                  "scale": [2, 1]},
-                             "CollisionShape2D": {"size": [10, 10], "position": [10, 0]}})");
+                             "Collider2D": {"size": [10, 10], "position": [10, 0]}})");
         const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
         const Box filled = box_of(std::span(drawn.vertices).first(6));
         CHECK(filled.left == doctest::Approx(95.0F));
@@ -1374,9 +1372,9 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
 
     SUBCASE("circles have 24 points and capsules 26, their radii scaled by the larger axis") {
         scene.create("ball", R"({"Transform2D": {"position": [50, 50], "scale": [2, 1]},
-                             "CollisionShape2D": {"shape": "circle", "radius": 5}})");
+                             "Collider2D": {"shape": "circle", "radius": 5}})");
         scene.create("pill", R"({"Transform2D": {"position": [200, 50]},
-                             "CollisionShape2D": {"shape": "capsule", "radius": 5,
+                             "Collider2D": {"shape": "capsule", "radius": 5,
                                                   "height": 30}})");
         const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
         CHECK(drawn.shapes == 2);
@@ -1396,10 +1394,10 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
     }
 
     SUBCASE("a segment is a line 3 wide, and a polygon shape fills its convex hull") {
-        scene.create("rail", R"({"CollisionShape2D": {"shape": "segment", "a": [0, 10],
+        scene.create("rail", R"({"Collider2D": {"shape": "segment", "a": [0, 10],
                                                       "b": [40, 10]}})");
         // The middle point is inside the hull, so a triangle is left.
-        scene.create("wedge", R"({"CollisionShape2D": {"shape": "polygon",
+        scene.create("wedge", R"({"Collider2D": {"shape": "polygon",
                                     "points": [[0, 0], [30, 0], [10, 5], [0, 30]]}})");
         const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
         REQUIRE(drawn.vertices.size() == 6 + 3 + (3 * 6));
@@ -1411,7 +1409,7 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
     }
 
     SUBCASE("a disabled shape is gray at half alpha, and one-way collision adds an arrow") {
-        scene.create("ledge", R"({"CollisionShape2D": {"disabled": true,
+        scene.create("ledge", R"({"Collider2D": {"disabled": true,
                                                        "one_way_collision": true}})");
         const canvas::CollisionShapes drawn = canvas::collision_shapes(scene.world);
         REQUIRE(drawn.vertices.size() == 6 + 24 + 6 + 3);
@@ -1428,9 +1426,9 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
         CHECK(arrow.right == doctest::Approx(5.656854F));
     }
 
-    SUBCASE("a CollisionPolygon2D fills any simple polygon and has a red outline") {
+    SUBCASE("a PolygonCollider2D fills any simple polygon and has a red outline") {
         scene.create("ground", R"({"Transform2D": {"position": [10, 10]},
-                               "CollisionPolygon2D": {
+                               "PolygonCollider2D": {
                                  "polygon": [[0, 0], [20, 0], [20, 10], [10, 10], [10, 20],
                                              [0, 20]],
                                  "one_way_collision": true}})");
@@ -1449,10 +1447,10 @@ TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes
 
     SUBCASE("shapes draw in the order entities were made, where transform_of puts them") {
         scene.create("first", R"({"Transform2D": {"position": [0, 0]},
-                              "CollisionShape2D": {"shape": "segment", "a": [0, 0],
+                              "Collider2D": {"shape": "segment", "a": [0, 0],
                                                    "b": [10, 0]}})");
-        scene.create("second", R"({"CollisionPolygon2D": {"polygon": [[0, 0], [5, 0], [0, 5]]},
-                               "CollisionShape2D": {"shape": "segment", "a": [0, 5],
+        scene.create("second", R"({"PolygonCollider2D": {"polygon": [[0, 0], [5, 0], [0, 5]]},
+                               "Collider2D": {"shape": "segment", "a": [0, 5],
                                                     "b": [10, 5]}})");
         const canvas::CollisionShapes drawn =
             canvas::collision_shapes(scene.world, [](entt::entity, const world::Transform2D& at) {
@@ -1482,7 +1480,7 @@ TEST_CASE("capture and the canvas draw collision shapes over the world only when
     scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
     // A white sprite under the right half of the box: shapes draw over sprites.
     scene.create("box", R"({"Transform2D": {"position": [16.5, 16.5]},
-                        "CollisionShape2D": {"size": [20, 10]}})");
+                        "Collider2D": {"size": [20, 10]}})");
     scene.create("wall", R"({"Transform2D": {"position": [24, 16]},
                          "Sprite2D": {"texture": "white.png", "z_index": 5}})");
     const auto near = [](Rgba got, Rgba want) {
@@ -1517,17 +1515,17 @@ TEST_CASE("collision shapes draw over sprites, and an overlay's controls over ev
         Scene scene;
         scene.files.write("white.png", strip_png({{255, 255, 255, 255}}, 8));
         scene.create("box", R"({"Transform2D": {"position": [16.5, 16.5]},
-                            "CollisionShape2D": {"size": [20, 10]}})");
+                            "Collider2D": {"size": [20, 10]}})");
         scene.create("wall", R"({"Transform2D": {"position": [24, 16]},
                              "Sprite2D": {"texture": "white.png", "z_index": 5}})");
         // The game's control, and the overlay's over it in the bottom right corner.
-        scene.create("hud", R"({"Control": {"offset_left": 32, "offset_top": 32,
+        scene.create("hud", R"({"Widget": {"offset_left": 32, "offset_top": 32,
                                             "offset_right": 48, "offset_bottom": 48},
-                            "ColorRect": {"color": [1, 0, 0, 1]}})");
+                            "ColorFill": {"color": [1, 0, 0, 1]}})");
         Scene overlay;
-        overlay.create("panel", R"({"Control": {"offset_left": 40, "offset_top": 40,
+        overlay.create("panel", R"({"Widget": {"offset_left": 40, "offset_top": 40,
                                                 "offset_right": 48, "offset_bottom": 48},
-                                    "ColorRect": {"color": [0, 0, 1, 1]}})");
+                                    "ColorFill": {"color": [0, 0, 1, 1]}})");
         auto target = device->create_texture(
             {.width = 48, .height = 48, .filter = render::Filter::Nearest, .render_target = true});
         REQUIRE(target.ok());

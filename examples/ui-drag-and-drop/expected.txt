@@ -11,7 +11,7 @@ step {"ticks":31}
 ui.layout {"ids":["sword"]}
 {"controls":[{"hovered":true,"id":"sword","rect":[24,48,32,32]}],"tooltip":{"id":"sword","rect":[50,74,149,26],"text":"Sword: 12 damage"},"viewport":[320,180]}
 frame.summary {"ids":["sword"]}
-{"drawn":[{"id":"sword","kind":"ColorRect","rect":[24,48,32,32],"shown":0.99},{"id":"sword","kind":"Tooltip","rect":[50,74,149,26],"text":"Sword: 12 damage"}],"viewport":[320,180]}
+{"drawn":[{"id":"sword","kind":"ColorFill","rect":[24,48,32,32],"shown":0.99},{"id":"sword","kind":"Tooltip","rect":[50,74,149,26],"text":"Sword: 12 damage"}],"viewport":[320,180]}
 input.inject {"events":[{"button":"left","position":[40,64],"pressed":true,"type":"mouse_button"},{"position":[60,64],"type":"mouse_motion"},{"position":[152,64],"type":"mouse_motion"}]}
 {"queued":2,"tick":31}
 step {}

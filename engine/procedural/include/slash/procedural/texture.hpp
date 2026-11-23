@@ -106,7 +106,7 @@ using ProceduralTexture = std::variant<NoiseTexture2D, GradientTexture1D, Gradie
 
 // Makes a texture from pixels gameplay code drew, as Godot's ImageTexture.create_from_image, an
 // asset at "made:<name>" in the assets the world's modules load from (canvas::install attaches
-// them): a sprite, tile set, TextureRect or StandardMaterial3D can name the path. Making it again
+// them): a sprite, tile set, Picture or Surface3D can name the path. Making it again
 // with the same name changes it in place, and renderers upload it again. Returns the path, or
 // fails when the world has no assets, name isn't letters, digits and "_-./", or the pixels aren't
 // width x height x 4 bytes.

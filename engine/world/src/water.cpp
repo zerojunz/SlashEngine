@@ -97,7 +97,7 @@ constexpr std::string_view kSchema = R"({
         "clarity": {"type": "number", "exclusiveMinimum": 0, "description": "How deep it is where it shows the deep color. Default 4 m, or 200 px."},
         "crest_foam": {"type": "number", "minimum": 0, "maximum": 1, "description": "Crests foam where the surface bunches up this much (its Jacobian, 1 at rest, below it); 0 for none. Default 0.85."},
         "shore_foam": {"type": "number", "minimum": 0, "description": "How deep the water foams to along the shore; 0 for none. Default 0.6 m, or 12 px."},
-        "roughness": {"type": "number", "minimum": 0, "maximum": 1, "description": "As StandardMaterial3D's. Default 0.04."},
+        "roughness": {"type": "number", "minimum": 0, "maximum": 1, "description": "As Surface3D's. Default 0.04."},
         "spacing": {"type": "number", "exclusiveMinimum": 0, "description": "How far apart the drawn surface's corners are. Default 0.5 m, or 8 px."},
         "view": {"type": "number", "exclusiveMinimum": 0, "description": "Oceans: how far round the camera the surface draws, in meters. Default 120."}
       }
@@ -659,7 +659,7 @@ std::optional<WaterBody> make_body(const World& world, World* writable, entt::en
             const entt::entity path = world.find(water.path);
             const auto curve = path != entt::null ? curve_3d(world, path) : nullptr;
             if (curve == nullptr || curve->length() <= 0.0F) {
-                warn(body.id, "its path \"" + water.path + "\" is no Path3D");
+                warn(body.id, "its path \"" + water.path + "\" is no Spline3D");
             } else {
                 const Affine3D at = tree3->global(path);
                 const float step = std::max(water.width * 0.25F, 0.25F);
@@ -861,7 +861,7 @@ void run(World& world, double tick_seconds) {
                                   .velocity = {to_float(rigid.linear_velocity.x),
                                                to_float(rigid.linear_velocity.y), 0.0F}});
             }
-            for (const auto [entity, character] : ecs.view<const CharacterBody2D>().each()) {
+            for (const auto [entity, character] : ecs.view<const CharacterMover2D>().each()) {
                 const Transform2D at = tree.global(entity);
                 movers.push_back({.id = std::string(world.id_of(entity)),
                                   .at = {to_float(at.position.x), to_float(at.position.y), 0.0F},
@@ -875,7 +875,7 @@ void run(World& world, double tick_seconds) {
                                   .at = to_float(tree.global(entity).origin),
                                   .velocity = to_float(rigid.linear_velocity)});
             }
-            for (const auto [entity, character] : ecs.view<const CharacterBody3D>().each()) {
+            for (const auto [entity, character] : ecs.view<const CharacterMover3D>().each()) {
                 movers.push_back({.id = std::string(world.id_of(entity)),
                                   .at = to_float(tree.global(entity).origin),
                                   .velocity = to_float(character.velocity)});

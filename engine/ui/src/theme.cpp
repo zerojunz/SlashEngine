@@ -4,6 +4,7 @@
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,25 +23,25 @@ namespace {
 
 // Each control type and the type it is built on, as Godot's classes.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 40> kTypes{{
-    {"Control", ""},
-    {"Label", "Control"},
+    {"Widget", ""},
+    {"Label", "Widget"},
     {"TooltipLabel", "Label"},
-    {"BaseButton", "Control"},
+    {"BaseButton", "Widget"},
     {"Button", "BaseButton"},
     {"CheckBox", "Button"},
-    {"CheckButton", "Button"},
-    {"OptionButton", "Button"},
+    {"ToggleSwitch", "Button"},
+    {"Dropdown", "Button"},
     {"MenuButton", "Button"},
-    {"TextureButton", "BaseButton"},
-    {"LineEdit", "Control"},
-    {"TextEdit", "Control"},
-    {"CodeEdit", "TextEdit"},
-    {"ColorRect", "Control"},
-    {"Panel", "Control"},
-    {"TextureRect", "Control"},
-    {"NinePatchRect", "Control"},
-    {"VideoStreamPlayer", "Control"},
-    {"Range", "Control"},
+    {"ImageButton", "BaseButton"},
+    {"TextField", "Widget"},
+    {"TextArea", "Widget"},
+    {"CodeEditor", "TextArea"},
+    {"ColorFill", "Widget"},
+    {"Panel", "Widget"},
+    {"Picture", "Widget"},
+    {"NineSlice", "Widget"},
+    {"Video", "Widget"},
+    {"Range", "Widget"},
     {"ProgressBar", "Range"},
     {"Slider", "Range"},
     {"HSlider", "Slider"},
@@ -48,20 +49,20 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 40> kTypes{{
     {"ScrollBar", "Range"},
     {"HScrollBar", "ScrollBar"},
     {"VScrollBar", "ScrollBar"},
-    {"Container", "Control"},
-    {"BoxContainer", "Container"},
-    {"HBoxContainer", "BoxContainer"},
-    {"VBoxContainer", "BoxContainer"},
-    {"GridContainer", "Container"},
-    {"MarginContainer", "Container"},
-    {"CenterContainer", "Container"},
-    {"FlowContainer", "Container"},
-    {"HFlowContainer", "FlowContainer"},
-    {"VFlowContainer", "FlowContainer"},
-    {"PanelContainer", "Container"},
-    {"ScrollContainer", "Container"},
+    {"Container", "Widget"},
+    {"StackBox", "Container"},
+    {"HBoxContainer", "StackBox"},
+    {"VBoxContainer", "StackBox"},
+    {"GridBox", "Container"},
+    {"MarginBox", "Container"},
+    {"CenterBox", "Container"},
+    {"FlowBox", "Container"},
+    {"HFlowContainer", "FlowBox"},
+    {"VFlowContainer", "FlowBox"},
+    {"PanelBox", "Container"},
+    {"ScrollBox", "Container"},
     // Windows in Godot, not controls.
-    {"PopupMenu", ""},
+    {"PopupList", ""},
     {"TooltipPanel", ""},
 }};
 
@@ -173,7 +174,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                            {"radio_unchecked_disabled", "builtin:radio_unchecked_disabled"}};
         check_box.colors.emplace("checkbox_checked_color", white);
         check_box.colors.emplace("checkbox_unchecked_color", white);
-        ThemeItems& check_button = themes["CheckButton"] = check_items({6.0F, 4.0F, 6.0F, 4.0F});
+        ThemeItems& check_button = themes["ToggleSwitch"] = check_items({6.0F, 4.0F, 6.0F, 4.0F});
         check_button.icons = {
             {"checked", "builtin:toggle_on"},
             {"checked_disabled", "builtin:toggle_on_disabled"},
@@ -186,7 +187,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
         check_button.colors.emplace("button_checked_color", white);
         check_button.colors.emplace("button_unchecked_color", white);
         // Option buttons: wider margins, and an arrow at the end.
-        ThemeItems& option = themes["OptionButton"];
+        ThemeItems& option = themes["Dropdown"];
         const std::array<float, 4> option_margins{2.0F * kMargin, kMargin, 2.0F * kMargin, kMargin};
         for (const auto& [state, color] :
              {std::pair{"normal", style_normal_color}, std::pair{"hover", style_hover_color},
@@ -225,7 +226,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
         menu_button.font_sizes = {{"font_size", text::kDefaultFontSize}};
         // Popup menus always have a border, so they stand out from what is under them, and
         // separate items with a thin line.
-        ThemeItems& popup = themes["PopupMenu"];
+        ThemeItems& popup = themes["PopupList"];
         StyleBox popup_panel =
             flat_style({0.25F, 0.25F, 0.25F, 1.0F}, kMargin, kCornerRadius, true, 2);
         popup_panel.border_color = {0.175F, 0.175F, 0.175F, 1.0F};
@@ -256,8 +257,8 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
         popup.fonts = {{"font", ""}, {"font_separator", ""}};
         popup.font_sizes = {{"font_size", text::kDefaultFontSize},
                             {"font_separator_size", text::kDefaultFontSize}};
-        // A line along the bottom tells a LineEdit from a Button.
-        ThemeItems& line_edit = themes["LineEdit"];
+        // A line along the bottom tells a TextField from a Button.
+        ThemeItems& line_edit = themes["TextField"];
         StyleBox line_normal = flat_style(style_normal_color, kMargin, kCornerRadius);
         line_normal.border_width[3] = 2;
         line_normal.border_color = style_pressed_color;
@@ -279,7 +280,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
             {"minimum_character_width", 4}, {"outline_size", 0}, {"caret_width", 1}};
         line_edit.fonts = {{"font", ""}};
         line_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
-        ThemeItems& text_edit = themes["TextEdit"];
+        ThemeItems& text_edit = themes["TextArea"];
         text_edit.styles = {
             {"normal", line_normal}, {"read_only", line_read_only}, {"focus", focus}};
         text_edit.colors = {{"background_color", {0.0F, 0.0F, 0.0F, 0.0F}},
@@ -299,8 +300,8 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
             {"line_spacing", 4}, {"outline_size", 0}, {"caret_width", 1}, {"wrap_offset", 10}};
         text_edit.fonts = {{"font", ""}};
         text_edit.font_sizes = {{"font_size", text::kDefaultFontSize}};
-        // CodeEdit: TextEdit's, with its gutters' icons and colors.
-        ThemeItems& code_edit = themes["CodeEdit"];
+        // CodeEditor: TextArea's, with its gutters' icons and colors.
+        ThemeItems& code_edit = themes["CodeEditor"];
         code_edit.icons = {{"breakpoint", "builtin:breakpoint"},
                            {"bookmark", "builtin:bookmark"},
                            {"executing_line", "builtin:arrow_right"}};
@@ -340,7 +341,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                                            {"padding_top", 0}, {"padding_bottom", 0}};
         }
         // Scroll containers draw nothing of their own but a focus outline, if asked to.
-        ThemeItems& scroll = themes["ScrollContainer"];
+        ThemeItems& scroll = themes["ScrollBox"];
         StyleBox empty_panel;
         empty_panel.type = StyleBox::Type::Empty;
         StyleBox scroll_focus = flat_style(style_focus_color, kMargin, kCornerRadius, false, 2);
@@ -388,7 +389,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
                                  {2.0F * kMargin, 0.5F * kMargin, 2.0F * kMargin, 0.5F * kMargin},
                                  kCornerRadius)}};
         themes["Panel"].styles = {{"panel", flat_style(style_normal_color, 0.0F, 3)}};
-        themes["PanelContainer"].styles = themes["Panel"].styles;
+        themes["PanelBox"].styles = themes["Panel"].styles;
         ThemeItems& bar = themes["ProgressBar"];
         bar.styles = {{"background", flat_style(style_disabled_color, 2.0F, 6)},
                       {"fill", flat_style(style_progress_color, 2.0F, 6)}};
@@ -397,13 +398,13 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
         bar.colors = {{"font_color", control_font_hover_color},
                       {"font_outline_color", {0.0F, 0.0F, 0.0F, 1.0F}}};
         bar.constants = {{"outline_size", 0}};
-        for (const std::string_view box : {"BoxContainer", "HBoxContainer", "VBoxContainer"}) {
+        for (const std::string_view box : {"StackBox", "HBoxContainer", "VBoxContainer"}) {
             themes[std::string(box)].constants = {{"separation", kSeparation}};
         }
-        themes["MarginContainer"].constants = {
+        themes["MarginBox"].constants = {
             {"margin_left", 0}, {"margin_top", 0}, {"margin_right", 0}, {"margin_bottom", 0}};
         for (const std::string_view grid :
-             {"GridContainer", "FlowContainer", "HFlowContainer", "VFlowContainer"}) {
+             {"GridBox", "FlowBox", "HFlowContainer", "VFlowContainer"}) {
             themes[std::string(grid)].constants = {{"h_separation", kSeparation},
                                                    {"v_separation", kSeparation}};
         }
@@ -578,7 +579,7 @@ const ThemeItems& default_theme(std::string_view type) {
         return merged;
     }();
     const auto found = kMerged.find(type);
-    return found != kMerged.end() ? found->second : kMerged.find("Control")->second;
+    return found != kMerged.end() ? found->second : kMerged.find("Widget")->second;
 }
 
 json::Value theme_schema() {
@@ -636,11 +637,51 @@ json::Value theme_schema() {
     properties["default_font_size"]["description"] =
         "The font size of every type in this theme that names none.";
     properties["types"] = object_of(type, "Items by type: a control type such as \"Label\" or "
-                                          "\"PanelContainer\", or a variation with a base_type.");
+                                          "\"PanelBox\", or a variation with a base_type.");
     return schema;
 }
 
-std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
+namespace {
+
+// The theme with its types, and the types they are based on, named by the controls' current names:
+// `doc` itself when none has an old one, else `copy`, which this fills. Where a type is given under
+// both names, the current one's items are kept.
+const json::Value& current_types(const json::Value& doc, json::Value& copy) {
+    const json::Value* types = doc.find("types");
+    if (types == nullptr || !types->is_object()) {
+        return doc;
+    }
+    const auto renamed = [](std::string_view name) {
+        return world::current_component_name(name) != name;
+    };
+    const bool old = std::ranges::any_of(types->as_object(), [&](const auto& type) {
+        const json::Value* base = type.second.find("base_type");
+        return renamed(type.first) ||
+               (base != nullptr && base->is_string() && renamed(base->as_string()));
+    });
+    if (!old) {
+        return doc;
+    }
+    copy = doc;
+    json::Object current;
+    for (auto& [name, type] : copy["types"].as_object()) {
+        if (json::Value* base = type.find("base_type"); base != nullptr && base->is_string()) {
+            *base = std::string(world::current_component_name(base->as_string()));
+        }
+        const std::string_view now = world::current_component_name(name);
+        if (now == name || !types->as_object().contains(std::string(now))) {
+            current[std::string(now)] = std::move(type);
+        }
+    }
+    copy["types"] = std::move(current);
+    return copy;
+}
+
+} // namespace
+
+std::vector<json::ValidationError> validate_theme(const json::Value& given) {
+    json::Value copy;
+    const json::Value& doc = current_types(given, copy);
     std::vector<json::ValidationError> errors = json::validate(doc, theme_schema());
     if (!errors.empty()) {
         return errors;
@@ -702,7 +743,7 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
             at = next;
             at_path = "/types/" + json::pointer_escape(next);
         }
-        ThemeItems known = default_theme(native.empty() ? "Control" : native);
+        ThemeItems known = default_theme(native.empty() ? "Widget" : native);
         merge(known, optional_items(native));
         for (const std::string_view kind : kKinds) {
             const json::Value* items = type.find(kind);
@@ -743,7 +784,9 @@ std::vector<json::ValidationError> validate_theme(const json::Value& doc) {
     return errors;
 }
 
-Result<Theme> parse_theme(const json::Value& doc) {
+Result<Theme> parse_theme(const json::Value& given) {
+    json::Value copy;
+    const json::Value& doc = current_types(given, copy);
     if (const auto errors = validate_theme(doc); !errors.empty()) {
         const json::ValidationError& first = errors.front();
         return make_error(ErrorCode::InvalidArgument,

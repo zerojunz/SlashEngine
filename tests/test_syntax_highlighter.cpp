@@ -15,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-// CodeHighlighter, as Godot's (scene/resources/syntax_highlighter.cpp): the colors expected here
+// SyntaxColors, as Godot's (scene/resources/syntax_highlighter.cpp): the colors expected here
 // follow _get_line_syntax_highlighting_impl step by step.
 
 namespace asset = slash::asset;
@@ -36,7 +36,7 @@ constexpr Vec4 kString{0.5F, 0.5F, 0.0F, 1.0F};
 constexpr Vec4 kComment{0.5F, 0.5F, 0.5F, 1.0F};
 constexpr Vec4 kBlock{0.2F, 0.2F, 0.2F, 1.0F};
 
-world::CodeHighlighter highlighter() {
+world::SyntaxColors highlighter() {
     return {.number_color = kNumber,
             .symbol_color = kSymbol,
             .function_color = kFunction,
@@ -48,7 +48,7 @@ world::CodeHighlighter highlighter() {
 
 // One line's colors, from the region open before it; region becomes the one open after it.
 ui::ColorMap colors(std::u32string_view line, int& region) {
-    const world::CodeHighlighter h = highlighter();
+    const world::SyntaxColors h = highlighter();
     return ui::CodeHighlight(h, kFont).line(line, region);
 }
 ui::ColorMap colors(std::u32string_view line) {
@@ -116,7 +116,7 @@ TEST_CASE("a color region left open goes on into the lines after it") {
 }
 
 TEST_CASE("color region keys must be symbols, one region per start key") {
-    world::CodeHighlighter h;
+    world::SyntaxColors h;
     h.color_regions = {{"\" \"", kString}, {"\" '", kString}, {"a b", kString},
                        {"< x", kString},   {"", kString},     {"//", kComment}};
     CHECK(ui::color_region_error(h, "\" \"").empty());
@@ -132,7 +132,7 @@ TEST_CASE("color region keys must be symbols, one region per start key") {
     CHECK(region != -1);
 }
 
-TEST_CASE("check finds a CodeHighlighter with no TextEdit and color regions Godot refuses") {
+TEST_CASE("check finds a SyntaxColors with no TextArea and color regions Godot refuses") {
     asset::Assets assets{asset::FileSource{
         .read = [](std::string_view) -> slash::Result<std::string> {
             return slash::make_error(slash::ErrorCode::NotFound, "no files");
@@ -145,24 +145,24 @@ TEST_CASE("check finds a CodeHighlighter with no TextEdit and color regions Godo
     ui::install(w, assets,
                 {.viewport = {400.0F, 300.0F}, .theme = "", .allow_system_fallback = false});
     const entt::entity code = w.create("code").value();
-    w.ecs().emplace<world::Control>(code);
-    w.ecs().emplace<world::TextEdit>(code);
-    world::CodeHighlighter regions;
+    w.ecs().emplace<world::Widget>(code);
+    w.ecs().emplace<world::TextArea>(code);
+    world::SyntaxColors regions;
     regions.color_regions = {{"/* */", kBlock}, {"/* x", kBlock}, {"a", kComment}};
-    w.ecs().emplace<world::CodeHighlighter>(code, regions);
+    w.ecs().emplace<world::SyntaxColors>(code, regions);
     const entt::entity loose = w.create("loose").value();
-    w.ecs().emplace<world::CodeHighlighter>(loose);
+    w.ecs().emplace<world::SyntaxColors>(loose);
     std::vector<std::string> lines;
     for (const ui::Problem& problem : ui::check(w, *ui::fonts(w))) {
         lines.push_back(problem.id + problem.path + ": " + problem.message);
     }
     CHECK(lines ==
           std::vector<std::string>{
-              "code/components/CodeHighlighter/color_regions/~1* x: color regions must end with "
+              "code/components/SyntaxColors/color_regions/~1* x: color regions must end with "
               "a symbol",
-              "code/components/CodeHighlighter/color_regions/a: color regions must start with a "
+              "code/components/SyntaxColors/color_regions/a: color regions must start with a "
               "symbol",
-              "loose/components/CodeHighlighter: a CodeHighlighter colors the TextEdit on its "
+              "loose/components/SyntaxColors: a SyntaxColors colors the TextArea on its "
               "entity, and this one has none",
           });
 }

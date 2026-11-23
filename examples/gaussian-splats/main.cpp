@@ -3,7 +3,7 @@
 // Scenery captured from photos with 3D Gaussian Splatting (Postshot, Polycam, Luma or nerfstudio's
 // splatfacto) comes as a .ply file of splats: each a small, see-through 3D Gaussian with a place,
 // a size along three axes, a turn, an opacity and a color that changes with the side it is seen
-// from (spherical harmonics). A GaussianSplat3D names such a file; the software device blends its
+// from (spherical harmonics). A Splat3D names such a file; the software device blends its
 // splats over the opaque meshes, nearest first, and a mesh in front hides them.
 //
 // Games ship captures made with those tools; this example makes its boulder in code, so the
@@ -118,13 +118,13 @@ int main() {
 
     std::puts("-- the captured boulder behind the post: moss, stone, the post in front, the sky");
     (void)agent.call("entity.create", R"({"id": "boulder", "components": {
-        "GaussianSplat3D": {"splats": "boulder.ply"},
+        "Splat3D": {"splats": "boulder.ply"},
         "Transform3D": {"position": [0, 0.5, 0]}}})");
     (void)agent.call("frame.capture", kPoints);
 
     std::puts("-- sh_degree 0 drops the wet moss's shine: the moss is duller, the stone the same");
     (void)agent.call("component.set", R"({"id": "boulder", "components": {
-        "GaussianSplat3D": {"sh_degree": 0}}})");
+        "Splat3D": {"sh_degree": 0}}})");
     (void)agent.call("frame.capture", kPoints);
 
     std::puts("-- moved in front of the post, the boulder hides it; splats overlap many deep, so "
@@ -133,7 +133,7 @@ int main() {
         "Transform3D": {"position": [0, 0.5, 2]}}})");
     (void)agent.call("frame.capture", R"({"points": [[94, 50]]})");
     (void)agent.call("component.set", R"({"id": "boulder", "components": {
-        "GaussianSplat3D": {"opacity": 0.05}}})");
+        "Splat3D": {"opacity": 0.05}}})");
     (void)agent.call("frame.capture", R"({"points": [[94, 50]]})");
     return 0;
 }

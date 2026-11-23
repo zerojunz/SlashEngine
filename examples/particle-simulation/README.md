@@ -2,18 +2,18 @@
 
 Simulation stages run over CPU particles in 2D and 3D, as Unreal's Niagara modules (Godot has
 none): a `ParticleSimulation3D` or `ParticleSimulation2D` on the same entity as a
-`CPUParticles3D` or `CPUParticles2D` works on its particles each tick after the emitter has moved
+`Emitter3D` or `Emitter2D` works on its particles each tick after the emitter has moved
 them. In [main.scene.json](main.scene.json):
 
-- a fountain's drops bounce on a floor (a `GPUParticlesCollisionBox3D`, `collide: "colliders"`),
+- a fountain's drops bounce on a floor (a `ParticleColliderBox3D`, `collide: "colliders"`),
   fade by an `alpha` attribute, start two puffs in the `mist` emitter on a quarter of their
   landings and emit a `splash` world event on a few;
 - fireflies flock (separation, cohesion and alignment within `neighbor_radius`), swirl in curl
   noise, keep between `min_speed` and `max_speed`, are sized by a `size` attribute worked out
   once from their `random`, and emit `lantern` events as they pass a box;
-- bees swarm the same way on the GPU: a `ParticleSimulation3D` beside a `GPUParticles3D` runs its
+- bees swarm the same way on the GPU: a `ParticleSimulation3D` beside a `GpuEmitter3D` runs its
   neighbor, curl noise and speed stages on the device's compute after each step;
-- in 2D, sand pours onto a dune (a `LightOccluder2D`, `collide: "occluders"`) and shrinks as it
+- in 2D, sand pours onto a dune (a `Occluder2D`, `collide: "occluders"`) and shrinks as it
   ages, and starlings flock in the plane.
 
 [calls.jsonl](calls.jsonl) steps two seconds, checks each emitter with `particles.eval` (the

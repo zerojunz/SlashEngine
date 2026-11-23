@@ -2,7 +2,7 @@
   "entities": {
     "bat": {
       "components": {
-        "AudioStreamPlayer2D": {
+        "SoundPlayer2D": {
           "stream": "audio/chirp.wav"
         },
         "Transform2D": {
@@ -12,21 +12,21 @@
     },
     "cave": {
       "components": {
-        "Area2D": {
-          "audio_bus_name": "Cave",
-          "audio_bus_override": true
-        },
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [200.0, 120.0]
         },
         "Transform2D": {
           "position": [480.0, 180.0]
+        },
+        "Zone2D": {
+          "audio_bus_name": "Cave",
+          "audio_bus_override": true
         }
       }
     },
     "voice": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "bus": "Voice",
           "stream": "audio/hum.wav"

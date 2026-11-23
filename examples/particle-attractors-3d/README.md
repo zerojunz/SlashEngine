@@ -1,6 +1,6 @@
 # Particle attractors in 3D
 
-Attractors pull `GPUParticles3D`s' particles, as Godot 4.6's `GPUParticlesAttractor3D` nodes. In
+Attractors pull `GpuEmitter3D`s' particles, as Godot 4.6's `GPUParticlesAttractor3D` nodes. In
 [main.scene.json](main.scene.json) a sheet of dust hangs over a 6 by 6 meter square: a sphere,
 the well, draws the dust near it in; a box, the gust, blows the dust inside it along its -z; and
 a vector field, the swirl, turns the dust inside it round the y axis by a 3D texture of

@@ -17,6 +17,6 @@ a 2D floor.
   the ground and the impulse holding it up.
 - Two seconds in, `physics.cache` saves the collapse as `anims/collapse.anim.json`, keyed only
   where the crates' motion bends.
-- Back at the snapshot, the director's `AnimationPlayer` plays the recording: the crates fall
+- Back at the snapshot, the director's `Animator` plays the recording: the crates fall
   as they fell, frozen kinematic, and `top` lands where it landed, to a tenth of a millimeter.
 - A misspelled ID is an error with the closest one.

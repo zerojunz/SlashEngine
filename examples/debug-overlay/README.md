@@ -2,7 +2,7 @@
 
 What a person watching a running game sees, and what an agent sees of the same collision
 shapes. [main.scene.json](main.scene.json) has ground, a hill whose outline is a concave
-`CollisionPolygon2D`, a one-way ledge, a crate that falls onto it, a coin (an `Area2D`) and a
+`PolygonCollider2D`, a one-way ledge, a crate that falls onto it, a coin (an `Zone2D`) and a
 disabled gate, in a 640x360 window ([project.json](project.json)). [main.cpp](main.cpp) first
 captures a frame with the shapes drawn, as an agent would, then runs the game the way
 `slash-cli run --debug-overlay` does and works the panel. [expected.txt](expected.txt) holds its
@@ -17,8 +17,8 @@ frame.capture {"collisions":true,"points":[[360,204],[360,236],[480,300],[240,26
   | mouse 360, 204: crate
 ```
 
-- `frame.capture`'s `"collisions": true` draws every `CollisionShape2D` and
-  `CollisionPolygon2D` over the world as Godot's Visible Collision Shapes does: shapes fill with
+- `frame.capture`'s `"collisions": true` draws every `Collider2D` and
+  `PolygonCollider2D` over the world as Godot's Visible Collision Shapes does: shapes fill with
   `Color(0.0, 0.6, 0.7, 0.42)` and have an opaque outline, polygons have a red one, the one-way
   ledge has an arrow down its +y in the inverted color, and the disabled gate is gray. `drawn`
   counts the `shapes`.

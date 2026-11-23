@@ -2,10 +2,10 @@
   "entities": {
     "bees": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [0.04, 0.04, 0.04]
         },
-        "GPUParticles3D": {
+        "GpuEmitter3D": {
           "amount": 48,
           "explosiveness": 1.0,
           "lifetime": 8.0,
@@ -39,7 +39,7 @@
     },
     "dune": {
       "components": {
-        "LightOccluder2D": {
+        "Occluder2D": {
           "polygon": [
             [0.0, 0.0],
             [160.0, -20.0],
@@ -54,7 +54,7 @@
     },
     "fireflies": {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 40,
           "emission_shape": "sphere",
           "explosiveness": 1.0,
@@ -64,7 +64,7 @@
           "lifetime": 8.0,
           "spread": 180.0
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "ParticleSimulation3D": {
           "alignment": 1.0,
           "attributes": [
@@ -91,7 +91,7 @@
           "neighbor_radius": 0.6,
           "separation": 1.5
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.04,
           "radius": 0.02
         },
@@ -102,7 +102,7 @@
     },
     "floor": {
       "components": {
-        "GPUParticlesCollisionBox3D": {
+        "ParticleColliderBox3D": {
           "size": [12.0, 1.0, 12.0]
         },
         "Transform3D": {
@@ -112,7 +112,7 @@
     },
     "fountain": {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 48,
           "direction": [0.0, 1.0, 0.0],
           "initial_velocity_max": 5.0,
@@ -120,7 +120,7 @@
           "lifetime": 2.0,
           "spread": 15.0
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "ParticleSimulation3D": {
           "attributes": [
             {
@@ -146,7 +146,7 @@
           ],
           "friction": 0.4
         },
-        "SphereMesh": {
+        "SphereGeometry": {
           "height": 0.06,
           "radius": 0.03
         },
@@ -157,14 +157,14 @@
     },
     "mist": {
       "components": {
-        "CPUParticles3D": {
+        "Emitter3D": {
           "amount": 1,
           "emitting": false,
           "gravity": [0.0, 0.5, 0.0],
           "lifetime": 0.6
         },
-        "MeshInstance3D": {},
-        "SphereMesh": {
+        "Model3D": {},
+        "SphereGeometry": {
           "height": 0.1,
           "radius": 0.05
         },
@@ -173,7 +173,7 @@
     },
     "sand": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 30,
           "gravity": [0.0, 400.0],
           "initial_velocity_max": 90.0,
@@ -200,7 +200,7 @@
     },
     "starlings": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 24,
           "explosiveness": 1.0,
           "gravity": [0.0, 0.0],

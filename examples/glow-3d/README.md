@@ -6,7 +6,7 @@ night with two neon signs, seen through a `Camera3D` in a 320x180 window. The pi
 `emission_energy_multiplier` is 6 and the cyan one's 4, so they shine six and four times white.
 
 Forward+ draws the world linear into a texture of half floats, so those colors stay above 1
-until the tonemap. The `environment` entity's `WorldEnvironment` sets `tonemap_mode` `"agx"` and
+until the tonemap. The `environment` entity's `Environment3D` sets `tonemap_mode` `"agx"` and
 `glow_enabled` with `glow_intensity` 0.8; everything else is Godot's default:
 
 - `glow_hdr_threshold` 1: only what is brighter than white glows, and nothing else on the street

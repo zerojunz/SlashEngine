@@ -1,6 +1,29 @@
-{"entities": {
-        "hero": {"components": {"Transform2D": {}, "AnimatedSprite2D": {
-            "sprite_frames": "hero.frames.json"}}},
-        "rock": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "hero.png"}}},
-        "ghost": {"components": {"Transform2D": {}, "Sprite2D": {"texture": "gone.png"}}}
-    }, "format": 1}
+{
+  "entities": {
+    "ghost": {
+      "components": {
+        "Sprite2D": {
+          "texture": "gone.png"
+        },
+        "Transform2D": {}
+      }
+    },
+    "hero": {
+      "components": {
+        "Flipbook2D": {
+          "sprite_frames": "hero.frames.json"
+        },
+        "Transform2D": {}
+      }
+    },
+    "rock": {
+      "components": {
+        "Sprite2D": {
+          "texture": "hero.png"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}

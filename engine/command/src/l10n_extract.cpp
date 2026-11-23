@@ -33,10 +33,9 @@ using Key = std::pair<std::string, std::string>; // context, message
 
 // Components whose "text" a control shows, as Godot's parser takes Label's and BaseButton's.
 constexpr std::array<std::string_view, 5> kTextComponents = {"Label", "Button", "CheckBox",
-                                                             "CheckButton", "MenuButton"};
+                                                             "ToggleSwitch", "MenuButton"};
 // Components whose "items" are a list's options or a menu's items.
-constexpr std::array<std::string_view, 3> kItemComponents = {"OptionButton", "MenuButton",
-                                                             "PopupMenu"};
+constexpr std::array<std::string_view, 3> kItemComponents = {"Dropdown", "MenuButton", "PopupList"};
 
 class Collector {
 public:
@@ -88,7 +87,7 @@ void collect_document(const json::Value& document, const std::string& file, Coll
     std::map<std::string, std::string, std::less<>> parent_of;
     for (const auto& [id, entity] : entities->as_object()) {
         const json::Value* children =
-            member(member(member(&entity, "components"), "Control"), "children");
+            member(member(member(&entity, "components"), "Widget"), "children");
         if (children == nullptr || !children->is_array()) {
             continue;
         }
@@ -101,7 +100,7 @@ void collect_document(const json::Value& document, const std::string& file, Coll
     const auto mode_of = [&](std::string_view id) {
         const json::Value* entity = entities->find(id);
         const std::string mode =
-            text_of(member(member(member(entity, "components"), "Control"), "auto_translate_mode"));
+            text_of(member(member(member(entity, "components"), "Widget"), "auto_translate_mode"));
         return mode.empty() ? std::string("inherit") : mode;
     };
     const auto translates = [&](std::string_view id) {
@@ -126,12 +125,12 @@ void collect_document(const json::Value& document, const std::string& file, Coll
             continue;
         }
         const bool translate = translates(id);
-        const json::Value* control = member(components, "Control");
+        const json::Value* control = member(components, "Widget");
         if (translate) {
             for (const std::string_view type : kTextComponents) {
                 out.add({}, text_of(member(member(components, type), "text")), {}, file);
             }
-            for (const std::string_view type : {"LineEdit", "TextEdit"}) {
+            for (const std::string_view type : {"TextField", "TextArea"}) {
                 out.add({}, text_of(member(member(components, type), "placeholder_text")), {},
                         file);
             }
@@ -151,8 +150,8 @@ void collect_document(const json::Value& document, const std::string& file, Coll
             if (items == nullptr || !items->is_array()) {
                 continue;
             }
-            // A PopupMenu is a window of its own, so it translates as a root does.
-            const bool owner = type == "PopupMenu" && control == nullptr ? true : translate;
+            // A PopupList is a window of its own, so it translates as a root does.
+            const bool owner = type == "PopupList" && control == nullptr ? true : translate;
             for (const json::Value& item : items->as_array()) {
                 const std::string mode = text_of(member(&item, "auto_translate_mode"));
                 const bool shown = mode.empty() || mode == "inherit" ? owner : mode == "always";

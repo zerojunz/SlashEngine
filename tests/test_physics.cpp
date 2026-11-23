@@ -28,14 +28,14 @@ namespace {
 
 constexpr double kTick = 1.0 / 60.0;
 
-world::CollisionShape2D rectangle(Vec2 size) {
-    world::CollisionShape2D shape;
+world::Collider2D rectangle(Vec2 size) {
+    world::Collider2D shape;
     shape.size = size;
     return shape;
 }
 
-world::CollisionShape2D circle(float radius) {
-    world::CollisionShape2D shape;
+world::Collider2D circle(float radius) {
+    world::Collider2D shape;
     shape.shape = "circle";
     shape.radius = radius;
     return shape;
@@ -80,14 +80,14 @@ struct Physics {
         const Vec2 size = bottom_right - top_left;
         const entt::entity entity = add(id, top_left + (size * 0.5F));
         world.ecs().emplace<world::StaticBody2D>(entity);
-        world.ecs().emplace<world::CollisionShape2D>(entity, rectangle(size));
+        world.ecs().emplace<world::Collider2D>(entity, rectangle(size));
         return entity;
     }
 
     entt::entity crate(std::string_view id, Vec2 position, float size = 20.0F) {
         const entt::entity entity = add(id, position);
         world.ecs().emplace<world::RigidBody2D>(entity);
-        world.ecs().emplace<world::CollisionShape2D>(entity, rectangle({size, size}));
+        world.ecs().emplace<world::Collider2D>(entity, rectangle({size, size}));
         return entity;
     }
 
@@ -95,13 +95,13 @@ struct Physics {
     // script does.
     entt::entity hero(std::string_view id, Vec2 position) {
         const entt::entity entity = add(id, position);
-        world.ecs().emplace<world::CharacterBody2D>(entity);
-        world.ecs().emplace<world::CollisionShape2D>(entity, rectangle({20.0F, 40.0F}));
+        world.ecs().emplace<world::CharacterMover2D>(entity);
+        world.ecs().emplace<world::Collider2D>(entity, rectangle({20.0F, 40.0F}));
         return entity;
     }
 
     void fall(std::string_view id) {
-        auto& character = get<world::CharacterBody2D>(id);
+        auto& character = get<world::CharacterMover2D>(id);
         if (!character.on_floor) {
             character.velocity.y += 980.0F * static_cast<float>(kTick);
         }
@@ -273,7 +273,7 @@ TEST_CASE("bodies collide when either one's mask has the other's layer") {
 TEST_CASE("a one-way platform holds what lands on it and lets what rises pass") {
     Physics physics;
     const entt::entity platform = physics.box("platform", {-50.0F, 100.0F}, {50.0F, 110.0F});
-    physics.get<world::CollisionShape2D>("platform").one_way_collision = true;
+    physics.get<world::Collider2D>("platform").one_way_collision = true;
     (void)platform;
     physics.crate("crate", {0.0F, 150.0F}, 10.0F);
     physics.get<world::RigidBody2D>("crate").linear_velocity = {0.0F, -600.0F};
@@ -293,11 +293,11 @@ TEST_CASE("a one-way platform holds what lands on it and lets what rises pass") 
 TEST_CASE("an area reports bodies and areas entering and leaving") {
     Physics physics;
     const entt::entity zone = physics.add("zone", {0.0F, 100.0F});
-    physics.world.ecs().emplace<world::Area2D>(zone);
-    physics.world.ecs().emplace<world::CollisionShape2D>(zone, rectangle({100.0F, 40.0F}));
+    physics.world.ecs().emplace<world::Zone2D>(zone);
+    physics.world.ecs().emplace<world::Collider2D>(zone, rectangle({100.0F, 40.0F}));
     const entt::entity sensor = physics.add("sensor", {40.0F, 100.0F});
-    physics.world.ecs().emplace<world::Area2D>(sensor);
-    physics.world.ecs().emplace<world::CollisionShape2D>(sensor, circle(5.0F));
+    physics.world.ecs().emplace<world::Zone2D>(sensor);
+    physics.world.ecs().emplace<world::Collider2D>(sensor, circle(5.0F));
     physics.crate("crate", {0.0F, 0.0F}, 10.0F);
 
     physics.step();
@@ -325,7 +325,7 @@ TEST_CASE("an area reports bodies and areas entering and leaving") {
 
     // An area that isn't monitorable is not seen by others; one not monitoring sees nothing.
     physics.events.clear();
-    physics.get<world::Area2D>("sensor").monitorable = false;
+    physics.get<world::Zone2D>("sensor").monitorable = false;
     physics.step();
     CHECK(physics.event_list() == Ids{R"(area_exited zone {"area":"sensor"})"});
 }
@@ -353,7 +353,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     physics.hero("hero", {0.0F, 0.0F});
 
     physics.step(60, [&] { physics.fall("hero"); });
-    const auto& hero = physics.get<world::CharacterBody2D>("hero");
+    const auto& hero = physics.get<world::CharacterMover2D>("hero");
     CHECK(hero.on_floor);
     CHECK_FALSE(hero.on_wall);
     CHECK(physics.position("hero").y == doctest::Approx(80.0F).epsilon(0.002));
@@ -363,7 +363,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     // Walk right into the wall.
     physics.step(60, [&] {
         physics.fall("hero");
-        physics.get<world::CharacterBody2D>("hero").velocity.x = 300.0F;
+        physics.get<world::CharacterMover2D>("hero").velocity.x = 300.0F;
     });
     CHECK(hero.on_floor);
     CHECK(hero.on_wall);
@@ -373,7 +373,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     CHECK(physics2d::contacts(physics.world, physics.world.find("hero")).bodies.size() == 2);
 
     // A jump leaves the floor.
-    physics.get<world::CharacterBody2D>("hero").velocity = {0.0F, -400.0F};
+    physics.get<world::CharacterMover2D>("hero").velocity = {0.0F, -400.0F};
     physics.step();
     CHECK_FALSE(hero.on_floor);
     CHECK(physics.position("hero").y < 80.0F);
@@ -382,14 +382,14 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     Physics slope;
     const entt::entity ramp = slope.add("ramp", {});
     slope.world.ecs().emplace<world::StaticBody2D>(ramp);
-    slope.world.ecs().emplace<world::CollisionPolygon2D>(
-        ramp, world::CollisionPolygon2D{.polygon = {{-200.0F, 200.0F},
-                                                    {200.0F, 200.0F - 230.94F},
-                                                    {200.0F, 300.0F},
-                                                    {-200.0F, 300.0F}}});
+    slope.world.ecs().emplace<world::PolygonCollider2D>(
+        ramp, world::PolygonCollider2D{.polygon = {{-200.0F, 200.0F},
+                                                   {200.0F, 200.0F - 230.94F},
+                                                   {200.0F, 300.0F},
+                                                   {-200.0F, 300.0F}}});
     slope.hero("hero", {0.0F, 60.0F});
     slope.step(90, [&] { slope.fall("hero"); });
-    const auto& climber = slope.get<world::CharacterBody2D>("hero");
+    const auto& climber = slope.get<world::CharacterMover2D>("hero");
     CHECK(climber.on_floor);
     const Vec2 rest = slope.position("hero");
     slope.step(60, [&] { slope.fall("hero"); });
@@ -397,7 +397,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
     CHECK(slope.position("hero").y == doctest::Approx(rest.y).epsilon(0.0001));
     slope.step(30, [&] {
         slope.fall("hero");
-        slope.get<world::CharacterBody2D>("hero").velocity.x = 100.0F;
+        slope.get<world::CharacterMover2D>("hero").velocity.x = 100.0F;
     });
     CHECK(climber.on_floor);
     // Godot's floor_constant_speed is off, so the slope slows it: 50 pixels becomes 37.
@@ -409,35 +409,35 @@ TEST_CASE("a character jumps up through a one-way platform and lands on it") {
     Physics physics;
     physics.box("floor", {-300.0F, 200.0F}, {300.0F, 220.0F});
     physics.box("ledge", {-50.0F, 100.0F}, {50.0F, 110.0F});
-    physics.get<world::CollisionShape2D>("ledge").one_way_collision = true;
+    physics.get<world::Collider2D>("ledge").one_way_collision = true;
     // A capsule this time.
     physics.hero("hero", {0.0F, 180.0F});
-    auto& shape = physics.get<world::CollisionShape2D>("hero");
+    auto& shape = physics.get<world::Collider2D>("hero");
     shape.shape = "capsule";
     shape.radius = 10.0F;
     shape.height = 40.0F;
     physics.step(30, [&] { physics.fall("hero"); });
-    REQUIRE(physics.get<world::CharacterBody2D>("hero").on_floor);
+    REQUIRE(physics.get<world::CharacterMover2D>("hero").on_floor);
     CHECK(physics.position("hero").y == doctest::Approx(180.0F).epsilon(0.002));
 
-    physics.get<world::CharacterBody2D>("hero").velocity.y = -600.0F;
+    physics.get<world::CharacterMover2D>("hero").velocity.y = -600.0F;
     physics.step(90, [&] { physics.fall("hero"); });
-    const auto& hero = physics.get<world::CharacterBody2D>("hero");
+    const auto& hero = physics.get<world::CharacterMover2D>("hero");
     CHECK(hero.on_floor);
     CHECK(physics.position("hero").y == doctest::Approx(80.0F).epsilon(0.002));
     CHECK(physics.ids(physics2d::contacts(physics.world, physics.world.find("hero")).bodies) ==
           Ids{"ledge"});
 
     // Under a solid ceiling a jump stops at it.
-    physics.get<world::CollisionShape2D>("ledge").one_way_collision = false;
+    physics.get<world::Collider2D>("ledge").one_way_collision = false;
     physics.get<world::Transform2D>("hero").position = {0.0F, 180.0F};
-    physics.get<world::CharacterBody2D>("hero").velocity = {};
+    physics.get<world::CharacterMover2D>("hero").velocity = {};
     physics.step(30, [&] { physics.fall("hero"); });
-    physics.get<world::CharacterBody2D>("hero").velocity.y = -600.0F;
+    physics.get<world::CharacterMover2D>("hero").velocity.y = -600.0F;
     bool bumped = false;
     physics.step(30, [&] {
         physics.fall("hero");
-        bumped = bumped || physics.get<world::CharacterBody2D>("hero").on_ceiling;
+        bumped = bumped || physics.get<world::CharacterMover2D>("hero").on_ceiling;
     });
     CHECK(bumped);
     CHECK(physics.position("hero").y == doctest::Approx(180.0F).epsilon(0.002));
@@ -447,12 +447,12 @@ TEST_CASE("a floating character slides along walls and has no floor") {
     Physics physics;
     physics.box("wall", {100.0F, -200.0F}, {120.0F, 200.0F});
     const entt::entity ship = physics.add("ship", {0.0F, 0.0F});
-    physics.world.ecs().emplace<world::CharacterBody2D>(ship, world::CharacterBody2D{});
-    physics.get<world::CharacterBody2D>("ship").motion_mode = "floating";
-    physics.get<world::CharacterBody2D>("ship").velocity = {300.0F, 120.0F};
-    physics.world.ecs().emplace<world::CollisionShape2D>(ship, circle(10.0F));
+    physics.world.ecs().emplace<world::CharacterMover2D>(ship, world::CharacterMover2D{});
+    physics.get<world::CharacterMover2D>("ship").motion_mode = "floating";
+    physics.get<world::CharacterMover2D>("ship").velocity = {300.0F, 120.0F};
+    physics.world.ecs().emplace<world::Collider2D>(ship, circle(10.0F));
     physics.step(30);
-    const auto& character = physics.get<world::CharacterBody2D>("ship");
+    const auto& character = physics.get<world::CharacterMover2D>("ship");
     CHECK(physics.position("ship").x == doctest::Approx(90.0F).epsilon(0.002));
     // 18 ticks to reach the wall, then the rest along it at full speed.
     CHECK(physics.position("ship").y == doctest::Approx(100.6F).epsilon(0.01));
@@ -461,7 +461,7 @@ TEST_CASE("a floating character slides along walls and has no floor") {
     CHECK(character.velocity == Vec2{300.0F, 120.0F}); // floating keeps its velocity
 
     // Head-on, it stops rather than slides.
-    physics.get<world::CharacterBody2D>("ship").velocity = {300.0F, 10.0F};
+    physics.get<world::CharacterMover2D>("ship").velocity = {300.0F, 10.0F};
     const float y = physics.position("ship").y;
     physics.step(10);
     CHECK(physics.position("ship").y == doctest::Approx(y));
@@ -470,11 +470,11 @@ TEST_CASE("a floating character slides along walls and has no floor") {
 TEST_CASE("a character rides a moving platform and keeps its velocity when it leaves") {
     Physics physics;
     const entt::entity lift = physics.add("lift", {0.0F, 100.0F});
-    physics.world.ecs().emplace<world::AnimatableBody2D>(lift);
-    physics.world.ecs().emplace<world::CollisionShape2D>(lift, rectangle({200.0F, 20.0F}));
+    physics.world.ecs().emplace<world::MovingBody2D>(lift);
+    physics.world.ecs().emplace<world::Collider2D>(lift, rectangle({200.0F, 20.0F}));
     physics.hero("hero", {0.0F, 60.0F});
     physics.step(30, [&] { physics.fall("hero"); });
-    REQUIRE(physics.get<world::CharacterBody2D>("hero").on_floor);
+    REQUIRE(physics.get<world::CharacterMover2D>("hero").on_floor);
     const Vec2 start = physics.position("hero");
 
     // The lift moves right 2 pixels a tick, and the hero with it.
@@ -482,13 +482,13 @@ TEST_CASE("a character rides a moving platform and keeps its velocity when it le
         physics.fall("hero");
         physics.get<world::Transform2D>("lift").position.x += 2.0F;
     });
-    const auto& hero = physics.get<world::CharacterBody2D>("hero");
+    const auto& hero = physics.get<world::CharacterMover2D>("hero");
     CHECK(hero.on_floor);
     CHECK(physics.position("hero").x == doctest::Approx(start.x + 60.0F).epsilon(0.001));
     CHECK(hero.platform_velocity.x == doctest::Approx(120.0F).epsilon(0.01));
 
     // Jumping off keeps the lift's velocity, as Godot's platform_on_leave add_velocity.
-    physics.get<world::CharacterBody2D>("hero").velocity = {0.0F, -300.0F};
+    physics.get<world::CharacterMover2D>("hero").velocity = {0.0F, -300.0F};
     physics.step(1, [&] { physics.get<world::Transform2D>("lift").position.x += 2.0F; });
     CHECK_FALSE(hero.on_floor);
     CHECK(hero.velocity.x == doctest::Approx(120.0F).epsilon(0.01));
@@ -499,15 +499,15 @@ TEST_CASE("concave polygons are split, and polygon segments are only edges") {
     // A U: two arms and a base, with a notch between the arms.
     const entt::entity cup = physics.add("cup", {});
     physics.world.ecs().emplace<world::StaticBody2D>(cup);
-    physics.world.ecs().emplace<world::CollisionPolygon2D>(
-        cup, world::CollisionPolygon2D{.polygon = {{0.0F, 0.0F},
-                                                   {20.0F, 0.0F},
-                                                   {20.0F, 80.0F},
-                                                   {80.0F, 80.0F},
-                                                   {80.0F, 0.0F},
-                                                   {100.0F, 0.0F},
-                                                   {100.0F, 100.0F},
-                                                   {0.0F, 100.0F}}});
+    physics.world.ecs().emplace<world::PolygonCollider2D>(
+        cup, world::PolygonCollider2D{.polygon = {{0.0F, 0.0F},
+                                                  {20.0F, 0.0F},
+                                                  {20.0F, 80.0F},
+                                                  {80.0F, 80.0F},
+                                                  {80.0F, 0.0F},
+                                                  {100.0F, 0.0F},
+                                                  {100.0F, 100.0F},
+                                                  {0.0F, 100.0F}}});
     CHECK(physics.ids(physics2d::overlap_point(physics.world, {10.0F, 10.0F})) == Ids{"cup"});
     CHECK(physics.ids(physics2d::overlap_point(physics.world, {50.0F, 90.0F})) == Ids{"cup"});
     CHECK(physics2d::overlap_point(physics.world, {50.0F, 40.0F}).empty());
@@ -518,7 +518,7 @@ TEST_CASE("concave polygons are split, and polygon segments are only edges") {
     CHECK(physics.position("crate").y == doctest::Approx(70.0F).epsilon(0.002));
 
     // As segments, the outline is hollow: a point inside the base hits nothing.
-    physics.get<world::CollisionPolygon2D>("cup").build_mode = "segments";
+    physics.get<world::PolygonCollider2D>("cup").build_mode = "segments";
     CHECK(physics2d::overlap_point(physics.world, {50.0F, 90.0F}).empty());
     const auto hit = physics2d::raycast(physics.world, {50.0F, 200.0F}, {50.0F, 50.0F});
     REQUIRE(hit);
@@ -531,8 +531,8 @@ TEST_CASE("raycast finds the first hit and follows masks, areas and exclusions")
     physics.box("far", {200.0F, -50.0F}, {220.0F, 50.0F});
     physics.get<world::StaticBody2D>("far").collision_layer = 2;
     const entt::entity zone = physics.add("zone", {50.0F, 0.0F});
-    physics.world.ecs().emplace<world::Area2D>(zone);
-    physics.world.ecs().emplace<world::CollisionShape2D>(zone, circle(10.0F));
+    physics.world.ecs().emplace<world::Zone2D>(zone);
+    physics.world.ecs().emplace<world::Collider2D>(zone, circle(10.0F));
 
     const auto hit = physics2d::raycast(physics.world, {0.0F, 0.0F}, {300.0F, 0.0F});
     REQUIRE(hit);
@@ -563,7 +563,7 @@ TEST_CASE("overlap_shape finds what a shape would touch") {
     physics.box("a", {0.0F, 0.0F}, {20.0F, 20.0F});
     physics.box("b", {40.0F, 0.0F}, {60.0F, 20.0F});
     physics.box("c", {200.0F, 0.0F}, {220.0F, 20.0F});
-    const world::CollisionShape2D wide = rectangle({60.0F, 10.0F});
+    const world::Collider2D wide = rectangle({60.0F, 10.0F});
     CHECK(physics.ids(physics2d::overlap_shape(physics.world, wide, {30.0F, 10.0F}, 0.0F)) ==
           Ids{"a", "b"});
     CHECK(physics.ids(physics2d::overlap_shape(physics.world, wide, {30.0F, 10.0F}, 0.0F, {}, 1)) ==
@@ -572,10 +572,10 @@ TEST_CASE("overlap_shape finds what a shape would touch") {
     CHECK(physics2d::overlap_shape(physics.world, wide, {30.0F, 10.0F},
                                    std::numbers::pi_v<float> / 2.0F)
               .empty());
-    const world::CollisionShape2D ball = circle(15.0F);
+    const world::Collider2D ball = circle(15.0F);
     CHECK(physics.ids(physics2d::overlap_shape(physics.world, ball, {210.0F, 30.0F}, 0.0F)) ==
           Ids{"c"});
-    world::CollisionShape2D star;
+    world::Collider2D star;
     star.shape = "polygon";
     star.points = {{0.0F, -30.0F}, {8.0F, -8.0F},  {30.0F, 0.0F},  {8.0F, 8.0F},  {0.0F, 30.0F},
                    {-8.0F, 8.0F},  {-30.0F, 0.0F}, {-8.0F, -8.0F}, {0.0F, -25.0F}};
@@ -593,15 +593,15 @@ TEST_CASE("joints pin, spring and slide bodies") {
     // A weight on a spring hanging from (300, 0), resting 50 pixels down at first.
     physics.crate("weight", {300.0F, 50.0F}, 10.0F);
     const entt::entity spring = physics.add("spring", {300.0F, 0.0F});
-    physics.world.ecs().emplace<world::DampedSpringJoint2D>(
-        spring, world::DampedSpringJoint2D{
+    physics.world.ecs().emplace<world::SpringJoint2D>(
+        spring, world::SpringJoint2D{
                     .node_b = physics.world.find("weight"), .stiffness = 200.0F, .damping = 5.0F});
     // A bead on a groove from (500, 0) 100 pixels down, tilted 45 degrees, 25 pixels along it.
     physics.crate("bead", {517.678F, 17.678F}, 10.0F);
     const entt::entity groove = physics.add("groove", {500.0F, 0.0F});
     physics.get<world::Transform2D>("groove").rotation = -std::numbers::pi_v<float> / 4.0F;
-    physics.world.ecs().emplace<world::GrooveJoint2D>(
-        groove, world::GrooveJoint2D{.node_b = physics.world.find("bead"), .length = 100.0F});
+    physics.world.ecs().emplace<world::TrackJoint2D>(
+        groove, world::TrackJoint2D{.node_b = physics.world.find("bead"), .length = 100.0F});
 
     physics.step(120);
     const auto distance = [](Vec2 a, Vec2 b) { return std::hypot(a.x - b.x, a.y - b.y); };
@@ -644,8 +644,8 @@ TEST_CASE("a joint stays where it was made when a parent carries it") {
     physics.crate("bead", {500.0F, 50.0F}, 10.0F);
     const entt::entity groove = physics.add("groove", {500.0F, 0.0F});
     physics.get<world::Transform2D>("groove").scale = {2.0F, 2.0F};
-    physics.world.ecs().emplace<world::GrooveJoint2D>(
-        groove, world::GrooveJoint2D{.node_b = physics.world.find("bead")});
+    physics.world.ecs().emplace<world::TrackJoint2D>(
+        groove, world::TrackJoint2D{.node_b = physics.world.find("bead")});
     physics.step(120);
     CHECK(physics.position("bead").x == doctest::Approx(500.0F).epsilon(0.002));
     CHECK(physics.position("bead").y == doctest::Approx(100.0F).epsilon(0.002));
@@ -720,7 +720,7 @@ TEST_CASE("the same scene simulates the same every time") {
         physics.hero("hero", {150.0F, 200.0F});
         physics.step(240, [&] {
             physics.fall("hero");
-            physics.get<world::CharacterBody2D>("hero").velocity.x = -120.0F;
+            physics.get<world::CharacterMover2D>("hero").velocity.x = -120.0F;
         });
         std::string out;
         for (const std::string_view id : physics.world.ids()) {
@@ -741,11 +741,11 @@ TEST_CASE("a body takes the shapes of child entities with no body of their own, 
     const entt::entity wall = physics.add("wall", {100.0F, 100.0F});
     physics.world.ecs().emplace<world::StaticBody2D>(wall);
     const entt::entity near = physics.add("near", {0.0F, 0.0F});
-    physics.world.ecs().emplace<world::CollisionShape2D>(near, rectangle({20.0F, 20.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(near, rectangle({20.0F, 20.0F}));
     const entt::entity far = physics.add("far", {60.0F, 0.0F});
     physics.get<world::Transform2D>("far").rotation = std::numbers::pi_v<float> / 4.0F;
     physics.get<world::Transform2D>("far").scale = {2.0F, 2.0F};
-    physics.world.ecs().emplace<world::CollisionShape2D>(far, rectangle({10.0F, 10.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(far, rectangle({10.0F, 10.0F}));
     physics.get<world::Transform2D>("wall").children = {near, far};
     physics.step();
 
@@ -782,32 +782,32 @@ TEST_CASE("rigid bodies, characters and areas use their children's shapes") {
     const entt::entity floor = physics.add("floor", {0.0F, 200.0F});
     physics.world.ecs().emplace<world::StaticBody2D>(floor);
     const entt::entity slab = physics.add("slab", {});
-    physics.world.ecs().emplace<world::CollisionShape2D>(slab, rectangle({400.0F, 20.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(slab, rectangle({400.0F, 20.0F}));
     physics.get<world::Transform2D>("floor").children = {slab};
     const entt::entity ball = physics.add("ball", {-100.0F, 100.0F});
     physics.world.ecs().emplace<world::RigidBody2D>(ball);
     const entt::entity round = physics.add("round", {0.0F, 0.0F});
-    physics.world.ecs().emplace<world::CollisionShape2D>(round, circle(10.0F));
+    physics.world.ecs().emplace<world::Collider2D>(round, circle(10.0F));
     physics.get<world::Transform2D>("ball").children = {round};
     physics.step(120);
     CHECK(physics.position("ball").y == doctest::Approx(180.0F).epsilon(0.002));
 
     // A character stands on it on its child's shape.
     const entt::entity hero = physics.add("hero", {100.0F, 100.0F});
-    physics.world.ecs().emplace<world::CharacterBody2D>(hero);
+    physics.world.ecs().emplace<world::CharacterMover2D>(hero);
     const entt::entity feet = physics.add("feet", {0.0F, 10.0F});
-    physics.world.ecs().emplace<world::CollisionShape2D>(feet, rectangle({20.0F, 20.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(feet, rectangle({20.0F, 20.0F}));
     physics.get<world::Transform2D>("hero").children = {feet};
     physics.step(60, [&] { physics.fall("hero"); });
-    CHECK(physics.get<world::CharacterBody2D>("hero").on_floor);
+    CHECK(physics.get<world::CharacterMover2D>("hero").on_floor);
     CHECK(physics.position("hero").y == doctest::Approx(170.0F).epsilon(0.002));
 
     // An area's child shape reports what enters it.
     physics.events.clear();
     const entt::entity zone = physics.add("zone", {-100.0F, 0.0F});
-    physics.world.ecs().emplace<world::Area2D>(zone);
+    physics.world.ecs().emplace<world::Zone2D>(zone);
     const entt::entity field = physics.add("field", {0.0F, 175.0F});
-    physics.world.ecs().emplace<world::CollisionShape2D>(field, rectangle({20.0F, 20.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(field, rectangle({20.0F, 20.0F}));
     physics.get<world::Transform2D>("zone").children = {field};
     physics.step();
     CHECK(physics.event_list() == Ids{R"(body_entered zone {"body":"ball"})"});
@@ -818,12 +818,12 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     Physics physics;
     // A zone with no gravity from x 0 to 200. Overrides apply without monitoring, as Godot's.
     const entt::entity zone = physics.add("zone", {100.0F, 0.0F});
-    auto& area = physics.world.ecs().emplace<world::Area2D>(zone);
+    auto& area = physics.world.ecs().emplace<world::Zone2D>(zone);
     area.monitoring = false;
     area.monitorable = false;
     area.gravity_space_override = "replace";
     area.gravity = 0.0F;
-    physics.world.ecs().emplace<world::CollisionShape2D>(zone, rectangle({200.0F, 200.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(zone, rectangle({200.0F, 200.0F}));
     physics.crate("floating", {150.0F, 0.0F});
     physics.crate("falling", {-100.0F, 0.0F});
     const auto gravity = [&](std::string_view id) {
@@ -859,17 +859,17 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
 
     // A second zone over the first, of higher priority.
     const entt::entity upper = physics.add("upper", {100.0F, 0.0F});
-    auto& second = physics.world.ecs().emplace<world::Area2D>(upper);
+    auto& second = physics.world.ecs().emplace<world::Zone2D>(upper);
     second.priority = 1;
     second.gravity_direction = {0.0F, -1.0F};
     second.gravity = 50.0F;
-    physics.world.ecs().emplace<world::CollisionShape2D>(upper, rectangle({200.0F, 200.0F}));
+    physics.world.ecs().emplace<world::Collider2D>(upper, rectangle({200.0F, 200.0F}));
     area.gravity_point = false;
     area.gravity_direction = {1.0F, 0.0F};
     area.gravity = 100.0F;
     const auto modes = [&](std::string_view high, std::string_view low) {
-        physics.get<world::Area2D>("upper").gravity_space_override = std::string(high);
-        physics.get<world::Area2D>("zone").gravity_space_override = std::string(low);
+        physics.get<world::Zone2D>("upper").gravity_space_override = std::string(high);
+        physics.get<world::Zone2D>("zone").gravity_space_override = std::string(low);
         physics.step();
         return gravity("floating");
     };
@@ -921,13 +921,13 @@ TEST_CASE("a body resting in an area wakes when the area's gravity changes") {
     Physics physics;
     physics.box("floor", {-200.0F, 100.0F}, {200.0F, 120.0F});
     const entt::entity zone = physics.add("zone", {0.0F, 0.0F});
-    physics.world.ecs().emplace<world::Area2D>(zone);
-    physics.world.ecs().emplace<world::CollisionShape2D>(zone, rectangle({400.0F, 400.0F}));
+    physics.world.ecs().emplace<world::Zone2D>(zone);
+    physics.world.ecs().emplace<world::Collider2D>(zone, rectangle({400.0F, 400.0F}));
     physics.crate("crate", {0.0F, 89.0F});
     physics.step(180);
     REQUIRE(physics.get<world::RigidBody2D>("crate").sleeping);
 
-    auto& area = physics.get<world::Area2D>("zone");
+    auto& area = physics.get<world::Zone2D>("zone");
     area.gravity_space_override = "replace";
     area.gravity_direction = {0.0F, -1.0F};
     physics.step(30);
@@ -949,7 +949,7 @@ TEST_CASE("constant velocities carry what touches a body without moving it") {
     CHECK(crate.linear_velocity.x == doctest::Approx(60.0F).epsilon(0.01));
     CHECK(physics.position("crate").x > 50.0F);
     CHECK(physics.position("crate").y == doctest::Approx(90.0F).epsilon(0.002));
-    const auto& hero = physics.get<world::CharacterBody2D>("hero");
+    const auto& hero = physics.get<world::CharacterMover2D>("hero");
     CHECK(hero.on_floor);
     CHECK(hero.platform_velocity.x == doctest::Approx(60.0F).epsilon(0.001));
     CHECK(physics.position("hero").x > -160.0F);
@@ -978,16 +978,16 @@ TEST_CASE("constant velocities carry what touches a body without moving it") {
     // An animatable body adds its constant velocity to how it moves.
     Physics lift_world;
     const entt::entity lift = lift_world.add("lift", {0.0F, 100.0F});
-    lift_world.world.ecs().emplace<world::AnimatableBody2D>(lift).constant_linear_velocity = {60.0F,
-                                                                                              0.0F};
-    lift_world.world.ecs().emplace<world::CollisionShape2D>(lift, rectangle({400.0F, 20.0F}));
+    lift_world.world.ecs().emplace<world::MovingBody2D>(lift).constant_linear_velocity = {60.0F,
+                                                                                          0.0F};
+    lift_world.world.ecs().emplace<world::Collider2D>(lift, rectangle({400.0F, 20.0F}));
     lift_world.hero("hero", {0.0F, 60.0F});
     lift_world.step(30, [&] { lift_world.fall("hero"); });
     lift_world.step(10, [&] {
         lift_world.fall("hero");
         lift_world.get<world::Transform2D>("lift").position.x += 2.0F;
     });
-    CHECK(lift_world.get<world::CharacterBody2D>("hero").platform_velocity.x ==
+    CHECK(lift_world.get<world::CharacterMover2D>("hero").platform_velocity.x ==
           doctest::Approx(180.0F).epsilon(0.01));
 }
 
@@ -996,11 +996,11 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
     const auto ramp_world = [](Physics& physics) {
         const entt::entity ramp = physics.add("ramp", {});
         physics.world.ecs().emplace<world::StaticBody2D>(ramp);
-        physics.world.ecs().emplace<world::CollisionPolygon2D>(
-            ramp, world::CollisionPolygon2D{.polygon = {{-200.0F, 200.0F},
-                                                        {200.0F, 200.0F - 230.94F},
-                                                        {200.0F, 300.0F},
-                                                        {-200.0F, 300.0F}}});
+        physics.world.ecs().emplace<world::PolygonCollider2D>(
+            ramp, world::PolygonCollider2D{.polygon = {{-200.0F, 200.0F},
+                                                       {200.0F, 200.0F - 230.94F},
+                                                       {200.0F, 300.0F},
+                                                       {-200.0F, 300.0F}}});
         physics.hero("hero", {0.0F, 60.0F});
         physics.step(90, [&] { physics.fall("hero"); });
     };
@@ -1009,9 +1009,9 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         bool always_on_floor = true;
         physics.step(ticks, [&] {
             always_on_floor =
-                always_on_floor && physics.get<world::CharacterBody2D>("hero").on_floor;
+                always_on_floor && physics.get<world::CharacterMover2D>("hero").on_floor;
             physics.fall("hero");
-            physics.get<world::CharacterBody2D>("hero").velocity.x = speed;
+            physics.get<world::CharacterMover2D>("hero").velocity.x = speed;
         });
         CHECK(always_on_floor);
         return physics.position("hero") - start;
@@ -1022,7 +1022,7 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
     const auto length = [](Vec2 v) { return std::sqrt((v.x * v.x) + (v.y * v.y)); };
     Physics constant;
     ramp_world(constant);
-    constant.get<world::CharacterBody2D>("hero").floor_constant_speed = true;
+    constant.get<world::CharacterMover2D>("hero").floor_constant_speed = true;
     const Vec2 up = walk(constant, 100.0F, 30);
     CHECK(length(up) == doctest::Approx(50.0F).epsilon(0.01));
     CHECK(up.y < -24.0F);
@@ -1041,21 +1041,21 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         physics.box("floor", {-300.0F, 100.0F}, {300.0F, 120.0F});
         const entt::entity wall = physics.add("cliff", {});
         physics.world.ecs().emplace<world::StaticBody2D>(wall);
-        physics.world.ecs().emplace<world::CollisionPolygon2D>(
-            wall, world::CollisionPolygon2D{
+        physics.world.ecs().emplace<world::PolygonCollider2D>(
+            wall, world::PolygonCollider2D{
                       .polygon = {{50.0F, 100.0F}, {150.0F, -73.2F}, {150.0F, 100.0F}}});
         physics.hero("hero", {0.0F, 79.0F});
-        physics.get<world::CharacterBody2D>("hero").floor_block_on_wall = block;
+        physics.get<world::CharacterMover2D>("hero").floor_block_on_wall = block;
         physics.step(10, [&] { physics.fall("hero"); });
         // How far it rose while walking into the slope.
         const float rest = physics.position("hero").y;
         float highest = rest;
         physics.step(30, [&] {
             physics.fall("hero");
-            physics.get<world::CharacterBody2D>("hero").velocity.x = 200.0F;
+            physics.get<world::CharacterMover2D>("hero").velocity.x = 200.0F;
             highest = std::min<slash::real_t>(highest, physics.position("hero").y);
         });
-        CHECK(physics.get<world::CharacterBody2D>("hero").on_wall);
+        CHECK(physics.get<world::CharacterMover2D>("hero").on_wall);
         return rest - highest;
     };
     CHECK(steep(true) == 0.0F);
@@ -1066,12 +1066,12 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         Physics physics;
         physics.box("wall", {100.0F, -200.0F}, {120.0F, 200.0F});
         const entt::entity ship = physics.add("ship", {80.0F, 0.0F});
-        auto& character = physics.world.ecs().emplace<world::CharacterBody2D>(ship);
+        auto& character = physics.world.ecs().emplace<world::CharacterMover2D>(ship);
         character.motion_mode = "floating";
         character.wall_min_slide_angle = angle;
-        physics.world.ecs().emplace<world::CollisionShape2D>(ship, circle(10.0F));
+        physics.world.ecs().emplace<world::Collider2D>(ship, circle(10.0F));
         physics.step(
-            10, [&] { physics.get<world::CharacterBody2D>("ship").velocity = {300.0F, 10.0F}; });
+            10, [&] { physics.get<world::CharacterMover2D>("ship").velocity = {300.0F, 10.0F}; });
         return physics.position("ship").y;
     };
     CHECK(skim(0.261799F) < 3.0F);
@@ -1082,13 +1082,13 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         Physics physics;
         physics.box("wall", {100.0F, -200.0F}, {120.0F, 200.0F});
         const entt::entity ship = physics.add("ship", {88.5F, 0.0F});
-        auto& character = physics.world.ecs().emplace<world::CharacterBody2D>(ship);
+        auto& character = physics.world.ecs().emplace<world::CharacterMover2D>(ship);
         character.motion_mode = "floating";
         character.safe_margin = margin;
         character.velocity = {0.0F, 60.0F};
-        physics.world.ecs().emplace<world::CollisionShape2D>(ship, circle(10.0F));
+        physics.world.ecs().emplace<world::Collider2D>(ship, circle(10.0F));
         physics.step();
-        return physics.get<world::CharacterBody2D>("ship").on_wall;
+        return physics.get<world::CharacterMover2D>("ship").on_wall;
     };
     CHECK_FALSE(beside(0.08F));
     CHECK(beside(2.0F));
@@ -1096,10 +1096,10 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
     // platform_floor_layers: a moving floor in no layer it rides doesn't carry it.
     Physics riding;
     const entt::entity lift = riding.add("lift", {0.0F, 100.0F});
-    riding.world.ecs().emplace<world::AnimatableBody2D>(lift);
-    riding.world.ecs().emplace<world::CollisionShape2D>(lift, rectangle({400.0F, 20.0F}));
+    riding.world.ecs().emplace<world::MovingBody2D>(lift);
+    riding.world.ecs().emplace<world::Collider2D>(lift, rectangle({400.0F, 20.0F}));
     riding.hero("hero", {0.0F, 60.0F});
-    riding.get<world::CharacterBody2D>("hero").platform_floor_layers = 2;
+    riding.get<world::CharacterMover2D>("hero").platform_floor_layers = 2;
     riding.step(30, [&] { riding.fall("hero"); });
     const float x = riding.position("hero").x;
     riding.step(30, [&] {
@@ -1107,5 +1107,5 @@ TEST_CASE("a character's floor and wall options work as Godot's") {
         riding.get<world::Transform2D>("lift").position.x += 2.0F;
     });
     CHECK(riding.position("hero").x == doctest::Approx(x));
-    CHECK(riding.get<world::CharacterBody2D>("hero").on_floor);
+    CHECK(riding.get<world::CharacterMover2D>("hero").on_floor);
 }

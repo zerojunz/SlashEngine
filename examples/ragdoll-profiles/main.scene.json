@@ -2,7 +2,7 @@
  "entities": {
    "floor": {"components": {"Transform2D": {"position": [200, 320]},
                             "StaticBody2D": {},
-                            "CollisionShape2D": {"size": [2000, 40]}}},
+                            "Collider2D": {"size": [2000, 40]}}},
    "kid": {"components": {"Transform2D": {"position": [200, 300], "children": ["pelvis"]}}},
    "pelvis": {"components": {"Transform2D": {"position": [0, -60],
                                              "children": ["chest", "thigh"]}}},
@@ -14,4 +14,4 @@
    "shin": {"components": {"Transform2D": {"position": [0, 30], "children": ["foot"]}}},
    "foot": {"components": {"Transform2D": {"position": [0, 25]}, "Sprite2D": {}}},
    "arm3d": {"components": {"Transform3D": {"position": [0, 0.6, 0]},
-                            "MeshInstance3D": {"mesh": "models/arm.gltf"}}}}}
+                            "Model3D": {"mesh": "models/arm.gltf"}}}}}

@@ -132,7 +132,7 @@ Needs: `read`.
 ```
 
 ```json
-{"capabilities":["read","edit","run","filesystem","build","network"],"commands":["animation.eval","asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","light.sample","log.tail","material.eval","particles.eval","physics.contacts","physics.gravity","physics.overlap","physics.raycast","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","text.measure","tilemap.get","tilemap.paint","tilemap.set","ui.layout","ui.theme","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"children":[],"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0,"top_level":false},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down. The entities in children are placed in its space: they move, turn and scale with it, and draw after it.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"normal_texture":"","offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_as_relative":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"AnimatedSprite2D"},{"defaults":{"animation":"","backwards":false,"library":"","playing":true,"speed_scale":1.0,"targets":{},"time":0.0},"doc":"Plays a keyframe animation from a .anim.json file on the entity's components, and on the entities its targets name. Emits animation_finished when an animation that doesn't loop ends, and the events of its event tracks.","name":"AnimationPlayer"},{"defaults":{"collision_enabled":true,"legend":{},"light_mask":1,"modulate":[1.0,1.0,1.0,1.0],"occlusion_enabled":true,"origin":[0,0],"rows":[],"texture_filter":"inherit","tile_set":"","visible":true,"z_as_relative":true,"z_index":0},"doc":"A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them with tilemap.paint and tilemap.set.","name":"TileMapLayer"},{"defaults":{"blend_mode":"add","color":[1.0,1.0,1.0,1.0],"enabled":true,"energy":1.0,"height":0.0,"offset":[0.0,0.0],"range_item_cull_mask":1,"range_layer_max":0,"range_layer_min":0,"range_z_max":1024,"range_z_min":-1024,"shadow_color":[0.0,0.0,0.0,0.0],"shadow_enabled":false,"shadow_filter":"none","shadow_filter_smooth":0.0,"shadow_item_cull_mask":1,"texture":"","texture_scale":1.0},"doc":"A light shining from the entity's Transform2D through a texture. It lights sprites and tile map layers whose light_mask shares a bit with range_item_cull_mask, in canvases its layer range holds; with shadow_enabled, LightOccluder2D polygons and tiles' occluders cast shadows from it.","name":"PointLight2D"},{"defaults":{"blend_mode":"add","color":[1.0,1.0,1.0,1.0],"enabled":true,"energy":1.0,"height":0.0,"max_distance":10000.0,"range_item_cull_mask":1,"range_layer_max":0,"range_layer_min":0,"range_z_max":1024,"range_z_min":-1024,"shadow_color":[0.0,0.0,0.0,0.0],"shadow_enabled":false,"shadow_filter":"none","shadow_filter_smooth":0.0,"shadow_item_cull_mask":1},"doc":"Light from one direction over everything, such as the sun. It shines down the screen, turned by the entity's Transform2D rotation. Masks, ranges and shadows work as PointLight2D's.","name":"DirectionalLight2D"},{"defaults":{"closed":true,"cull_mode":"disabled","occluder_light_mask":1,"polygon":[]},"doc":"A polygon that casts shadows from lights with shadow_enabled, placed by the entity's Transform2D.","name":"LightOccluder2D"},{"defaults":{"color":[1.0,1.0,1.0,1.0]},"doc":"Tints everything lit in its canvas: the light the world, or the CanvasLayer it is in, has where no light reaches. One per canvas.","name":"CanvasModulate"},{"defaults":{"a":[0.0,0.0],"b":[0.0,10.0],"disabled":false,"height":30.0,"one_way_collision":false,"one_way_collision_margin":1.0,"points":[],"position":[0.0,0.0],"radius":10.0,"rotation":0.0,"shape":"rectangle","size":[20.0,20.0]},"doc":"A shape of the entity's physics body or area, moved by position and rotation and scaled by its Transform2D. On an entity with no body or area, a shape of its parent's.","name":"CollisionShape2D"},{"defaults":{"build_mode":"solids","disabled":false,"one_way_collision":false,"one_way_collision_margin":1.0,"polygon":[]},"doc":"A polygon shape of the entity's physics body or area (its parent's, on an entity with neither): any simple polygon, filled or only its edges.","name":"CollisionPolygon2D"},{"defaults":{"bounce":0.0,"collision_layer":1,"collision_mask":1,"constant_angular_velocity":0.0,"constant_linear_velocity":[0.0,0.0],"friction":1.0},"doc":"A physics body that doesn't move on its own, such as a wall. Changing its Transform2D moves it at once.","name":"StaticBody2D"},{"defaults":{"bounce":0.0,"collision_layer":1,"collision_mask":1,"constant_angular_velocity":0.0,"constant_linear_velocity":[0.0,0.0],"friction":1.0,"sync_to_physics":true},"doc":"A physics body that goes where its Transform2D says, such as a moving platform, pushing bodies in its way.","name":"AnimatableBody2D"},{"defaults":{"angular_damp":0.0,"angular_damp_mode":"combine","angular_velocity":0.0,"bounce":0.0,"can_sleep":true,"collision_layer":1,"collision_mask":1,"constant_force":[0.0,0.0],"constant_torque":0.0,"contact_monitor":false,"continuous_cd":"disabled","freeze":false,"freeze_mode":"static","friction":1.0,"gravity_scale":1.0,"inertia":0.0,"linear_damp":0.0,"linear_damp_mode":"combine","linear_velocity":[0.0,0.0],"lock_rotation":false,"mass":1.0,"sleeping":false},"doc":"A physics body moved by gravity, collisions, forces and joints. The physics step writes its Transform2D, velocities and sleeping.","name":"RigidBody2D"},{"defaults":{"collision_layer":1,"collision_mask":1,"floor_block_on_wall":true,"floor_constant_speed":false,"floor_max_angle":0.785398,"floor_normal":[0.0,0.0],"floor_snap_length":1.0,"floor_stop_on_slope":true,"max_slides":4,"motion_mode":"grounded","on_ceiling":false,"on_floor":false,"on_wall":false,"platform_floor_layers":4294967295,"platform_on_leave":"add_velocity","platform_velocity":[0.0,0.0],"platform_wall_layers":0,"safe_margin":0.08,"slide_on_ceiling":true,"up_direction":[0.0,-1.0],"velocity":[0.0,0.0],"wall_min_slide_angle":0.261799,"wall_normal":[0.0,0.0]},"doc":"A physics body moved by setting its velocity: each tick it slides along what it hits, as Godot's move_and_slide, and reports floors, walls and ceilings.","name":"CharacterBody2D"},{"defaults":{"angular_damp":1.0,"angular_damp_space_override":"disabled","collision_layer":1,"collision_mask":1,"gravity":980.0,"gravity_direction":[0.0,1.0],"gravity_point":false,"gravity_point_center":[0.0,1.0],"gravity_point_unit_distance":0.0,"gravity_space_override":"disabled","linear_damp":0.1,"linear_damp_space_override":"disabled","monitorable":true,"monitoring":true,"priority":0},"doc":"A region that emits body_entered, body_exited, area_entered and area_exited events, and can change the gravity and damping of rigid bodies in it. It goes where its Transform2D says.","name":"Area2D"},{"defaults":{"angular_limit_enabled":false,"angular_limit_lower":0.0,"angular_limit_upper":0.0,"disable_collision":true,"motor_enabled":false,"motor_target_velocity":0.0,"node_a":null,"node_b":null},"doc":"Pins two bodies together at the entity's Transform2D, letting them turn.","name":"PinJoint2D"},{"defaults":{"damping":1.0,"disable_collision":true,"length":50.0,"node_a":null,"node_b":null,"rest_length":0.0,"stiffness":20.0},"doc":"A spring from node_a at the entity's Transform2D to node_b, length pixels along the entity's y axis.","name":"DampedSpringJoint2D"},{"defaults":{"disable_collision":true,"initial_offset":25.0,"length":50.0,"node_a":null,"node_b":null},"doc":"Keeps node_b on a groove of node_a's, from the entity's Transform2D length pixels along its y axis; node_b slides along it and turns freely.","name":"GrooveJoint2D"},{"defaults":{"amount":8,"angle_curve":[],"angle_max":0.0,"angle_min":0.0,"angular_velocity_curve":[],"angular_velocity_max":0.0,"angular_velocity_min":0.0,"anim_loop":false,"anim_offset_curve":[],"anim_offset_max":0.0,"anim_offset_min":0.0,"anim_speed_curve":[],"anim_speed_max":0.0,"anim_speed_min":0.0,"color":[1.0,1.0,1.0,1.0],"color_initial_ramp":[],"color_ramp":[],"damping_curve":[],"damping_max":0.0,"damping_min":0.0,"direction":[1.0,0.0],"draw_order":"index","emission_colors":[],"emission_normals":[],"emission_points":[],"emission_rect_extents":[1.0,1.0],"emission_ring_inner_radius":0.0,"emission_ring_radius":1.0,"emission_shape":"point","emission_sphere_radius":1.0,"emitting":true,"explosiveness":0.0,"gravity":[0.0,980.0],"hframes":1,"hue_variation_curve":[],"hue_variation_max":0.0,"hue_variation_min":0.0,"initial_velocity_max":0.0,"initial_velocity_min":0.0,"lifetime":1.0,"lifetime_randomness":0.0,"light_mask":1,"linear_accel_curve":[],"linear_accel_max":0.0,"linear_accel_min":0.0,"local_coords":false,"material":"","material_params":{},"one_shot":false,"orbit_velocity_curve":[],"orbit_velocity_max":0.0,"orbit_velocity_min":0.0,"particle_flag_align_y":false,"preprocess":0.0,"radial_accel_curve":[],"radial_accel_max":0.0,"radial_accel_min":0.0,"randomness":0.0,"scale_amount_curve":[],"scale_amount_max":1.0,"scale_amount_min":1.0,"seed":0,"speed_scale":1.0,"spread":45.0,"tangential_accel_curve":[],"tangential_accel_max":0.0,"tangential_accel_min":0.0,"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_as_relative":true,"z_index":0},"doc":"Emits particles from the entity's Transform2D, moves and draws them, as Godot's CPUParticles2D. Each takes a random value between each _min and _max when emitted; a _curve multiplies it as it ages. Emits finished when a one_shot's last particle dies.","name":"CPUParticles2D"},{"defaults":{"anchor_bottom":0.0,"anchor_left":0.0,"anchor_right":0.0,"anchor_top":0.0,"children":[],"clip_contents":false,"custom_minimum_size":[0.0,0.0],"focus_mode":"","focus_neighbor_bottom":null,"focus_neighbor_left":null,"focus_neighbor_right":null,"focus_neighbor_top":null,"focus_next":null,"focus_previous":null,"grow_horizontal":"end","grow_vertical":"end","layout_direction":"inherited","modulate":[1.0,1.0,1.0,1.0],"mouse_filter":"","offset_bottom":0.0,"offset_left":0.0,"offset_right":0.0,"offset_top":0.0,"pivot_offset":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"self_modulate":[1.0,1.0,1.0,1.0],"size_flags_horizontal":"fill","size_flags_stretch_ratio":1.0,"size_flags_vertical":"fill","texture_filter":"inherit","theme":"","theme_override_colors":{},"theme_override_constants":{},"theme_override_font_sizes":{},"theme_override_fonts":{},"theme_override_icons":{},"theme_override_styles":{},"theme_type_variation":"","tooltip_text":"","visible":true,"z_as_relative":true,"z_index":0},"doc":"A UI element's rect, as Godot's Control: placed in its parent's rect by anchors and offsets, or in the viewport when no Control lists it in children. Label, ColorRect and the other UI components draw in it; they lay out with these defaults when the entity has no Control. A container component places its children by size flags instead of their anchors and offsets. Controls draw above the world, or in the CanvasLayer that holds them, parents before children.","name":"Control"},{"defaults":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"},"doc":"Text in the control's rect, as Godot's Label. Theme items: font, font_size, font_color, font_outline_color, outline_size, font_shadow_color, shadow_offset_x, shadow_offset_y, shadow_outline_size, line_spacing and paragraph_spacing.","name":"Label"},{"defaults":{"color":[1.0,1.0,1.0,1.0]},"doc":"Fills the control's rect with one color, as Godot's ColorRect.","name":"ColorRect"},{"defaults":{},"doc":"Draws the theme's panel style box in the control's rect, as Godot's Panel.","name":"Panel"},{"defaults":{"expand_mode":"keep_size","flip_h":false,"flip_v":false,"stretch_mode":"scale","texture":""},"doc":"Draws a texture in the control's rect, as Godot's TextureRect.","name":"TextureRect"},{"defaults":{"axis_stretch_horizontal":"stretch","axis_stretch_vertical":"stretch","draw_center":true,"patch_margin_bottom":0,"patch_margin_left":0,"patch_margin_right":0,"patch_margin_top":0,"region_rect":[0.0,0.0,0.0,0.0],"texture":""},"doc":"Draws a texture cut into nine parts in the control's rect, as Godot's NinePatchRect: the corners keep their size, the sides stretch along and the middle both ways. Its minimum size is its margins.","name":"NinePatchRect"},{"defaults":{"allow_greater":false,"allow_lesser":false,"fill_mode":"begin_to_end","max_value":100.0,"min_value":0.0,"show_percentage":true,"step":0.01,"value":0.0},"doc":"A bar filled to show value between min_value and max_value, with the percentage on it, as Godot's ProgressBar. Theme items: background, fill, font, font_size, font_color, font_outline_color and outline_size.","name":"ProgressBar"},{"defaults":{"alignment":"begin","vertical":false},"doc":"Lays out its children in a row, or a column when vertical, as Godot's HBoxContainer and VBoxContainer: each at its minimum size along it, plus a share of the space left for those that expand. Theme constant: separation.","name":"BoxContainer"},{"defaults":{"columns":1},"doc":"Lays out its children in a grid, as Godot's GridContainer: left to right, a new row every columns children. Theme constants: h_separation and v_separation.","name":"GridContainer"},{"defaults":{},"doc":"Fits its children in its rect less margins, as Godot's MarginContainer. Theme constants: margin_left, margin_top, margin_right and margin_bottom.","name":"MarginContainer"},{"defaults":{"use_top_left":false},"doc":"Keeps its children at their minimum sizes in its center, as Godot's CenterContainer.","name":"CenterContainer"},{"defaults":{"alignment":"begin","last_wrap_alignment":"inherit","reverse_fill":false,"vertical":false},"doc":"Lays out its children in rows that wrap to its width, or columns that wrap to its height when vertical, as Godot's HFlowContainer and VFlowContainer. Theme constants: h_separation and v_separation.","name":"FlowContainer"},{"defaults":{},"doc":"Draws the theme's panel style box and fits its children inside the style's margins, as Godot's PanelContainer.","name":"PanelContainer"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["input","gui","animation_player","animation_tree","physics2d","animated_sprite_2d","camera_2d","cpu_particles_2d","audio"]}
+{"capabilities":["read","edit","run","filesystem","build","network"],"commands":["animation.eval","asset.list","batch","component.remove","component.set","engine.describe","entity.create","entity.destroy","entity.get","events.read","events.subscribe","events.unsubscribe","export.run","history.get","light.sample","log.tail","material.eval","particles.eval","physics.contacts","physics.gravity","physics.overlap","physics.raycast","prefab.save","redo","run.until","scene.get","scene.new","scene.open","scene.save","schema.get","step","storyboard.brief","storyboard.check","storyboard.edit","storyboard.query","text.measure","tilemap.get","tilemap.paint","tilemap.set","ui.layout","ui.theme","undo","world.diff","world.query","world.restore","world.snapshot"],"components":[{"defaults":{"children":[],"position":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"skew":0.0,"top_level":false},"doc":"Position, rotation and scale in 2D. Units are pixels and y points down. The entities in children are placed in its space: they move, turn and scale with it, and draw after it.","name":"Transform2D"},{"defaults":{"position":[0.0,0.0,0.0],"rotation":[0.0,0.0,0.0,1.0],"scale":[1.0,1.0,1.0]},"doc":"Position, rotation and scale in 3D. Units are meters and y points up.","name":"Transform3D"},{"defaults":{"ids":[]},"doc":"The storyboard entries this entity stands for.","name":"StoryRef"},{"defaults":{"centered":true,"flip_h":false,"flip_v":false,"frame":0,"hframes":1,"light_mask":1,"material":"","material_params":{},"modulate":[1.0,1.0,1.0,1.0],"normal_texture":"","offset":[0.0,0.0],"region":[0.0,0.0,0.0,0.0],"specular_color":[1.0,1.0,1.0,1.0],"specular_shininess":1.0,"specular_texture":"","texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_as_relative":true,"z_index":0},"doc":"A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, then in the order their entities were made.","name":"Sprite2D"},{"defaults":{"animation":"default","frame":0,"frame_progress":0.0,"playing":true,"speed_scale":1.0,"sprite_frames":""},"doc":"Plays an animation from a .frames.json file on the entity's Sprite2D, which it adds if missing. Emits animation_finished when an animation that doesn't loop ends.","name":"Flipbook2D"},{"defaults":{"animation":"","backwards":false,"library":"","playing":true,"speed_scale":1.0,"targets":{},"time":0.0},"doc":"Plays a keyframe animation from a .anim.json file on the entity's components, and on the entities its targets name. Emits animation_finished when an animation that doesn't loop ends, and the events of its event tracks.","name":"Animator"},{"defaults":{"collision_enabled":true,"legend":{},"light_mask":1,"modulate":[1.0,1.0,1.0,1.0],"occlusion_enabled":true,"origin":[0,0],"rows":[],"texture_filter":"inherit","tile_set":"","visible":true,"z_as_relative":true,"z_index":0},"doc":"A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them with tilemap.paint and tilemap.set.","name":"TileLayer2D"},{"defaults":{"blend_mode":"add","color":[1.0,1.0,1.0,1.0],"enabled":true,"energy":1.0,"height":0.0,"offset":[0.0,0.0],"range_item_cull_mask":1,"range_layer_max":0,"range_layer_min":0,"range_z_max":1024,"range_z_min":-1024,"shadow_color":[0.0,0.0,0.0,0.0],"shadow_enabled":false,"shadow_filter":"none","shadow_filter_smooth":0.0,"shadow_item_cull_mask":1,"texture":"","texture_scale":1.0},"doc":"A light shining from the entity's Transform2D through a texture. It lights sprites and tile map layers whose light_mask shares a bit with range_item_cull_mask, in canvases its layer range holds; with shadow_enabled, Occluder2D polygons and tiles' occluders cast shadows from it.","name":"PointLight2D"},{"defaults":{"blend_mode":"add","color":[1.0,1.0,1.0,1.0],"enabled":true,"energy":1.0,"height":0.0,"max_distance":10000.0,"range_item_cull_mask":1,"range_layer_max":0,"range_layer_min":0,"range_z_max":1024,"range_z_min":-1024,"shadow_color":[0.0,0.0,0.0,0.0],"shadow_enabled":false,"shadow_filter":"none","shadow_filter_smooth":0.0,"shadow_item_cull_mask":1},"doc":"Light from one direction over everything, such as the sun. It shines down the screen, turned by the entity's Transform2D rotation. Masks, ranges and shadows work as PointLight2D's.","name":"SunLight2D"},{"defaults":{"closed":true,"cull_mode":"disabled","occluder_light_mask":1,"polygon":[]},"doc":"A polygon that casts shadows from lights with shadow_enabled, placed by the entity's Transform2D.","name":"Occluder2D"},{"defaults":{"color":[1.0,1.0,1.0,1.0]},"doc":"Tints everything lit in its canvas: the light the world, or the ScreenLayer it is in, has where no light reaches. One per canvas.","name":"AmbientTint2D"},{"defaults":{"a":[0.0,0.0],"b":[0.0,10.0],"disabled":false,"height":30.0,"one_way_collision":false,"one_way_collision_margin":1.0,"points":[],"position":[0.0,0.0],"radius":10.0,"rotation":0.0,"shape":"rectangle","size":[20.0,20.0]},"doc":"A shape of the entity's physics body or area, moved by position and rotation and scaled by its Transform2D. On an entity with no body or area, a shape of its parent's.","name":"Collider2D"},{"defaults":{"build_mode":"solids","disabled":false,"one_way_collision":false,"one_way_collision_margin":1.0,"polygon":[]},"doc":"A polygon shape of the entity's physics body or area (its parent's, on an entity with neither): any simple polygon, filled or only its edges.","name":"PolygonCollider2D"},{"defaults":{"bounce":0.0,"collision_layer":1,"collision_mask":1,"constant_angular_velocity":0.0,"constant_linear_velocity":[0.0,0.0],"friction":1.0},"doc":"A physics body that doesn't move on its own, such as a wall. Changing its Transform2D moves it at once.","name":"StaticBody2D"},{"defaults":{"bounce":0.0,"collision_layer":1,"collision_mask":1,"constant_angular_velocity":0.0,"constant_linear_velocity":[0.0,0.0],"friction":1.0,"sync_to_physics":true},"doc":"A physics body that goes where its Transform2D says, such as a moving platform, pushing bodies in its way.","name":"MovingBody2D"},{"defaults":{"angular_damp":0.0,"angular_damp_mode":"combine","angular_velocity":0.0,"bounce":0.0,"can_sleep":true,"collision_layer":1,"collision_mask":1,"constant_force":[0.0,0.0],"constant_torque":0.0,"contact_monitor":false,"continuous_cd":"disabled","freeze":false,"freeze_mode":"static","friction":1.0,"gravity_scale":1.0,"inertia":0.0,"linear_damp":0.0,"linear_damp_mode":"combine","linear_velocity":[0.0,0.0],"lock_rotation":false,"mass":1.0,"sleeping":false},"doc":"A physics body moved by gravity, collisions, forces and joints. The physics step writes its Transform2D, velocities and sleeping.","name":"RigidBody2D"},{"defaults":{"collision_layer":1,"collision_mask":1,"floor_block_on_wall":true,"floor_constant_speed":false,"floor_max_angle":0.785398,"floor_normal":[0.0,0.0],"floor_snap_length":1.0,"floor_stop_on_slope":true,"max_slides":4,"motion_mode":"grounded","on_ceiling":false,"on_floor":false,"on_wall":false,"platform_floor_layers":4294967295,"platform_on_leave":"add_velocity","platform_velocity":[0.0,0.0],"platform_wall_layers":0,"safe_margin":0.08,"slide_on_ceiling":true,"up_direction":[0.0,-1.0],"velocity":[0.0,0.0],"wall_min_slide_angle":0.261799,"wall_normal":[0.0,0.0]},"doc":"A physics body moved by setting its velocity: each tick it slides along what it hits, as Godot's move_and_slide, and reports floors, walls and ceilings.","name":"CharacterMover2D"},{"defaults":{"angular_damp":1.0,"angular_damp_space_override":"disabled","collision_layer":1,"collision_mask":1,"gravity":980.0,"gravity_direction":[0.0,1.0],"gravity_point":false,"gravity_point_center":[0.0,1.0],"gravity_point_unit_distance":0.0,"gravity_space_override":"disabled","linear_damp":0.1,"linear_damp_space_override":"disabled","monitorable":true,"monitoring":true,"priority":0},"doc":"A region that emits body_entered, body_exited, area_entered and area_exited events, and can change the gravity and damping of rigid bodies in it. It goes where its Transform2D says.","name":"Zone2D"},{"defaults":{"angular_limit_enabled":false,"angular_limit_lower":0.0,"angular_limit_upper":0.0,"disable_collision":true,"motor_enabled":false,"motor_target_velocity":0.0,"node_a":null,"node_b":null},"doc":"Pins two bodies together at the entity's Transform2D, letting them turn.","name":"PinJoint2D"},{"defaults":{"damping":1.0,"disable_collision":true,"length":50.0,"node_a":null,"node_b":null,"rest_length":0.0,"stiffness":20.0},"doc":"A spring from node_a at the entity's Transform2D to node_b, length pixels along the entity's y axis.","name":"SpringJoint2D"},{"defaults":{"disable_collision":true,"initial_offset":25.0,"length":50.0,"node_a":null,"node_b":null},"doc":"Keeps node_b on a groove of node_a's, from the entity's Transform2D length pixels along its y axis; node_b slides along it and turns freely.","name":"TrackJoint2D"},{"defaults":{"amount":8,"angle_curve":[],"angle_max":0.0,"angle_min":0.0,"angular_velocity_curve":[],"angular_velocity_max":0.0,"angular_velocity_min":0.0,"anim_loop":false,"anim_offset_curve":[],"anim_offset_max":0.0,"anim_offset_min":0.0,"anim_speed_curve":[],"anim_speed_max":0.0,"anim_speed_min":0.0,"color":[1.0,1.0,1.0,1.0],"color_initial_ramp":[],"color_ramp":[],"damping_curve":[],"damping_max":0.0,"damping_min":0.0,"direction":[1.0,0.0],"draw_order":"index","emission_colors":[],"emission_normals":[],"emission_points":[],"emission_rect_extents":[1.0,1.0],"emission_ring_inner_radius":0.0,"emission_ring_radius":1.0,"emission_shape":"point","emission_sphere_radius":1.0,"emitting":true,"explosiveness":0.0,"gravity":[0.0,980.0],"hframes":1,"hue_variation_curve":[],"hue_variation_max":0.0,"hue_variation_min":0.0,"initial_velocity_max":0.0,"initial_velocity_min":0.0,"lifetime":1.0,"lifetime_randomness":0.0,"light_mask":1,"linear_accel_curve":[],"linear_accel_max":0.0,"linear_accel_min":0.0,"local_coords":false,"material":"","material_params":{},"one_shot":false,"orbit_velocity_curve":[],"orbit_velocity_max":0.0,"orbit_velocity_min":0.0,"particle_flag_align_y":false,"preprocess":0.0,"radial_accel_curve":[],"radial_accel_max":0.0,"radial_accel_min":0.0,"randomness":0.0,"scale_amount_curve":[],"scale_amount_max":1.0,"scale_amount_min":1.0,"seed":0,"speed_scale":1.0,"spread":45.0,"tangential_accel_curve":[],"tangential_accel_max":0.0,"tangential_accel_min":0.0,"texture":"","texture_filter":"inherit","vframes":1,"visible":true,"z_as_relative":true,"z_index":0},"doc":"Emits particles from the entity's Transform2D, moves and draws them, as Godot's CPUParticles2D. Each takes a random value between each _min and _max when emitted; a _curve multiplies it as it ages. Emits finished when a one_shot's last particle dies.","name":"Emitter2D"},{"defaults":{"anchor_bottom":0.0,"anchor_left":0.0,"anchor_right":0.0,"anchor_top":0.0,"children":[],"clip_contents":false,"custom_minimum_size":[0.0,0.0],"focus_mode":"","focus_neighbor_bottom":null,"focus_neighbor_left":null,"focus_neighbor_right":null,"focus_neighbor_top":null,"focus_next":null,"focus_previous":null,"grow_horizontal":"end","grow_vertical":"end","layout_direction":"inherited","modulate":[1.0,1.0,1.0,1.0],"mouse_filter":"","offset_bottom":0.0,"offset_left":0.0,"offset_right":0.0,"offset_top":0.0,"pivot_offset":[0.0,0.0],"rotation":0.0,"scale":[1.0,1.0],"self_modulate":[1.0,1.0,1.0,1.0],"size_flags_horizontal":"fill","size_flags_stretch_ratio":1.0,"size_flags_vertical":"fill","texture_filter":"inherit","theme":"","theme_override_colors":{},"theme_override_constants":{},"theme_override_font_sizes":{},"theme_override_fonts":{},"theme_override_icons":{},"theme_override_styles":{},"theme_type_variation":"","tooltip_text":"","visible":true,"z_as_relative":true,"z_index":0},"doc":"A UI element's rect, as Godot's Control: placed in its parent's rect by anchors and offsets, or in the viewport when no Control lists it in children. Label, ColorFill and the other UI components draw in it; they lay out with these defaults when the entity has no Widget. A container component places its children by size flags instead of their anchors and offsets. Controls draw above the world, or in the ScreenLayer that holds them, parents before children.","name":"Widget"},{"defaults":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"},"doc":"Text in the control's rect, as Godot's Label. Theme items: font, font_size, font_color, font_outline_color, outline_size, font_shadow_color, shadow_offset_x, shadow_offset_y, shadow_outline_size, line_spacing and paragraph_spacing.","name":"Label"},{"defaults":{"color":[1.0,1.0,1.0,1.0]},"doc":"Fills the control's rect with one color, as Godot's ColorRect.","name":"ColorFill"},{"defaults":{},"doc":"Draws the theme's panel style box in the control's rect, as Godot's Panel.","name":"Panel"},{"defaults":{"expand_mode":"keep_size","flip_h":false,"flip_v":false,"stretch_mode":"scale","texture":""},"doc":"Draws a texture in the control's rect, as Godot's TextureRect.","name":"Picture"},{"defaults":{"axis_stretch_horizontal":"stretch","axis_stretch_vertical":"stretch","draw_center":true,"patch_margin_bottom":0,"patch_margin_left":0,"patch_margin_right":0,"patch_margin_top":0,"region_rect":[0.0,0.0,0.0,0.0],"texture":""},"doc":"Draws a texture cut into nine parts in the control's rect, as Godot's NinePatchRect: the corners keep their size, the sides stretch along and the middle both ways. Its minimum size is its margins.","name":"NineSlice"},{"defaults":{"allow_greater":false,"allow_lesser":false,"fill_mode":"begin_to_end","max_value":100.0,"min_value":0.0,"show_percentage":true,"step":0.01,"value":0.0},"doc":"A bar filled to show value between min_value and max_value, with the percentage on it, as Godot's ProgressBar. Theme items: background, fill, font, font_size, font_color, font_outline_color and outline_size.","name":"ProgressBar"},{"defaults":{"alignment":"begin","vertical":false},"doc":"Lays out its children in a row, or a column when vertical, as Godot's HBoxContainer and VBoxContainer: each at its minimum size along it, plus a share of the space left for those that expand. Theme constant: separation.","name":"StackBox"},{"defaults":{"columns":1},"doc":"Lays out its children in a grid, as Godot's GridContainer: left to right, a new row every columns children. Theme constants: h_separation and v_separation.","name":"GridBox"},{"defaults":{},"doc":"Fits its children in its rect less margins, as Godot's MarginContainer. Theme constants: margin_left, margin_top, margin_right and margin_bottom.","name":"MarginBox"},{"defaults":{"use_top_left":false},"doc":"Keeps its children at their minimum sizes in its center, as Godot's CenterContainer.","name":"CenterBox"},{"defaults":{"alignment":"begin","last_wrap_alignment":"inherit","reverse_fill":false,"vertical":false},"doc":"Lays out its children in rows that wrap to its width, or columns that wrap to its height when vertical, as Godot's HFlowContainer and VFlowContainer. Theme constants: h_separation and v_separation.","name":"FlowBox"},{"defaults":{},"doc":"Draws the theme's panel style box and fits its children inside the style's margins, as Godot's PanelContainer.","name":"PanelBox"}],"engine":{"name":"SlashEngine","version":"0.1.0"},"scene":{"entities":0,"path":"","tick":0},"systems":["input","gui","animation_player","animation_tree","physics2d","animated_sprite_2d","camera_2d","cpu_particles_2d","audio"]}
 ```
 
 `scene` describes the open scene: how many entities it has, its path (empty for an unsaved one)
@@ -165,7 +165,7 @@ its `stage` and the `reads` and `writes` it declared. Systems with the same stag
 time:
 
 ```json
-{"name":"cpu_particles_2d","doc":"Emits, moves and ages each CPUParticles2D's particles.","priority":1100,"reads":["Transform2D"],"stage":8,"threaded":true,"writes":["CPUParticles2D"]}
+{"name":"cpu_particles_2d","doc":"Emits, moves and ages each Emitter2D's particles.","priority":1100,"reads":["Transform2D"],"stage":8,"threaded":true,"writes":["Emitter2D"]}
 ```
 
 ### schema.get
@@ -378,7 +378,7 @@ With a scene, the entity becomes the scene's root and the scene's other entities
 ### entity.destroy
 
 Destroys an entity and its components, and the entities in its `Transform2D`, `Control` or
-`CanvasLayer` `children`, theirs too, as Godot frees a node's children, and those its instanced
+`ScreenLayer` `children`, theirs too, as Godot frees a node's children, and those its instanced
 scene brought.
 They are listed as `descendants`, and leave the `children` lists of the parents that stay.
 Destroying one entity an instanced scene brought saves as `null` for it.
@@ -452,7 +452,7 @@ each kept apart from those before it; an entity's children move with it. Each on
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `entities` | array | required | Entity IDs, or `{"id", "at"}` with `at` the point in the world its origin goes to before it is dropped (default where it is); up to 256 |
-| `along` | object | none | Spread the entities along a `Path3D`'s curve instead: `path` (an entity ID), `from` (meters along it to the first, default 0), `spacing` (meters between each; default spread evenly from end to end, or around a closed path) and `rotate` (turn each about y so its -z faces along the path, default `false`) |
+| `along` | object | none | Spread the entities along a `Spline3D`'s curve instead: `path` (an entity ID), `from` (meters along it to the first, default 0), `spacing` (meters between each; default spread evenly from end to end, or around a closed path) and `rotate` (turn each about y so its -z faces along the path, default `false`) |
 | `ground` | boolean | `true` | Drop each onto what is below it |
 | `on` | array of strings | anything | Entities that may be stood on, with those under them; everything else is only in the way |
 | `apart` | boolean | `true` | Move each aside until its bounds overlap nothing but what it stands on |
@@ -714,7 +714,7 @@ JSON `path` and `message`:
 Places what [scatter rules](scene-format.md#scatter-rules) ask for over the ground, as Unreal's PCG
 graphs and Godot's MultiMesh *Populate Surface* do: trees over a terrain, rocks between them,
 flowers on a tile map's grass. Each layer's places go under the `into` entity, which is made if it
-is missing: a `"multimesh"` layer as one [`MultiMeshInstance3D`](scene-format.md#multimeshinstance3d)
+is missing: a `"multimesh"` layer as one [`ModelInstances3D`](scene-format.md#multimeshinstance3d)
 `<into>_<layer>`, an `"entities"` layer as entities `<into>_<layer>_<n>` that extend its prefab or
 draw its mesh. Running again replaces everything `into` held, so rules can be tuned and run until
 they look right; the run is one undo step.
@@ -758,7 +758,7 @@ Follows a [procedural graph](scene-format.md#procedural-graphs), a `.pcg.json` l
 as Unreal's PCG graphs do: samplers make points (over the ground, on a grid, along a path, at
 entities), modifiers thin, keep and move them, and spawners place things at them under the
 `into` entity, which is made if it is missing: prefabs and components through `entity.create`,
-one `MultiMeshInstance3D`, a `Foliage3D` or `Foliage2D` group, a `Path3D` or `Path2D` route, or
+one `ModelInstances3D`, a `Foliage3D` or `Foliage2D` group, a `Spline3D` or `Spline2D` route, or
 any edit command called once a point with its params' `$` names filled in, so creatures,
 characters, vehicles, lights, water and effects all come from graphs. Running again replaces
 everything `into` held, and the run is one undo step. Every random choice is hashed from the
@@ -923,7 +923,7 @@ Reading [hair and fur](scene-format.md#hair-and-fur) as it grew and where physic
 
 ### hair.get
 
-Returns a `HairInstance3D`'s or `Hair2D`'s `groom` and `render`, how many `guides` and drawn
+Returns a `Hair3D`'s or `Hair2D`'s `groom` and `render`, how many `guides` and drawn
 `strands` grew, the `points` along each guide (and in 3D the `area` grown on), whether physics
 has `simulated` it yet, the guides' world `bounds`, each guide's tip (`tips`) and `tip_moved`,
 the `max` and `mean` distance of the tips from the groomed shape (what gravity, wind and motion
@@ -976,11 +976,11 @@ adds `pairs`, how far apart each pair is. `test.run` runs it. Needs: `read`, `fi
 ### character.place
 
 Makes an entity `id` of a recipe in the open scene. `at` of three numbers places it in 3D: a
-`Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged model, a `HairInstance3D` on
+`Transform3D` turned by `yaw`, a `Model3D` drawing the rigged model, a `Hair3D` on
 its scalp for a groom and a `Cloth3D` on its cloth garment, with modifier children: `<id>_twists`,
-a `CopyTransformModifier3D` giving each arm's and thigh's twist bones half their limb's roll, and
+a `BoneCopy3D` giving each arm's and thigh's twist bones half their limb's roll, and
 with `look_at` (an entity's ID), `<id>_look_left` and `<id>_look_right`, a
-`LookAtModifier3D` each turning an eye toward it within limits. Two numbers place a 2D cut-out: a
+`BoneLookAt3D` each turning an eye toward it within limits. Two numbers place a 2D cut-out: a
 `Transform2D` and a `Character2D` at `pixels_per_meter` (default 100), facing left with
 `flip_h` and its eye on `look_at`, whose bones the `character_2d` system keeps as `<id>_<bone>`
 children. With `flesh: true`, adds a `Flesh3D` or `Flesh2D`, whose
@@ -1085,8 +1085,8 @@ Placing, populating and working [creatures](scene-format.md#creatures).
 ### creature.place
 
 Makes an entity `id` of a `.creature.json` recipe in the open scene. `at` of three numbers places
-it in 3D: a `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing the rigged model, an
-`AnimationPlayer` playing its `idle` and a `Creature3D`; fliers go their `altitude` above `at`.
+it in 3D: a `Transform3D` turned by `yaw`, a `Model3D` drawing the rigged model, an
+`Animator` playing its `idle` and a `Creature3D`; fliers go their `altitude` above `at`.
 Two numbers place a 2D cut-out: a `Transform2D` and a `Creature2D` at `pixels_per_meter` (default
 100), facing left with `flip_h`, whose bones the `character_2d` system keeps as `<id>_<bone>`
 children. Under `parent` when given. Returns the `id`, its `components` and whether it `flies`
@@ -1223,7 +1223,7 @@ Placing, driving, tuning and test-driving [vehicles](scene-format.md#vehicle-rec
 ### vehicle.place
 
 Makes an entity `id` of a `.vehicle.json` recipe in the open scene. `at` of three numbers places
-it in 3D, on the ground: a `Transform3D` turned by `yaw`, a `MeshInstance3D` drawing its model, a
+it in 3D, on the ground: a `Transform3D` turned by `yaw`, a `Model3D` drawing its model, a
 `RigidBody3D` of its mass and a `Vehicle3D`. Two numbers place it in 2D, seen from the side: a
 `Transform2D`, a `Vehicle2D` at `pixels_per_meter` (default 50), facing -x with `flip_h`, and a
 `RigidBody2D`. The vehicles systems build its wheels on the next tick. Under `parent` when given.
@@ -1317,13 +1317,13 @@ Needs: `read`.
 ### animation.eval
 
 Returns the values an [animation](scene-format.md#animations)'s value and node tracks set at the
-times given, as `AnimationPlayer` sets them, without playing it: a check that needs no stepping. Given
-an entity, it uses its `AnimationPlayer`'s library and, unless `animation` names another, its
+times given, as `Animator` sets them, without playing it: a check that needs no stepping. Given
+an entity, it uses its `Animator`'s library and, unless `animation` names another, its
 animation.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | | An entity with an `AnimationPlayer`. Give `id` or `path` |
+| `id` | string | | An entity with an `Animator`. Give `id` or `path` |
 | `path` | string | | A `.anim.json` file |
 | `animation` | string | the entity's | The animation's name; required with `path` |
 | `times` | array of numbers | required | Seconds into the animation, 1 to 100 of them, each from 0 to its length |
@@ -1354,7 +1354,7 @@ length fails with its `path`, `/times/<n>`. Event tracks are left out; read them
 ### animation.import_face_capture
 
 Turns a face capture recording into a `.anim.json` animation of blend shape tracks
-(`MeshInstance3D/blend_shapes/<name>`), so a recorded performance drives a face. The recording is
+(`Model3D/blend_shapes/<name>`), so a recorded performance drives a face. The recording is
 a CSV file as Live Link Face and other ARKit capture apps write: a first line of column names,
 a time column (`Timecode`, `HH:MM:SS:FF` with the frame's fraction, or `time` or `seconds` in
 seconds) and a column of weights per face shape, named as ARKit (`JawOpen`, `EyeBlinkLeft`) or
@@ -1366,7 +1366,7 @@ others.
 
 Without a `model`, each face shape column becomes a track named as ARKit names the shape (the
 column's name with a lower-case first letter). With one, each of the model's blend shapes the
-recording drives gets a track, matched as [`XRFaceModifier3D`](scene-format.md#face-tracking)
+recording drives gets a track, matched as [`XRFace3D`](scene-format.md#face-tracking)
 matches them, with blended shapes filled in from the shapes recorded; `undriven` lists the
 model's blend shapes it doesn't drive.
 
@@ -1398,7 +1398,7 @@ Needs: `edit`, `filesystem`. Undo puts the library back as it was.
 
 ### animation.seek
 
-Moves an entity's `AnimationPlayer` to a time or a [marker](scene-format.md#cinematics) and sets
+Moves an entity's `Animator` to a time or a [marker](scene-format.md#cinematics) and sets
 what its tracks set there at once, as Godot's `AnimationPlayer.seek(time, true, true)`: the values
 of its value and bezier tracks, and for each animation track the animation its last key at or
 before the time started, on the track's target, moved to where it would be and set in turn.
@@ -1407,7 +1407,7 @@ shot, then `frame.capture` it. It records one undo step.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with an `AnimationPlayer` |
+| `id` | string | required | An entity with an `Animator` |
 | `time` | number | | Seconds into the animation. Give `time` or `marker` |
 | `marker` | string | | One of the animation's markers |
 | `animation` | string | the player's | Switch the player to this animation first |
@@ -1429,14 +1429,14 @@ past the animation's length with `/time`. A model library's animations have no m
 
 Returns an [animation tree](scene-format.md#animation-trees)'s parameters: those games set,
 each with its `default` and `doc`. Given an entity, each also has the `value` its
-`AnimationTree` plays with, and the reply adds `state`, what the tree's nodes keep as they play
+`AnimationGraph` plays with, and the reply adds `state`, what the tree's nodes keep as they play
 (each node's timings left out; a state machine's `playback` has its `current` state), `playing`,
 the animations its last tick played with their times and weights, and `invalid` when it played
 nothing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | | An entity with an `AnimationTree`. Give `id` or `path` |
+| `id` | string | | An entity with an `AnimationGraph`. Give `id` or `path` |
 | `path` | string | | A `.animtree.json` file |
 
 Needs: `read`.
@@ -1449,12 +1449,12 @@ Needs: `read`.
 {"parameters":{"shot/request":{"default":"none","doc":"\"fire\" plays the shot, \"abort\" stops it, \"fade_out\" fades it out; the tree sets it back to \"none\".","value":"none"},"speed/scale":{"default":1,"doc":"How fast its input plays; negative plays backward.","value":1}},"playing":[{"animation":"Wave-loop","time":0.5833,"weight":1},{"animation":"Point","time":0.0833,"weight":0.3333}],"state":{"point/backward":false,"shot/active":true,"shot/fade_in_remaining":0.1167,"shot/fade_out_remaining":0,"shot/internal_active":true,"shot/time_to_restart":-1,"wave/backward":false}}
 ```
 
-Numbers are rounded to four decimals. An entity with no `AnimationTree`, or whose `tree_root` is
+Numbers are rounded to four decimals. An entity with no `AnimationGraph`, or whose `tree_root` is
 empty or doesn't load, fails at `/id`.
 
 ### animation.set_parameters
 
-Sets parameters of an entity's `AnimationTree`, as Godot's `set("parameters/...")`, and returns
+Sets parameters of an entity's `AnimationGraph`, as Godot's `set("parameters/...")`, and returns
 those that changed. Each value is checked against its node first, so a bad one changes nothing:
 a number for an amount or a scale, a OneShot `request` of `"none"`, `"fire"`, `"abort"` or
 `"fade_out"`, a Transition `transition_request` naming one of its inputs, a state machine's
@@ -1463,7 +1463,7 @@ position of `[x, y]`. `null` resets a parameter to its default.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with an `AnimationTree` |
+| `id` | string | required | An entity with an `AnimationGraph` |
 | `parameters` | object | required | Values by parameter, at least one |
 
 Needs: `edit`.
@@ -1482,23 +1482,23 @@ and one the tree keeps in `state` (as `shot/active`) or a value its node doesn't
 
 ## Tile maps
 
-These commands edit an entity's [`TileMapLayer`](scene-format.md#tile-map-layers) through its
+These commands edit an entity's [`TileLayer2D`](scene-format.md#tile-map-layers) through its
 [tile set](scene-format.md#tile-sets), and write its cells back in canonical form. Each takes
 the cells as `cells`, a list of `[column, row]` (up to 4096), or `rect`,
 `[column, row, width, height]` (up to 65536 cells); give one. Columns and rows are from -32768 to
 32767. A layer whose tile set doesn't load, or whose legend or rows are wrong, fails with `path`
-`/id` and the message names the bad value, as `"map"'s TileMapLayer/rows/2: ...`.
+`/id` and the message names the bad value, as `"map"'s TileLayer2D/rows/2: ...`.
 
 ### model.inspect
 
-Returns what a [model](scene-format.md#models) holds, as a `MeshInstance3D` draws it, without
+Returns what a [model](scene-format.md#models) holds, as a `Model3D` draws it, without
 drawing it: its meshes, materials, images, the nodes that place its meshes, its skins and
 animations, and its bounds.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `path` | string | | A `.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json` file, a recipe's [variant](scene-format.md#variants-and-quality-tiers) after `::`, or a mesh gameplay code [made](scene-format.md#made-textures-and-meshes) (`made:<name>`) |
-| `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
+| `id` | string | | Or an entity whose `Model3D` draws a model |
 | `brief` | boolean | `false` | Only what it takes to place the model, as below |
 
 Give `path` or `id`. Needs: `read`.
@@ -1517,7 +1517,7 @@ Give `path` or `id`. Needs: `read`.
   triangles at each coarser LOD, a surface with fewer counted at its coarsest.
   `blend_shapes`, for a mesh with [blend shapes](scene-format.md#blend-shapes), gives each
   shape's value at rest by name.
-- Each material has the `StandardMaterial3D` fields that differ from the defaults, as the import
+- Each material has the `Surface3D` fields that differ from the defaults, as the import
   sets them, and `textures`: the index into `images` its `albedo`, `metallic`, `roughness`,
   `normal` and `emission` textures sample (a glTF model's metallic and roughness are one image).
 - Each image is the `path` of a file beside the model, or the `size` of one inside it.
@@ -1556,7 +1556,7 @@ it, and things on it, without drawing it:
   that place no mesh, have no children and are no skin's joint, such as a glTF file's empty nodes
   or a [recipe's points](scene-format.md#model-recipes). Each has its `position` and `rotation`
   (left out when zero) at rest in the model's space, and the `part` above it that it moves with.
-  A [`BoneAttachment3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
+  A [`BoneSocket3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
   `Skeleton3D` turns a part by its name.
 - `animations` are the names of its animations, for a model with any.
 - `blend_shapes` are the names of its meshes' [blend shapes](scene-format.md#blend-shapes), for
@@ -1668,14 +1668,14 @@ hips' height, by which animations' positions scale when they play on another mod
 
 ### skeleton.get
 
-Returns the bones of the model an entity's `MeshInstance3D` draws, and the
-[animations posing them](scene-format.md#skeletons-and-model-animations): its `AnimationPlayer`'s
+Returns the bones of the model an entity's `Model3D` draws, and the
+[animations posing them](scene-format.md#skeletons-and-model-animations): its `Animator`'s
 animation from a model, then its `Skeleton3D`, then its [IK modifiers](scene-format.md#ik-modifiers).
 Bones named get their pose as it is drawn.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity whose `MeshInstance3D` draws a model |
+| `id` | string | required | An entity whose `Model3D` draws a model |
 | `bones` | array of strings | the tree | Bones to pose |
 
 Needs: `read`.
@@ -1693,7 +1693,7 @@ Needs: `read`.
 - A posed bone's `position`, `rotation` (radians, as `Transform3D`'s and `Skeleton3D`'s) and
   `scale` are in its parent's space; `world_position` is where it is in the world.
 - `clips` are the animations posing the model, each with its `time`, its `weight` when an
-  `AnimationTree` blends several, and, when it comes from another model, that `model`.
+  `AnimationGraph` blends several, and, when it comes from another model, that `model`.
 
 A bone the model hasn't fails at `/bones/<n>` with "did you mean", and an entity that draws no
 model, or a model with no nodes (an OBJ model), at `/id`.
@@ -1721,8 +1721,8 @@ Needs: `read`.
   empty result has a zero box and volume. A subtraction that cut nothing leaves the volume as
   it was.
 - `surfaces` are in the order their materials first appear. Each has its triangles and the
-  `material` it draws with: the `StandardMaterial3D` fields that differ from the defaults, or
-  `model` and `model_material` for a `CSGMesh3D` model's own material, or neither for Godot's
+  `material` it draws with: the `Surface3D` fields that differ from the defaults, or
+  `model` and `model_material` for a `SolidMesh3D` model's own material, or neither for Godot's
   default material.
 - `problems` are there only when a shape under the root couldn't be made or the result is empty,
   each with its entity's `id`, the `path` of the bad field and a `message`, as
@@ -1733,13 +1733,13 @@ with no CSG shape.
 
 ### path.get
 
-Returns a [`Path2D`'s or `Path3D`'s](scene-format.md#paths) curve, baked as Godot bakes it: its
+Returns a [`Spline2D`'s or `Spline3D`'s](scene-format.md#paths) curve, baked as Godot bakes it: its
 length, the position and rotation at offsets along it and the point of it nearest to another,
 so an agent can place things along a route without a follower.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `Path2D` or `Path3D` |
+| `id` | string | required | An entity with a `Spline2D` or `Spline3D` |
 | `offsets` | array of numbers | none | Distances along the curve to sample, kept on it |
 | `ratios` | array of numbers | none | Fractions of its length to sample, after `offsets` |
 | `closest_to` | `[x, y]` or `[x, y, z]` | none | Also return the curve's nearest point to this |
@@ -1757,8 +1757,8 @@ Needs: `read`.
 ```
 
 - `points` is how many points the path has and `baked_points` how many it was baked into.
-- Each sample has its `offset` and `position`. A `Path2D`'s `rotation` is the angle in radians
-  of the way it goes, as a `PathFollow2D` that `rotates` turns. A `Path3D`'s is the Euler angles
+- Each sample has its `offset` and `position`. A `Spline2D`'s `rotation` is the angle in radians
+  of the way it goes, as a `SplineFollower2D` that `rotates` turns. A `Spline3D`'s is the Euler angles
   of Godot's `sample_baked_with_rotation` with the tilt, as a `Transform3D`'s `rotation`, with
   its `up` vector and `tilt`.
 - `closest` has the nearest point's `offset` along the curve and its `position`.
@@ -1768,13 +1768,13 @@ coordinates at `/closest_to`.
 
 ### gridmap.set
 
-Places one item of a [`GridMap`'s](scene-format.md#grid-maps) mesh library in cells, turned by
+Places one item of a [`BlockMap3D`'s](scene-format.md#grid-maps) mesh library in cells, turned by
 an orientation, or erases them with `null`, as Godot's `set_cell_item`. Writes the map in
 canonical form and returns how many cells changed.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `GridMap` |
+| `id` | string | required | An entity with a `BlockMap3D` |
 | `cells` | array of `[x, y, z]` | | The cells, up to 4096. Give `cells` or `box` |
 | `box` | `[x, y, z, width, height, depth]` | | Every cell in it, up to 65536 |
 | `item` | string or `null` | required | An item of the library, or `null` to erase |
@@ -1790,7 +1790,7 @@ Needs: `edit`. Walling off a room, from [examples/gridmap](../../examples/gridma
 {"changed":2,"id":"level"}
 ```
 
-An item the library doesn't have fails at `/item` with the closest name; a GridMap with no
+An item the library doesn't have fails at `/item` with the closest name; a BlockMap3D with no
 library at `/id`; and cells past -32768 to 32767 at `/cells` or `/box`.
 
 ```json
@@ -1799,16 +1799,16 @@ library at `/id`; and cells past -32768 to 32767 at `/cells` or `/box`.
 
 ### gridmap.get
 
-Returns a [`GridMap`'s](scene-format.md#grid-maps) cells as its legend and floors of rows, the
+Returns a [`BlockMap3D`'s](scene-format.md#grid-maps) cells as its legend and floors of rows, the
 names of its library's items and any `problems`; or, with `cells`, what each given cell holds and
 its center; or, with `points`, the cells points are in and what they hold.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `GridMap` |
+| `id` | string | required | An entity with a `BlockMap3D` |
 | `cells` | array of `[x, y, z]` | | Up to 1024 cells |
 | `points` | array of `[x, y, z]` | | Up to 1024 points |
-| `global` | boolean | `false` | Centers and points in the world's space rather than the GridMap's |
+| `global` | boolean | `false` | Centers and points in the world's space rather than the BlockMap3D's |
 
 Needs: `read`.
 
@@ -1837,14 +1837,14 @@ Needs: `read`.
 ### terrain.generate
 
 Makes a [heightmap terrain's](scene-format.md#heightmap-terrains) heights from fractal Perlin
-noise, as HTerrain's generator: curved, shaped into an island or a canyon and eroded, or added to
+noise, as Terrain3D's generator: curved, shaped into an island or a canyon and eroded, or added to
 the heights it has. Heights are in the heightmap's meters, before `map_scale.y`. Writes the
 heightmap, widening `height_range` to whole meters that hold the heights, and returns the lowest
 and highest.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with an `HTerrain` |
+| `id` | string | required | An entity with an `Terrain3D` |
 | `seed` | integer | `0` | The noise's seed |
 | `offset` | `[x, z]` | `[0, 0]` | Moves the noise by cells |
 | `base_height` | number | `-50` | The lowest the noise goes |
@@ -1876,7 +1876,7 @@ Needs: `edit`, `filesystem`. The same seed makes the same heights on every machi
 ```
 
 With `noise`, the generator samples a [FastNoiseLite](scene-format.md#noise) a cell apart, as
-Godot's `Noise.get_image` does, in place of HTerrain's Perlin noise: normalized over the map, so
+Godot's `Noise.get_image` does, in place of Terrain3D's Perlin noise: normalized over the map, so
 heights fill `base_height` to `base_height + height_range`, unless the file's `normalize` is
 off (then `-1` to `1` maps to the range), and turned over when its `invert` is on. Tune the noise
 with [`texture.generate`](#texturegenerate) and use the same file here. `scale`, `roughness`
@@ -1888,28 +1888,28 @@ curve, the island and erosion shape it as before.
 ```
 
 `height_range` is in the reply only when it widened. A terrain that can't be made (a map that
-doesn't load, or a resolution HTerrain refuses) fails at `/id` saying why, as
+doesn't load, or a resolution Terrain3D refuses) fails at `/id` saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
 
 ### terrain.import
 
-Imports maps made in other tools into an `HTerrain`, as HTerrain's import dialog does: a
+Imports maps made in other tools into an `Terrain3D`, as Terrain3D's import dialog does: a
 heightmap from World Machine, Gaea, World Creator or any tool that exports one, then a splat map
 and a color map. Each goes into the terrain's own map files, which it must name.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | | The entity with the `HTerrain` |
+| `id` | string | | The entity with the `Terrain3D` |
 | `heightmap` | string | | A project file of heights: a gray `.png` (16 bits, or 8), `.r16` or `.raw` (16-bit unsigned values), `.r32` (32-bit floats from `0` to `1`) or `.exr` (the first channel, in meters) |
 | `min_height`, `max_height` | number | `0`, `400` | PNG and RAW: the heights of the lowest and highest values; `max_height` must be above `min_height` |
 | `big_endian` | boolean | `false` | RAW: the values are big-endian |
 | `splatmap` | string | | A PNG of texture weights, a channel each, at the terrain's resolution |
 | `colormap` | string | | A PNG of colors at the terrain's resolution; alpha under `0.5` cuts a hole |
 
-Needs: `edit`, `filesystem`. Give at least one file. A heightmap sizes the terrain as HTerrain's
+Needs: `edit`, `filesystem`. Give at least one file. A heightmap sizes the terrain as Terrain3D's
 `_get_adjusted_map_size` does: each side's next power of two plus one, the smaller of the two,
 from 65 to 4097. A larger file is cropped from its top left; a smaller one (a 1024 by 1024 file
-makes a 1025 terrain) repeats its last row and column, where HTerrain reads black. RAW files must
+makes a 1025 terrain) repeats its last row and column, where Terrain3D reads black. RAW files must
 be square. PNG and RAW heights go from `min_height` to `max_height`, which becomes
 `height_range`; EXR heights are meters as they are, and `height_range` becomes the whole meters
 around them. Where the resolution changes, the splat and color maps the terrain has are stretched
@@ -1931,12 +1931,12 @@ it says so.
 ### terrain.brush
 
 Paints a [heightmap terrain](scene-format.md#heightmap-terrains) with a round brush at each point
-in turn, as HTerrain's painter. Writes the heightmap, splat map or color map it changes and
+in turn, as Terrain3D's painter. Writes the heightmap, splat map or color map it changes and
 returns how many cells changed.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with an `HTerrain` |
+| `id` | string | required | An entity with an `Terrain3D` |
 | `mode` | string | required | `raise` or `lower` by `amount`, `smooth`, `flatten` to `height`, `level` to the mean under the brush, `splat` a texture, `color`, `hole` cuts holes and `unhole` fills them |
 | `points` | array of `[x, z]` | required | Where each dab goes, up to 1024 |
 | `radius` | number | `8` | From the middle to the edge |
@@ -1946,7 +1946,7 @@ returns how many cells changed.
 | `height` | number | `0` | `flatten`: the height to go to |
 | `texture` | integer | `0` | `splat`: which texture, `0` to `3` |
 | `color` | `[r, g, b]` | `[1, 1, 1]` | `color`: from `0` to `1` |
-| `slope` | `[min, max]` | `[0, 90]` | `splat` and `color`: only where the ground slopes between these degrees, easing off past them as HTerrain's slope limit does |
+| `slope` | `[min, max]` | `[0, 90]` | `splat` and `color`: only where the ground slopes between these degrees, easing off past them as Terrain3D's slope limit does |
 | `global` | boolean | `false` | Points and lengths in the world's space rather than the terrain's entity's, for a terrain not tilted |
 
 Needs: `edit`, `filesystem`. Leveling a plot at 5 meters:
@@ -1964,7 +1964,7 @@ Needs: `edit`, `filesystem`. Leveling a plot at 5 meters:
   [`terrain.generate`](#terraingenerate) does; heights are kept to the heightmap's 65536 steps.
 - A dab that changes nothing returns `"unchanged": true` and writes nothing.
 
-A misspelled `mode` fails at `/mode` with the modes it takes, and an entity with no `HTerrain`
+A misspelled `mode` fails at `/mode` with the modes it takes, and an entity with no `Terrain3D`
 at `/id`.
 
 ### terrain.get
@@ -1974,7 +1974,7 @@ and problems; or, with `points`, what the ground is at each.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with an `HTerrain` |
+| `id` | string | required | An entity with an `Terrain3D` |
 | `points` | array of `[x, z]` | | Up to 1024 points over the ground |
 | `global` | boolean | `false` | Points and results in the world's space rather than the terrain's entity's, for a terrain not tilted |
 
@@ -2000,7 +2000,7 @@ Needs: `read`.
   `holes` counts the cells cut, and `problems` are there only when it can't be drawn, each with
   the `path` of the bad field and a `message`, as [`scene validate`](cli.md#scene-validate)
   reports them.
-- Each point has the ground's `position` (its height between cells, as HTerrain's
+- Each point has the ground's `position` (its height between cells, as Terrain3D's
   `get_interpolated_height_at`) and `normal`, and, from the nearest cell, the four textures'
   `splat` weights (with more than one texture or a splat map), the `color` (with a color map),
   `hole: true` over a hole and `outside: true` past the edge, where it reads the nearest edge.
@@ -2013,7 +2013,7 @@ neighbors. Returns how many cells changed.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `TileMapLayer` |
+| `id` | string | required | An entity with a `TileLayer2D` |
 | `cells` | array of `[column, row]` | | The cells to paint. Give `cells` or `rect` |
 | `rect` | `[column, row, width, height]` | | Every cell in it |
 | `terrain` | string or `null` | required | A terrain of the tile set, or `null` to erase |
@@ -2043,7 +2043,7 @@ cells in turn, as [`tilemap.paint`](#tilemappaint) paints, or its tile is set, a
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `TileMapLayer` |
+| `id` | string | required | An entity with a `TileLayer2D` |
 | `rect` | `[column, row, width, height]` | required | The cells to fill |
 | `noise` | string or object | required | A `NoiseTexture2D`'s [`.texture.json`](scene-format.md#procedural-textures) file, or [FastNoiseLite settings](scene-format.md#noise) |
 | `bands` | array | required | From low noise to high, 1 to 16 of them, each `{"below": <0 to 1>, "terrain": <name or null>}` or `{"below": ..., "tile": <tile or null>}` |
@@ -2073,7 +2073,7 @@ many cells changed.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `TileMapLayer` |
+| `id` | string | required | An entity with a `TileLayer2D` |
 | `cells` | array of `[column, row]` | | The cells to set. Give `cells` or `rect` |
 | `rect` | `[column, row, width, height]` | | Every cell in it |
 | `tile` | string or `null` | required | A tile by name or as `"source:column,row"`, then `:<alternative>` and `:<turns>` if any (`"slope:h"`, `"rock:1:hv"`), or `null` to erase |
@@ -2102,7 +2102,7 @@ one's tile and [custom data](scene-format.md#tile-occluders-and-custom-data) ins
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `TileMapLayer` |
+| `id` | string | required | An entity with a `TileLayer2D` |
 | `rect` | `[column, row, width, height]` | the whole layer | Only these cells |
 | `cells` | array of `[column, row]` | | 1 to 1024 cells whose tiles and custom data to return. Not with `rect` |
 
@@ -2137,14 +2137,14 @@ A tile set with no custom data layers gives no `data`.
 
 Turns cells into the points at their centers, or points into the cells they are in, as Godot's
 `map_to_local` and `local_to_map` through the layer's `Transform2D` (and its parents'). Points
-are in the canvas the layer draws in: the world's, unless the layer is in a `CanvasLayer`. Cells
+are in the canvas the layer draws in: the world's, unless the layer is in a `ScreenLayer`. Cells
 need not hold a tile. For squares the answer is plain arithmetic; for diamonds and hexagons this
 is how an agent finds where a cell is drawn or which cell a click landed in
 ([tile shapes](scene-format.md#tile-shapes)).
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `TileMapLayer` |
+| `id` | string | required | An entity with a `TileLayer2D` |
 | `cells` | array of `[column, row]` | | Up to 1024 cells: returns `points`, their centers |
 | `points` | array of `[x, y]` | | Up to 1024 points: returns `cells`, the cells they are in |
 
@@ -2170,7 +2170,7 @@ any bodies added, moved or removed since. The examples are the scene of
 (420.3, 189) on the hill.
 
 The same commands ask [3D physics](scene-format.md#3d-physics) when given points of three
-numbers (`[x, y, z]`), a `CollisionShape3D` shape or an entity with a 3D body; their answers then
+numbers (`[x, y, z]`), a `Collider3D` shape or an entity with a 3D body; their answers then
 have three-number points, normals and gravity, in meters.
 
 `physics.raycast` and `physics.overlap` take the same filter, as Godot's query parameters:
@@ -2188,7 +2188,7 @@ Returns the first body (or area, with `collide_with_areas`) that a ray from `fro
 hits: its ID, the point, the surface normal there and the fraction of the way the ray got. `hit`
 is `null` if it hits nothing. A ray that starts inside a shape doesn't hit that shape. A ray that
 hits a [tile map layer's](scene-format.md#tile-collision) tile also gives the `cell` it hit, as
-`[column, row]`, and one that hits a [`GridMap`](scene-format.md#grid-maps) gives the `cell` as
+`[column, row]`, and one that hits a [`BlockMap3D`](scene-format.md#grid-maps) gives the `cell` as
 `[x, y, z]` and the `item` in it. A body with a
 [physics material](scene-format.md#physics-materials-and-fields) that names a surface gives it
 as `surface`, and one that hits a [foliage](scene-format.md#foliage) instance gives the
@@ -2226,7 +2226,7 @@ In 3D, a ray across a 1-meter crate at the origin, standing 2 meters up:
 {"hit":{"fraction":0.45,"id":"crate","normal":[0,0,1],"point":[0,2,0.5]}}
 ```
 
-Straight down onto a GridMap's ramp, from [examples/gridmap](../../examples/gridmap/):
+Straight down onto a BlockMap3D's ramp, from [examples/gridmap](../../examples/gridmap/):
 
 ```json
 {"hit":{"cell":[4,0,1],"fraction":0.6667,"id":"level","item":"ramp","normal":[-0.7071,0.7071,0],"point":[9,1,3]}}
@@ -2246,7 +2246,7 @@ somewhere, sorted.
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `point` | `[x, y]` or `[x, y, z]` | | Find shapes containing this point. Give `point` or `shape` |
-| `shape` | object | | `CollisionShape2D` fields, e.g. `{"shape": "circle", "radius": 8}`, or `CollisionShape3D` fields; fields left out take the component's defaults, so `{}` is a 20 by 20 rectangle |
+| `shape` | object | | `Collider2D` fields, e.g. `{"shape": "circle", "radius": 8}`, or `Collider3D` fields; fields left out take the component's defaults, so `{}` is a 20 by 20 rectangle |
 | `position` | `[x, y]` or `[x, y, z]` | `[0, 0]` | Where the shape goes |
 | `rotation` | number or `[x, y, z]` | `0` | The shape's rotation, in radians clockwise; in 3D, radians about each axis as `Transform3D`'s |
 | `max_results` | integer | `32` | At most this many IDs, 1 to 256 |
@@ -2278,7 +2278,7 @@ when `position` has three numbers, `rotation` is an array, or the shape is one o
 ### physics.contacts
 
 Returns what touches an entity after the last step. For a body, `bodies` lists the bodies
-touching it (for a `CharacterBody2D`, what its last move hit and the floor it stands on) and
+touching it (for a `CharacterMover2D`, what its last move hit and the floor it stands on) and
 `areas` the areas it is in; for an area, what is in it. As Godot's `get_colliding_bodies`,
 `get_overlapping_bodies` and `get_overlapping_areas`.
 
@@ -2304,7 +2304,7 @@ Returns the gravity and damping each body gets after the last step, from the
 [areas](scene-format.md#gravity-and-damping-zones) it is in and the project's settings, as
 Godot's `get_gravity`. A rigid body's `gravity_scale` and its own damping are applied. `areas`
 lists the areas that set them, highest priority first, and is left out when none do. A
-`CharacterBody2D` or `CharacterBody3D` gets the gravity its gameplay code should add to its
+`CharacterMover2D` or `CharacterMover3D` gets the gravity its gameplay code should add to its
 velocity. A 3D body's gravity is `[x, y, z]` in meters per second squared.
 
 | Param | Type | Default | Meaning |
@@ -2322,7 +2322,7 @@ Needs: `read`. The rock below the planet in
 {"bodies":{"rock_below":{"angular_damp":1,"areas":["planet_pull"],"gravity":[0,-440.894],"linear_damp":0.1}}}
 ```
 
-An unknown ID, or an entity with no body or with an `Area2D`, is an error at its index in
+An unknown ID, or an entity with no body or with an `Zone2D`, is an error at its index in
 `/ids`.
 
 ### physics.soft_body
@@ -2353,7 +2353,7 @@ them.
 ```
 
 An unknown ID is an error, as is an entity with no soft body: one without a `SoftBody3D`,
-`Cloth3D` or `Cloth2D`, one whose `MeshInstance3D` draws no primitive mesh, or a `Cloth3D` whose
+`Cloth3D` or `Cloth2D`, one whose `Model3D` draws no primitive mesh, or a `Cloth3D` whose
 model has no such section. An index past the last vertex is an error at its
 place in `/at`.
 
@@ -2394,7 +2394,7 @@ or every one within `radius` of `at`, as an explosion, less with distance (all o
 center, none at the radius). Each takes `amount` times its profile's resistance to `kind`, shows
 the damage state it reaches, and at no health breaks where it was hit; a standing linked piece
 that breaks no more comes loose. Damage that leaves health dents, holes or carves it as its
-profile's `deform` says (an `HTerrain` is dug into, a `TileMapLayer` loses cells). Without a
+profile's `deform` says (an `Terrain3D` is dug into, a `TileLayer2D` loses cells). Without a
 profile, damage at least the body's `damage_threshold` breaks it. A hit at a point leaves the
 profile's hit effects (debris, dust, a decal, a sound) and a break its break effects. Someone or
 something living dies at no health instead of breaking, and a vehicle is wrecked. Cuts, shots
@@ -2467,7 +2467,7 @@ they did. A step lists:
   Bodies asleep aren't solved, so their contacts aren't listed.
 - `joints`: each joint after the step, with the bodies it holds (`b` left out for the world), the
   `force` holding them together (newtons in 3D) and how far its two anchors came apart
-  (`stretch`). A ragdoll's bones are `PhysicalBone3D` joints.
+  (`stretch`). A ragdoll's bones are `SimulatedBone3D` joints.
 - `fields`: what [`PhysicsField3D` and `PhysicsField2D`](scene-format.md#physics-materials-and-fields) fields
   did to each body they reached: `force`, the `velocity` they set, `strain`, `anchored` and
   `killed`.
@@ -2504,7 +2504,7 @@ as a `.anim.json` [animation](scene-format.md#animations): for each body, value 
 of its `Transform3D` (or `Transform2D`) `position` and `rotation`, keyed only where the motion
 bends past `tolerance` (angles unwrapped so turns go the way the body turned), and its
 `RigidBody3D/freeze` set with `freeze_mode` `"kinematic"` from the start, so playing it moves
-the bodies as they moved and pushes what they meet. An `AnimationPlayer` whose `targets` name
+the bodies as they moved and pushes what they meet. An `Animator` whose `targets` name
 the bodies plays it, or a cinematic's `animation` track starts it; `player` sets one up. `stop`
 drops a recording.
 
@@ -2514,7 +2514,7 @@ drops a recording.
 | `save` | string | | Stop and write the recording to this `.anim.json` file |
 | `name` | string | `"cache"` | The animation's name in the file |
 | `tolerance` | number | `0.001` | Keys a straight line passes within this of are dropped (meters, pixels or radians) |
-| `player` | ID | | With `save`: an entity whose `AnimationPlayer` (made if missing) gets the file, the animation and the bodies as targets, stopped at the start |
+| `player` | ID | | With `save`: an entity whose `Animator` (made if missing) gets the file, the animation and the bodies as targets, stopped at the start |
 | `stop` | boolean | | Stop and drop the recording |
 | `dry_run` | boolean | `false` | Return what would change and change nothing |
 
@@ -2558,7 +2558,7 @@ taking the radius that holds them, and weighs what the skin's would. `undo` puts
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | | An entity whose `MeshInstance3D` draws the model, or the root of a 2D tree |
+| `id` | string | | An entity whose `Model3D` draws the model, or the root of a 2D tree |
 | `model` | string | the entity's | A skinned model file, in place of `id` |
 | `out` | string | the model's path as `.ragdoll.json`; 2D `ragdolls/<id>.ragdoll.json` | The file to write |
 | `fit` | string | `"auto"` | What the bodies fit: `"anatomy"` (a character's bones), `"skin"`, or `"auto"` (anatomy for a character, else skin) |
@@ -2788,7 +2788,7 @@ Needs: `read`.
 
 ### navigation.agent
 
-Returns how a [`NavigationAgent2D` or `NavigationAgent3D`](scene-format.md#agents) is doing, as
+Returns how a [`NavAgent2D` or `NavAgent3D`](scene-format.md#agents) is doing, as
 Godot's `NavigationAgent` getters: its `next_position`, whether its `navigation_finished`, it
 `target_reached` and its target is `target_reachable`, the straight `distance_to_target`, and its
 `path` with the `path_index` of the point it is going to. An agent with `avoidance_enabled` also
@@ -2836,7 +2836,7 @@ or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `NavigationRegion3D` or `NavigationRegion2D` |
+| `id` | string | required | An entity with a `NavArea3D` or `NavArea2D` |
 
 Needs: `edit` and `filesystem`. A courtyard in
 [examples/navigation-baking](../../examples/navigation-baking/):
@@ -3085,7 +3085,7 @@ Plays a recipe as a new `VisualEffect3D` (or `VisualEffect2D` for a `2d` recipe)
 | `id` | string | the file's name, numbered past those taken | The new effect's ID |
 | `at` | array of numbers | the origin | `[x, y, z]` meters, or `[x, y]` pixels in 2D; in the parent's space with a `parent` |
 | `parent` | string | | An entity to play it under, which it moves with |
-| `bone` | string | | With a `parent` that draws a 3D model: a bone it follows, as a `BoneAttachment3D` |
+| `bone` | string | | With a `parent` that draws a 3D model: a bone it follows, as a `BoneSocket3D` |
 | `parameters` | object | | The recipe's parameters to set; a name it lacks fails with the closest one |
 | `seed` | integer | `0` | Added to its emitters' seeds |
 | `free_on_finish` | boolean | `true` | Remove it once a one-shot has finished and its particles have gone |
@@ -3129,7 +3129,7 @@ Needs: `read`.
 Plays a recipe alone on a stage of its own (a session apart, with a camera at `distance` and a
 light), stepping 60 ticks a second, and returns `samples` at `times`: the `layers` playing,
 `particles` alive (CPU particles counted; GPU emitters by their amount), the `light` energy of
-its lights, the `flash` (the most opaque `ColorRect`), parts `lingering` and the camera `shake`;
+its lights, the `flash` (the most opaque `ColorFill`), parts `lingering` and the camera `shake`;
 and its `events` with the time of each. With `capture`, it also draws the stage at a time into a
 PNG and returns its `out` and `size`. The world is left as it was.
 
@@ -3260,7 +3260,7 @@ wave's `period` in seconds.
 | `id` | string | the file's name | The new entity's ID |
 | `at` | `[x, y, z]` or `[x, y]` | origin | Where its surface rests, in meters or pixels |
 | `size` | `[x, z]` or `[width, depth]` | `[20, 20]`, `[640, 200]` | A lake's or ocean's area in meters, or 2d water's width and depth in pixels |
-| `path` | string | | A river's `Path3D` entity (a 3d river needs one) |
+| `path` | string | | A river's `Spline3D` entity (a 3d river needs one) |
 | `width` | number | `4` | A river's width in meters |
 | `parent` | string | | An entity to place it under |
 | `overrides` | object | | A JSON Merge Patch over the recipe |
@@ -3290,21 +3290,21 @@ Needs: `read`.
 
 ### particles.eval
 
-Returns a [`CPUParticles2D`](scene-format.md#particles)'s,
-[`GPUParticles2D`](scene-format.md#gpu-particles)'s,
-[`CPUParticles3D`](scene-format.md#3d-particles)'s or
-[`GPUParticles3D`](scene-format.md#gpu-particles-in-3d)'s live particles: how many, the box they
+Returns a [`Emitter2D`](scene-format.md#particles)'s,
+[`GpuEmitter2D`](scene-format.md#gpu-particles)'s,
+[`Emitter3D`](scene-format.md#3d-particles)'s or
+[`GpuEmitter3D`](scene-format.md#gpu-particles-in-3d)'s live particles: how many, the box they
 fill in the world and, with `list`, each one. Without `time`, the particles the world has after its
-last tick; a `GPUParticles2D`'s or `GPUParticles3D`'s are made by running the steps its emitter kept
+last tick; a `GpuEmitter2D`'s or `GpuEmitter3D`'s are made by running the steps its emitter kept
 on the CPU, as every device runs them. With `time`, it runs the emitter's settings from the start
 for that many seconds, from where the entity is, apart from the world, which it leaves unchanged:
 what that many ticks would give, since the same seed, entity ID and ticks give the same particles. A
-`GPUParticles2D` or `GPUParticles3D` whose process material doesn't load fails with the file's
+`GpuEmitter2D` or `GpuEmitter3D` whose process material doesn't load fails with the file's
 errors.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `CPUParticles2D`, `GPUParticles2D`, `CPUParticles3D` or `GPUParticles3D` |
+| `id` | string | required | An entity with a `Emitter2D`, `GpuEmitter2D`, `Emitter3D` or `GpuEmitter3D` |
 | `time` | number | | Seconds to run the settings from the start, 0 to 3600; preprocess runs first |
 | `tick_seconds` | number | `1/60` | The tick length for `time`, above 0 and at most 1 |
 | `list` | boolean | `false` | Also return each particle |
@@ -3326,7 +3326,7 @@ alive. Each particle has its position in the world (particles in `local_coords` 
 the entity's `Transform2D`), its rotation in radians clockwise, its scale, its color as
 `[r, g, b, a]` and its age in seconds, in draw order. Numbers are rounded to four decimals.
 
-A `CPUParticles3D`'s or `GPUParticles3D`'s `bounds` are `[x, y, z, width, height, depth]` in meters,
+A `Emitter3D`'s or `GpuEmitter3D`'s `bounds` are `[x, y, z, width, height, depth]` in meters,
 and each particle has its `position` and `velocity` in the world, its `angle` in radians (the turn a
 `"particles"` billboard draws it at), its `scale` along each of its axes, its `color` and its `age`,
 in draw order (`view_depth` lists as `index`, since it needs a camera). The fountain of
@@ -3336,7 +3336,7 @@ in draw order (`view_depth` lists as `index`, since it needs a camera). The foun
 {"alive":45,"bounds":[-2.7396,0.0276,-0.419,0.9195,0.9621,0.8001],"particles":[{"age":0.6667,"angle":0,"color":[0.55,0.8,1,1],"position":[-2.2196,0.7629,0.3811],"scale":[0.6667,0.6667,0.6667],"velocity":[-0.0294,-2.0406,0.5717]}]}
 ```
 
-A `GPUParticles2D` with [trails](scene-format.md#gpu-particle-trails) also returns `trails`, how
+A `GpuEmitter2D` with [trails](scene-format.md#gpu-particle-trails) also returns `trails`, how
 many draw (a particle's copies run on after it dies), and `trail_bounds`, the box round every
 live particle and copy they draw through. With `list`, each particle has its `trail`: how many
 of its copies are live, the `length` in pixels from it through them and where it `end`s.
@@ -3349,9 +3349,9 @@ of its copies are live, the `length` in pixels from it through them and where it
 
 ### particles.bake_sdf
 
-Bakes a [`GPUParticlesCollisionSDF3D`'s](scene-format.md#sdf-and-height-field-collision-3d)
-signed distance field, as Godot's Bake SDF: the visible `MeshInstance3D`s on layers of its
-`bake_mask` under its parent (the whole world for a root), with the CSG roots and `GridMap`s
+Bakes a [`ParticleColliderSdf3D`'s](scene-format.md#sdf-and-height-field-collision-3d)
+signed distance field, as Godot's Bake SDF: the visible `Model3D`s on layers of its
+`bake_mask` under its parent (the whole world for a root), with the CSG roots and `BlockMap3D`s
 there, whose triangles touch its box, at its `resolution` and `thickness`. It writes a `.sdf.png`
 file and sets the collider's `texture` to it, `slices_horizontal` to 1 and `slices_vertical` to
 the cells' depth. It returns the file, how many meshes and triangles it measured, the cells
@@ -3361,7 +3361,7 @@ the file back as it was, removing it if the bake made it, and sets the fields ba
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `GPUParticlesCollisionSDF3D` |
+| `id` | string | required | An entity with a `ParticleColliderSdf3D` |
 | `file` | string | its `texture`, else beside the scene, named after it and the entity | The `.sdf.png` file to write, project path |
 
 Needs: `edit` and `filesystem`. Takes `dry_run`. The statue of
@@ -3375,7 +3375,7 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The statue of
 {"cells":[16,16,16],"file":"main.statue_sdf.sdf.png","meshes":1,"triangles":4224}
 ```
 
-An unknown ID fails at `/id` with a "did you mean"; an entity with no `GPUParticlesCollisionSDF3D`
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `ParticleColliderSdf3D`
 fails at `/id`. A file that doesn't end in `.sdf.png` fails at `/file` (or `/id`, for its
 `texture`). A box no triangle touches fails, as Godot's bake does, and so does a resolution that
 isn't one or a field of more than 2097152 cells.
@@ -3386,7 +3386,7 @@ Returns how lit points are: the color a white pixel of a lit sprite gets there f
 [2D lights](scene-format.md#2d-lights), computed on the CPU as the GPU shades it, and each light
 that reaches it. A check that needs no screenshot. Points are in the world's canvas. Given an
 entity, it samples at its `Transform2D` position in the [canvas](scene-format.md#canvas-layers-and-parallax)
-it draws in, with its `Sprite2D`'s (or `TileMapLayer`'s) `light_mask` and `z_index`.
+it draws in, with its `Sprite2D`'s (or `TileLayer2D`'s) `light_mask` and `z_index`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3406,15 +3406,15 @@ torch and one behind the crate from it:
 {"ambient":[0.12,0.12,0.2],"lit":true,"points":[{"color":[1.244,1.02,0.9],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0.999,0.75,0.45],"id":"torch","shadow":0}]},{"color":[0.245,0.27,0.45],"lights":[{"color":[0.125,0.15,0.25],"id":"moon"},{"color":[0,0,0],"id":"torch","shadow":1}]}]}
 ```
 
-- `ambient` is the color of the sampled canvas's `CanvasModulate`, and `lit` says whether
+- `ambient` is the color of the sampled canvas's `AmbientTint2D`, and `lit` says whether
   anything lights that canvas; when nothing does, draws there are unshaded and every point is
-  white. For an entity in a `CanvasLayer`, `layer` is the layer's ID, and only lights whose
+  white. For an entity in a `ScreenLayer`, `layer` is the layer's ID, and only lights whose
   layer range holds its layer are listed.
 - Each point's `color` is `[r, g, b]` after the ambient color and every light, before clamping,
   so a value above 1 means the light is saturated there.
 - `lights` lists the lights that reach the point, in draw order, each with its color there times
   its alpha (what it adds with `blend_mode` `add`). A light with `shadow_enabled` and occluders
-  in the scene, `LightOccluder2D`s or tiles' occluders, also has `shadow`, from 0 (lit) to 1
+  in the scene, `Occluder2D`s or tiles' occluders, also has `shadow`, from 0 (lit) to 1
   (hidden by occluders). A light whose texture is clear at the point
   is left out.
 - Normal maps aren't sampled: the pixel faces the viewer. Values are rounded to three decimals.
@@ -3455,7 +3455,7 @@ dusk to a mean of 0.35:
 ```
 
 ```json
-{"after":{"clipped":0.0183,"mean":0.3603},"before":{"clipped":0.0,"mean":0.1498},"changes":[{"field":"light_intensity_lux","from":400.0,"id":"dusk","to":4189.112,"type":"DirectionalLight3D"},{"field":"light_intensity_lumens","from":3000.0,"id":"lamp_east","to":31418.342,"type":"OmniLight3D"},{"field":"light_intensity_lumens","from":6000.0,"id":"lamp_west","to":62836.684,"type":"OmniLight3D"}],"converged":true,"iterations":2}
+{"after":{"clipped":0.0183,"mean":0.3603},"before":{"clipped":0.0,"mean":0.1498},"changes":[{"field":"light_intensity_lux","from":400.0,"id":"dusk","to":4189.112,"type":"SunLight3D"},{"field":"light_intensity_lumens","from":3000.0,"id":"lamp_east","to":31418.342,"type":"PointLight3D"},{"field":"light_intensity_lumens","from":6000.0,"id":"lamp_west","to":62836.684,"type":"PointLight3D"}],"converged":true,"iterations":2}
 ```
 
 With physical light units on, it scales a 3D light's `light_intensity_lux` or
@@ -3469,7 +3469,7 @@ a world with no light that shines and has an ID fails.
 ### lighting.check
 
 Looks at the world's lighting, for an agent that can't judge a picture by eye: the 3D world
-through its current `Camera3D`, or a 2D world's `PointLight2D`s and `DirectionalLight2D`s. It draws the frame on the CPU, as [`frame.capture`](#framecapture) does, so the
+through its current `Camera3D`, or a 2D world's `PointLight2D`s and `SunLight2D`s. It draws the frame on the CPU, as [`frame.capture`](#framecapture) does, so the
 numbers are the same on every machine, and returns its `exposure`: the `mean`, 5th (`p5`) and
 95th (`p95`) percentile of its pixels' brightness from 0 to 1 (Rec. 709's weights over the drawn
 colors), and the shares of pixels `clipped` (a channel at full brightness) and `crushed`
@@ -3504,7 +3504,7 @@ Needs: `read`. A courtyard with a flood light at an energy of 40 and a lamp out 
 ```
 
 ```json
-{"exposure":{"clipped":0.0617,"crushed":0.0,"mean":0.6461,"p5":0.5793,"p95":0.946},"lights":[{"clips":0.0617,"id":"flood","lit":0.0701,"share":0.042,"type":"SpotLight3D"},{"id":"porch_lamp","lit":0.0,"share":0.0,"type":"OmniLight3D"},{"clips":0.0055,"id":"sun","lit":0.6338,"share":0.3965,"type":"DirectionalLight3D"}],"problems":[{"kind":"overexposed","message":"6.2% of the frame is clipped to full brightness"},{"id":"flood","kind":"clips","message":"\"flood\" pushes 6.2% of the frame to full brightness"},{"id":"porch_lamp","kind":"unlit","message":"\"porch_lamp\" lights nothing in view: out of range, shadowed, culled or facing away"}],"size":[160,90]}
+{"exposure":{"clipped":0.0617,"crushed":0.0,"mean":0.6461,"p5":0.5793,"p95":0.946},"lights":[{"clips":0.0617,"id":"flood","lit":0.0701,"share":0.042,"type":"SpotLight3D"},{"id":"porch_lamp","lit":0.0,"share":0.0,"type":"PointLight3D"},{"clips":0.0055,"id":"sun","lit":0.6338,"share":0.3965,"type":"SunLight3D"}],"problems":[{"kind":"overexposed","message":"6.2% of the frame is clipped to full brightness"},{"id":"flood","kind":"clips","message":"\"flood\" pushes 6.2% of the frame to full brightness"},{"id":"porch_lamp","kind":"unlit","message":"\"porch_lamp\" lights nothing in view: out of range, shadowed, culled or facing away"}],"size":[160,90]}
 ```
 
 A frame with no 3D meshes and no 2D light fails, and an unknown light in `ids` fails at its path with a "did you
@@ -3514,14 +3514,14 @@ mean". [examples/lighting-check](../../examples/lighting-check/) fixes a courtya
 
 ### lightmap.bake
 
-Bakes a [`LightmapGI`'s](scene-format.md#baked-lightmaps) light and [light
+Bakes a [`BakedLighting3D`'s](scene-format.md#baked-lightmaps) light and [light
 probes](scene-format.md#light-probes), as Godot's LightmapGI bake: the
-`MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
+`Model3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
 lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
 shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light and the probes'
 on the CPU, or with `"device": "gpu"` on a GPU that traces rays (Vulkan with ray queries, Metal
 on a Mac whose GPU supports ray tracing, or Direct3D 12 with DXR 1.1, as Godot's LightmapperRD traces on the GPU: the same light but for rounding), then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
-sets the LightmapGI's `light_data` to the file. It returns the files, how many meshes and lights
+sets the BakedLighting3D's `light_data` to the file. It returns the files, how many meshes and lights
 it baked, how many `probes`, the size of a slice, how many slices, with `device` the one that
 traced it (`"cpu"` where no GPU traces rays) and `problems` when there are any: models or textures that
 don't load, meshes with no entity ID and model parts with a skin, which it leaves out. A bake that comes out the same
@@ -3532,7 +3532,7 @@ tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `LightmapGI` |
+| `id` | string | required | An entity with a `BakedLighting3D` |
 | `file` | string | its `light_data`, else beside the scene, named after it | The `.lightmap.json` file to write, project path |
 | `device` | string | `"cpu"` | `"gpu"` traces on a GPU that traces rays, else on the CPU |
 
@@ -3547,15 +3547,15 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The courtyard of
 {"file":"main.lightmap.json","lights":1,"meshes":3,"probes":234,"size":[128,64],"slices":1,"texture":"main.lightmap.hdr"}
 ```
 
-An unknown ID fails at `/id` with a "did you mean"; so does an entity with no `LightmapGI`. A
+An unknown ID fails at `/id` with a "did you mean"; so does an entity with no `BakedLighting3D`. A
 file that doesn't end in `.lightmap.json` fails at `/file` (or `/id`, for its `light_data`).
 
 ### voxel_gi.bake
 
-Bakes a [`VoxelGI`'s](scene-format.md#voxelgi) cells, as Godot's VoxelGI bake: the
-`MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root)
+Bakes a [`VoxelLighting3D`'s](scene-format.md#voxelgi) cells, as Godot's VoxelGI bake: the
+`Model3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root)
 that touch its box, voxelized at its `subdiv` with their albedo, emission and normals. It writes
-a `.voxelgi.json` file and sets the VoxelGI's `data` to it. Lights aren't baked: the renderer
+a `.voxelgi.json` file and sets the VoxelLighting3D's `data` to it. Lights aren't baked: the renderer
 injects them into the cells as the game runs. It returns the file, how many meshes it voxelized,
 how many `cells` it made, the cells along each axis (`size`), the octree's `levels`, and
 `problems` when there are any: models or textures that don't load, which it leaves out. A bake
@@ -3565,7 +3565,7 @@ again. Meshes draw with the new cells at the next command or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `VoxelGI` |
+| `id` | string | required | An entity with a `VoxelLighting3D` |
 | `file` | string | its `data`, else beside the scene, named after it and the entity | The `.voxelgi.json` file to write, project path |
 
 Needs: `edit` and `filesystem`. Takes `dry_run`. The room of
@@ -3579,14 +3579,14 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The room of
 {"cells":12104,"file":"main.gi.voxelgi.json","levels":7,"meshes":4,"size":[64,32,64]}
 ```
 
-An unknown ID fails at `/id` with a "did you mean"; an entity with no `VoxelGI` fails at `/id`. A
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `VoxelLighting3D` fails at `/id`. A
 file that doesn't end in `.voxelgi.json` fails at `/file` (or `/id`, for its `data`).
 
 ### occluder.bake
 
-Bakes an [`OccluderInstance3D`'s](scene-format.md#occlusion-culling) shape from the scene's
-meshes, as Godot's Bake Occluders: every visible `MeshInstance3D` whose `layers` share a bit with
-its `bake_mask` and whose material isn't transparent (the entity's `StandardMaterial3D`, else
+Bakes an [`Occluder3D`'s](scene-format.md#occlusion-culling) shape from the scene's
+meshes, as Godot's Bake Occluders: every visible `Model3D` whose `layers` share a bit with
+its `bake_mask` and whose material isn't transparent (the entity's `Surface3D`, else
 each model surface's own), placed in the occluder's space, each surface simplified with
 meshoptimizer until it would stray `bake_simplification_distance` meters, then duplicate corners
 and triangles merged. It sets the occluder's `shape` to `"array"` with the `vertices` and
@@ -3597,7 +3597,7 @@ command or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with an `OccluderInstance3D` |
+| `id` | string | required | An entity with an `Occluder3D` |
 
 Needs: `edit`. Takes `dry_run`. The tower of
 [examples/occlusion-culling](../../examples/occlusion-culling/), the only mesh on its
@@ -3611,7 +3611,7 @@ Needs: `edit`. Takes `dry_run`. The tower of
 {"triangles":12,"vertices":8}
 ```
 
-An unknown ID fails at `/id` with a "did you mean"; an entity with no `OccluderInstance3D` fails
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `Occluder3D` fails
 at `/id`. With nothing to bake (no visible, opaque mesh on a `bake_mask` layer) it fails with
 `-32002` and changes nothing, as Godot's bake reports no meshes.
 
@@ -3656,13 +3656,13 @@ the sign on a smaller window:
   `system_glyphs` characters drawn from fonts installed on the machine (other machines may lack
   them), and `font_error` says why its font didn't load, in which case the built-in font drew
   it.
-- A `Button`, `CheckBox`, `CheckButton`, `OptionButton`, `MenuButton` or `TextureButton` has
+- A `Button`, `CheckBox`, `ToggleSwitch`, `Dropdown`, `MenuButton` or `ImageButton` has
   `draw_mode`: `"normal"`,
   `"hover"`, `"pressed"`, `"hover_pressed"` or `"disabled"`, as Godot's. A toggle button that is
   on (a check box that is checked) draws `"pressed"`, and `"hover_pressed"` while hovered; a
   button its shortcut just pressed draws `"hover_pressed"` for 0.2 seconds. The control with focus has `"focused": true`, and the one under the mouse
   `"hovered": true`.
-- `popups` lists the popup menus open, the last on top: `id`, the `PopupMenu`, `OptionButton` or
+- `popups` lists the popup menus open, the last on top: `id`, the `PopupList`, `Dropdown` or
   `MenuButton` it belongs to, `rect` in the viewport, `items` (each with its `text`, `rect` in
   the viewport and `"selectable": false` for a separator or a disabled item), `focused_item`
   while an item is focused, and `scroll` and `scroll_max` when it scrolls. From
@@ -3687,13 +3687,13 @@ the sign on a smaller window:
 - A `Slider` has `value`, on its step and in range, and `ratio`, how far along it is from 0 to
   1, e.g. `{"id": "volume", "ratio": 0.8, "rect": [66, 147, 226, 16], "value": 80}`. A
   `ScrollBar` has them too.
-- A `ScrollContainer` has `scroll`, `[horizontal, vertical]` pixels scrolled, `scroll_max`, how
+- A `ScrollBox` has `scroll`, `[horizontal, vertical]` pixels scrolled, `scroll_max`, how
   far each can go, and `scroll_bars`, the bars showing (`"horizontal"`, `"vertical"`), from
   [examples/ui-scrolling](../../examples/ui-scrolling/):
   `{"id": "log", "rect": [8, 8, 160, 164], "scroll": [0, 41], "scroll_bars": ["vertical"], "scroll_max": [0, 172]}`.
 - A control a [clipping](scene-format.md#scrolling) parent cuts off has `shown_rect`, the part
   that shows, or `"clipped": true` when none of it does; `rect` is still where it is.
-- A `LineEdit`'s `lines` are what it shows: its text with an input method's composition at the
+- A `TextField`'s `lines` are what it shows: its text with an input method's composition at the
   caret, a secret field's dots, or its placeholder. It has `line_edit`, from
   [examples/text-input](../../examples/text-input/):
 
@@ -3705,7 +3705,7 @@ the sign on a smaller window:
   `selection` (`[from, to)` in characters) while text is selected, `ime` while an input method
   is composing, `placeholder` while the placeholder shows, and `visible` (`[from, to)` of what
   it shows) when text is scrolled out of the field. A font that doesn't load is `font_error`.
-- A `TextEdit`'s `lines` are its rows in view, with an input method's composition at the caret
+- A `TextArea`'s `lines` are its rows in view, with an input method's composition at the caret
   or its placeholder. It has `text_edit`, from
   [examples/text-editor](../../examples/text-editor/):
 
@@ -3722,7 +3722,7 @@ the sign on a smaller window:
   [`input.inject`](#inputinject)), `search_results` (`[line, column]` of each match of its
   `search_text` in view), `gutters` and `line_height` while it draws
   [gutters](scene-format.md#gutters-and-line-numbers), and `font_error` for a font that doesn't
-  load. Each gutter has its `name` (a `CodeEdit`'s are `main_gutter` and `line_numbers`) and
+  load. Each gutter has its `name` (a `CodeEditor`'s are `main_gutter` and `line_numbers`) and
   `rect` on screen, from the first row's top: a line in view is
   `(line - visible_lines[0]) * line_height` below it when scrolled to a whole row, as in
   [examples/code-editor](../../examples/code-editor/):
@@ -3739,17 +3739,17 @@ the sign on a smaller window:
   defines, a font or texture that doesn't load, a button `shortcut` entry that isn't a binding
   or names no action, a `button_group` on a button without `toggle_mode`, a `Label` on a button
   entity (a button draws its own text), two buttons on one entity, a `focus_*` field that
-  names no control, a `LineEdit` with a `Label` or button on its entity, a
-  `secret_character` longer than one character, a `TextEdit` with a `Label`, button or
-  `LineEdit` on its entity, a menu item's `checkable` that isn't `none`, `check` or `radio`, a
-  `PopupMenu` on a control entity, an `OptionButton`'s `selected` past its options, a
+  names no control, a `TextField` with a `Label` or button on its entity, a
+  `secret_character` longer than one character, a `TextArea` with a `Label`, button or
+  `TextField` on its entity, a menu item's `checkable` that isn't `none`, `check` or `radio`, a
+  `PopupList` on a control entity, an `Dropdown`'s `selected` past its options, a
   `tooltip_text` on a control the pointer passes by, a `drag_preview` that isn't a control with
   no parent and a `DragAndDrop` on an entity with no `Control`. Each has
   the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
 ```json
-{"id":"hint","message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/components/Control/theme_override_colors/font_colour"}
+{"id":"hint","message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/components/Widget/theme_override_colors/font_colour"}
 ```
 
 An ID that names no entity, or an entity with no `Control` or other UI component, is an error at
@@ -3786,9 +3786,9 @@ panel, from the theme's `Slot` variation:
 
 ### ui.press
 
-Presses a [`Button`, `CheckBox`, `CheckButton`, `OptionButton`, `MenuButton` or
-`TextureButton`](scene-format.md#buttons) at the next tick, as a click released over it would: a
-toggle button toggles (and turns the others in its `button_group` off), an `OptionButton` or
+Presses a [`Button`, `CheckBox`, `ToggleSwitch`, `Dropdown`, `MenuButton` or
+`ImageButton`](scene-format.md#buttons) at the next tick, as a click released over it would: a
+toggle button toggles (and turns the others in its `button_group` off), an `Dropdown` or
 `MenuButton` opens its list (or closes it, if open) with the option shown or its first item
 focused, as a key would, then it emits `pressed`. Nothing else about the pointer or focus changes.
 
@@ -3816,17 +3816,17 @@ the click or tap with [`input.inject`](#inputinject) instead.
 
 ### ui.popup
 
-Opens a [popup menu](scene-format.md#menus): a `PopupMenu` at its `position` (setting
-`visible`), or an `OptionButton`'s or `MenuButton`'s list below it, as their `show_popup` does,
+Opens a [popup menu](scene-format.md#menus): a `PopupList` at its `position` (setting
+`visible`), or an `Dropdown`'s or `MenuButton`'s list below it, as their `show_popup` does,
 with the option shown (or the first item) focused. Any other popup closes. `"open": false`
 closes it instead.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | The `PopupMenu`, `OptionButton` or `MenuButton` |
+| `id` | string | required | The `PopupList`, `Dropdown` or `MenuButton` |
 | `open` | boolean | `true` | `false` closes it |
 
-Needs: `run`. A `PopupMenu` or `MenuButton` emits `about_to_popup` as it opens and
+Needs: `run`. A `PopupList` or `MenuButton` emits `about_to_popup` as it opens and
 `popup_hide` as it closes; there is nothing to undo. From [examples/ui-menus](../../examples/ui-menus/):
 
 ```json
@@ -3844,14 +3844,14 @@ one, and so are an entity with none of the three components and a button that is
 ### ui.select
 
 Picks an item of a [popup menu](scene-format.md#menus) at the next tick, as a click on it would,
-whether its list is open or not: an `OptionButton` selects the option, setting `selected` and
+whether its list is open or not: an `Dropdown` selects the option, setting `selected` and
 emitting `item_selected` (unless it is selected already and `allow_reselect` is off); a
-`PopupMenu` or `MenuButton` emits `id_pressed` and `index_pressed`. An open list closes as a
+`PopupList` or `MenuButton` emits `id_pressed` and `index_pressed`. An open list closes as a
 click would close it.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | The `PopupMenu`, `OptionButton` or `MenuButton` |
+| `id` | string | required | The `PopupList`, `Dropdown` or `MenuButton` |
 | `index` | integer | | The item's index |
 | `item_id` | integer | | The item's `id` (its index, if it has none) |
 | `text` | string | | The first item with this text |
@@ -3929,7 +3929,7 @@ rect. Mouse motion and presses hide it as they would hide one the pointer showed
 ### ui.focus
 
 Gives a control focus, as Godot's `grab_focus`, and shows it: `ui_accept` (Enter or Space)
-presses a focused button, a focused `LineEdit` starts editing, and `ui_up`, `ui_down`,
+presses a focused button, a focused `TextField` starts editing, and `ui_up`, `ui_down`,
 `ui_left`, `ui_right`, Tab and Shift+Tab move focus on from it. `null` takes focus away.
 
 | Param | Type | Default | Meaning |
@@ -3947,7 +3947,7 @@ Needs: `run`. Emits `focus_exited` and `focus_entered` at the next `step`.
 ```
 
 `focused` is the control with focus now, or `null`. A control that is hidden, or whose
-`focus_mode` is `"none"` (the default for controls other than buttons and `LineEdit`s), can't
+`focus_mode` is `"none"` (the default for controls other than buttons and `TextField`s), can't
 take focus, and that is an error. [`ui.layout`](#uilayout) marks the control with focus
 `"focused": true`.
 
@@ -3990,10 +3990,10 @@ those of the controls returned.
 Does what a screen reader asks of a control, as the actions Godot's controls add: `click`
 presses a button at the next tick (as [`ui.press`](#uipress)) or, with `item`, picks an open
 popup menu's item (as [`ui.select`](#uiselect)); `focus` and `blur` give and take focus;
-`show_tooltip` and `hide_tooltip`; `scroll_into_view` scrolls the `ScrollContainer` it is in to
+`show_tooltip` and `hide_tooltip`; `scroll_into_view` scrolls the `ScrollBox` it is in to
 show it; `increment` and `decrement` step a `Slider`, `ScrollBar` or `ProgressBar` by its step
 (1 without one); `set_value` sets a Range's number or a text field's text; `scroll_up`,
-`scroll_down`, `scroll_left` and `scroll_right` scroll a `ScrollContainer` by a page (an eighth
+`scroll_down`, `scroll_left` and `scroll_right` scroll a `ScrollBox` by a page (an eighth
 of one with `value` `"item"`) and `set_scroll_offset` to `value` `[x, y]`.
 
 | Param | Type | Default | Meaning |
@@ -4018,14 +4018,14 @@ error that says why.
 
 ### ui.search
 
-Finds text in a [`TextEdit`](scene-format.md#searching-and-highlighting-code), as Godot's
+Finds text in a [`TextArea`](scene-format.md#searching-and-highlighting-code), as Godot's
 `TextEdit::search`: the next place it occurs from a position (the caret unless told), going
 round past the end to the start, or with `backwards` from the position back, round past the
 start. With `all`, every place it occurs, in order from the start.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | The `TextEdit` |
+| `id` | string | required | The `TextArea` |
 | `text` | string | its `search_text` | What to find |
 | `flags` | array of strings | its `search_flags` | `match_case`, `whole_words` (with a symbol, a space or the line's edge on each side) and `backwards` |
 | `from` | `[line, column]` | the caret | Where to look from; a match may start there |
@@ -4044,7 +4044,7 @@ Needs: `read`. From [examples/code-editor](../../examples/code-editor/):
 
 `found` is `[line, column]`, from 0, the column counting characters, or `null` when the text
 occurs nowhere. With `all`, the reply is `{"matches": [[line, column], ...], "count": n}`,
-`count` covering every match. An empty `text`, no `text` for a `TextEdit` with no
+`count` covering every match. An empty `text`, no `text` for a `TextArea` with no
 `search_text`, and a `from` past the text are errors at the param's path. Case is ignored
 unless `match_case`, for Latin, Greek and Cyrillic letters.
 
@@ -4246,7 +4246,7 @@ Needs: `read`. With the footsteps playing:
 ```
 
 ```json
-{"buses":[{"name":"Master","peak_db":-5.4,"volume_db":0},{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":-12,"volume_db":-6},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-10.9,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","id":"footsteps","kind":"AudioStreamPlayer2D","length":0.1,"position":0.0493,"stream":"audio/steps.audio.json","voices":1,"volume":[0.5203,0.3797]}]}
+{"buses":[{"name":"Master","peak_db":-5.4,"volume_db":0},{"effects":[{"enabled":false,"type":"low_pass_filter"}],"name":"Music","peak_db":-12,"volume_db":-6},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-10.9,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","id":"footsteps","kind":"SoundPlayer2D","length":0.1,"position":0.0493,"stream":"audio/steps.audio.json","voices":1,"volume":[0.5203,0.3797]}]}
 ```
 
 - A bus lists `solo`, `mute` and `bypass_effects` when they are on, `send` when it isn't
@@ -4271,21 +4271,21 @@ Needs: `read`. With the footsteps playing:
 - `track_streams` counts the sounds [audio tracks](scene-format.md#cinematics) play on the
   player, beside its own voices; it is left out while there are none.
 - `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
-  `AudioStreamPlayer2D` or `AudioStreamPlayer3D` its fade with distance and its pan from the
+  `SoundPlayer2D` or `SoundPlayer3D` its fade with distance and its pan from the
   listener.
-- An `AudioStreamPlayer3D` ([3D sound](scene-format.md#3d-sound)) also lists `pitch_scale`, the
+- An `SoundPlayer3D` ([3D sound](scene-format.md#3d-sound)) also lists `pitch_scale`, the
   pitch it plays at after the Doppler effect, and `filter_db`, the gain its high shelf takes off
-  for distance and its emission angle (as Godot's filter, the highest frequencies lose twice that). An `Area3D` with a reverb bus adds
+  for distance and its emission angle (as Godot's filter, the highest frequencies lose twice that). An `Zone3D` with a reverb bus adds
   `"sends": [{"bus", "volume"}]`, the buses it mixes into beside `bus`.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
   load, such as a missing or corrupt file.
-- A `VideoStreamPlayer` whose file has sound ([sound in videos](scene-format.md#sound-in-videos))
-  is listed with kind `VideoStreamPlayer`: its `stream` is the video, `position` where its sound
+- A `Video` whose file has sound ([sound in videos](scene-format.md#sound-in-videos))
+  is listed with kind `Video`: its `stream` is the video, `position` where its sound
   is and `length` the video's. `error` says why its `audio_track` can't play, such as Vorbis or a track
   the video doesn't have.
-- A player's `bus` is the one it plays on now: an `Area2D` with `audio_bus_override` that holds
-  an `AudioStreamPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)),
-  as an `Area3D` does an `AudioStreamPlayer3D`.
+- A player's `bus` is the one it plays on now: an `Zone2D` with `audio_bus_override` that holds
+  an `SoundPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)),
+  as an `Zone3D` does an `SoundPlayer3D`.
 - A `capture` effect lists `frames_available`, the frames its buffer holds, and
   `discarded_frames` once a full buffer has dropped some. A `record` effect lists
   `"recording": true` while it records and `seconds` once it holds a recording; both show the
@@ -4402,7 +4402,7 @@ an error too, since only a file loops.
 
 ### audio.play
 
-Plays an `AudioStreamPlayer`, `AudioStreamPlayer2D` or `AudioStreamPlayer3D` at the next tick, as
+Plays an `SoundPlayer`, `SoundPlayer2D` or `SoundPlayer3D` at the next tick, as
 Godot's `play()`: with
 `max_polyphony` 1 it starts over, with more another voice joins, up to that many. Music,
 generators, polyphonic streams and microphones always start over, as Godot's monophonic streams
@@ -4448,7 +4448,7 @@ the player's `polyphony` is playing, the new stream is dropped with a warning in
 
 ### audio.stop
 
-Stops an `AudioStreamPlayer`, `AudioStreamPlayer2D` or `AudioStreamPlayer3D` at the next tick, as
+Stops an `SoundPlayer`, `SoundPlayer2D` or `SoundPlayer3D` at the next tick, as
 Godot's `stop()`,
 fading every voice out over one mix step so it doesn't click.
 
@@ -4759,7 +4759,7 @@ is now. A storyboard that doesn't load fails with its first problem. Needs: `rea
 ### soundtrack.arrange
 
 Writes the storyboard's [cues](storyboard-format.md#music) as one
-[interactive stream](scene-format.md#interactive-music) that an `AudioStreamPlayer` plays and
+[interactive stream](scene-format.md#interactive-music) that an `SoundPlayer` plays and
 gameplay code steers by setting its `parameters.switch_to_clip` to a clip's name. Each cue plays
 its `music`: `.audio.json`, `.ogg`, `.wav` or `.mp3` files, or the music
 [`soundtrack.render`](#soundtrackrender) makes of a `.score.json` file.
@@ -4849,7 +4849,7 @@ Needs: `read`.
 
 ## Video
 
-[Video](scene-format.md#video) a `VideoStreamPlayer` plays, made from frames. From
+[Video](scene-format.md#video) a `Video` plays, made from frames. From
 [examples/captured-cutscene](../../examples/captured-cutscene/).
 
 ### video.encode
@@ -4889,7 +4889,7 @@ images or a frame of another size is an error at its `/frames/<i>`. Nothing is w
 Translations, as Godot's TranslationServer: `project.json`'s
 [`internationalization`](project-format.md#internationalization) lists CSV and gettext `.po` and
 `.mo` files, and controls show their text in the game's locale as their
-`Control.auto_translate_mode` says (see [scene-format.md](scene-format.md#translated-text)). Games start
+`Widget.auto_translate_mode` says (see [scene-format.md](scene-format.md#translated-text)). Games start
 in the player's locale; sessions start in the project's `test` locale, else its fallback, so they
 repeat on every machine. The examples here are from
 [examples/localization](../../examples/localization/), a title menu in French, Arabic and Polish.
@@ -4946,8 +4946,8 @@ three letters fails with `-32602` at `/locale`.
 ### l10n.extract
 
 Collects the messages the game shows, as Godot's Generate POT does with its scene parser: each
-control's `text` (`Label`, `Button`, `CheckBox`, `CheckButton`, `MenuButton`), `LineEdit` and
-`TextEdit` placeholders, `tooltip_text` and the `items` of option buttons, menu buttons and popups
+control's `text` (`Label`, `Button`, `CheckBox`, `ToggleSwitch`, `MenuButton`), `TextField` and
+`TextArea` placeholders, `tooltip_text` and the `items` of option buttons, menu buttons and popups
 in every scene and prefab, then the string literals passed to `l10n::tr` (and its context) and
 `tr_n` (and its plural and context) in the C++ files under `project.json`'s `gameplay.sources`.
 Controls that `auto_translate_mode` keeps as written are left out, as they would show; the open
@@ -5611,7 +5611,7 @@ check their work against it. It captures a scene, the open world, an image, a mo
 the way [`style.check`](#stylecheck) will, writes the frame as `storyboard/style/<name>.png`,
 and records in the entry what was captured (`capture`), the settings that made the look
 (`settings`: the scene's environment, camera attributes, lights, cameras, probes, GI and fog
-volumes, `CanvasModulate`, `StandardMaterial3D`s and material files with their params, the
+volumes, `AmbientTint2D`, `Surface3D`s and material files with their params, the
 transforms of those entities, and project.json's `rendering`) and its `fingerprint`: the palette
 (at most 8 colors with their shares), luma at the 5th, 50th and 95th percentiles (`value`), RMS
 `contrast`, mean HSV `saturation`, `warmth` (red less blue), the share of pixels on an edge
@@ -5683,7 +5683,7 @@ the reference's entry.
 ```
 
 ```json
-{"checked":[{"changed":["/entities/environment/WorldEnvironment/background_color","/entities/sun/DirectionalLight3D/light_color","/entities/sun/DirectionalLight3D/light_energy"],"drift":{"contrast":0.0517,"edges":0.0172,"flat":0.059,"line_weight":0.0078,"palette":0.3003,"saturation":0.0081,"value":0.2039,"warmth":0.157},"over":{"contrast":"0.0635 -> 0.1152 (drift 0.0517, tolerance 0.05)","palette":"#664637 52%, #59668c 41%, #b77150 7% -> #886e5d 50%, #73b3ff 41%, #daa98d 7%, #a9846b 1% (drift 0.3003, tolerance 0.1)","value":"[0.2824, 0.349, 0.4902] -> [0.4275, 0.5294, 0.6941] (drift 0.2039, tolerance 0.08)","warmth":"0.0399 -> -0.1171 (drift 0.157, tolerance 0.05)"},"reference":"style/harbor-dusk","target":"levels/pier.scene.json"}],"drifted":1}
+{"checked":[{"changed":["/entities/environment/Environment3D/background_color","/entities/sun/SunLight3D/light_color","/entities/sun/SunLight3D/light_energy"],"drift":{"contrast":0.0517,"edges":0.0172,"flat":0.059,"line_weight":0.0078,"palette":0.3003,"saturation":0.0081,"value":0.2039,"warmth":0.157},"over":{"contrast":"0.0635 -> 0.1152 (drift 0.0517, tolerance 0.05)","palette":"#664637 52%, #59668c 41%, #b77150 7% -> #886e5d 50%, #73b3ff 41%, #daa98d 7%, #a9846b 1% (drift 0.3003, tolerance 0.1)","value":"[0.2824, 0.349, 0.4902] -> [0.4275, 0.5294, 0.6941] (drift 0.2039, tolerance 0.08)","warmth":"0.0399 -> -0.1171 (drift 0.157, tolerance 0.05)"},"reference":"style/harbor-dusk","target":"levels/pier.scene.json"}],"drifted":1}
 ```
 
 The reply above leaves out the harbor's own frame, which has no drift.
@@ -6085,11 +6085,11 @@ each tick from `from` up to `tick` (the end if left out) and stops at the first 
 result is `replay.run`'s, plus, for a search, `world.query`'s for the entities that match and
 `found`.
 
-From [examples/replays](../../examples/replays/), the first tick with no `Area2D` left (the coin
+From [examples/replays](../../examples/replays/), the first tick with no `Zone2D` left (the coin
 taken), then the tick before:
 
 ```json
-{"with": ["Area2D"], "until": "none"}
+{"with": ["Zone2D"], "until": "none"}
 ```
 
 ```json
@@ -6632,7 +6632,7 @@ only the lines logged while it is open, so a fresh one returns `{"lines":[]}`.
 Draws the frame the window shows now, on the CPU: the 3D world through its current `Camera3D`
 ([scene-format.md](scene-format.md#3d-nodes)), then the world's sprites, tile maps, particles and
 lights, then the collision shapes if asked, then the controls, over the project's
-`rendering.clear_color` (or a `WorldEnvironment`'s background), at the window size
+`rendering.clear_color` (or a `Environment3D`'s background), at the window size
 (`window.width` and `height` in `project.json`). The software device that draws it shades with
 the same code as the GPU device's shaders, so the pixels are the same on every machine and with
 no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/) calls it.
@@ -6645,7 +6645,7 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `image` | boolean | `false` | Return the image as a base64 PNG in `png` |
 | `path` | string | | A `.png` file to write, relative to the project |
 | `time` | number | the tick's | Seconds of game time for materials' `time` nodes and [animated tiles](scene-format.md#animated-and-large-tiles) |
-| `collisions` | boolean | `false` | Draw every `CollisionShape2D` and `CollisionPolygon2D` over the world, as Godot's Visible Collision Shapes |
+| `collisions` | boolean | `false` | Draw every `Collider2D` and `PolygonCollider2D` over the world, as Godot's Visible Collision Shapes |
 | `frames` | integer, 1 to 120 | `1` | Draw the frame this many times and return the last, for [temporal antialiasing](project-format.md#temporal-antialiasing), which builds up over frames |
 | `path_trace` | object | | Path trace the 3D world instead of drawing it live: `samples` paths a pixel (1 to 4096, default 16) and `bounces` after the first surface (0 to 32, default 4) |
 | `xr_view` | integer | | Draw what this view of the [XR](scene-format.md#xr) headset sees instead (`0` the left eye, `1` the right), at its render target size, as Godot draws an `XRCamera3D`'s views; points and the region are that image's pixels |
@@ -6682,10 +6682,10 @@ mesh's history follows it.
 
 `path_trace` renders a reference still of the 3D world, for comparing the live frame with the
 light it only estimates. Each path meets the nearest triangle (every mesh at full detail, with
-no occlusion culling), shades it with the same `StandardMaterial3D` and light code the live
+no occlusion culling), shades it with the same `Surface3D` and light code the live
 frame draws with, adds each light it can see (shadows traced by ray for lights with shadows on),
 then bounces off the surface as its roughness and metallic say, `bounces` times. A bounce that
-meets nothing takes the `WorldEnvironment`'s ambient light, or its sky's when meshes are lit by
+meets nothing takes the `Environment3D`'s ambient light, or its sky's when meshes are lit by
 the sky; with `bounces` 0 only the lights shine. Emission lights what is near it. The still is
 post-processed as the live frame is, without TAA or FSR. The reply's `path_samples` says how
 many paths each pixel holds: captures at the same size of a world that looks the same add their
@@ -6698,7 +6698,7 @@ paths in its window on the GPU with `display.set`'s `path_trace`.
 ### frame.summary
 
 Says what the window shows now, as data instead of an image: what `frame.capture` would draw,
-read thing by thing. Each sprite, tile map layer, `CPUParticles2D`, `GPUParticles2D` and
+read thing by thing. Each sprite, tile map layer, `Emitter2D`, `GpuEmitter2D` and
 control that shows is listed in drawing order, bottom first, with how much of it shows when not
 all of it does, and what doesn't show is listed by why. Costs far fewer tokens than an image and needs no vision.
 Nothing changes. [examples/frame-summary](../../examples/frame-summary/) calls it.
@@ -6735,34 +6735,34 @@ With `"map": [40, 12]` over the whole frame, the reply adds:
                 "gggggggggggggggggggggggggggggggggggggggg"]}}
 ```
 
-- `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileMapLayer`, `CPUParticles2D`,
-  `GPUParticles2D`,
-  `PopupMenu` for an open popup menu, named by the entity it belongs to, `Tooltip` for the
+- `drawn` lists what shows: `id`, `kind` (`Sprite2D`, `TileLayer2D`, `Emitter2D`,
+  `GpuEmitter2D`,
+  `PopupList` for an open popup menu, named by the entity it belongs to, `Tooltip` for the
   tooltip shown, named by its control, or the control's type,
   such as `Label` or `Button`) and `rect`, its bounds in window pixels to a
   tenth, `[x, y, width, height]`, not cut to the window: a control's rect as
   [`ui.layout`](#uilayout) places it (only the part its clip leaves, inside a
-  `ScrollContainer` or a parent with `clip_contents`), else the bounds of what it drew. `shown`,
+  `ScrollBox` or a parent with `clip_contents`), else the bounds of what it drew. `shown`,
   from 0.01 to 0.99, is the share of its pixels that show when not all of them do: the rest are
   outside the window (or region), under something drawn after it or cut off by a clip.
-- What each shows: an `AnimatedSprite2D`'s `animation` and `frame`, a sprite sheet's `frame`, a
+- What each shows: an `Flipbook2D`'s `animation` and `frame`, a sprite sheet's `frame`, a
   layer's `tiles` and an emitter's `particles` (how many drew), and a control's `text` as laid
   out (lines joined with `\n`, cut short with its ellipsis, only the characters
   `visible_characters` shows), a button's `draw_mode` when it isn't `"normal"`, a slider's or
   scroll bar's `value`, a scroll container's `scroll` and `focused`, and a popup menu's `items`
   (their texts), `focused_item` and `scroll`, and the tooltip's `text`.
-- `layer` names the [`CanvasLayer`](scene-format.md#canvas-layers-and-parallax) a thing draws
+- `layer` names the [`ScreenLayer`](scene-format.md#canvas-layers-and-parallax) a thing draws
   in, when it is in one. Things in layers under the world come first in `drawn`, those over it
   last. A repeating `Parallax2D`'s children are listed once, their `rect` round every copy.
 - `covered` lists what is in the window but wholly under what was drawn after it, `offscreen`
   what drew only outside the window (left out with a `region`) and `clear` what drew no pixel
   that can be seen, such as a sprite whose `modulate` alpha is below 0.25. `clipped` lists
-  controls cut off entirely by a clip, such as the rows a `ScrollContainer` is scrolled past.
+  controls cut off entirely by a clip, such as the rows a `ScrollBox` is scrolled past.
   Each is left out when empty.
 - `problems` lists what can't draw as written, with the JSON Pointer of the field in the entity:
   a missing texture, material or tile set, a frame outside its sheet, and the mistakes
   [`ui.layout`](#uilayout) reports.
-- `map` is `{"legend": {...}, "rows": [...]}`, like a `TileMapLayer`'s cells: each row is
+- `map` is `{"legend": {...}, "rows": [...]}`, like a `TileLayer2D`'s cells: each row is
   `columns` keys, each key what shows at the cell's center, `.` for nothing (the clear color).
   Keys are the start of each ID where that is free, one character while there are few enough
   things on the map, else two.
@@ -6797,7 +6797,7 @@ Turns points between window pixels and the world, through the current
 [`Camera2D`](scene-format.md#2d-camera), as Godot's `get_global_mouse_position`: where a click
 lands in the level, or where a thing in the level shows in the window. With an `id`, uses the
 canvas that entity draws in instead: its
-[`CanvasLayer`](scene-format.md#canvas-layers-and-parallax)'s, or the window itself for a
+[`ScreenLayer`](scene-format.md#canvas-layers-and-parallax)'s, or the window itself for a
 control in no layer. Nothing changes.
 [examples/canvas-layers](../../examples/canvas-layers/) calls it.
 
@@ -6820,7 +6820,7 @@ over the level at x 440:
 
 - `points` are in the same order, to four decimals. With no camera, the world's pixels are the
   window's.
-- `layer` names the `CanvasLayer` whose canvas was used, when `id` draws in one.
+- `layer` names the `ScreenLayer` whose canvas was used, when `id` draws in one.
 - An unknown `id` is an error at `/id`, with the closest ID.
 
 ## Display
@@ -7028,7 +7028,7 @@ Needs: `read`; it changes nothing in the world, and a recording leaves it out.
 
 Converts a Godot 4, Unity or Unreal Engine 5 project, in a folder inside this project, into this
 project, as [`slash-cli import`](cli.md#import) does. A Godot project's scenes become `.scene.json` files
-beside the originals, its `SpriteFrames` `.frames.json` files, each `AnimationPlayer`'s
+beside the originals, its `SpriteFrames` `.frames.json` files, each `Animator`'s
 animation libraries a `.anim.json` file, its tile sets `.tileset.json` files, its themes
 `.theme.json` files, its bus layouts `.bus_layout.json` files and its settings and input map
 `project.json`. A Unity project's scenes and prefabs become `.scene.json` files beside the
@@ -7101,7 +7101,7 @@ and `tasks` the task of each Blueprint and C++ class:
 ```
 
 ```json
-{"classes":[{"class":"ACoinPickup","code":"src/imported/coin_pickup.cpp","component":"CoinPickup","entities":2,"header":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"converted":{"animation_trees":1,"animations":2,"blueprints":5,"classes":1,"input_actions":10,"landscapes":1,"material_variants":1,"meshes":4,"scenes":1,"sounds":1},"engine":"unreal","engine_version":"5.4.4-35576357+++UE5+Release-5.4","files":21,"log":".slash/import/unreal/unreal.log","main_scene":"unreal/Content/Maps/Main.scene.json","module":"src/game.cpp","project":"Crate Run","report":"import/unreal.json","tasks":[{"source":"unreal/Content/Blueprints/BP_Coin.uasset","task":"task/port-bp-coin"},{"source":"unreal/Content/Blueprints/BP_CrateRunMode.uasset","task":"task/port-bp-crate-run-mode"},{"source":"unreal/Content/Blueprints/BP_Hero.uasset","task":"task/port-bp-hero"},{"source":"unreal/Content/Characters/ABP_Guard.uasset","task":"task/port-abp-guard"},{"source":"unreal/Content/UI/WBP_Hud.uasset","task":"task/port-wbp-hud"},{"source":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"unsupported":[{"count":1,"what":"Animation Blueprint","where":"/Game/Maps/Main: Guard","why":"its graph doesn't convert: an AnimationTree plays its sequences as a state machine's states with no transitions, which its task adds"},{"count":1,"what":"landscape material","where":"/Game/Maps/Main: Hills","why":"an HTerrain shades as HTerrain's Classic4 shader; give it textures"},{"count":1,"what":"static light","where":"/Game/Maps/Main: Lamp","why":"baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"}]}
+{"classes":[{"class":"ACoinPickup","code":"src/imported/coin_pickup.cpp","component":"CoinPickup","entities":2,"header":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"converted":{"animation_trees":1,"animations":2,"blueprints":5,"classes":1,"input_actions":10,"landscapes":1,"material_variants":1,"meshes":4,"scenes":1,"sounds":1},"engine":"unreal","engine_version":"5.4.4-35576357+++UE5+Release-5.4","files":21,"log":".slash/import/unreal/unreal.log","main_scene":"unreal/Content/Maps/Main.scene.json","module":"src/game.cpp","project":"Crate Run","report":"import/unreal.json","tasks":[{"source":"unreal/Content/Blueprints/BP_Coin.uasset","task":"task/port-bp-coin"},{"source":"unreal/Content/Blueprints/BP_CrateRunMode.uasset","task":"task/port-bp-crate-run-mode"},{"source":"unreal/Content/Blueprints/BP_Hero.uasset","task":"task/port-bp-hero"},{"source":"unreal/Content/Characters/ABP_Guard.uasset","task":"task/port-abp-guard"},{"source":"unreal/Content/UI/WBP_Hud.uasset","task":"task/port-wbp-hud"},{"source":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"unsupported":[{"count":1,"what":"Animation Blueprint","where":"/Game/Maps/Main: Guard","why":"its graph doesn't convert: an AnimationGraph plays its sequences as a state machine's states with no transitions, which its task adds"},{"count":1,"what":"landscape material","where":"/Game/Maps/Main: Hills","why":"an Terrain3D shades as Terrain3D's Classic4 shader; give it textures"},{"count":1,"what":"static light","where":"/Game/Maps/Main: Lamp","why":"baked in Unreal; it lights the scene as it runs here, or bake it into a BakedLighting3D"}]}
 ```
 
 (`unsupported` shortened here.) For an exported game, `unpacked` says what came back out of it: the pack's format and the
@@ -7422,7 +7422,7 @@ Needs: `read`.
 
 A name finds itself first (`World::find` before other `find`s); words find the names, then the
 classes, namespaces and headers, then the docs they appear in, so `play a sound` finds
-`audio::play_stream` and the `AudioStreamPlayer` component. Words match across forms ("plays",
+`audio::play_stream` and the `SoundPlayer` component. Words match across forms ("plays",
 "playing"). A line counts as using a member function only when it calls it through its class or
 on something named like it (`game_world.find` for `World::find`), so another class's `find` is
 not an example. Private and protected members and `detail` namespaces are not the engine's API
@@ -7775,7 +7775,7 @@ parent's, or a new `script`, or both, and runs it again with the parent's seed.
 
 #### Tileable materials
 
-`"type": "material"` makes a Godot `StandardMaterial3D` that tiles, for walls, floors and roads,
+`"type": "material"` makes a Godot `Surface3D` that tiles, for walls, floors and roads,
 as a [material file](scene-format.md#material-files) that [model recipes](scene-format.md#model-recipes)
 share. Its image is generated with the prompt and words asking for a seamless texture, square at
 `width` (or taken from the library as `image`, which must be an image), then measured: how much
@@ -8058,7 +8058,7 @@ Models made in other tools, bought from asset stores or drawn by a team's own ar
 the library as generated ones do. A `.gltf`, `.obj`, `.fbx` or `.blend` file (a `.blend` file
 through the artist's own Blender, with the `build` capability; see
 [Blender models](scene-format.md#blender-models)), or a `.glb` file with `cleanup`, is loaded as
-[`MeshInstance3D`](scene-format.md#models) loads it and kept as the self-contained `.glb` file
+[`Model3D`](scene-format.md#models) loads it and kept as the self-contained `.glb` file
 [`model.cleanup`](#modelcleanup) writes, cleaned up first with `cleanup`'s options (a storyboard
 triangle budget covering the file's path applies unless `triangles` is given). The record keeps
 the file's name as `source`, the SHA-256 of its bytes as `source_sha256` and the `cleanup`, as

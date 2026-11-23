@@ -4,7 +4,7 @@ The hall of [ssr-3d](../ssr-3d/), its reflections traced by rays instead of foun
 as `rendering.ray_tracing`'s `reflections` turns them on in Forward+.
 [main.scene.json](main.scene.json) is the same, a polished metallic floor with a red crate, a blue
 pillar, a rug and a warm back wall, with one thing added: a green `banner` high on the back wall,
-above the top of the screen. The `WorldEnvironment`'s `ssr_enabled` is on.
+above the top of the screen. The `Environment3D`'s `ssr_enabled` is on.
 
 [project.json](project.json) sets `rendering.ray_tracing`: `reflections` on, with 4 rays a pixel.
 Each opaque pixel smoother than roughness 0.7 sends them off its surface, reflected about GGX's

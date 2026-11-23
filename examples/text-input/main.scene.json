@@ -2,20 +2,20 @@
   "entities": {
     "age": {
       "components": {
-        "Control": {},
-        "LineEdit": {
+        "TextField": {
           "max_length": 3,
           "placeholder_text": "Age",
           "virtual_keyboard_type": "number"
-        }
+        },
+        "Widget": {}
       }
     },
     "form": {
       "components": {
-        "BoxContainer": {
+        "StackBox": {
           "vertical": true
         },
-        "Control": {
+        "Widget": {
           "children": ["title", "name", "password", "age", "status"],
           "custom_minimum_size": [240.0, 0.0],
           "offset_left": 40.0,
@@ -25,36 +25,36 @@
     },
     "name": {
       "components": {
-        "Control": {},
-        "LineEdit": {
+        "TextField": {
           "clear_button_enabled": true,
           "max_length": 20,
           "placeholder_text": "Your name"
-        }
+        },
+        "Widget": {}
       }
     },
     "password": {
       "components": {
-        "Control": {},
-        "LineEdit": {
+        "TextField": {
           "placeholder_text": "Password",
           "secret": true,
           "virtual_keyboard_type": "password"
-        }
+        },
+        "Widget": {}
       }
     },
     "status": {
       "components": {
-        "Control": {},
-        "Label": {}
+        "Label": {},
+        "Widget": {}
       }
     },
     "title": {
       "components": {
-        "Control": {},
         "Label": {
           "text": "Sign up"
-        }
+        },
+        "Widget": {}
       }
     }
   },

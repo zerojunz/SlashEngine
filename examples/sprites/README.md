@@ -9,7 +9,7 @@ sends, then draws the scene into a texture.
   the part `region` picks. It is centered on the entity unless `centered` is false. `flip_h` and
   `flip_v` mirror the picture in place, `modulate` tints it, and `z_index` puts it above or below
   others; equal `z_index` values draw in the order the entities were made.
-- `AnimatedSprite2D` plays an animation from a `.frames.json` file on the entity's `Sprite2D`,
+- `Flipbook2D` plays an animation from a `.frames.json` file on the entity's `Sprite2D`,
   adding one if it has none. A frame is a texture path or a frame number in the animation's sheet;
   leave `frames` out to play the whole sheet. Animations loop unless `"loop": false`, which stops
   on the last frame, sets `playing` to false and emits `animation_finished`.

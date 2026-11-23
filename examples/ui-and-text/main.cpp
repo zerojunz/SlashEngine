@@ -1,4 +1,4 @@
-// UI and text, as Godot's Control, Label and ColorRect: main.scene.json is a pause screen over
+// UI and text, as Godot's Control, Label and ColorFill: main.scene.json is a pause screen over
 // the game, a panel centered on the window holding a title in a distance field font with an
 // outline, a paragraph that wraps, a quest line cut to one line with an ellipsis and a hint in
 // the bottom-right corner, plus a score and a sign in the corners.
@@ -93,7 +93,7 @@ int main() {
     // A theme override Label doesn't have is reported, with the name it was probably meant to be.
     call(
         session, "component.set",
-        R"({"id": "hint", "components": {"Control": {"theme_override_colors": {"font_colour": [1, 1, 1, 1]}}}})");
+        R"({"id": "hint", "components": {"Widget": {"theme_override_colors": {"font_colour": [1, 1, 1, 1]}}}})");
     call(session, "ui.layout", R"({"ids": ["hint"]})");
     call(session, "undo", "{}");
 

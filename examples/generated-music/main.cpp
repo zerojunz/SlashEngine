@@ -207,7 +207,7 @@ int main() {
 
     // Played, the stems sound as the mix: 140 beats per minute, measured in G major, which has
     // E minor's notes.
-    call(game, "entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+    call(game, "entity.create", R"({"id": "music", "components": {"SoundPlayer":
         {"stream": "music/boss.audio.json", "autoplay": true}}})");
     call(game, "step", R"({"ticks": 420})");
     call(game, "audio.analyze", R"({"bus": "Master", "seconds": 6.857})");

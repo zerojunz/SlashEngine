@@ -213,7 +213,7 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
                 movers.push_back(tree.global(e).origin);
             }
         };
-        gather.template operator()<world::CharacterBody3D>();
+        gather.template operator()<world::CharacterMover3D>();
         gather.template operator()<world::RigidBody3D>();
         for (const auto [entity, foliage] : ecs.view<world::Foliage3D>().each()) {
             const world::Affine3D place = tree.global(entity);
@@ -264,7 +264,7 @@ void run_foliage(world::World& world, FoliageState& state, double tick_seconds) 
                 movers.push_back({static_cast<float>(at.x), static_cast<float>(at.y)});
             }
         };
-        gather.template operator()<world::CharacterBody2D>();
+        gather.template operator()<world::CharacterMover2D>();
         gather.template operator()<world::RigidBody2D>();
         for (const auto [entity, foliage] : ecs.view<world::Foliage2D>().each()) {
             const world::Affine2D place = tree.global_affine(entity);

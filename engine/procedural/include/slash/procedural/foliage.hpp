@@ -112,9 +112,9 @@ struct FoliagePush {
 };
 [[nodiscard]] std::vector<FoliagePush> foliage_pushes(const world::World& world);
 
-// Adds the foliage system (priority 970, after physics): CharacterBody3D, RigidBody3D and
-// VehicleBody3D entities push the Foliage3D instances within a type's interaction_radius over
-// (CharacterBody2D and RigidBody2D the Foliage2D ones), and each springs back by its stiffness
+// Adds the foliage system (priority 970, after physics): CharacterMover3D, RigidBody3D and
+// WheeledBody3D entities push the Foliage3D instances within a type's interaction_radius over
+// (CharacterMover2D and RigidBody2D the Foliage2D ones), and each springs back by its stiffness
 // and damping. Keeps what it needs in the world's context, reset with the world's state.
 void install_foliage(world::World& world);
 

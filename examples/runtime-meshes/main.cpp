@@ -4,7 +4,7 @@
 // A game's own Ground component says which seed of noise to raise hills from. Its system, each
 // time the seed changes, samples procedural::Noise over a grid, builds the hills with
 // scene3d::SurfaceTool (vertices colored by height, smooth normals) and makes them a mesh at
-// "made:ground", which the entity's MeshInstance3D draws, and paints the same heights into a
+// "made:ground", which the entity's Model3D draws, and paints the same heights into a
 // texture at "made:minimap", which a Sprite2D shows in the corner. An agent then looks at both
 // through the usual commands: asset.list, model.inspect, texture.generate and frame.capture.
 
@@ -106,7 +106,7 @@ scene3d::Model build_hills(const std::vector<float>& height) {
     }
     tool.generate_normals();
     tool.generate_tangents();
-    slash::world::StandardMaterial3D material;
+    slash::world::Surface3D material;
     material.vertex_color_use_as_albedo = true;
     material.roughness = 1.0F;
     tool.set_material(material);
@@ -179,11 +179,11 @@ int main() {
             "Camera3D": {"current": true, "fov": 60},
             "Transform3D": {"position": [0, 6, 7], "rotation": [-0.7, 0, 0]}}}},
         {"command": "entity.create", "params": {"id": "sun", "components": {
-            "DirectionalLight3D": {},
+            "SunLight3D": {},
             "Transform3D": {"rotation": [-0.9, 0.6, 0]}}}},
         {"command": "entity.create", "params": {"id": "hills", "components": {
             "Ground": {"seed": 1},
-            "MeshInstance3D": {"mesh": "made:ground"},
+            "Model3D": {"mesh": "made:ground"},
             "Transform3D": {}}}},
         {"command": "entity.create", "params": {"id": "minimap", "components": {
             "Sprite2D": {"centered": false, "texture": "made:minimap"},

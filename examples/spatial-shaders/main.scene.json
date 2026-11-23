@@ -8,14 +8,14 @@
     },
     "crystal": {
       "components": {
-        "BoxMesh": {},
-        "MeshInstance3D": {"material_override": "crystal.material.json"},
+        "BoxGeometry": {},
+        "Model3D": {"material_override": "crystal.material.json"},
         "Transform3D": {"position": [-1.2, 0.5, 0], "rotation": [0, 0.6, 0]}
       }
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.5, 0.55, 0.7, 1],
           "ambient_light_energy": 0.4,
           "ambient_light_source": "color",
@@ -26,29 +26,29 @@
     },
     "fence": {
       "components": {
-        "MeshInstance3D": {"material_override": "fence.material.json"},
-        "QuadMesh": {"size": [1.6, 0.8]},
+        "Model3D": {"material_override": "fence.material.json"},
+        "QuadGeometry": {"size": [1.6, 0.8]},
         "Transform3D": {"position": [1.2, 0.4, 0.3], "rotation": [0, -0.4, 0]}
       }
     },
     "glass": {
       "components": {
-        "MeshInstance3D": {"material_override": "glass.material.json"},
-        "SphereMesh": {"height": 0.8, "radius": 0.4},
+        "Model3D": {"material_override": "glass.material.json"},
+        "SphereGeometry": {"height": 0.8, "radius": 0.4},
         "Transform3D": {"position": [0, 0.4, 1]}
       }
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {"size": [40, 40]},
-        "StandardMaterial3D": {"albedo_color": [0.35, 0.5, 0.3, 1]},
+        "Model3D": {},
+        "PlaneGeometry": {"size": [40, 40]},
+        "Surface3D": {"albedo_color": [0.35, 0.5, 0.3, 1]},
         "Transform3D": {}
       }
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {"shadow_enabled": true},
+        "SunLight3D": {"shadow_enabled": true},
         "Transform3D": {"rotation": [-0.55, 2.7, 0]}
       }
     }

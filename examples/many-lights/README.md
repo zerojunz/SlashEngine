@@ -2,7 +2,7 @@
 
 64 shadowed lamps lit by ReSTIR, a [research feature](../../docs/reference/restir.md).
 [main.scene.json](main.scene.json) is a hall of six pillars under an 8 by 8 grid of colored
-`OmniLight3D`s, each with `shadow_enabled`, seen through a `Camera3D` in a 160x90 window.
+`PointLight3D`s, each with `shadow_enabled`, seen through a `Camera3D` in a 160x90 window.
 [project.json](project.json) turns on `rendering.ray_tracing.many_lights` with two reservoirs a
 pixel.
 

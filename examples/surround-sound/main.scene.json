@@ -2,7 +2,7 @@
   "entities": {
     "announcer": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "mix_target": "center",
           "stream": "voice.wav",
@@ -12,11 +12,11 @@
     },
     "bee": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "circle",
           "library": "fly.anim.json"
         },
-        "AudioStreamPlayer3D": {
+        "SoundPlayer3D": {
           "autoplay": true,
           "stream": "buzz.wav"
         },
@@ -27,7 +27,7 @@
     },
     "ears": {
       "components": {
-        "AudioListener3D": {
+        "Listener3D": {
           "current": true
         },
         "Transform3D": {}
@@ -35,7 +35,7 @@
     },
     "music": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "mix_target": "surround",
           "stream": "music.wav",

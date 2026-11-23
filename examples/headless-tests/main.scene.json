@@ -2,19 +2,19 @@
   "entities": {
     "coin": {
       "components": {
-        "Area2D": {},
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 8.0,
           "shape": "circle"
         },
         "Transform2D": {
           "position": [160.0, 110.0]
-        }
+        },
+        "Zone2D": {}
       }
     },
     "crate": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [16.0, 16.0]
         },
         "RigidBody2D": {},
@@ -25,7 +25,7 @@
     },
     "floor": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [320.0, 20.0]
         },
         "StaticBody2D": {},
@@ -40,7 +40,7 @@
           "text": "Sound",
           "toggle_mode": true
         },
-        "Control": {
+        "Widget": {
           "offset_bottom": 32.0,
           "offset_left": 8.0,
           "offset_right": 88.0,

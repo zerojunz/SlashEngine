@@ -2,12 +2,12 @@
   "entities": {
     "barrel": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "height": 1.2,
           "radius": 0.4,
           "shape": "cylinder"
         },
-        "CylinderMesh": {
+        "CylinderGeometry": {
           "bottom_radius": 0.4,
           "height": 1.2,
           "top_radius": 0.4
@@ -15,7 +15,7 @@
         "Destructible3D": {
           "profile": "profiles/barrel.damage.json"
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "StaticBody3D": {},
         "Transform3D": {
           "position": [4.0, 0.6, 0.0]
@@ -44,8 +44,8 @@
     },
     "ground": {
       "components": {
-        "MeshInstance3D": {},
-        "PlaneMesh": {
+        "Model3D": {},
+        "PlaneGeometry": {
           "size": [40.0, 40.0]
         },
         "Transform3D": {}
@@ -60,7 +60,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.8, 0.5, 0.0]
         }

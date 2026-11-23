@@ -41,7 +41,7 @@ namespace {
 // put (an open edge is locked, as Godot's importer locks it). ripple is how high the bumps between
 // corners go.
 scene3d::ModelSurface bumpy_ground(float ripple_height = 0.02F) {
-    slash::world::PlaneMesh plane;
+    slash::world::PlaneGeometry plane;
     plane.size = {40.0F, 40.0F};
     plane.subdivide_width = 127;
     plane.subdivide_depth = 127;
@@ -164,7 +164,7 @@ std::string ground_gltf() {
 
 // A ball 20 meters across, of 128 x 64 quads.
 scene3d::ModelSurface big_ball() {
-    slash::world::SphereMesh ball;
+    slash::world::SphereGeometry ball;
     ball.radius = 10.0F;
     ball.height = 20.0F;
     ball.radial_segments = 128;
@@ -295,7 +295,7 @@ TEST_CASE("a jagged surface's hierarchy keeps no folds of a triangle over itself
     }
 }
 
-TEST_CASE("a virtualized MeshInstance3D draws the clusters its distance needs") {
+TEST_CASE("a virtualized Model3D draws the clusters its distance needs") {
     // A world drawn at 320x320 through a camera at the origin looking down -z, the ground below.
     std::map<std::string, std::string, std::less<>> files{{"ground.gltf", ground_gltf()}};
     slash::asset::Assets assets{slash::asset::FileSource{
@@ -325,7 +325,7 @@ TEST_CASE("a virtualized MeshInstance3D draws the clusters its distance needs") 
     world.ecs().emplace<slash::world::Camera3D>(camera);
     const entt::entity ground = world.create("ground").value();
     world.ecs().emplace<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
-    world.ecs().emplace<slash::world::MeshInstance3D>(ground).mesh = "ground.gltf";
+    world.ecs().emplace<slash::world::Model3D>(ground).mesh = "ground.gltf";
 
     const auto drawn = [&] {
         const auto captured = slash::canvas::capture(world, assets);
@@ -335,7 +335,7 @@ TEST_CASE("a virtualized MeshInstance3D draws the clusters its distance needs") 
     };
     // Not virtualized, it draws as a model: no clusters.
     CHECK(drawn() == 0);
-    world.ecs().get<slash::world::MeshInstance3D>(ground).virtualized = true;
+    world.ecs().get<slash::world::Model3D>(ground).virtualized = true;
     const std::size_t near = drawn();
     CHECK(near > 1);
     // Far away, the same ground is cut into fewer, coarser clusters.
@@ -349,7 +349,7 @@ TEST_CASE("a virtualized MeshInstance3D draws the clusters its distance needs") 
 }
 
 TEST_CASE("a cluster's cone faces its triangles' way and culls only clusters seen from behind") {
-    slash::world::SphereMesh ball;
+    slash::world::SphereGeometry ball;
     ball.radius = 2.0F;
     ball.height = 4.0F;
     ball.radial_segments = 128;
@@ -445,7 +445,7 @@ TEST_CASE("a cluster's cone faces its triangles' way and culls only clusters see
     }));
 }
 
-TEST_CASE("a virtualized MeshInstance3D leaves out the clusters the camera can't see") {
+TEST_CASE("a virtualized Model3D leaves out the clusters the camera can't see") {
     std::map<std::string, std::string, std::less<>> files{{"ground.gltf", ground_gltf()},
                                                           {"ball.gltf", surface_gltf(big_ball())}};
     slash::asset::Assets assets{slash::asset::FileSource{
@@ -476,10 +476,10 @@ TEST_CASE("a virtualized MeshInstance3D leaves out the clusters the camera can't
     // A low sun casting shadows, so clusters out of view still shade what is in it.
     const entt::entity sun = world.create("sun").value();
     world.ecs().emplace<slash::world::Transform3D>(sun).rotation = {-0.3F, 1.2F, 0.0F};
-    world.ecs().emplace<slash::world::DirectionalLight3D>(sun).shadow_enabled = true;
+    world.ecs().emplace<slash::world::SunLight3D>(sun).shadow_enabled = true;
     const entt::entity ground = world.create("ground").value();
     world.ecs().emplace<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
-    auto& instance = world.ecs().emplace<slash::world::MeshInstance3D>(ground);
+    auto& instance = world.ecs().emplace<slash::world::Model3D>(ground);
     instance.mesh = "ground.gltf";
     instance.virtualized = true;
 
@@ -506,7 +506,7 @@ TEST_CASE("a virtualized MeshInstance3D leaves out the clusters the camera can't
     CHECK(seen.clusters > 0);
 
     // A ball seen from outside: the clusters on its far side face away.
-    world.ecs().get<slash::world::MeshInstance3D>(ground).mesh = "ball.gltf";
+    world.ecs().get<slash::world::Model3D>(ground).mesh = "ball.gltf";
     world.ecs().get<slash::world::Transform3D>(ground).position = {0.0F, 0.0F, -16.0F};
     const slash::canvas::Capture outside = same_pixels();
     CHECK(outside.culled > 0);
@@ -518,21 +518,21 @@ TEST_CASE("a virtualized MeshInstance3D leaves out the clusters the camera can't
     CHECK(backs.culled > 0);
     CHECK(backs.meshes == 1);
     // Casting no shadow, it isn't drawn at all.
-    world.ecs().get<slash::world::MeshInstance3D>(ground).cast_shadow = "off";
+    world.ecs().get<slash::world::Model3D>(ground).cast_shadow = "off";
     CHECK(capture(true).meshes == 0);
-    world.ecs().get<slash::world::MeshInstance3D>(ground).cast_shadow = "on";
-    world.ecs().get<slash::world::MeshInstance3D>(ground).mesh = "ground.gltf";
+    world.ecs().get<slash::world::Model3D>(ground).cast_shadow = "on";
+    world.ecs().get<slash::world::Model3D>(ground).mesh = "ground.gltf";
 
     // Behind an occluder, with occlusion culling on, the far clusters are culled too.
     world.ecs().get<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
     const entt::entity wall = world.create("wall").value();
     world.ecs().emplace<slash::world::Transform3D>(wall).position = {0.0F, 0.0F, -12.0F};
-    auto& occluder = world.ecs().emplace<slash::world::OccluderInstance3D>(wall);
+    auto& occluder = world.ecs().emplace<slash::world::Occluder3D>(wall);
     occluder.shape = "quad";
     occluder.size = {80.0F, 30.0F, 1.0F};
     // Occluders draw nothing: a wall where it is hides what it hides.
-    world.ecs().emplace<slash::world::MeshInstance3D>(wall);
-    world.ecs().emplace<slash::world::BoxMesh>(wall).size = {80.0F, 30.0F, 0.2F};
+    world.ecs().emplace<slash::world::Model3D>(wall);
+    world.ecs().emplace<slash::world::BoxGeometry>(wall).size = {80.0F, 30.0F, 0.2F};
     slash::canvas::Settings settings = slash::canvas::settings(world);
     settings.occlusion_culling = {.enabled = true, .rays_per_thread = 512, .jitter = false};
     slash::canvas::set_settings(world, settings);
@@ -683,7 +683,7 @@ TEST_CASE("a broken cluster page file is refused") {
     CHECK_FALSE(opens(linked));
 }
 
-TEST_CASE("a virtualized MeshInstance3D streams its cluster pages with a pool") {
+TEST_CASE("a virtualized Model3D streams its cluster pages with a pool") {
     std::map<std::string, std::string, std::less<>> files{{"ground.gltf", ground_gltf()}};
     slash::asset::Assets assets{slash::asset::FileSource{
         .read = [&](std::string_view path) -> slash::Result<std::string> {
@@ -712,7 +712,7 @@ TEST_CASE("a virtualized MeshInstance3D streams its cluster pages with a pool") 
     world.ecs().emplace<slash::world::Camera3D>(camera);
     const entt::entity ground = world.create("ground").value();
     world.ecs().emplace<slash::world::Transform3D>(ground).position = {0.0F, -3.0F, -25.0F};
-    auto& instance = world.ecs().emplace<slash::world::MeshInstance3D>(ground);
+    auto& instance = world.ecs().emplace<slash::world::Model3D>(ground);
     instance.mesh = "ground.gltf";
     instance.virtualized = true;
 

@@ -29,7 +29,7 @@ enum class ShaderId : std::uint32_t { None = 0 };
 // Forward+ frame (compositor: a compositor effect's, compositor.hpp).
 enum class ShaderType : std::uint8_t { Canvas, Spatial, Compositor };
 
-// How many texture params a spatial shader takes: they take the slots of a StandardMaterial3D's
+// How many texture params a spatial shader takes: they take the slots of a Surface3D's
 // albedo, metallic, roughness, emission and normal textures, 0 to 4.
 inline constexpr std::uint32_t kSpatialShaderTextures = 5;
 

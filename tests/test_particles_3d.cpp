@@ -89,12 +89,12 @@ struct Scene {
         return entity;
     }
 
-    // An emitter at a position with a CPUParticles3D whose fields the JSON sets.
+    // An emitter at a position with a Emitter3D whose fields the JSON sets.
     entt::entity add(std::string_view id, Vec3 position, std::string_view fields) {
         const entt::entity entity = world.create(id).value();
         world.ecs().emplace<world::Transform3D>(entity).position = position;
         std::string path;
-        REQUIRE(components.find("CPUParticles3D")->assign(world, entity, parse(fields), path).ok());
+        REQUIRE(components.find("Emitter3D")->assign(world, entity, parse(fields), path).ok());
         return entity;
     }
 
@@ -108,8 +108,8 @@ struct Scene {
         return scene3d::particles_3d(world, entity);
     }
 
-    world::CPUParticles3D& emitter(entt::entity entity) {
-        return world.ecs().get<world::CPUParticles3D>(entity);
+    world::Emitter3D& emitter(entt::entity entity) {
+        return world.ecs().get<world::Emitter3D>(entity);
     }
 
     [[nodiscard]] std::size_t count(std::string_view kind) const {
@@ -441,14 +441,14 @@ TEST_CASE("3D particles draw their mesh at each particle, colored and facing the
     // Unshaded quads turned edge on by their emitters, which billboards turn back to the camera.
     const auto sparks = [&](std::string_view id, std::string_view point, std::string_view color) {
         return scene.create(id, std::string(R"({"Transform3D": {"rotation": [0, 1.5707964, 0]},
-                      "CPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                      "Emitter3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
                                          "gravity": [0, 0, 0], "emission_shape": "points",
                                          "emission_points": [)") +
                                     std::string(point) + R"(], "emission_colors": [)" +
                                     std::string(color) +
                                     R"(]},
-                      "QuadMesh": {"size": [0.5, 0.5]},
-                      "StandardMaterial3D": {"shading_mode": "unshaded",
+                      "QuadGeometry": {"size": [0.5, 0.5]},
+                      "Surface3D": {"shading_mode": "unshaded",
                                              "vertex_color_use_as_albedo": true,
                                              "billboard_mode": "particles"}})");
     };
@@ -481,7 +481,7 @@ TEST_CASE("3D particles draw their mesh at each particle, colored and facing the
 
     // Without the billboard, the quads stay edge on to the camera and show nothing.
     for (const entt::entity entity : {red, blue}) {
-        scene.world.ecs().get<world::StandardMaterial3D>(entity).billboard_mode = "disabled";
+        scene.world.ecs().get<world::Surface3D>(entity).billboard_mode = "disabled";
     }
     auto edge_target = device->create_texture({.width = 32, .height = 32, .render_target = true});
     REQUIRE(edge_target.ok());
@@ -493,13 +493,13 @@ TEST_CASE("3D particles draw their mesh at each particle, colored and facing the
     device->destroy_texture(edge_target.value());
 }
 
-TEST_CASE("CPUParticles3D without a mesh is reported") {
+TEST_CASE("Emitter3D without a mesh is reported") {
     Scene scene;
-    scene.create("empty", R"({"Transform3D": {}, "CPUParticles3D": {}})");
-    scene.create("model", R"({"Transform3D": {}, "CPUParticles3D": {"mesh": "rock.png"}})");
+    scene.create("empty", R"({"Transform3D": {}, "Emitter3D": {}})");
+    scene.create("model", R"({"Transform3D": {}, "Emitter3D": {"mesh": "rock.png"}})");
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 2);
-    CHECK(problems[0].path == "/components/CPUParticles3D/mesh");
+    CHECK(problems[0].path == "/components/Emitter3D/mesh");
     CHECK(problems[0].message.starts_with("has no mesh to draw at its particles"));
     CHECK(problems[1].message ==
           "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file, or a mesh gameplay "

@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-// Check boxes, check buttons and sliders, as Godot's CheckBox, CheckButton and Slider
+// Check boxes, check buttons and sliders, as Godot's CheckBox, ToggleSwitch and Slider
 // (scene/gui/check_box.cpp, check_button.cpp, slider.cpp and range.cpp), and the theme icons
 // they draw. The sizes and events expected here follow those files and Godot's default theme.
 
@@ -144,7 +144,7 @@ struct Gui {
     // A control at [x, y] with no size of its own, so it takes its minimum size.
     entt::entity at(std::string_view id, int x, int y, std::string_view type,
                     std::string_view fields = "", std::string_view control = "") {
-        std::string components_json = R"({"Control": {"offset_left": )" + std::to_string(x) +
+        std::string components_json = R"({"Widget": {"offset_left": )" + std::to_string(x) +
                                       R"(, "offset_top": )" + std::to_string(y) +
                                       R"(, "offset_right": )" + std::to_string(x) +
                                       R"(, "offset_bottom": )" + std::to_string(y);
@@ -275,13 +275,13 @@ struct Session {
 
 } // namespace
 
-TEST_CASE("CheckBox and CheckButton are toggle buttons with Button's fields") {
+TEST_CASE("CheckBox and ToggleSwitch are toggle buttons with Button's fields") {
     world::ComponentRegistry components;
     world::register_builtin_components(components);
-    for (const std::string_view name : {"CheckBox", "CheckButton"}) {
+    for (const std::string_view name : {"CheckBox", "ToggleSwitch"}) {
         const world::ComponentType* type = components.find(name);
         REQUIRE(type != nullptr);
-        // Godot's CheckBox and CheckButton set toggle_mode and align their text left.
+        // Godot's CheckBox and ToggleSwitch set toggle_mode and align their text left.
         CHECK(compact(*type->defaults().find("toggle_mode")) == "true");
         CHECK(compact(*type->defaults().find("alignment")) == "\"left\"");
         CHECK(type->defaults().size() == components.find("Button")->defaults().size());
@@ -320,7 +320,7 @@ TEST_CASE("a check box draws its box before its text, and a click toggles it") {
     CHECK(ui::draw_mode_name(ui::draw_mode(gui.world, gui.world.find("sound"))) == "hover_pressed");
 
     // Disabled, it draws the disabled box; right to left, the box ends the button.
-    gui.set("sound", R"({"CheckBox": {"disabled": true}, "Control": {"layout_direction": "rtl"}})");
+    gui.set("sound", R"({"CheckBox": {"disabled": true}, "Widget": {"layout_direction": "rtl"}})");
     CHECK(gui.boxes("sound") == "builtin:checked_disabled " + numbers({width - 4 - 16, y, 16, 16}));
 }
 
@@ -344,7 +344,7 @@ TEST_CASE("check boxes in a button group draw as radio buttons, and one stays on
 TEST_CASE("a check button draws its switch after its text, mirrored right to left") {
     Gui gui;
     gui.at("label", 0, 100, "Label", R"("text": "V-Sync")");
-    gui.at("vsync", 0, 0, "CheckButton", R"("text": "V-Sync", "button_pressed": true)");
+    gui.at("vsync", 0, 0, "ToggleSwitch", R"("text": "V-Sync", "button_pressed": true)");
     const json::Value label = parse(gui.rect("label"));
     const float text_width = static_cast<float>(label.as_array()[2].as_double());
     const float text_height = static_cast<float>(label.as_array()[3].as_double());
@@ -352,12 +352,12 @@ TEST_CASE("a check button draws its switch after its text, mirrored right to lef
     const float width = 6 + text_width + 4 + 32 + 6;
     const float height = std::max(text_height, 16.0F) + 8;
     CHECK(gui.rect("vsync") == numbers({0, 0, width, height}));
-    // CheckButton doesn't round the switch's y down, as CheckBox does.
+    // ToggleSwitch doesn't round the switch's y down, as CheckBox does.
     const float y = (height - 16) / 2;
     CHECK(gui.boxes("vsync") == "builtin:toggle_on " + numbers({width - 6 - 32, y, 32, 16}));
-    gui.set("vsync", R"({"CheckButton": {"button_pressed": false}})");
+    gui.set("vsync", R"({"ToggleSwitch": {"button_pressed": false}})");
     CHECK(gui.boxes("vsync").starts_with("builtin:toggle_off "));
-    gui.set("vsync", R"({"Control": {"layout_direction": "rtl"}})");
+    gui.set("vsync", R"({"Widget": {"layout_direction": "rtl"}})");
     CHECK(gui.boxes("vsync") == "builtin:toggle_off_mirrored " + numbers({6, y, 32, 16}));
 }
 
@@ -397,11 +397,11 @@ TEST_CASE("theme icons come from overrides, then themes, then the built-in ones"
                "unchecked": "ui/missing.png"})");
     const std::vector<std::string> lines = problem_lines(ui::check(gui.world, gui.fonts()));
     CHECK(lines == std::vector<std::string>{
-                       "d/components/Control/theme_override_icons/chekced: CheckBox has no icons "
+                       "d/components/Widget/theme_override_icons/chekced: CheckBox has no icons "
                        "item \"chekced\"; did you mean \"checked\"?",
-                       "d/components/Control/theme_override_icons/checked: \"chekced\" isn't a "
+                       "d/components/Widget/theme_override_icons/checked: \"chekced\" isn't a "
                        "built-in icon; did you mean \"checked\"?",
-                       "d/components/Control/theme_override_icons/unchecked: asset "
+                       "d/components/Widget/theme_override_icons/unchecked: asset "
                        "\"ui/missing.png\" could not be read: no such file",
                    });
 }
@@ -437,7 +437,7 @@ TEST_CASE("the built-in icons are drawn in code, the same on every machine") {
     // The knob is at the end that is on.
     CHECK(pixel(toggle, 24, 8) == "[26,26,26,255]");
     CHECK(pixel(*ui::builtin_icon("builtin:toggle_on_mirrored"), 8, 8) == "[26,26,26,255]");
-    // CodeEdit's: a red dot at half opacity, a bookmark notched at the bottom and an arrow.
+    // CodeEditor's: a red dot at half opacity, a bookmark notched at the bottom and an arrow.
     const render::Image& breakpoint = *ui::builtin_icon("builtin:breakpoint");
     CHECK(pixel(breakpoint, 8, 8) == "[255,93,93,128]");
     CHECK(pixel(breakpoint, 0, 0) == "[0,0,0,0]");
@@ -451,7 +451,7 @@ TEST_CASE("the built-in icons are drawn in code, the same on every machine") {
 
 TEST_CASE("a slider places its grabber by its value, with ticks under it") {
     Gui gui;
-    gui.create("volume", R"({"Control": {"offset_right": 216, "offset_bottom": 16},
+    gui.create("volume", R"({"Widget": {"offset_right": 216, "offset_bottom": 16},
         "Slider": {"value": 25, "tick_count": 3, "ticks_on_borders": true}})");
     // The grabber moves over the width less its own: 200 pixels, a quarter of the way.
     CHECK(gui.boxes("volume") == "flat [0,4,216,8], flat [0,4,58,8], builtin:hslider_tick "
@@ -459,11 +459,11 @@ TEST_CASE("a slider places its grabber by its value, with ticks under it") {
                                  "builtin:hslider_tick [206,12,4,8], builtin:slider_grabber "
                                  "[50,0,16,16]");
     // Right to left, it fills from the right.
-    gui.set("volume", R"({"Control": {"layout_direction": "rtl"}})");
+    gui.set("volume", R"({"Widget": {"layout_direction": "rtl"}})");
     CHECK(gui.boxes("volume").ends_with("builtin:slider_grabber [150,0,16,16]"));
 
     // Vertical, the minimum is at the bottom; ticks on both sides flip on the left.
-    gui.create("level", R"({"Control": {"offset_left": 300, "offset_right": 316,
+    gui.create("level", R"({"Widget": {"offset_left": 300, "offset_right": 316,
         "offset_bottom": 116}, "Slider": {"vertical": true, "max_value": 1, "step": 0.1,
         "value": 0.3, "tick_count": 2, "ticks_on_borders": true, "ticks_position": "both"}})");
     CHECK(gui.boxes("level") == "flat [4,0,8,116], flat [4,78,8,38], builtin:vslider_tick "
@@ -504,7 +504,7 @@ TEST_CASE("a slider's value snaps to its step and stays in range, as Godot's Ran
 
 TEST_CASE("a click moves a slider's grabber there, and dragging moves it with the pointer") {
     Gui gui;
-    gui.create("volume", R"({"Control": {"offset_left": 100, "offset_top": 100,
+    gui.create("volume", R"({"Widget": {"offset_left": 100, "offset_top": 100,
         "offset_right": 316, "offset_bottom": 116}, "Slider": {"value": 50}})");
     // A click 58 pixels in puts the grabber's middle there: (58 - 8) / 200 is a quarter.
     CHECK(gui.send({motion(158, 108), click(158, 108, true)}) ==
@@ -533,9 +533,9 @@ TEST_CASE("a click moves a slider's grabber there, and dragging moves it with th
 
 TEST_CASE("arrow keys step a slider with focus, and Home and End go to the ends") {
     Gui gui;
-    gui.create("volume", R"({"Control": {"offset_right": 216, "offset_bottom": 16},
+    gui.create("volume", R"({"Widget": {"offset_right": 216, "offset_bottom": 16},
         "Slider": {"value": 50, "step": 10}})");
-    gui.create("level", R"({"Control": {"offset_left": 300, "offset_right": 316,
+    gui.create("level", R"({"Widget": {"offset_left": 300, "offset_right": 316,
         "offset_bottom": 116}, "Slider": {"vertical": true, "value": 50, "step": 10}})");
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("volume")));
     gui.step();
@@ -551,7 +551,7 @@ TEST_CASE("arrow keys step a slider with focus, and Home and End go to the ends"
     CHECK(gui.tap("up") == "value_changed level 60");
     CHECK(gui.tap("down") == "value_changed level 50");
     // Right to left, left steps up.
-    gui.set("volume", R"({"Control": {"layout_direction": "rtl"}})");
+    gui.set("volume", R"({"Widget": {"layout_direction": "rtl"}})");
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("volume")));
     gui.step();
     CHECK(gui.tap("left") == "value_changed volume 10");
@@ -559,7 +559,7 @@ TEST_CASE("arrow keys step a slider with focus, and Home and End go to the ends"
 
 TEST_CASE("a gamepad held on a slider steps it again after half a second, 20 times a second") {
     Gui gui;
-    gui.create("volume", R"({"Control": {"offset_right": 216, "offset_bottom": 16},
+    gui.create("volume", R"({"Widget": {"offset_right": 216, "offset_bottom": 16},
         "Slider": {"value": 50}})");
     REQUIRE(ui::grab_focus(gui.world, gui.world.find("volume")));
     gui.step();
@@ -592,10 +592,10 @@ TEST_CASE("ui.press presses check boxes, and ui.layout and frame.summary report 
     const Session session;
     session.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "sound", "components": {
-            "Control": {"offset_right": 100, "offset_bottom": 30},
+            "Widget": {"offset_right": 100, "offset_bottom": 30},
             "CheckBox": {"text": "Sound"}}}},
         {"command": "entity.create", "params": {"id": "volume", "components": {
-            "Control": {"offset_top": 40, "offset_right": 216, "offset_bottom": 56},
+            "Widget": {"offset_top": 40, "offset_right": 216, "offset_bottom": 56},
             "Slider": {"value": 30}}}}]})");
     CHECK(compact(session.ok("ui.press", R"({"id": "sound"})")) == R"({"tick":0})");
     session.ok("step", R"({"ticks": 1})");

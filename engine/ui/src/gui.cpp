@@ -29,11 +29,11 @@
 
 // The gui system sends input events to controls as Godot's Viewport does
 // (scene/main/viewport.cpp: _gui_input_event, _gui_call_input, _gui_find_control_at_pos and
-// _update_mouse_over), moves focus as Control does (scene/gui/control.cpp:
+// _update_mouse_over), moves focus as Widget does (scene/gui/control.cpp:
 // find_next_valid_focus, find_prev_valid_focus and _get_focus_neighbor with the legacy
 // strategy, Godot's default) and presses buttons as BaseButton does
-// (scene/gui/base_button.cpp), edits text as LineEdit and TextEdit do (scene/gui/line_edit.cpp,
-// and text_editor.cpp for TextEdit), and scrolls as ScrollBar and ScrollContainer do
+// (scene/gui/base_button.cpp), edits text as TextField and TextArea do (scene/gui/line_edit.cpp,
+// and text_editor.cpp for TextArea), and scrolls as ScrollBar and ScrollBox do
 // (scene/gui/scroll_bar.cpp and scroll_container.cpp). Its state is kept by entity ID, since
 // sessions make entities anew when they roll a command back. Drag and drop, tooltips, context
 // menus and cursor shapes aren't here.
@@ -72,7 +72,7 @@ struct SliderStatus {
     double repeat = kSliderRepeatDelay; // seconds until it steps again
 };
 
-// What ScrollBar keeps between events, for a ScrollBar or one of a ScrollContainer's bars: the
+// What ScrollBar keeps between events, for a ScrollBar or one of a ScrollBox's bars: the
 // part the pointer is over, the arrow held down and its grabber's drag.
 struct BarStatus {
     int highlight = 0; // as BarLook's
@@ -91,8 +91,8 @@ struct ScrollBarStatus {
     bool known_set = false;
 };
 
-// A ScrollContainer's: its bars', its scroll as its bars' values, in fractions of a pixel, and a
-// touch drag, as ScrollContainer's drag_* members.
+// A ScrollBox's: its bars', its scroll as its bars' values, in fractions of a pixel, and a
+// touch drag, as ScrollBox's drag_* members.
 struct ScrollStatus {
     BarStatus h;
     BarStatus v;
@@ -107,7 +107,7 @@ struct ScrollStatus {
     double time_since_motion = 0.0;
 };
 
-// A TextEdit's scroll bars', which are its children in Godot.
+// A TextArea's scroll bars', which are its children in Godot.
 struct TextEditBars {
     BarStatus h;
     BarStatus v;
@@ -123,16 +123,16 @@ struct TextEditBars {
            !status.pressed_down_with_focus && status.touch_index == -1 && status.feedback <= 0.0;
 }
 
-// PopupMenu ignores a release this soon after it opened under a held button, so the press that
+// PopupList ignores a release this soon after it opened under a held button, so the press that
 // opened it doesn't pick an item.
 constexpr double kGrabbedClickSeconds = 0.4;
 // InputEvent::DEVICE_ID_INTERNAL: the releases a control gets when it loses the mouse.
 constexpr int kInternalDevice = -2;
 
-// What PopupMenu keeps between events, for one open popup menu: a PopupMenu's, or an
-// OptionButton's or MenuButton's list.
+// What PopupList keeps between events, for one open popup menu: a PopupList's, or an
+// Dropdown's or MenuButton's list.
 struct PopupStatus {
-    std::string owner; // the entity ID of the PopupMenu, OptionButton or MenuButton
+    std::string owner; // the entity ID of the PopupList, Dropdown or MenuButton
     int focused = -1;  // mouse_over: the item the pointer or keys are on
     double scroll = 0.0;
     int scroll_to = -1;             // an item to scroll into view, as scroll_to_item asks
@@ -188,12 +188,12 @@ struct GuiState {
     // Sticks holding a focus action, so a held stick moves focus once: (device, axis, action).
     std::set<std::tuple<int, int, std::string>> joy_held;
     std::vector<std::string> presses;                             // press() calls for the next tick
-    std::map<std::string, EditState, std::less<>> edits;          // each LineEdit's
-    std::map<std::string, TextEditState, std::less<>> text_edits; // each TextEdit's
+    std::map<std::string, EditState, std::less<>> edits;          // each TextField's
+    std::map<std::string, TextEditState, std::less<>> text_edits; // each TextArea's
     std::map<std::string, SliderStatus, std::less<>> sliders;     // each Slider's
     std::map<std::string, ScrollBarStatus, std::less<>> scroll_bars; // each ScrollBar's
-    std::map<std::string, ScrollStatus, std::less<>> scrolls;        // each ScrollContainer's
-    std::map<std::string, TextEditBars, std::less<>> text_edit_bars; // each TextEdit's in use
+    std::map<std::string, ScrollStatus, std::less<>> scrolls;        // each ScrollBox's
+    std::map<std::string, TextEditBars, std::less<>> text_edit_bars; // each TextArea's in use
     std::string followed;  // the focus follow_focus last scrolled to
     std::string clipboard; // the world's clipboard, which a backend shares with the system's
     std::vector<PopupStatus> popups;                  // the popup menus open, the last on top
@@ -205,7 +205,7 @@ struct GuiState {
     std::uint16_t mouse_focus_mask = 0;
     std::uint16_t mouse_mask = 0; // the mouse buttons held, as Input::get_mouse_button_mask
     bool hide_focus = false;      // focus came from a click, so it isn't drawn
-    bool focus_by_arrow = false;  // an arrow key is moving focus, so a LineEdit won't edit
+    bool focus_by_arrow = false;  // an arrow key is moving focus, so a TextField won't edit
     // A popup opened, so the controls lose the mouse as their window loses focus.
     bool drop_mouse_focus = false;
     // A popup or tooltip opened or closed, or a drag preview moved, so the layout is out of
@@ -244,8 +244,8 @@ const GuiState* state_of(const world::World& world) {
     return found != nullptr ? found->get() : nullptr;
 }
 
-// A ScrollContainer's or TextEdit's bars have no entities, so the gui system names one by its
-// control's ID and the bar's name, as Godot names a ScrollContainer's _h_scroll and _v_scroll.
+// A ScrollBox's or TextArea's bars have no entities, so the gui system names one by its
+// control's ID and the bar's name, as Godot names a ScrollBox's _h_scroll and _v_scroll.
 // IDs have no '/'.
 constexpr std::string_view kHBar = "/h_scroll";
 constexpr std::string_view kVBar = "/v_scroll";
@@ -297,14 +297,13 @@ enum class Focus : std::uint8_t { None, Click, All };
 
 bool is_button(const world::World& world, entt::entity entity) {
     return button_of(world, entity) != nullptr ||
-           (world.valid(entity) && world.ecs().all_of<world::TextureButton>(entity));
+           (world.valid(entity) && world.ecs().all_of<world::ImageButton>(entity));
 }
 
 bool is_container(const world::World& world, entt::entity entity) {
     return world.ecs()
-        .any_of<world::BoxContainer, world::GridContainer, world::MarginContainer,
-                world::CenterContainer, world::FlowContainer, world::PanelContainer,
-                world::ScrollContainer>(entity);
+        .any_of<world::StackBox, world::GridBox, world::MarginBox, world::CenterBox, world::FlowBox,
+                world::PanelBox, world::ScrollBox>(entity);
 }
 
 // The mouse filter a control has: its own, or its type's as Godot's constructors set them.
@@ -328,7 +327,7 @@ Focus focus_mode(const world::World& world, entt::entity entity) {
     return mode == "accessibility" && accessibility_enabled(world) ? Focus::All : Focus::None;
 }
 
-// The BaseButton fields Button and TextureButton share.
+// The BaseButton fields Button and ImageButton share.
 struct Base {
     const std::vector<std::string>* button_mask = nullptr;
     const std::vector<json::Value>* shortcut = nullptr;
@@ -361,7 +360,7 @@ std::optional<Base> base_of(const world::World& world, entt::entity entity) {
     if (const world::Button* button = button_of(world, entity); button != nullptr) {
         return base_from(*button);
     }
-    if (const auto* button = world.ecs().try_get<world::TextureButton>(entity); button != nullptr) {
+    if (const auto* button = world.ecs().try_get<world::ImageButton>(entity); button != nullptr) {
         return base_from(*button);
     }
     return std::nullopt;
@@ -370,7 +369,7 @@ std::optional<Base> base_of(const world::World& world, entt::entity entity) {
 void set_button_pressed(world::World& world, entt::entity entity, bool pressed) {
     if (world::Button* button = button_of(world, entity); button != nullptr) {
         button->button_pressed = pressed;
-    } else if (auto* texture = world.ecs().try_get<world::TextureButton>(entity);
+    } else if (auto* texture = world.ecs().try_get<world::ImageButton>(entity);
                texture != nullptr) {
         texture->button_pressed = pressed;
     }
@@ -382,14 +381,14 @@ class Parents {
 public:
     explicit Parents(const world::World& world) : world_(&world) {
         std::vector<entt::entity> controls;
-        for (const auto [entity, control] : world.ecs().view<world::Control>().each()) {
+        for (const auto [entity, control] : world.ecs().view<world::Widget>().each()) {
             controls.push_back(entity);
         }
         std::ranges::sort(controls, [](entt::entity a, entt::entity b) {
             return entt::to_entity(a) < entt::to_entity(b);
         });
         for (const entt::entity entity : controls) {
-            for (const entt::entity child : world.ecs().get<world::Control>(entity).children) {
+            for (const entt::entity child : world.ecs().get<world::Widget>(entity).children) {
                 if (child != entity && world.valid(child) && is_control(world, child)) {
                     parents_.try_emplace(child, entity);
                 }
@@ -400,7 +399,7 @@ public:
     [[nodiscard]] bool visible_in_tree(entt::entity entity) const {
         std::unordered_set<entt::entity> seen;
         for (entt::entity at = entity; at != entt::null && seen.insert(at).second;) {
-            const auto* control = world_->ecs().try_get<world::Control>(at);
+            const auto* control = world_->ecs().try_get<world::Widget>(at);
             if (control != nullptr && !control->visible) {
                 return false;
             }
@@ -529,7 +528,7 @@ ButtonStatus& status_of(const world::World& world, GuiState& state, entt::entity
 constexpr double kTripleClickSeconds = 0.6;
 constexpr float kTripleClickTolerance = 5.0F;
 
-// Records a LineEdit event that carries text, as emit does.
+// Records a TextField event that carries text, as emit does.
 void emit_text(world::World& world, GuiState& state, std::string_view kind, const std::string& id,
                std::string_view key, const std::string& text) {
     if (id.empty()) {
@@ -541,10 +540,10 @@ void emit_text(world::World& world, GuiState& state, std::string_view kind, cons
     world.emit(std::string(kind), id, json::Object{{std::string(key), text}});
 }
 
-// Brings a LineEdit's state up to its component: text changed from outside (a command or
+// Brings a TextField's state up to its component: text changed from outside (a command or
 // gameplay code) starts the history again as set_text does, from the text it had to the text it
 // has, and drops the selection.
-void sync_edit(const world::LineEdit& edit, EditState& s) {
+void sync_edit(const world::TextField& edit, EditState& s) {
     if (s.known && s.known_text == edit.text) {
         return;
     }
@@ -563,20 +562,20 @@ void sync_edit(const world::LineEdit& edit, EditState& s) {
     s.known = true;
 }
 
-// Godot's String::strip_escapes: without control characters, which a LineEdit can't show.
+// Godot's String::strip_escapes: without control characters, which a TextField can't show.
 std::u32string strip_escapes(std::u32string text) {
     std::erase_if(text, [](char32_t c) { return c < 0x20U; });
     return text;
 }
 
-// One LineEdit being worked on, as Godot's LineEdit methods work on its members: its text as
+// One TextField being worked on, as Godot's LineEdit methods work on its members: its text as
 // characters, its caret column in the component and the rest in its EditState. With a layout it
 // shapes its text as the layout does, to scroll, hit test and find words and characters.
 class Editor {
 public:
     Editor(world::World& world, GuiState& state, entt::entity entity, const Layout* layout)
         : world_(world), state_(state), id_(world.id_of(entity)),
-          edit_(world.ecs().get<world::LineEdit>(entity)), s_(state.edits[id_]) {
+          edit_(world.ecs().get<world::TextField>(entity)), s_(state.edits[id_]) {
         sync_edit(edit_, s_);
         text_ = to_utf32(edit_.text);
         edit_.caret_column = std::clamp(edit_.caret_column, 0, length());
@@ -593,7 +592,7 @@ public:
         }
     }
 
-    [[nodiscard]] const world::LineEdit& edit() const { return edit_; }
+    [[nodiscard]] const world::TextField& edit() const { return edit_; }
     [[nodiscard]] EditState& state() { return s_; }
     [[nodiscard]] const std::u32string& text() const { return text_; }
     [[nodiscard]] int length() const { return static_cast<int>(text_.size()); }
@@ -1133,18 +1132,18 @@ private:
     world::World& world_;
     GuiState& state_;
     std::string id_;
-    world::LineEdit& edit_;
+    world::TextField& edit_;
     EditState& s_;
     std::u32string text_;
     std::optional<Field> field_;
 };
 
-// LineEdit's NOTIFICATION_FOCUS_ENTER: it starts editing, unless arrow keys moved focus to it.
+// TextField's NOTIFICATION_FOCUS_ENTER: it starts editing, unless arrow keys moved focus to it.
 // Godot emits editing_toggled even when it was already editing or can't edit; this emits it
 // only when editing starts.
 void line_edit_focus_enter(world::World& world, GuiState& state, const std::string& id) {
     const entt::entity entity = world.find(id);
-    if (entity == entt::null || !world.ecs().all_of<world::LineEdit>(entity) ||
+    if (entity == entt::null || !world.ecs().all_of<world::TextField>(entity) ||
         state.focus_by_arrow) {
         return;
     }
@@ -1157,7 +1156,7 @@ void line_edit_focus_enter(world::World& world, GuiState& state, const std::stri
 // NOTIFICATION_FOCUS_EXIT.
 void line_edit_focus_exit(world::World& world, GuiState& state, const std::string& id) {
     const entt::entity entity = world.find(id);
-    if (entity == entt::null || !world.ecs().all_of<world::LineEdit>(entity)) {
+    if (entity == entt::null || !world.ecs().all_of<world::TextField>(entity)) {
         return;
     }
     Editor editor(world, state, entity, nullptr);
@@ -1171,7 +1170,7 @@ void line_edit_focus_exit(world::World& world, GuiState& state, const std::strin
 
 // ---- Multi-line text fields ----
 
-// Records the signals a TextEdit emitted at once: text_set, and lines_edited_from with its lines.
+// Records the signals a TextArea emitted at once: text_set, and lines_edited_from with its lines.
 void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
                     const std::vector<TextEditSignal>& signals) {
     for (const TextEditSignal& signal : signals) {
@@ -1200,13 +1199,13 @@ void emit_text_edit(world::World& world, GuiState& state, const std::string& id,
     }
 }
 
-// A TextEdit's lines shaped at the size and with the theme a layout gave it, or nullopt.
-std::optional<TextArea> text_area(world::World& world, const Layout& layout, entt::entity entity,
+// A TextArea's lines shaped at the size and with the theme a layout gave it, or nullopt.
+std::optional<EditArea> text_area(world::World& world, const Layout& layout, entt::entity entity,
                                   const TextEditState& s) {
     const auto view = layout.text_edits.find(entity);
     const Placed* placed = layout.find(entity);
     text::Fonts* found = fonts(world);
-    const auto* edit = world.ecs().try_get<world::TextEdit>(entity);
+    const auto* edit = world.ecs().try_get<world::TextArea>(entity);
     if (view == layout.text_edits.end() || placed == nullptr || found == nullptr ||
         edit == nullptr) {
         return std::nullopt;
@@ -1214,11 +1213,11 @@ std::optional<TextArea> text_area(world::World& world, const Layout& layout, ent
     return text_area_for(*found, view->second, placed->size, *edit, s);
 }
 
-// TextEdit's NOTIFICATION_FOCUS_ENTER.
+// TextArea's NOTIFICATION_FOCUS_ENTER.
 void text_edit_focus_entered(world::World& world, GuiState& state, const std::string& id) {
     const entt::entity entity = world.find(id);
     const auto* edit =
-        entity != entt::null ? world.ecs().try_get<world::TextEdit>(entity) : nullptr;
+        entity != entt::null ? world.ecs().try_get<world::TextArea>(entity) : nullptr;
     if (edit != nullptr) {
         text_edit_focus_enter(*edit, state.text_edits[id]);
     }
@@ -1227,7 +1226,7 @@ void text_edit_focus_entered(world::World& world, GuiState& state, const std::st
 // NOTIFICATION_FOCUS_EXIT. Committing a composition needs the text laid out.
 void text_edit_focus_exited(world::World& world, GuiState& state, const std::string& id) {
     const entt::entity entity = world.find(id);
-    auto* edit = entity != entt::null ? world.ecs().try_get<world::TextEdit>(entity) : nullptr;
+    auto* edit = entity != entt::null ? world.ecs().try_get<world::TextArea>(entity) : nullptr;
     const auto found = state.text_edits.find(id);
     if (edit == nullptr || found == state.text_edits.end()) {
         return;
@@ -1239,13 +1238,13 @@ void text_edit_focus_exited(world::World& world, GuiState& state, const std::str
                                   .now = 0.0,
                                   .focused = false,
                                   .signals = &signals,
-                                  .code = world.ecs().try_get<world::CodeEdit>(entity)};
+                                  .code = world.ecs().try_get<world::CodeEditor>(entity)};
     std::optional<Layout> placed;
     if (text::Fonts* fonts_found = fonts(world); fonts_found != nullptr && !s.ime_text.empty()) {
         placed.emplace(layout(world, *fonts_found, settings(world).viewport));
     }
-    std::optional<TextArea> area =
-        placed ? text_area(world, *placed, entity, s) : std::optional<TextArea>();
+    std::optional<EditArea> area =
+        placed ? text_area(world, *placed, entity, s) : std::optional<EditArea>();
     text_edit_focus_exit(context, *edit, s, area ? &*area : nullptr);
     emit_text_edit(world, state, id, signals);
 }
@@ -1317,10 +1316,10 @@ void unpress_group(world::World& world, GuiState& state, entt::entity entity) {
     };
     collect(world.ecs().view<world::Button>());
     collect(world.ecs().view<world::CheckBox>());
-    collect(world.ecs().view<world::CheckButton>());
-    collect(world.ecs().view<world::OptionButton>());
+    collect(world.ecs().view<world::ToggleSwitch>());
+    collect(world.ecs().view<world::Dropdown>());
     collect(world.ecs().view<world::MenuButton>());
-    collect(world.ecs().view<world::TextureButton>());
+    collect(world.ecs().view<world::ImageButton>());
     std::ranges::sort(group, [](entt::entity a, entt::entity b) {
         return entt::to_entity(a) < entt::to_entity(b);
     });
@@ -1360,10 +1359,10 @@ PopupKind popup_kind(const world::World& world, entt::entity entity) {
         return PopupKind::None;
     }
     const auto& ecs = world.ecs();
-    if (ecs.all_of<world::PopupMenu>(entity)) {
+    if (ecs.all_of<world::PopupList>(entity)) {
         return PopupKind::Menu;
     }
-    if (ecs.all_of<world::OptionButton>(entity)) {
+    if (ecs.all_of<world::Dropdown>(entity)) {
         return PopupKind::Option;
     }
     return ecs.all_of<world::MenuButton>(entity) ? PopupKind::MenuButton : PopupKind::None;
@@ -1410,8 +1409,8 @@ void cancel_tooltip(GuiState& state) {
     }
 }
 
-// Window::hide on an open popup menu, and what its popup_hide does: a PopupMenu emits it; a
-// MenuButton emits it and is released (_popup_visibility_changed); an OptionButton is released.
+// Window::hide on an open popup menu, and what its popup_hide does: a PopupList emits it; a
+// MenuButton emits it and is released (_popup_visibility_changed); an Dropdown is released.
 // Its items' tooltip goes with it.
 void hide_popup(world::World& world, GuiState& state, const std::string& owner) {
     if (state.tooltip.popup && state.tooltip.control == owner) {
@@ -1426,7 +1425,7 @@ void hide_popup(world::World& world, GuiState& state, const std::string& owner) 
     const entt::entity entity = world.find(owner);
     switch (popup_kind(world, entity)) {
     case PopupKind::Menu:
-        world.ecs().get<world::PopupMenu>(entity).visible = false;
+        world.ecs().get<world::PopupList>(entity).visible = false;
         emit(world, state, "popup_hide", owner);
         break;
     case PopupKind::MenuButton:
@@ -1441,7 +1440,7 @@ void hide_popup(world::World& world, GuiState& state, const std::string& owner) 
     }
 }
 
-// The first item that isn't disabled, as OptionButton's and MenuButton's show_popup look for
+// The first item that isn't disabled, as Dropdown's and MenuButton's show_popup look for
 // one; -1 for none.
 int first_enabled(const std::vector<world::PopupMenuItem>& items) {
     for (std::size_t i = 0; i < items.size(); ++i) {
@@ -1452,10 +1451,10 @@ int first_enabled(const std::vector<world::PopupMenuItem>& items) {
     return -1;
 }
 
-// Popup::popup and what leads to it. An OptionButton's list starts on the option shown, or the
+// Popup::popup and what leads to it. An Dropdown's list starts on the option shown, or the
 // first that isn't disabled: focused when keys opened it, else only scrolled to. A MenuButton
 // emits about_to_popup and, opened by keys, focuses its first item that isn't disabled, and is
-// pressed as its popup's about_to_popup does. A PopupMenu becomes visible and emits
+// pressed as its popup's about_to_popup does. A PopupList becomes visible and emits
 // about_to_popup. Any other popup closes, and the controls lose the mouse, as the viewport's
 // window loses focus to the popup's.
 void show_popup(world::World& world, GuiState& state, entt::entity entity, bool by_mouse) {
@@ -1469,7 +1468,7 @@ void show_popup(world::World& world, GuiState& state, entt::entity entity, bool 
     status.owner = owner;
     int start = -1;
     if (kind == PopupKind::Option) {
-        start = world.ecs().get<world::OptionButton>(entity).selected;
+        start = world.ecs().get<world::Dropdown>(entity).selected;
         if (start < 0 || !std::cmp_less(start, items.size()) ||
             items[static_cast<std::size_t>(start)].disabled) {
             start = first_enabled(items);
@@ -1478,7 +1477,7 @@ void show_popup(world::World& world, GuiState& state, entt::entity entity, bool 
         emit(world, state, "about_to_popup", owner);
         start = by_mouse ? -1 : first_enabled(items);
     } else {
-        world.ecs().get<world::PopupMenu>(entity).visible = true;
+        world.ecs().get<world::PopupList>(entity).visible = true;
         emit(world, state, "about_to_popup", owner);
     }
     status.scroll_to = start;
@@ -1498,9 +1497,9 @@ void show_popup(world::World& world, GuiState& state, entt::entity entity, bool 
     }
 }
 
-// PopupMenu::activate_item, and what its signals do. The popup hides, unless a PopupMenu's
-// hide_on_item_selection or hide_on_checkable_item_selection keeps it; then a PopupMenu or
-// MenuButton emits id_pressed and index_pressed, and an OptionButton selects the option and
+// PopupMenu::activate_item, and what its signals do. The popup hides, unless a PopupList's
+// hide_on_item_selection or hide_on_checkable_item_selection keeps it; then a PopupList or
+// MenuButton emits id_pressed and index_pressed, and an Dropdown selects the option and
 // emits item_selected, unless it was selected already and allow_reselect is off (_select).
 void activate_item(world::World& world, GuiState& state, entt::entity entity, int index) {
     const std::vector<world::PopupMenuItem> items = popup_items(world, entity);
@@ -1517,7 +1516,7 @@ void activate_item(world::World& world, GuiState& state, entt::entity entity, in
     const PopupKind kind = popup_kind(world, entity);
     bool hide = true;
     if (kind == PopupKind::Menu) {
-        const auto& menu = world.ecs().get<world::PopupMenu>(entity);
+        const auto& menu = world.ecs().get<world::PopupList>(entity);
         hide = item.checkable != "none" ? menu.hide_on_checkable_item_selection
                                         : menu.hide_on_item_selection;
     }
@@ -1525,7 +1524,7 @@ void activate_item(world::World& world, GuiState& state, entt::entity entity, in
         hide_popup(world, state, owner);
     }
     if (kind == PopupKind::Option) {
-        auto& option = world.ecs().get<world::OptionButton>(entity);
+        auto& option = world.ecs().get<world::Dropdown>(entity);
         if (index == option.selected && !option.allow_reselect) {
             return;
         }
@@ -1537,7 +1536,7 @@ void activate_item(world::World& world, GuiState& state, entt::entity entity, in
     emit_item(world, state, "index_pressed", owner, index, id);
 }
 
-// The keys moving to an item: id_focused, or an OptionButton's item_focused (_focused), and the
+// The keys moving to an item: id_focused, or an Dropdown's item_focused (_focused), and the
 // item scrolled into view.
 void focus_item(world::World& world, GuiState& state, entt::entity entity, int index) {
     const std::string owner(world.id_of(entity));
@@ -1567,7 +1566,7 @@ void press_popup_button(world::World& world, GuiState& state, entt::entity entit
 }
 
 // Toggles a toggle button, or just presses one that isn't, as the end of a click and
-// BaseButton::press do; an OptionButton or MenuButton opens or closes its popup between toggled
+// BaseButton::press do; an Dropdown or MenuButton opens or closes its popup between toggled
 // and pressed, as BaseButton::_pressed calls pressed().
 void fire(world::World& world, GuiState& state, entt::entity entity, bool by_mouse = false) {
     const std::optional<Base> base = base_of(world, entity);
@@ -1583,7 +1582,7 @@ void fire(world::World& world, GuiState& state, entt::entity entity, bool by_mou
         emit(world, state, "toggled", id, now && now->button_pressed);
     }
     if (const std::string_view type = button_type(world, entity);
-        type == "OptionButton" || type == "MenuButton") {
+        type == "Dropdown" || type == "MenuButton") {
         press_popup_button(world, state, entity, by_mouse);
     }
     emit(world, state, "pressed", id);
@@ -1731,7 +1730,7 @@ bool approx(double a, double b) {
     return std::abs(a - b) < tolerance;
 }
 
-// A ScrollContainer bar's range, as the layout set it, holding a value.
+// A ScrollBox bar's range, as the layout set it, holding a value.
 Range view_range(const ScrollBarView& view, double value) {
     return {.min = view.min_value,
             .max = view.max_value,
@@ -1743,11 +1742,11 @@ Range view_range(const ScrollBarView& view, double value) {
             .allow_lesser = false};
 }
 
-// A ScrollContainer's scroll as it is now: the gui state's, while the component's whole pixels
+// A ScrollBox's scroll as it is now: the gui state's, while the component's whole pixels
 // still match it, else the component's.
 std::array<double, 2> scroll_now(const world::World& world, const GuiState* state,
                                  entt::entity entity) {
-    const auto* scroll = world.ecs().try_get<world::ScrollContainer>(entity);
+    const auto* scroll = world.ecs().try_get<world::ScrollBox>(entity);
     if (scroll == nullptr) {
         return {};
     }
@@ -1769,11 +1768,11 @@ std::array<double, 2> scroll_now(const world::World& world, const GuiState* stat
     return now;
 }
 
-// One axis of a ScrollContainer's scroll set as its bar's Range::set_value keeps it: kept in the
+// One axis of a ScrollBox's scroll set as its bar's Range::set_value keeps it: kept in the
 // gui state, and in whole pixels in the component, as get_h_scroll and get_v_scroll give it.
 void set_scroll(world::World& world, GuiState& state, entt::entity entity, std::size_t axis,
                 const ScrollBarView& view, double value) {
-    auto* scroll = world.ecs().try_get<world::ScrollContainer>(entity);
+    auto* scroll = world.ecs().try_get<world::ScrollBox>(entity);
     const std::string id(world.id_of(entity));
     if (scroll == nullptr || id.empty() || !std::isfinite(value)) {
         return;
@@ -1809,7 +1808,7 @@ void absorb_scrolls(world::World& world, GuiState& state) {
     for (auto it = state.scrolls.begin(); it != state.scrolls.end();) {
         const entt::entity entity = world.find(it->first);
         const auto* scroll =
-            entity != entt::null ? world.ecs().try_get<world::ScrollContainer>(entity) : nullptr;
+            entity != entt::null ? world.ecs().try_get<world::ScrollBox>(entity) : nullptr;
         if (scroll == nullptr) {
             it = state.scrolls.erase(it);
             continue;
@@ -2008,7 +2007,7 @@ void begin_drag(world::World& world, GuiState& state) {
         status.press_attempt = false;
         status.touch_index = -1;
     }
-    // TextEdit stops selecting.
+    // TextArea stops selecting.
     for (auto& [id, s] : state.text_edits) {
         s.selecting_mode = SelectionMode::None;
         s.dragging_selection = false;
@@ -2024,7 +2023,7 @@ void begin_drag(world::World& world, GuiState& state) {
 
 // ---- Sending events to controls ----
 
-// What the pointer is on: a control, or one of a ScrollContainer's bars.
+// What the pointer is on: a control, or one of a ScrollBox's bars.
 struct Target {
     entt::entity entity = entt::null;
     Bar bar = Bar::Own;
@@ -2108,7 +2107,7 @@ public:
             }
         }
         for (const auto& [entity, view] : layout_.scrolls) {
-            const auto* scroll = world_.ecs().try_get<world::ScrollContainer>(entity);
+            const auto* scroll = world_.ecs().try_get<world::ScrollBox>(entity);
             if (scroll == nullptr || world_.id_of(entity).empty()) {
                 continue;
             }
@@ -2469,7 +2468,7 @@ private:
                 return;
             }
             // The wheel scrolls the list by an eighth of its page, or a quarter over its scroll
-            // bar, as ScrollContainer and ScrollBar do.
+            // bar, as ScrollBox and ScrollBar do.
             if (event.pressed && view.scroll_max > 0.0F &&
                 (event.button == input::MouseButton::WheelUp ||
                  event.button == input::MouseButton::WheelDown)) {
@@ -2508,7 +2507,7 @@ private:
 
         // Typing the start of an item's text moves to the next one that starts so, the letters
         // typed within two seconds of each other making up what it looks for.
-        const auto* menu = world_.ecs().try_get<world::PopupMenu>(entity);
+        const auto* menu = world_.ecs().try_get<world::PopupList>(entity);
         const bool allow_search = menu == nullptr || menu->allow_search;
         if (allow_search && event.type == input::EventType::Key && event.unicode >= 0x20U &&
             event.pressed && !items.empty()) {
@@ -2657,7 +2656,7 @@ private:
     }
 
     // Viewport::_gui_find_control_at_pos. A control that clips lets the pointer reach its
-    // children only inside its rect, and a ScrollContainer's bars come before its children, as
+    // children only inside its rect, and a ScrollBox's bars come before its children, as
     // its last ones.
     [[nodiscard]] Target find_at(entt::entity entity, Vec2 point) const {
         const Placed* found = placed(entity);
@@ -2686,7 +2685,7 @@ private:
         return has_point(entity, at) ? Target{.entity = entity, .bar = Bar::Own} : Target{};
     }
 
-    // The bar of a ScrollContainer's or TextEdit's at a point in its rect, if one is there.
+    // The bar of a ScrollBox's or TextArea's at a point in its rect, if one is there.
     [[nodiscard]] Bar bar_at(entt::entity entity, Vec2 at) const {
         if (world_.id_of(entity).empty()) {
             return Bar::Own;
@@ -2754,7 +2753,7 @@ private:
         std::string common;
         std::vector<std::string> entering;
         if (target.bar != Bar::Own) {
-            // A ScrollContainer's bar stops the pointer, so it is all the mouse is over.
+            // A ScrollBox's bar stops the pointer, so it is all the mouse is over.
             if (std::ranges::find(hierarchy, over_id) != hierarchy.end()) {
                 common = over_id;
             } else {
@@ -2833,7 +2832,7 @@ public:
 
 private:
     // Viewport::_gui_call_input: the control, then its parents until one stops the pointer. A
-    // ScrollContainer's bar takes the event and stops it there.
+    // ScrollBox's bar takes the event and stops it there.
     void call_input(Target target, const input::Event& event) {
         if (target.bar != Bar::Own) {
             bar_input(target.entity, target.bar, event);
@@ -2875,30 +2874,30 @@ private:
         if (world_.ecs().all_of<world::ScrollBar>(entity) && !world_.id_of(entity).empty()) {
             bar_input(entity, Bar::Own, event);
         }
-        if (world_.ecs().all_of<world::ScrollContainer>(entity) && !world_.id_of(entity).empty()) {
+        if (world_.ecs().all_of<world::ScrollBox>(entity) && !world_.id_of(entity).empty()) {
             scroll_input(entity, event);
         }
     }
 
     [[nodiscard]] bool is_text_edit(entt::entity entity) const {
-        return entity != entt::null && world_.ecs().all_of<world::TextEdit>(entity) &&
+        return entity != entt::null && world_.ecs().all_of<world::TextArea>(entity) &&
                !world_.id_of(entity).empty();
     }
 
-    // A TextEdit's lines shaped once a tick and kept in step by the editing: shaped again if
+    // A TextArea's lines shaped once a tick and kept in step by the editing: shaped again if
     // something else changed its text.
-    TextArea* area_of(entt::entity entity, const TextEditState& s) {
-        const std::string& text = world_.ecs().get<world::TextEdit>(entity).text;
+    EditArea* area_of(entt::entity entity, const TextEditState& s) {
+        const std::string& text = world_.ecs().get<world::TextArea>(entity).text;
         if (const auto found = areas_.find(entity);
             found != areas_.end() && found->second.text == text) {
             return found->second.area.get();
         }
-        std::optional<TextArea> made = text_area(world_, layout_, entity, s);
+        std::optional<EditArea> made = text_area(world_, layout_, entity, s);
         if (!made) {
             return nullptr;
         }
         CachedArea& cached = areas_[entity];
-        cached.area = std::make_unique<TextArea>(std::move(*made));
+        cached.area = std::make_unique<EditArea>(std::move(*made));
         cached.text = text;
         return cached.area.get();
     }
@@ -2912,19 +2911,19 @@ private:
                 .dragging = state_.drag.dragging,
                 .can_drop = false,
                 .signals = &signals,
-                .code = world_.ecs().try_get<world::CodeEdit>(entity)};
+                .code = world_.ecs().try_get<world::CodeEditor>(entity)};
     }
 
-    // Edits a TextEdit with one of the text_edit_* calls, then records its signals.
+    // Edits a TextArea with one of the text_edit_* calls, then records its signals.
     template <typename Call>
     void edit_text(entt::entity entity, Call&& call) {
         const std::string id = this->id(entity);
         TextEditState& s = state_.text_edits[id];
-        TextArea* area = area_of(entity, s);
+        EditArea* area = area_of(entity, s);
         if (area == nullptr) {
             return;
         }
-        auto& edit = world_.ecs().get<world::TextEdit>(entity);
+        auto& edit = world_.ecs().get<world::TextArea>(entity);
         std::vector<TextEditSignal> signals;
         const TextEditContext context = text_context(entity, id, signals);
         std::forward<Call>(call)(context, edit, s, *area);
@@ -2944,8 +2943,8 @@ private:
                            event.type == input::EventType::ScreenDrag;
         const bool can_drop =
             state_.drag.dragging && moved && can_drop_data(entity, local, state_.drag.data);
-        edit_text(entity, [&](const TextEditContext& base, world::TextEdit& edit, TextEditState& s,
-                              TextArea& area) {
+        edit_text(entity, [&](const TextEditContext& base, world::TextArea& edit, TextEditState& s,
+                              EditArea& area) {
             TextEditContext context = base;
             context.can_drop = can_drop;
             if (text_edit_input(context, edit, s, area, event, local, relative)) {
@@ -2955,7 +2954,7 @@ private:
     }
 
     [[nodiscard]] bool is_line_edit(entt::entity entity) const {
-        return entity != entt::null && world_.ecs().all_of<world::LineEdit>(entity) &&
+        return entity != entt::null && world_.ecs().all_of<world::TextField>(entity) &&
                !world_.id_of(entity).empty();
     }
 
@@ -2967,7 +2966,7 @@ private:
     // actions edit. Action events edit as keys do, so agents can send ui_text_* actions.
     void line_edit_input(entt::entity entity, const input::Event& event) {
         Editor editor(world_, state_, entity, &layout_);
-        const world::LineEdit& edit = editor.edit();
+        const world::TextField& edit = editor.edit();
         EditState& s = editor.state();
         if (event.type == input::EventType::MouseButton) {
             line_edit_click(entity, editor, event);
@@ -3179,7 +3178,7 @@ private:
     // The mouse button part of LineEdit::gui_input. Middle-click paste (the primary selection)
     // and the context menu aren't here.
     void line_edit_click(entt::entity entity, Editor& editor, const input::Event& event) {
-        const world::LineEdit& edit = editor.edit();
+        const world::TextField& edit = editor.edit();
         EditState& s = editor.state();
         const Vec2 at = to_local(entity, event.position).value_or(Vec2{});
         const Field* field = editor.field();
@@ -3295,12 +3294,12 @@ private:
         }
     }
 
-    // MainLoop's NOTIFICATION_OS_IME_UPDATE, for the LineEdit being edited.
+    // MainLoop's NOTIFICATION_OS_IME_UPDATE, for the TextField being edited.
     void ime_event(const input::Event& event) {
         const entt::entity focus = find(state_.key_focus);
         if (is_text_edit(focus)) {
-            edit_text(focus, [&](const TextEditContext& context, world::TextEdit& edit,
-                                 TextEditState& s, TextArea& area) {
+            edit_text(focus, [&](const TextEditContext& context, world::TextArea& edit,
+                                 TextEditState& s, EditArea& area) {
                 text_edit_ime_update(context, edit, s, area, to_utf32(event.text),
                                      event.selection_start, event.selection_length);
             });
@@ -3322,8 +3321,8 @@ private:
     void unhandled_key(const input::Event& event) {
         const entt::entity focus = find(state_.key_focus);
         if (is_text_edit(focus)) {
-            edit_text(focus, [&](const TextEditContext& context, world::TextEdit& edit,
-                                 TextEditState& s, TextArea& area) {
+            edit_text(focus, [&](const TextEditContext& context, world::TextArea& edit,
+                                 TextEditState& s, EditArea& area) {
                 if (text_edit_unhandled_key(context, edit, s, area, event)) {
                     handled_ = true;
                 }
@@ -3524,7 +3523,7 @@ private:
     // A touch drag's speed, measured every tenth of a second while the finger moves, and once
     // it lets go, the glide: the scroll moves on at that speed, slowing by 1000 pixels a second
     // each second, until it stops or reaches both ends.
-    void glide(entt::entity entity, const world::ScrollContainer& scroll, const ScrollView& view,
+    void glide(entt::entity entity, const world::ScrollBox& scroll, const ScrollView& view,
                ScrollStatus& status, double tick_seconds) {
         const auto delta = static_cast<float>(tick_seconds);
         if (!status.deaccel) {
@@ -3580,7 +3579,7 @@ private:
     // values, and written to the component in whole pixels. A bar hidden, or in a hidden
     // container, lets go of its arrows and drag, as NOTIFICATION_VISIBILITY_CHANGED.
     void settle(entt::entity entity, const ScrollView& view) {
-        auto& scroll = world_.ecs().get<world::ScrollContainer>(entity);
+        auto& scroll = world_.ecs().get<world::ScrollBox>(entity);
         const std::string owner = id(entity);
         const std::array<double, 2> now = scroll_now(world_, &state_, entity);
         const std::array<double, 2> kept{range_value(view_range(view.h, now[0]), now[0]),
@@ -3619,12 +3618,12 @@ private:
         }
     }
 
-    // ScrollContainer::_gui_focus_changed: each ScrollContainer around the control that follows
+    // ScrollContainer::_gui_focus_changed: each ScrollBox around the control that follows
     // focus scrolls it into view, the innermost first.
     void follow_focus(entt::entity focus) {
         std::map<entt::entity, Vec2> moved; // each one's scroll_diff, for the ones around it
         for (entt::entity at = parent(focus); at != entt::null; at = parent(at)) {
-            const auto* scroll = world_.ecs().try_get<world::ScrollContainer>(at);
+            const auto* scroll = world_.ecs().try_get<world::ScrollBox>(at);
             if (scroll != nullptr && scroll->follow_focus && layout_.scrolls.contains(at) &&
                 !world_.id_of(at).empty()) {
                 moved[at] = ensure_visible(at, focus, moved);
@@ -3725,7 +3724,7 @@ private:
         return diff;
     }
 
-    // A ScrollContainer's status, made with the scroll its component has.
+    // A ScrollBox's status, made with the scroll its component has.
     ScrollStatus& scroll_status(entt::entity entity) {
         const auto [found, made] = state_.scrolls.try_emplace(id(entity));
         if (made) {
@@ -3746,8 +3745,8 @@ private:
         return bar == Bar::Horizontal ? scroll.h : scroll.v;
     }
 
-    // A bar as the layout measured it: a ScrollBar's, or one of a ScrollContainer's or
-    // TextEdit's.
+    // A bar as the layout measured it: a ScrollBar's, or one of a ScrollBox's or
+    // TextArea's.
     [[nodiscard]] const ScrollBarView* bar_view(entt::entity entity, Bar bar) const {
         if (bar == Bar::Own) {
             const auto found = layout_.scroll_bars.find(entity);
@@ -3770,7 +3769,7 @@ private:
             const auto* own = world_.ecs().try_get<world::ScrollBar>(entity);
             return own != nullptr ? range_of(*own) : view_range(view, view.value);
         }
-        if (const auto* edit = world_.ecs().try_get<world::TextEdit>(entity);
+        if (const auto* edit = world_.ecs().try_get<world::TextArea>(entity);
             edit != nullptr && layout_.text_edits.contains(entity)) {
             // Its scroll as the editing last left it, kept in its bars' range.
             const double now = bar == Bar::Horizontal ? static_cast<double>(edit->scroll_horizontal)
@@ -3783,12 +3782,12 @@ private:
         return view_range(view, now.at(bar == Bar::Horizontal ? 0 : 1));
     }
 
-    // ScrollBar::scroll_to: its value set, and scrolling emitted when it moved. A TextEdit's
+    // ScrollBar::scroll_to: its value set, and scrolling emitted when it moved. A TextArea's
     // bar scrolls it as its _scroll_moved follows the bar.
     void bar_scroll_to(entt::entity entity, Bar bar, const ScrollBarView& view, double value) {
         if (bar != Bar::Own && is_text_edit(entity)) {
-            edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
-                                  TextEditState& s, TextArea& area) {
+            edit_text(entity, [&](const TextEditContext& context, world::TextArea& edit,
+                                  TextEditState& s, EditArea& area) {
                 text_edit_scroll_to(context, edit, s, area, bar == Bar::Vertical, value);
             });
             return;
@@ -3804,7 +3803,7 @@ private:
         }
     }
 
-    // ScrollBar::gui_input, for a ScrollBar or one of a ScrollContainer's bars: a click on an
+    // ScrollBar::gui_input, for a ScrollBar or one of a ScrollBox's bars: a click on an
     // arrow steps it, a click before or after the grabber pages it, a click on the grabber drags
     // it, the wheel moves it an eighth of a page, and with focus the ui_* actions step it. It
     // takes every mouse event.
@@ -3931,7 +3930,7 @@ private:
     // once past its deadzone, gliding on when it lets go. It takes what moved it.
     void scroll_input(entt::entity entity, const input::Event& event) {
         const auto found = layout_.scrolls.find(entity);
-        const auto* scroll = world_.ecs().try_get<world::ScrollContainer>(entity);
+        const auto* scroll = world_.ecs().try_get<world::ScrollBox>(entity);
         if (found == layout_.scrolls.end() || scroll == nullptr ||
             event.device == input::kEmulatedDevice) {
             return;
@@ -4232,7 +4231,7 @@ private:
         std::string owner;
         for (entt::entity at = find(control); at != entt::null; at = parent(at)) {
             owner = id(at);
-            const auto* own = world_.ecs().try_get<world::Control>(at);
+            const auto* own = world_.ecs().try_get<world::Widget>(at);
             if (own != nullptr && !own->tooltip_text.empty()) {
                 return {owner, own->tooltip_text};
             }
@@ -4283,7 +4282,7 @@ public:
     }
 
     // Viewport::show_tooltip: a control's tooltip now, below its middle.
-    // Control::_accessibility_action_scroll_into_view: the ScrollContainer it is in shows it.
+    // Control::_accessibility_action_scroll_into_view: the ScrollBox it is in shows it.
     bool scroll_into_view(entt::entity control) {
         const entt::entity container = parent(control);
         if (container == entt::null || !layout_.scrolls.contains(container) ||
@@ -4294,7 +4293,7 @@ public:
         return true;
     }
 
-    // A ScrollContainer's scroll set on either axis as its bars' set_value keeps it.
+    // A ScrollBox's scroll set on either axis as its bars' set_value keeps it.
     bool scroll_to(entt::entity container, std::array<std::optional<double>, 2> to) {
         const auto found = layout_.scrolls.find(container);
         if (found == layout_.scrolls.end() || world_.id_of(container).empty()) {
@@ -4400,10 +4399,10 @@ private:
             }
             return own->drag_data;
         }
-        if (world_.ecs().all_of<world::LineEdit>(entity)) {
+        if (world_.ecs().all_of<world::TextField>(entity)) {
             return line_edit_drag_data(entity);
         }
-        if (world_.ecs().all_of<world::TextEdit>(entity)) {
+        if (world_.ecs().all_of<world::TextArea>(entity)) {
             return text_edit_drag_data(entity);
         }
         return {};
@@ -4425,10 +4424,10 @@ private:
         if (takes) {
             return true;
         }
-        if (const auto* edit = world_.ecs().try_get<world::LineEdit>(entity); edit != nullptr) {
+        if (const auto* edit = world_.ecs().try_get<world::TextField>(entity); edit != nullptr) {
             return edit->editable && data.is_string();
         }
-        if (const auto* edit = world_.ecs().try_get<world::TextEdit>(entity); edit != nullptr) {
+        if (const auto* edit = world_.ecs().try_get<world::TextArea>(entity); edit != nullptr) {
             return edit->editable && data.is_string();
         }
         return false;
@@ -4454,15 +4453,15 @@ private:
                              {"from", state_.drag.from},
                              {"position", json::Array{coordinate(at.x), coordinate(at.y)}}});
         }
-        if (world_.ecs().all_of<world::LineEdit>(entity)) {
+        if (world_.ecs().all_of<world::TextField>(entity)) {
             line_edit_drop(entity, at, data);
-        } else if (world_.ecs().all_of<world::TextEdit>(entity)) {
+        } else if (world_.ecs().all_of<world::TextArea>(entity)) {
             text_edit_drop(entity, at, data);
         }
     }
 
     // LineEdit::get_drag_data: the selection, after a press on it, shown at the pointer in the
-    // LineEdit's font.
+    // TextField's font.
     json::Value line_edit_drag_data(entt::entity entity) {
         Editor editor(world_, state_, entity, &layout_);
         const EditState& s = editor.state();
@@ -4525,11 +4524,11 @@ private:
     }
 
     // TextEdit::get_drag_data: the selection, after a press on it, shown at the pointer in the
-    // TextEdit's font.
+    // TextArea's font.
     json::Value text_edit_drag_data(entt::entity entity) {
         json::Value data;
         edit_text(entity,
-                  [&](const TextEditContext&, world::TextEdit&, TextEditState& s, TextArea& area) {
+                  [&](const TextEditContext&, world::TextArea&, TextEditState& s, EditArea& area) {
                       if (!s.selection_drag_attempt || !s.caret.selection.active) {
                           return;
                       }
@@ -4549,8 +4548,8 @@ private:
         }
         const bool command = command_held(world_);
         bool dropped = false;
-        edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
-                              TextEditState& s, TextArea& area) {
+        edit_text(entity, [&](const TextEditContext& context, world::TextArea& edit,
+                              TextEditState& s, EditArea& area) {
             dropped = text_edit_drop_text(context, edit, s, area, at, to_utf32(data.as_string()),
                                           command);
         });
@@ -4565,7 +4564,7 @@ private:
         const bool command = command_held(world_);
         for (auto& [control, s] : state_.edits) {
             const entt::entity entity = world_.find(control);
-            if (entity == entt::null || !world_.ecs().all_of<world::LineEdit>(entity)) {
+            if (entity == entt::null || !world_.ecs().all_of<world::TextField>(entity)) {
                 continue;
             }
             if (state_.drag.successful && s.drag_attempt) {
@@ -4582,12 +4581,12 @@ private:
         }
         for (auto& [control, s] : state_.text_edits) {
             const entt::entity entity = world_.find(control);
-            if (entity == entt::null || !world_.ecs().all_of<world::TextEdit>(entity)) {
+            if (entity == entt::null || !world_.ecs().all_of<world::TextArea>(entity)) {
                 continue;
             }
             if (state_.drag.successful && s.selection_drag_attempt) {
-                edit_text(entity, [&](const TextEditContext& context, world::TextEdit& edit,
-                                      TextEditState& state, TextArea& area) {
+                edit_text(entity, [&](const TextEditContext& context, world::TextArea& edit,
+                                      TextEditState& state, EditArea& area) {
                     text_edit_drag_end(context, edit, state, area, command);
                 });
             } else {
@@ -4840,9 +4839,9 @@ private:
         return static_cast<std::size_t>(std::ranges::find(roots_, root) - roots_.begin());
     }
 
-    [[nodiscard]] const world::Control& control_of(entt::entity entity) const {
-        static const world::Control kDefault{};
-        const auto* control = world_.ecs().try_get<world::Control>(entity);
+    [[nodiscard]] const world::Widget& control_of(entt::entity entity) const {
+        static const world::Widget kDefault{};
+        const auto* control = world_.ecs().try_get<world::Widget>(entity);
         return control != nullptr ? *control : kDefault;
     }
 
@@ -4965,7 +4964,7 @@ private:
         if (count >= kMaxNeighborSearch) {
             return entt::null;
         }
-        const world::Control& control = control_of(from);
+        const world::Widget& control = control_of(from);
         const std::array<entt::entity, 4> fields{
             control.focus_neighbor_left, control.focus_neighbor_top, control.focus_neighbor_right,
             control.focus_neighbor_bottom};
@@ -5066,7 +5065,7 @@ private:
     bool handled_ = false;
     std::set<std::string_view> just_pushed_; // actions a stick just pushed, for the event sent
     struct CachedArea {
-        std::unique_ptr<TextArea> area;
+        std::unique_ptr<EditArea> area;
         std::string text; // the text it was shaped for
     };
     std::unordered_map<entt::entity, CachedArea> areas_;
@@ -5077,7 +5076,7 @@ private:
 void edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
     for (auto it = state.edits.begin(); it != state.edits.end();) {
         const entt::entity entity = world.find(it->first);
-        auto* edit = entity != entt::null ? world.ecs().try_get<world::LineEdit>(entity) : nullptr;
+        auto* edit = entity != entt::null ? world.ecs().try_get<world::TextField>(entity) : nullptr;
         if (edit == nullptr) {
             it = state.edits.erase(it);
             continue;
@@ -5108,7 +5107,7 @@ void edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
 void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds) {
     std::erase_if(state.text_edit_bars, [&](const auto& each) {
         const entt::entity entity = world.find(each.first);
-        return entity == entt::null || !world.ecs().all_of<world::TextEdit>(entity);
+        return entity == entt::null || !world.ecs().all_of<world::TextArea>(entity);
     });
     std::vector<std::string> stale;
     std::vector<std::string> held;
@@ -5116,7 +5115,7 @@ void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds)
     for (auto it = state.text_edits.begin(); it != state.text_edits.end();) {
         const entt::entity entity = world.find(it->first);
         const auto* edit =
-            entity != entt::null ? world.ecs().try_get<world::TextEdit>(entity) : nullptr;
+            entity != entt::null ? world.ecs().try_get<world::TextArea>(entity) : nullptr;
         if (edit == nullptr) {
             it = state.text_edits.erase(it);
             continue;
@@ -5140,7 +5139,7 @@ void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds)
     const auto each = [&](const std::string& id, const auto& call) {
         const entt::entity entity = world.find(id);
         TextEditState& s = state.text_edits[id];
-        std::optional<TextArea> area = text_area(world, placed, entity, s);
+        std::optional<EditArea> area = text_area(world, placed, entity, s);
         if (!area) {
             return;
         }
@@ -5150,19 +5149,19 @@ void text_edit_upkeep(world::World& world, GuiState& state, double tick_seconds)
                                       .now = 0.0,
                                       .focused = state.key_focus == id,
                                       .signals = &signals,
-                                      .code = world.ecs().try_get<world::CodeEdit>(entity)};
-        call(context, world.ecs().get<world::TextEdit>(entity), s, *area, entity);
+                                      .code = world.ecs().try_get<world::CodeEditor>(entity)};
+        call(context, world.ecs().get<world::TextArea>(entity), s, *area, entity);
         emit_text_edit(world, state, id, signals);
     };
     for (const std::string& id : stale) {
-        each(id, [](const TextEditContext& context, world::TextEdit& edit, TextEditState& s,
-                    TextArea& area,
+        each(id, [](const TextEditContext& context, world::TextArea& edit, TextEditState& s,
+                    EditArea& area,
                     entt::entity /*entity*/) { sync_text_edit(context, edit, s, area); });
     }
     const Vec2 mouse = input::mouse_position(world);
     for (const std::string& id : held) {
-        each(id, [&](const TextEditContext& context, world::TextEdit& edit, TextEditState& s,
-                     TextArea& area, entt::entity entity) {
+        each(id, [&](const TextEditContext& context, world::TextArea& edit, TextEditState& s,
+                     EditArea& area, entt::entity entity) {
             const Placed* at = placed.find(entity);
             const auto local = at != nullptr ? inverse(at->transform) : std::nullopt;
             text_edit_click_held(context, edit, s, area, local ? local->apply(mouse) : Vec2{});
@@ -5224,7 +5223,7 @@ void upkeep(world::World& world, GuiState& state, double tick_seconds) {
         const entt::entity entity = world.find(owner_of(id));
         return entity != entt::null && is_control(world, entity) &&
                (bar_named(id) == Bar::Own ||
-                world.ecs().any_of<world::ScrollContainer, world::TextEdit>(entity)) &&
+                world.ecs().any_of<world::ScrollBox, world::TextArea>(entity)) &&
                parents.visible_in_tree(entity);
     };
     // A control that was destroyed goes quietly: its entity.destroyed event says so.
@@ -5284,8 +5283,8 @@ void upkeep(world::World& world, GuiState& state, double tick_seconds) {
 }
 
 // Keeps the open popups in step with the world: one whose entity went away goes quietly; a
-// PopupMenu set invisible closes, as does a button's list when the button is hidden
-// (NOTIFICATION_VISIBILITY_CHANGED); a PopupMenu set visible opens.
+// PopupList set invisible closes, as does a button's list when the button is hidden
+// (NOTIFICATION_VISIBILITY_CHANGED); a PopupList set visible opens.
 void popup_upkeep(world::World& world, GuiState& state) {
     std::erase_if(state.popups, [&](const PopupStatus& status) {
         return popup_kind(world, world.find(status.owner)) == PopupKind::None;
@@ -5295,7 +5294,7 @@ void popup_upkeep(world::World& world, GuiState& state) {
         const Parents parents(world);
         for (const PopupStatus& status : state.popups) {
             const entt::entity entity = world.find(status.owner);
-            if (const auto* menu = world.ecs().try_get<world::PopupMenu>(entity); menu != nullptr) {
+            if (const auto* menu = world.ecs().try_get<world::PopupList>(entity); menu != nullptr) {
                 if (!menu->visible) {
                     hidden.push_back(status.owner);
                 }
@@ -5308,7 +5307,7 @@ void popup_upkeep(world::World& world, GuiState& state) {
         hide_popup(world, state, owner);
     }
     std::vector<entt::entity> shown;
-    for (const auto [entity, menu] : world.ecs().view<world::PopupMenu>().each()) {
+    for (const auto [entity, menu] : world.ecs().view<world::PopupList>().each()) {
         if (menu.visible && !world.id_of(entity).empty() &&
             popup_status(state, world.id_of(entity)) == nullptr) {
             shown.push_back(entity);
@@ -5345,7 +5344,7 @@ void run(world::World& world, double tick_seconds) {
     const std::vector<std::pair<std::string, std::string>> drags = std::move(state->drags);
     state->drags.clear();
     // ScrollContainers need their layout every tick, to glide, follow focus and keep in range.
-    const bool scrolls = !world.ecs().view<world::ScrollContainer>().empty();
+    const bool scrolls = !world.ecs().view<world::ScrollBox>().empty();
     // The tooltip's rest timer runs out this tick.
     const bool tooltip_due = state->tooltip.timing && state->now - state->tooltip.since >=
                                                           settings(world).tooltip_delay_sec - 1e-9;
@@ -5410,18 +5409,18 @@ void run(world::World& world, double tick_seconds) {
     std::erase_if(state->buttons, [](const auto& each) { return idle(each.second); });
     std::erase_if(state->text_edit_bars,
                   [](const auto& each) { return idle(each.second.h) && idle(each.second.v); });
-    // LineEdit's deferred _text_changed: one text_changed a tick, and one step to undo.
+    // TextField's deferred _text_changed: one text_changed a tick, and one step to undo.
     for (auto& [id, edit] : state->edits) {
         if (!edit.text_changed_dirty) {
             continue;
         }
         const entt::entity entity = world.find(id);
-        if (entity != entt::null && world.ecs().all_of<world::LineEdit>(entity)) {
+        if (entity != entt::null && world.ecs().all_of<world::TextField>(entity)) {
             Editor(world, *state, entity, nullptr).text_changed();
         }
         edit.text_changed_dirty = false;
     }
-    // TextEdit's deferred text_changed and caret_changed.
+    // TextArea's deferred text_changed and caret_changed.
     for (auto& [id, edit] : state->text_edits) {
         const std::vector<std::string> deferred = std::move(edit.deferred);
         edit.deferred.clear();
@@ -5527,8 +5526,8 @@ bool close_popup(world::World& world, entt::entity owner) {
         hide_popup(world, *state, id);
         return true;
     }
-    // A PopupMenu made visible that the gui system hasn't opened yet.
-    auto* menu = world.ecs().try_get<world::PopupMenu>(owner);
+    // A PopupList made visible that the gui system hasn't opened yet.
+    auto* menu = world.ecs().try_get<world::PopupList>(owner);
     if (menu == nullptr || !menu->visible) {
         return false;
     }
@@ -5584,7 +5583,7 @@ std::vector<PopupState> popup_states(const world::World& world) {
         }
     }
     std::vector<entt::entity> untracked;
-    for (const auto [entity, menu] : world.ecs().view<world::PopupMenu>().each()) {
+    for (const auto [entity, menu] : world.ecs().view<world::PopupList>().each()) {
         if (menu.visible && std::ranges::find(out, entity, &PopupState::owner) == out.end()) {
             untracked.push_back(entity);
         }
@@ -5881,7 +5880,7 @@ bool is_editing(const world::World& world, entt::entity line_edit) {
 
 std::optional<std::pair<int, int>> selection(const world::World& world, entt::entity line_edit) {
     const EditState* state = edit_state(world, line_edit);
-    const auto* edit = world.ecs().try_get<world::LineEdit>(line_edit);
+    const auto* edit = world.ecs().try_get<world::TextField>(line_edit);
     // Text changed from outside drops the selection.
     if (state == nullptr || edit == nullptr || !state->selection.enabled ||
         state->known_text != edit->text) {
@@ -5906,10 +5905,10 @@ const TextEditState* text_edit_state(const world::World& world, entt::entity ent
 
 namespace {
 
-// A TextEdit with focus takes text while it's editable, with the input method's area on the
+// A TextArea with focus takes text while it's editable, with the input method's area on the
 // caret's line, as _update_ime_window_position.
 input::TextInput text_edit_text_input(const world::World& world, entt::entity focus,
-                                      const world::TextEdit& edit) {
+                                      const world::TextArea& edit) {
     input::TextInput out;
     if (!edit.editable) {
         return out;
@@ -5940,11 +5939,11 @@ input::TextInput text_input(const world::World& world) {
     input::TextInput out;
     const entt::entity focus = focus_owner(world);
     if (const auto* text_edit =
-            focus != entt::null ? world.ecs().try_get<world::TextEdit>(focus) : nullptr;
+            focus != entt::null ? world.ecs().try_get<world::TextArea>(focus) : nullptr;
         text_edit != nullptr) {
         return text_edit_text_input(world, focus, *text_edit);
     }
-    const auto* edit = focus != entt::null ? world.ecs().try_get<world::LineEdit>(focus) : nullptr;
+    const auto* edit = focus != entt::null ? world.ecs().try_get<world::TextField>(focus) : nullptr;
     const EditState* state = edit != nullptr ? edit_state(world, focus) : nullptr;
     if (state == nullptr || !state->editing) {
         return out;
@@ -5996,7 +5995,7 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
     const input::Map& actions = map != nullptr ? *map : defaults;
     std::vector<std::pair<std::string, entt::entity>> entities;
     for (const auto [entity] : ecs.storage<entt::entity>()->each()) {
-        if ((is_control(world, entity) || ecs.all_of<world::PopupMenu>(entity)) &&
+        if ((is_control(world, entity) || ecs.all_of<world::PopupList>(entity)) &&
             !world.id_of(entity).empty()) {
             entities.emplace_back(world.id_of(entity), entity);
         }
@@ -6004,11 +6003,11 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
     std::ranges::sort(entities);
     // Tooltips the pointer can't reach (Control::get_configuration_warnings), and drags.
     for (const auto& [id, entity] : entities) {
-        const auto* control = ecs.try_get<world::Control>(entity);
+        const auto* control = ecs.try_get<world::Widget>(entity);
         if (control != nullptr && !control->tooltip_text.empty() &&
             mouse_filter(world, entity) == Filter::Ignore) {
             problems.push_back({.id = id,
-                                .path = "/components/Control/tooltip_text",
+                                .path = "/components/Widget/tooltip_text",
                                 .message = "the tooltip won't show: the pointer passes this "
                                            "control by; set mouse_filter to \"stop\" or "
                                            "\"pass\""});
@@ -6032,7 +6031,7 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         } else if (world.id_of(preview).empty()) {
             problems.push_back({.id = id, .path = path, .message = "a drag preview needs an ID"});
         } else {
-            for (const auto [parent, parent_control] : ecs.view<world::Control>().each()) {
+            for (const auto [parent, parent_control] : ecs.view<world::Widget>().each()) {
                 if (std::ranges::find(parent_control.children, preview) !=
                     parent_control.children.end()) {
                     const std::string_view parent_id = world.id_of(parent);
@@ -6052,7 +6051,7 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         if (!is_control(world, entity)) {
             problems.push_back({.id = std::string(world.id_of(entity)),
                                 .path = "/components/DragAndDrop",
-                                .message = "DragAndDrop works on a control; give it a Control"});
+                                .message = "DragAndDrop works on a control; give it a Widget"});
         }
     }
     const auto check_shortcut = [&](const std::string& id, std::string_view type,
@@ -6137,26 +6136,26 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         // Named, not bound, so the lambda below can capture them on every compiler.
         const std::string& id = entry.first;
         const entt::entity entity = entry.second;
-        if (const auto* menu = ecs.try_get<world::PopupMenu>(entity); menu != nullptr) {
-            check_items(id, "PopupMenu", menu->items);
+        if (const auto* menu = ecs.try_get<world::PopupList>(entity); menu != nullptr) {
+            check_items(id, "PopupList", menu->items);
             if (is_control(world, entity)) {
                 problems.push_back({.id = id,
-                                    .path = "/components/PopupMenu",
-                                    .message = "a PopupMenu is a window of its own, not a "
+                                    .path = "/components/PopupList",
+                                    .message = "a PopupList is a window of its own, not a "
                                                "control; give it an entity of its own"});
             }
         }
         if (const auto* menu = ecs.try_get<world::MenuButton>(entity); menu != nullptr) {
             check_items(id, "MenuButton", menu->items);
         }
-        if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
-            check_items(id, "OptionButton", option->items);
+        if (const auto* option = ecs.try_get<world::Dropdown>(entity); option != nullptr) {
+            check_items(id, "Dropdown", option->items);
         }
-        if (const auto* option = ecs.try_get<world::OptionButton>(entity);
+        if (const auto* option = ecs.try_get<world::Dropdown>(entity);
             option != nullptr && option->selected >= 0 &&
             !std::cmp_less(option->selected, option->items.size())) {
             problems.push_back({.id = id,
-                                .path = "/components/OptionButton/selected",
+                                .path = "/components/Dropdown/selected",
                                 .message = "it has " + std::to_string(option->items.size()) +
                                            (option->items.size() == 1 ? " option" : " options") +
                                            "; -1 selects none"});
@@ -6171,15 +6170,15 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         };
         check("Button", ecs.try_get<world::Button>(entity));
         check("CheckBox", ecs.try_get<world::CheckBox>(entity));
-        check("CheckButton", ecs.try_get<world::CheckButton>(entity));
-        check("OptionButton", ecs.try_get<world::OptionButton>(entity));
+        check("ToggleSwitch", ecs.try_get<world::ToggleSwitch>(entity));
+        check("Dropdown", ecs.try_get<world::Dropdown>(entity));
         check("MenuButton", ecs.try_get<world::MenuButton>(entity));
-        check("TextureButton", ecs.try_get<world::TextureButton>(entity));
+        check("ImageButton", ecs.try_get<world::ImageButton>(entity));
         if (types.size() > 1) {
             problems.push_back({.id = id,
                                 .path = "/components/" + std::string(types[1]),
                                 .message = "an entity is one button; it has " +
-                                           std::string(types[0] == "OptionButton" ? "an " : "a ") +
+                                           std::string(types[0] == "Dropdown" ? "an " : "a ") +
                                            std::string(types[0]) + " too"});
         }
         if (!types.empty() && ecs.all_of<world::Label>(entity)) {
@@ -6189,7 +6188,7 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
                  .message = "a button draws its own text; give it to the button, or put the "
                             "Label in a child"});
         }
-        const auto* control = ecs.try_get<world::Control>(entity);
+        const auto* control = ecs.try_get<world::Widget>(entity);
         if (control == nullptr) {
             continue;
         }
@@ -6204,7 +6203,7 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         for (const auto& [field, target] : fields) {
             if (target != entt::null && (!world.valid(target) || !is_control(world, target))) {
                 problems.push_back({.id = id,
-                                    .path = "/components/Control/" + std::string(field),
+                                    .path = "/components/Widget/" + std::string(field),
                                     .message = "names no control"});
             }
         }

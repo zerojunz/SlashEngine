@@ -1,6 +1,6 @@
-// A world's sound: the "audio" system plays each AudioStreamPlayer, AudioStreamPlayer2D and
-// AudioStreamPlayer3D through the world's Server, as Godot's AudioStreamPlayerInternal and
-// _update_panning do, and each VideoStreamPlayer's sound, then mixes the tick's share of samples.
+// A world's sound: the "audio" system plays each SoundPlayer, SoundPlayer2D and
+// SoundPlayer3D through the world's Server, as Godot's AudioStreamPlayerInternal and
+// _update_panning do, and each Video's sound, then mixes the tick's share of samples.
 
 #include "slash/audio/audio.hpp"
 
@@ -35,9 +35,9 @@ namespace slash::audio {
 
 namespace {
 
-constexpr std::string_view kPlayer = "AudioStreamPlayer";
-constexpr std::string_view kPlayer2D = "AudioStreamPlayer2D";
-constexpr std::string_view kPlayer3D = "AudioStreamPlayer3D";
+constexpr std::string_view kPlayer = "SoundPlayer";
+constexpr std::string_view kPlayer2D = "SoundPlayer2D";
+constexpr std::string_view kPlayer3D = "SoundPlayer3D";
 
 // What the audio system keeps for one player component, by kind and entity ID, which outlive the
 // entity handles that restoring a copy of the world hands out anew.
@@ -90,12 +90,12 @@ struct TrackStream {
 
 using Request = Snapshot::Request;
 
-constexpr std::string_view kVideoPlayer = "VideoStreamPlayer";
+constexpr std::string_view kVideoPlayer = "Video";
 // How far a video's sound may be from its picture, in seconds, before it starts again where the
 // picture is: past this, the video jumped (a seek, a loop) rather than drifted.
 constexpr double kVideoResync = 0.1;
 
-// A VideoStreamPlayer's sound, as Godot's VideoStreamPlayer mixes its playback's audio into its
+// A Video's sound, as Godot's VideoStreamPlayer mixes its playback's audio into its
 // bus: the audio track decoded and the playback mixing it.
 struct VideoSound {
     std::string id;
@@ -504,7 +504,7 @@ void track_request(State& state, PlayerState& player, const T& component, std::s
     state.track_streams[request.track] = {std::string(key), id};
 }
 
-// Where 2D sounds are heard from: the first current AudioListener2D by ID, and the current
+// Where 2D sounds are heard from: the first current Listener2D by ID, and the current
 // Camera2D's view.
 struct Listener {
     bool found = false;
@@ -523,8 +523,8 @@ Listener find_listener(const world::World& world, const world::Tree2D& tree, Vec
     }
     std::string best;
     const auto& ecs = world.ecs();
-    for (const entt::entity entity : ecs.view<world::AudioListener2D>()) {
-        if (!ecs.get<world::AudioListener2D>(entity).current) {
+    for (const entt::entity entity : ecs.view<world::Listener2D>()) {
+        if (!ecs.get<world::Listener2D>(entity).current) {
             continue;
         }
         const std::string key = key_of(world, "", entity);
@@ -542,7 +542,7 @@ Listener find_listener(const world::World& world, const world::Tree2D& tree, Vec
 }
 
 // Godot's AudioStreamPlayer2D::_update_panning, for one viewport.
-Frame volume_2d(const world::AudioStreamPlayer2D& player, Vec2 global_pos, const Listener& listener,
+Frame volume_2d(const world::SoundPlayer2D& player, Vec2 global_pos, const Listener& listener,
                 Vec2 screen_size, float global_panning_strength) {
     Vec2 listener_in_global;
     Vec2 relative_to_listener;
@@ -581,8 +581,8 @@ Frame volume_2d(const world::AudioStreamPlayer2D& player, Vec2 global_pos, const
     return {l * multiplier, r * multiplier};
 }
 
-// Where 3D sounds are heard from: the current AudioListener3D, else the current Camera3D.
-struct Listener3D {
+// Where 3D sounds are heard from: the current Listener3D, else the current Camera3D.
+struct ListenerSpot {
     bool found = false;
     world::Affine3D transform; // after its parents'
     Vec3 velocity;             // how fast it moves, when it tracks that for doppler
@@ -594,25 +594,25 @@ struct Hearing {
     Listener listener2d;
     Vec2 screen;
     const world::Tree3D* tree3d = nullptr;
-    Listener3D listener3d;
-    bool areas3d = false; // whether the world has an Area3D a 3D sound could be in
+    ListenerSpot listener3d;
+    bool areas3d = false; // whether the world has an Zone3D a 3D sound could be in
     double tick_seconds = 0.0;
 };
 
 // Godot's Viewport::get_audio_listener_3d, falling back to its camera: the first current
-// AudioListener3D by ID, else the first by ID (the first listener in a viewport is current), else
+// Listener3D by ID, else the first by ID (the first listener in a viewport is current), else
 // the current Camera3D.
-Listener3D find_listener_3d(const State& state, const world::World& world,
-                            const world::Tree3D& tree, double tick_seconds) {
+ListenerSpot find_listener_3d(const State& state, const world::World& world,
+                              const world::Tree3D& tree, double tick_seconds) {
     const auto& ecs = world.ecs();
     std::vector<std::pair<std::string, entt::entity>> listeners;
-    for (const entt::entity entity : ecs.view<world::AudioListener3D>()) {
+    for (const entt::entity entity : ecs.view<world::Listener3D>()) {
         listeners.emplace_back(key_of(world, "", entity), entity);
     }
     std::ranges::sort(listeners);
     entt::entity node = entt::null;
     for (const auto& [key, entity] : listeners) {
-        if (ecs.get<world::AudioListener3D>(entity).current) {
+        if (ecs.get<world::Listener3D>(entity).current) {
             node = entity;
             break;
         }
@@ -620,12 +620,12 @@ Listener3D find_listener_3d(const State& state, const world::World& world,
     if (node == entt::null && !listeners.empty()) {
         node = listeners.front().second;
     }
-    std::string_view kind = "AudioListener3D";
+    std::string_view kind = "Listener3D";
     if (node == entt::null) {
         node = world::current_camera(world, tree);
         kind = "Camera3D";
     }
-    Listener3D listener;
+    ListenerSpot listener;
     if (node == entt::null) {
         return listener;
     }
@@ -698,7 +698,7 @@ Frame lerp(Frame a, Frame b, float t) {
 
 // Godot's AudioStreamPlayer3D::_get_attenuation_db: the player's volume at a distance from the
 // listener, in decibels, at most max_db. Godot works it in doubles.
-float attenuation_db(const world::AudioStreamPlayer3D& player, float distance) {
+float attenuation_db(const world::SoundPlayer3D& player, float distance) {
     constexpr double kCmpEpsilon = 0.00001;
     // Godot's Math::linear_to_db for a double.
     const auto to_db = [](double linear) {
@@ -800,7 +800,7 @@ Volumes scaled(const Volumes& volumes, float s) {
 // Godot's AudioStreamPlayer3D::_calc_reverb_vol: the send to an area's reverb bus, from the
 // sound's direction or, with uniformity, from the area's nearest point around the listener,
 // spread over the speaker pairs.
-Volumes reverb_vol(const world::AudioStreamPlayer3D& player, const world::Area3D& area,
+Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area,
                    Vec3 listener_area_pos, const Volumes& direct_path_vol, int channel_count) {
     const float uniformity = area.reverb_bus_uniformity;
     const float area_send = area.reverb_bus_amount;
@@ -852,7 +852,7 @@ Volumes reverb_vol(const world::AudioStreamPlayer3D& player, const world::Area3D
 // Godot's AudioStreamPlayer3D::_get_overriding_area: the first area by ID under the player whose
 // layer is in its area_mask and which overrides the bus or has a reverb bus. Godot takes the
 // areas in the physics server's order; ID order is the same on every run.
-entt::entity overriding_area(world::World& world, const world::AudioStreamPlayer3D& player,
+entt::entity overriding_area(world::World& world, const world::SoundPlayer3D& player,
                              Vec3 position) {
     constexpr std::size_t kMaxIntersectAreas = 32; // Godot's MAX_INTERSECT_AREAS
     const physics3d::QueryFilter filter{.collision_mask = player.area_mask,
@@ -861,7 +861,7 @@ entt::entity overriding_area(world::World& world, const world::AudioStreamPlayer
                                         .exclude = {}};
     for (const entt::entity found :
          physics3d::overlap_point(world, position, filter, kMaxIntersectAreas)) {
-        const auto* area = world.ecs().try_get<world::Area3D>(found);
+        const auto* area = world.ecs().try_get<world::Zone3D>(found);
         if (area != nullptr && (area->audio_bus_override || area->reverb_bus_enabled)) {
             return found;
         }
@@ -875,7 +875,7 @@ float pitch_of(float pitch_scale) {
 
 // Where a player's voices start and mix this tick, at what volume and pitch.
 void place(State& state, world::World& /*world*/, const Hearing& /*hearing*/,
-           const world::AudioStreamPlayer& player, entt::entity /*entity*/, PlayerState& out) {
+           const world::SoundPlayer& player, entt::entity /*entity*/, PlayerState& out) {
     // Godot's AudioStreamPlayer::_get_volume_vector: the mix target picks the speakers in
     // surround. Godot gives the LFE 1.0 whatever volume_db is (marked to check there), so a
     // muted player still played on it; here it follows the volume, as a 3D player's does.
@@ -895,7 +895,7 @@ void place(State& state, world::World& /*world*/, const Hearing& /*hearing*/,
 }
 
 void place(State& state, world::World& world, const Hearing& hearing,
-           const world::AudioStreamPlayer2D& player, entt::entity entity, PlayerState& out) {
+           const world::SoundPlayer2D& player, entt::entity entity, PlayerState& out) {
     const Vec2 position = hearing.tree2d->global(entity).position;
     // Only the front pair, as Godot's.
     out.volume = {volume_2d(player, position, hearing.listener2d, hearing.screen,
@@ -912,7 +912,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
                                             .exclude = {}};
         for (const entt::entity found :
              physics2d::overlap_point(world, position, filter, kMaxIntersectAreas)) {
-            const auto* area = world.ecs().try_get<world::Area2D>(found);
+            const auto* area = world.ecs().try_get<world::Zone2D>(found);
             if (area != nullptr && area->audio_bus_override) {
                 out.bus = area->audio_bus_name;
                 break;
@@ -925,7 +925,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
 
 // Godot's AudioStreamPlayer3D::_update_panning, for one listener.
 void place(State& state, world::World& world, const Hearing& hearing,
-           const world::AudioStreamPlayer3D& player, entt::entity entity, PlayerState& out) {
+           const world::SoundPlayer3D& player, entt::entity entity, PlayerState& out) {
     const float pitch_scale = pitch_of(player.pitch_scale);
     if (!out.known) {
         out.pitch = pitch_scale;
@@ -935,15 +935,15 @@ void place(State& state, world::World& world, const Hearing& hearing,
     const entt::entity area_entity = hearing.areas3d && player.area_mask != 0
                                          ? overriding_area(world, player, global_pos)
                                          : entt::entity{entt::null};
-    const world::Area3D* area =
-        area_entity != entt::null ? &world.ecs().get<world::Area3D>(area_entity) : nullptr;
+    const world::Zone3D* area =
+        area_entity != entt::null ? &world.ecs().get<world::Zone3D>(area_entity) : nullptr;
     // _get_actual_bus: where a voice starts.
     out.bus = area != nullptr && area->audio_bus_override && !area->reverb_bus_enabled
                   ? known_bus(*state.server, area->audio_bus_name)
                   : player.bus;
     out.volume = {};
     out.mix.clear();
-    const Listener3D& listener = hearing.listener3d;
+    const ListenerSpot& listener = hearing.listener3d;
     if (!listener.found) {
         out.pitch = pitch_scale;
         return; // nothing hears it
@@ -1322,7 +1322,7 @@ void stop_video(Server& server, VideoSound& video) {
     video.playback.reset();
 }
 
-// Plays each VideoStreamPlayer's audio_track with its picture: from stream_position at
+// Plays each Video's audio_track with its picture: from stream_position at
 // speed_scale on its bus at volume_db, held while paused, stopped with the picture, and started
 // again where the picture jumps. The video system runs first, so stream_position is this tick's.
 void play_videos(State& state, world::World& world) {
@@ -1331,8 +1331,8 @@ void play_videos(State& state, world::World& world) {
         video.seen = false;
     }
     auto& ecs = world.ecs();
-    for (const entt::entity entity : ecs.view<world::VideoStreamPlayer>()) {
-        const auto& component = ecs.get<world::VideoStreamPlayer>(entity);
+    for (const entt::entity entity : ecs.view<world::Video>()) {
+        const auto& component = ecs.get<world::Video>(entity);
         VideoSound& video = state.videos[key_of(world, kVideoPlayer, entity)];
         video.seen = true;
         video.id = std::string(world.id_of(entity));
@@ -1444,8 +1444,8 @@ void run(State& state, world::World& world, double tick_seconds) {
     for (auto& [key, tracker] : state.trackers) {
         tracker.seen = false;
     }
-    track<world::AudioStreamPlayer3D>(state, world, tree3d, kPlayer3D);
-    track<world::AudioListener3D>(state, world, tree3d, "AudioListener3D");
+    track<world::SoundPlayer3D>(state, world, tree3d, kPlayer3D);
+    track<world::Listener3D>(state, world, tree3d, "Listener3D");
     track<world::Camera3D>(state, world, tree3d, "Camera3D");
     std::erase_if(state.trackers, [](const auto& entry) { return !entry.second.seen; });
     Hearing hearing;
@@ -1454,13 +1454,13 @@ void run(State& state, world::World& world, double tick_seconds) {
     hearing.listener2d = find_listener(world, tree2d, hearing.screen);
     hearing.tree3d = &tree3d;
     hearing.tick_seconds = tick_seconds;
-    if (!world.ecs().view<world::AudioStreamPlayer3D>().empty()) {
+    if (!world.ecs().view<world::SoundPlayer3D>().empty()) {
         hearing.listener3d = find_listener_3d(state, world, tree3d, tick_seconds);
-        hearing.areas3d = !world.ecs().view<world::Area3D>().empty();
+        hearing.areas3d = !world.ecs().view<world::Zone3D>().empty();
     }
-    reconcile<world::AudioStreamPlayer>(state, world, hearing, kPlayer, requests);
-    reconcile<world::AudioStreamPlayer2D>(state, world, hearing, kPlayer2D, requests);
-    reconcile<world::AudioStreamPlayer3D>(state, world, hearing, kPlayer3D, requests);
+    reconcile<world::SoundPlayer>(state, world, hearing, kPlayer, requests);
+    reconcile<world::SoundPlayer2D>(state, world, hearing, kPlayer2D, requests);
+    reconcile<world::SoundPlayer3D>(state, world, hearing, kPlayer3D, requests);
     // A player whose entity or component went away stops, as Godot's on NOTIFICATION_PREDELETE.
     std::erase_if(state.players, [&](auto& entry) {
         if (!entry.second.seen) {
@@ -1485,11 +1485,11 @@ void run(State& state, world::World& world, double tick_seconds) {
     }
     for (auto& [key, player] : state.players) {
         if (player.kind == kPlayer) {
-            follow_clip<world::AudioStreamPlayer>(state, world, player);
+            follow_clip<world::SoundPlayer>(state, world, player);
         } else if (player.kind == kPlayer2D) {
-            follow_clip<world::AudioStreamPlayer2D>(state, world, player);
+            follow_clip<world::SoundPlayer2D>(state, world, player);
         } else {
-            follow_clip<world::AudioStreamPlayer3D>(state, world, player);
+            follow_clip<world::SoundPlayer3D>(state, world, player);
         }
     }
     std::vector<ClipChange> changes;
@@ -1517,17 +1517,14 @@ void run(State& state, world::World& world, double tick_seconds) {
         if (player.voices.empty()) {
             player.playing = false;
             if (player.kind == kPlayer) {
-                if (auto* component =
-                        world.ecs().try_get<world::AudioStreamPlayer>(player.entity)) {
+                if (auto* component = world.ecs().try_get<world::SoundPlayer>(player.entity)) {
                     component->playing = false;
                 }
             } else if (player.kind == kPlayer2D) {
-                if (auto* component =
-                        world.ecs().try_get<world::AudioStreamPlayer2D>(player.entity)) {
+                if (auto* component = world.ecs().try_get<world::SoundPlayer2D>(player.entity)) {
                     component->playing = false;
                 }
-            } else if (auto* component =
-                           world.ecs().try_get<world::AudioStreamPlayer3D>(player.entity)) {
+            } else if (auto* component = world.ecs().try_get<world::SoundPlayer3D>(player.entity)) {
                 component->playing = false;
             }
         }
@@ -1615,11 +1612,11 @@ json::Value settings_schema() {
                        "audio/driver/output_latency. More is steadier when frames run late.",
                        1, 500, Settings{}.output_latency);
     properties["panning_strength_2d"] =
-        number_setting("How far AudioStreamPlayer2D sounds pan left and right, as Godot's "
+        number_setting("How far SoundPlayer2D sounds pan left and right, as Godot's "
                        "audio/general/2d_panning_strength.",
                        0, 4, Settings{}.panning_strength_2d);
     properties["panning_strength_3d"] =
-        number_setting("How far AudioStreamPlayer3D sounds pan left and right, as Godot's "
+        number_setting("How far SoundPlayer3D sounds pan left and right, as Godot's "
                        "audio/general/3d_panning_strength.",
                        0, 4, Settings{}.panning_strength_3d);
     properties["channel_disable_threshold_db"] =
@@ -1765,8 +1762,8 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
                             [state](const world::World& /*world*/) { return state->memory(); });
     world.add_system(
         "audio", [state](world::World& w, double tick_seconds) { run(*state, w, tick_seconds); },
-        {.doc = "Plays each AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and "
-                "each VideoStreamPlayer's sound, and mixes the tick's sound through the bus "
+        {.doc = "Plays each SoundPlayer, SoundPlayer2D and SoundPlayer3D and "
+                "each Video's sound, and mixes the tick's sound through the bus "
                 "layout.",
          .priority = 1200});
     world::set_audio_track_sound(world, track_sound());
@@ -1861,12 +1858,12 @@ namespace {
 bool has_player(const world::World& world, std::string_view kind, entt::entity entity) {
     const auto& ecs = world.ecs();
     if (kind == kPlayer) {
-        return ecs.all_of<world::AudioStreamPlayer>(entity);
+        return ecs.all_of<world::SoundPlayer>(entity);
     }
     if (kind == kPlayer2D) {
-        return ecs.all_of<world::AudioStreamPlayer2D>(entity);
+        return ecs.all_of<world::SoundPlayer2D>(entity);
     }
-    return ecs.all_of<world::AudioStreamPlayer3D>(entity);
+    return ecs.all_of<world::SoundPlayer3D>(entity);
 }
 
 // The player an audio track's stream plays on, by its key: the one its pending start names, or
@@ -1898,8 +1895,8 @@ world::AudioTrackSound track_sound() {
         if (kind.empty()) {
             return make_error(ErrorCode::InvalidArgument,
                               "\"" + std::string(world.id_of(entity)) +
-                                  "\" has no AudioStreamPlayer, AudioStreamPlayer2D or "
-                                  "AudioStreamPlayer3D");
+                                  "\" has no SoundPlayer, SoundPlayer2D or "
+                                  "SoundPlayer3D");
         }
         const std::string path(stream);
         std::string error;
@@ -2021,13 +2018,12 @@ Result<void> play_stream(world::World& world, entt::entity entity, std::string_v
     if (state == nullptr) {
         return make_error(ErrorCode::InvalidArgument, "audio is not installed in this world");
     }
-    const auto* player = world.ecs().try_get<world::AudioStreamPlayer>(entity);
-    const auto* player_2d = world.ecs().try_get<world::AudioStreamPlayer2D>(entity);
-    const auto* player_3d = world.ecs().try_get<world::AudioStreamPlayer3D>(entity);
+    const auto* player = world.ecs().try_get<world::SoundPlayer>(entity);
+    const auto* player_2d = world.ecs().try_get<world::SoundPlayer2D>(entity);
+    const auto* player_3d = world.ecs().try_get<world::SoundPlayer3D>(entity);
     if (player == nullptr && player_2d == nullptr && player_3d == nullptr) {
-        return make_error(ErrorCode::InvalidArgument,
-                          "it has no AudioStreamPlayer, AudioStreamPlayer2D or "
-                          "AudioStreamPlayer3D");
+        return make_error(ErrorCode::InvalidArgument, "it has no SoundPlayer, SoundPlayer2D or "
+                                                      "SoundPlayer3D");
     }
     const auto own_stream = [&]() -> const std::string& {
         if (player != nullptr) {

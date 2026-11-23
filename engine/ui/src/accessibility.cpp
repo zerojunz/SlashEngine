@@ -60,7 +60,7 @@ std::optional<ButtonFields> base_button(const world::World& world, entt::entity 
                             .toggle_mode = button->toggle_mode,
                             .pressed = button->button_pressed};
     }
-    if (const auto* button = world.ecs().try_get<world::TextureButton>(entity); button != nullptr) {
+    if (const auto* button = world.ecs().try_get<world::ImageButton>(entity); button != nullptr) {
         return ButtonFields{.button_group = button->button_group,
                             .disabled = button->disabled,
                             .toggle_mode = button->toggle_mode,
@@ -90,11 +90,11 @@ public:
                 tree_.roots.push_back(index);
             }
         }
-        // The popup menus open, as windows: a button's under it, a PopupMenu's at the root.
+        // The popup menus open, as windows: a button's under it, a PopupList's at the root.
         for (const PopupView& popup : layout_.popups) {
             const std::size_t index = menu(popup);
             const auto owner = made_.find(popup.owner);
-            if (!world_.ecs().all_of<world::PopupMenu>(popup.owner) && owner != made_.end()) {
+            if (!world_.ecs().all_of<world::PopupList>(popup.owner) && owner != made_.end()) {
                 tree_.elements[owner->second].children.push_back(index);
             } else {
                 tree_.roots.push_back(index);
@@ -110,20 +110,20 @@ private:
         return tree_.elements.size() - 1;
     }
 
-    // Node, CanvasItem, Control, then the control's own class, each in its turn, as Godot sends
+    // Node, CanvasItem, Widget, then the control's own class, each in its turn, as Godot sends
     // NOTIFICATION_ACCESSIBILITY_UPDATE from the base class down.
     AccessElement control(entt::entity entity, const Placed& placed) {
         AccessElement out;
         out.entity = entity;
         out.rect = bounds(placed.transform, placed.size);
-        const auto* control = world_.ecs().try_get<world::Control>(entity);
-        const world::Control fallback;
-        const world::Control& fields = control != nullptr ? *control : fallback;
+        const auto* control = world_.ecs().try_get<world::Widget>(entity);
+        const world::Widget fallback;
+        const world::Widget& fields = control != nullptr ? *control : fallback;
         // CanvasItem.
         if (!fields.visible) {
             out.flags.emplace_back("hidden");
         }
-        // Control.
+        // Widget.
         out.name = shown(world_, placed.translate, fields.accessibility_name);
         out.description = shown(world_, placed.translate, fields.accessibility_description);
         out.live = fields.accessibility_live;
@@ -148,7 +148,7 @@ private:
         related(fields.accessibility_flow_to_nodes, out.flow_to);
         // The control's own class.
         const std::vector<std::string_view> classes = control_classes(world_, entity);
-        const std::string_view type = classes.empty() ? "Control" : classes.front();
+        const std::string_view type = classes.empty() ? "Widget" : classes.front();
         if (const std::optional<ButtonFields> button = base_button(world_, entity)) {
             base_button_update(out, *button);
             button_update(out, entity, placed, type);
@@ -156,9 +156,9 @@ private:
             out.role = "static_text";
             out.value =
                 shown(world_, placed.translate, world_.ecs().get<world::Label>(entity).text);
-        } else if (type == "LineEdit") {
+        } else if (type == "TextField") {
             line_edit_update(out, entity, placed);
-        } else if (type == "TextEdit" || type == "CodeEdit") {
+        } else if (type == "TextArea" || type == "CodeEditor") {
             text_edit_update(out, entity, placed);
         } else if (type == "ProgressBar") {
             const auto& bar = world_.ecs().get<world::ProgressBar>(entity);
@@ -177,15 +177,15 @@ private:
         } else if (type == "HScrollBar" || type == "VScrollBar") {
             range_update(out, range_of(world_.ecs().get<world::ScrollBar>(entity)));
             out.role = "scroll_bar";
-        } else if (type == "ScrollContainer") {
+        } else if (type == "ScrollBox") {
             out.role = "scroll_view";
             out.actions = {"scroll_down", "scroll_left", "scroll_right", "scroll_up",
                            "set_scroll_offset"};
         } else if (type == "Panel") {
             out.role = "panel";
-        } else if (type == "ColorRect") {
-            out.color = world_.ecs().get<world::ColorRect>(entity).color;
-        } else if (type == "VideoStreamPlayer") {
+        } else if (type == "ColorFill") {
+            out.color = world_.ecs().get<world::ColorFill>(entity).color;
+        } else if (type == "Video") {
             out.role = "video";
         }
         return out;
@@ -211,17 +211,17 @@ private:
         }
     }
 
-    // Button, then CheckBox, CheckButton, OptionButton and MenuButton.
+    // Button, then CheckBox, ToggleSwitch, Dropdown and MenuButton.
     void button_update(AccessElement& out, entt::entity entity, const Placed& placed,
                        std::string_view type) {
         const auto& ecs = world_.ecs();
         const world::Button* button = button_of(world_, entity);
         if (button == nullptr) {
-            return; // a TextureButton is only a BaseButton
+            return; // a ImageButton is only a BaseButton
         }
         std::string text = shown(world_, placed.translate, button->text);
-        if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
-            // OptionButton shows the selected option's text.
+        if (const auto* option = ecs.try_get<world::Dropdown>(entity); option != nullptr) {
+            // Dropdown shows the selected option's text.
             text.clear();
             if (option->selected >= 0 &&
                 static_cast<std::size_t>(option->selected) < option->items.size()) {
@@ -239,9 +239,9 @@ private:
         }
         if (type == "CheckBox") {
             out.role = button->button_group.empty() ? "check_box" : "radio_button";
-        } else if (type == "CheckButton") {
+        } else if (type == "ToggleSwitch") {
             out.role = "check_button";
-        } else if (type == "OptionButton") {
+        } else if (type == "Dropdown") {
             out.popup_type = "list";
         } else if (type == "MenuButton") {
             out.popup_type = "menu";
@@ -249,7 +249,7 @@ private:
     }
 
     void line_edit_update(AccessElement& out, entt::entity entity, const Placed& placed) {
-        const auto& line = world_.ecs().get<world::LineEdit>(entity);
+        const auto& line = world_.ecs().get<world::TextField>(entity);
         out.role = "text_field";
         const std::string placeholder = shown(world_, placed.translate, line.placeholder_text);
         if (line.text.empty() && ime_text(world_, entity).empty() && !placeholder.empty()) {
@@ -278,7 +278,7 @@ private:
     }
 
     void text_edit_update(AccessElement& out, entt::entity entity, const Placed& placed) {
-        const auto& edit = world_.ecs().get<world::TextEdit>(entity);
+        const auto& edit = world_.ecs().get<world::TextArea>(entity);
         out.role = "multiline_text_field";
         const std::string placeholder = shown(world_, placed.translate, edit.placeholder_text);
         if (edit.text.empty()) {
@@ -301,7 +301,7 @@ private:
         out.actions = {"decrement", "increment", "set_value"};
     }
 
-    // PopupMenu: the menu, then an element per item.
+    // PopupList: the menu, then an element per item.
     std::size_t menu(const PopupView& popup) {
         AccessElement out;
         out.entity = popup.owner;
@@ -309,7 +309,7 @@ private:
         out.role = "menu";
         out.rect = {static_cast<float>(popup.position.x), static_cast<float>(popup.position.y),
                     static_cast<float>(popup.size.x), static_cast<float>(popup.size.y)};
-        const bool standalone = world_.ecs().all_of<world::PopupMenu>(popup.owner);
+        const bool standalone = world_.ecs().all_of<world::PopupList>(popup.owner);
         if (standalone) {
             out.name = world_.id_of(popup.owner); // Node's name
         }
@@ -418,7 +418,7 @@ Error no_action(std::string_view action, std::string_view what) {
                  std::string(what) + " doesn't take \"" + std::string(action) + "\""};
 }
 
-// A ScrollContainer's scroll actions, as ScrollContainer::_accessibility_action_scroll_*.
+// A ScrollBox's scroll actions, as ScrollContainer::_accessibility_action_scroll_*.
 Result<void> scroll_action(world::World& world, entt::entity entity, std::string_view action,
                            const json::Value& data) {
     text::Fonts* found = fonts(world);
@@ -428,8 +428,7 @@ Result<void> scroll_action(world::World& world, entt::entity entity, std::string
     const Layout laid = layout(world, *found, settings(world).viewport);
     const auto view = laid.scrolls.find(entity);
     if (view == laid.scrolls.end()) {
-        return Error{ErrorCode::InvalidArgument,
-                     "the ScrollContainer isn't laid out: it is hidden"};
+        return Error{ErrorCode::InvalidArgument, "the ScrollBox isn't laid out: it is hidden"};
     }
     std::array<std::optional<double>, 2> to;
     if (action == "set_scroll_offset") {
@@ -448,7 +447,7 @@ Result<void> scroll_action(world::World& world, entt::entity entity, std::string
         to.at(vertical ? 1 : 0) = bar.value + (sign * step);
     }
     if (!scroll_container_to(world, entity, to)) {
-        return Error{ErrorCode::InvalidArgument, "the ScrollContainer has no entity ID"};
+        return Error{ErrorCode::InvalidArgument, "the ScrollBox has no entity ID"};
     }
     return {};
 }
@@ -535,17 +534,17 @@ Result<void> accessibility_action(world::World& world, entt::entity entity, std:
         return {};
     }
     if (action == "set_value") {
-        // LineEdit::_accessibility_action_set_value and TextEdit's: set_text.
+        // LineEdit::_accessibility_action_set_value and TextArea's: set_text.
         if (!data.is_string()) {
             return Error{ErrorCode::InvalidArgument,
                          "set_value takes a number for a Range or text for a text field"};
         }
-        if (auto* line = ecs.try_get<world::LineEdit>(entity); line != nullptr) {
+        if (auto* line = ecs.try_get<world::TextField>(entity); line != nullptr) {
             line->text = data.as_string();
             line->caret_column = 0; // as LineEdit::set_text leaves it
             return {};
         }
-        if (auto* edit = ecs.try_get<world::TextEdit>(entity); edit != nullptr) {
+        if (auto* edit = ecs.try_get<world::TextArea>(entity); edit != nullptr) {
             edit->text = data.as_string();
             edit->caret_line = 0; // as TextEdit::set_text leaves it
             edit->caret_column = 0;
@@ -555,8 +554,8 @@ Result<void> accessibility_action(world::World& world, entt::entity entity, std:
     }
     if (action == "scroll_up" || action == "scroll_down" || action == "scroll_left" ||
         action == "scroll_right" || action == "set_scroll_offset") {
-        if (!ecs.all_of<world::ScrollContainer>(entity)) {
-            return no_action(action, "a control that isn't a ScrollContainer");
+        if (!ecs.all_of<world::ScrollBox>(entity)) {
+            return no_action(action, "a control that isn't a ScrollBox");
         }
         return scroll_action(world, entity, action, data);
     }
@@ -573,13 +572,13 @@ std::vector<Problem> accessibility_problems(const world::World& world, const Acc
         if (id.empty()) {
             continue;
         }
-        const auto* control = world.ecs().try_get<world::Control>(element.entity);
+        const auto* control = world.ecs().try_get<world::Widget>(element.entity);
         const std::string name = control != nullptr ? control->accessibility_name : std::string();
         // Control::get_accessibility_configuration_warnings, on the name as set.
         if (!name.empty()) {
             for (const std::string_view type : control_classes(world, element.entity)) {
                 if (name.find(type) != std::string::npos) {
-                    problems.push_back({id, "/components/Control/accessibility_name",
+                    problems.push_back({id, "/components/Widget/accessibility_name",
                                         "accessibility_name must not include the control's "
                                         "class name, \"" +
                                             std::string(type) + "\""});
@@ -589,7 +588,7 @@ std::vector<Problem> accessibility_problems(const world::World& world, const Acc
             if (std::ranges::any_of(name, [](char c) {
                     return static_cast<unsigned char>(c) < 0x20U || c == 0x7F;
                 })) {
-                problems.push_back({id, "/components/Control/accessibility_name",
+                problems.push_back({id, "/components/Widget/accessibility_name",
                                     "accessibility_name must not include a control character"});
             }
         }
@@ -598,7 +597,7 @@ std::vector<Problem> accessibility_problems(const world::World& world, const Acc
         std::string trimmed = element.name;
         std::erase_if(trimmed, [](char c) { return c == ' ' || c == '\t' || c == '\n'; });
         if (focus != "none" && trimmed.empty() && element.role != "static_text") {
-            problems.push_back({id, "/components/Control/accessibility_name",
+            problems.push_back({id, "/components/Widget/accessibility_name",
                                 "a screen reader has no name for this " + element.role +
                                     ": give it text, accessibility_name or tooltip_text"});
         }
@@ -608,7 +607,7 @@ std::vector<Problem> accessibility_problems(const world::World& world, const Acc
                     if (!is_control(world, nodes[i])) {
                         problems.push_back(
                             {id,
-                             "/components/Control/" + std::string(field) + "/" + std::to_string(i),
+                             "/components/Widget/" + std::string(field) + "/" + std::to_string(i),
                              "isn't a control"});
                     }
                 }

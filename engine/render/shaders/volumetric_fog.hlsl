@@ -46,7 +46,7 @@ struct Light {
 struct Volume {
     float4 to_local[4]; // the world to the volume's space, a column each
     float4 position;   // its place in the world, then its shape (Godot's RS::FogVolumeShape)
-    float4 size;       // its size (twice the froxels for a world shape), then 1 for a FogMaterial
+    float4 size;       // its size (twice the froxels for a world shape), then 1 for a FogVolumeLook
     int4 corner;       // the first froxel it fills
     int4 corner_end;   // past the last froxel it fills
     float4 albedo;     // linear, then the material's density
@@ -116,7 +116,7 @@ SamplerState voxel_gi_sampler : register(s3, space0);
 StructuredBuffer<Light> clustered_lights : LIGHTS_BUFFER;
 StructuredBuffer<uint> clusters : CLUSTERS_BUFFER;
 // The frame's fog volumes (kFogVolumeItems float4s each), then the VoxelGIs whose light it takes
-// (kFogVoxelGIItems each, as mesh.hlsl's VoxelGI: three rows from the world to its cells, its
+// (kFogVoxelGIItems each, as mesh.hlsl's VoxelLighting3D: three rows from the world to its cells, its
 // size and levels, its energy and the rest, then each level's place in voxel_gi_atlas).
 StructuredBuffer<float4> fog_items : ITEMS_BUFFER;
 StructuredBuffer<float4> source : SOURCE_BUFFER;
@@ -273,12 +273,12 @@ uint range_mask(uint word, uint first, uint end) {
 // What the fog volumes add to a froxel at id, whose point is world, as Godot's volumetric_fog.glsl
 // adds each into its density, light and emissive maps: the density in 1024ths, then the scattering
 // and emission, each a channel's units as Godot packs them into 11, 11 and 10 bits, held there.
-// The k-th float4 of the index-th VoxelGI in fog_items.
+// The k-th float4 of the index-th VoxelLighting3D in fog_items.
 float4 voxel_gi_item(uint index, uint k) {
     return fog_items[(items.x * kFogVolumeItems) + (index * kFogVoxelGIItems) + k];
 }
 
-// A VoxelGI's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
+// A VoxelLighting3D's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
 // in the two slices around uvw, each read inside its own tile, then between them (mesh.hlsl's
 // voxel_gi_level).
 float4 voxel_gi_level(uint index, uint level, float3 uvw) {
@@ -304,8 +304,8 @@ float4 voxel_gi_level(uint index, uint level, float3 uvw) {
     return a + (b - a) * (z - z0);
 }
 
-// The light a VoxelGI gives the fog at a point, as volumetric_fog_process.glsl's gi_inject: every
-// level at the point, front to back, times the VoxelGI's energy; none outside its box.
+// The light a VoxelLighting3D gives the fog at a point, as volumetric_fog_process.glsl's gi_inject: every
+// level at the point, front to back, times the VoxelLighting3D's energy; none outside its box.
 float3 fog_voxel_gi_light(uint index, float3 world) {
     float4 row_x = voxel_gi_item(index, 0u);
     float4 row_y = voxel_gi_item(index, 1u);

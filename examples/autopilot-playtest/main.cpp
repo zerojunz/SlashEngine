@@ -49,7 +49,7 @@ void add_systems(world::World& w) {
     w.add_system("coin_walk",
                  [](world::World& at, double seconds) {
                      const entt::entity start = at.find("start");
-                     auto& menu = at.ecs().get<world::Control>(start);
+                     auto& menu = at.ecs().get<world::Widget>(start);
                      if (slash::ui::was_pressed(at, start)) {
                          menu.visible = false;
                      }

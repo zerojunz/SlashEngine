@@ -76,7 +76,7 @@ void quad(Builder& b, int prev_a, int prev_b, int this_a, int this_b) {
 
 } // namespace
 
-MeshData box_mesh(const world::BoxMesh& box) {
+MeshData box_mesh(const world::BoxGeometry& box) {
     Builder b;
     const Vec3 size = box.size;
     const int subdivide_w = std::max(box.subdivide_width, 0);
@@ -163,7 +163,7 @@ MeshData box_mesh(const world::BoxMesh& box) {
     return flipped(std::move(b.mesh), box.flip_faces);
 }
 
-MeshData sphere_mesh(const world::SphereMesh& sphere) {
+MeshData sphere_mesh(const world::SphereGeometry& sphere) {
     Builder b;
     const float radius = sphere.radius;
     const int radial_segments = std::max(sphere.radial_segments, 4);
@@ -207,7 +207,7 @@ MeshData sphere_mesh(const world::SphereMesh& sphere) {
     return flipped(std::move(b.mesh), sphere.flip_faces);
 }
 
-MeshData cylinder_mesh(const world::CylinderMesh& cylinder) {
+MeshData cylinder_mesh(const world::CylinderGeometry& cylinder) {
     Builder b;
     const float top_radius = cylinder.top_radius;
     const float bottom_radius = cylinder.bottom_radius;
@@ -274,7 +274,7 @@ MeshData cylinder_mesh(const world::CylinderMesh& cylinder) {
     return flipped(std::move(b.mesh), cylinder.flip_faces);
 }
 
-MeshData capsule_mesh(const world::CapsuleMesh& capsule) {
+MeshData capsule_mesh(const world::CapsuleGeometry& capsule) {
     Builder b;
     const float radius = capsule.radius;
     const float height = capsule.height;
@@ -361,7 +361,7 @@ MeshData capsule_mesh(const world::CapsuleMesh& capsule) {
 
 namespace {
 
-// PlaneMesh::_create_mesh_array, which QuadMesh shares.
+// PlaneMesh::_create_mesh_array, which QuadGeometry shares.
 MeshData flat_mesh(Vec2 size, int subdivide_w, int subdivide_d, Vec3 center_offset,
                    const std::string& orientation, bool flip_faces) {
     Builder b;
@@ -409,17 +409,17 @@ MeshData flat_mesh(Vec2 size, int subdivide_w, int subdivide_d, Vec3 center_offs
 
 } // namespace
 
-MeshData plane_mesh(const world::PlaneMesh& plane) {
+MeshData plane_mesh(const world::PlaneGeometry& plane) {
     return flat_mesh(plane.size, plane.subdivide_width, plane.subdivide_depth, plane.center_offset,
                      plane.orientation, plane.flip_faces);
 }
 
-MeshData quad_mesh(const world::QuadMesh& quad) {
+MeshData quad_mesh(const world::QuadGeometry& quad) {
     return flat_mesh(quad.size, quad.subdivide_width, quad.subdivide_depth, quad.center_offset,
                      quad.orientation, quad.flip_faces);
 }
 
-MeshData prism_mesh(const world::PrismMesh& prism) {
+MeshData prism_mesh(const world::PrismGeometry& prism) {
     Builder b;
     const Vec3 size = prism.size;
     const float left_to_right = prism.left_to_right;
@@ -516,7 +516,7 @@ MeshData prism_mesh(const world::PrismMesh& prism) {
     return flipped(std::move(b.mesh), prism.flip_faces);
 }
 
-MeshData torus_mesh(const world::TorusMesh& torus) {
+MeshData torus_mesh(const world::TorusGeometry& torus) {
     Builder b;
     const int rings = std::max(torus.rings, 3);
     const int ring_segments = std::max(torus.ring_segments, 3);
@@ -589,10 +589,10 @@ Result<std::optional<Primitive>> primitive_of(const world::World& world, entt::e
 }
 
 Result<void> check_primitive(const Primitive& primitive) {
-    if (const auto* torus = std::get_if<world::TorusMesh>(&primitive);
+    if (const auto* torus = std::get_if<world::TorusGeometry>(&primitive);
         torus != nullptr && torus->inner_radius == torus->outer_radius) {
         return Error{ErrorCode::InvalidArgument,
-                     "a TorusMesh's inner_radius and outer_radius can't be the same"};
+                     "a TorusGeometry's inner_radius and outer_radius can't be the same"};
     }
     return {};
 }
@@ -604,19 +604,19 @@ Result<MeshData> make_mesh(const Primitive& primitive) {
     return std::visit(
         [](const auto& mesh) -> MeshData {
             using T = std::decay_t<decltype(mesh)>;
-            if constexpr (std::is_same_v<T, world::BoxMesh>) {
+            if constexpr (std::is_same_v<T, world::BoxGeometry>) {
                 return box_mesh(mesh);
-            } else if constexpr (std::is_same_v<T, world::SphereMesh>) {
+            } else if constexpr (std::is_same_v<T, world::SphereGeometry>) {
                 return sphere_mesh(mesh);
-            } else if constexpr (std::is_same_v<T, world::CylinderMesh>) {
+            } else if constexpr (std::is_same_v<T, world::CylinderGeometry>) {
                 return cylinder_mesh(mesh);
-            } else if constexpr (std::is_same_v<T, world::CapsuleMesh>) {
+            } else if constexpr (std::is_same_v<T, world::CapsuleGeometry>) {
                 return capsule_mesh(mesh);
-            } else if constexpr (std::is_same_v<T, world::PlaneMesh>) {
+            } else if constexpr (std::is_same_v<T, world::PlaneGeometry>) {
                 return plane_mesh(mesh);
-            } else if constexpr (std::is_same_v<T, world::QuadMesh>) {
+            } else if constexpr (std::is_same_v<T, world::QuadGeometry>) {
                 return quad_mesh(mesh);
-            } else if constexpr (std::is_same_v<T, world::PrismMesh>) {
+            } else if constexpr (std::is_same_v<T, world::PrismGeometry>) {
                 return prism_mesh(mesh);
             } else {
                 return torus_mesh(mesh);

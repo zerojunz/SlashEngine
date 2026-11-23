@@ -132,13 +132,13 @@ std::vector<std::string> ids(const world::World& world, const ui::Layout& layout
 TEST_CASE("controls are placed in their parent's rect by anchors and offsets") {
     Scene scene;
     const entt::entity box = scene.create(
-        "box", R"({"Control": {"anchor_left": 0.5, "anchor_top": 0.5, "anchor_right": 0.5,
+        "box", R"({"Widget": {"anchor_left": 0.5, "anchor_top": 0.5, "anchor_right": 0.5,
                                "anchor_bottom": 0.5, "offset_left": -50, "offset_top": -20,
                                "offset_right": 50, "offset_bottom": 20}})");
     const entt::entity panel = scene.create(
-        "panel", R"({"Control": {"anchor_right": 1, "anchor_bottom": 1, "offset_left": 10,
+        "panel", R"({"Widget": {"anchor_right": 1, "anchor_bottom": 1, "offset_left": 10,
                                  "offset_top": 10, "offset_right": -10, "offset_bottom": -10}})");
-    scene.set(panel, R"({"Control": {"anchor_right": 1, "anchor_bottom": 1, "offset_left": 10,
+    scene.set(panel, R"({"Widget": {"anchor_right": 1, "anchor_bottom": 1, "offset_left": 10,
                                      "offset_top": 10, "offset_right": -10,
                                      "offset_bottom": -10, "children": ["box"]}})");
 
@@ -170,7 +170,7 @@ TEST_CASE("controls are placed in their parent's rect by anchors and offsets") {
 
 TEST_CASE("anchors past 0 and 1 anchor a control outside its parent's rect, as Godot allows") {
     Scene scene;
-    const std::string_view control = R"({"Control": {"anchor_left": -0.5, "anchor_top": 1.5,
+    const std::string_view control = R"({"Widget": {"anchor_left": -0.5, "anchor_top": 1.5,
                                                     "anchor_right": 1.25, "anchor_bottom": 2}})";
     CHECK(world::validate_scene(scene.components,
                                 parse(R"({"format": 1, "entities": {"wide": {"components": )" +
@@ -187,10 +187,10 @@ TEST_CASE("anchors past 0 and 1 anchor a control outside its parent's rect, as G
 TEST_CASE("a control smaller than its minimum size grows as grow_horizontal and _vertical say") {
     Scene scene;
     const entt::entity end = scene.create(
-        "end", R"({"Control": {"offset_left": 100, "offset_top": 100, "offset_right": 100,
+        "end", R"({"Widget": {"offset_left": 100, "offset_top": 100, "offset_right": 100,
                                "offset_bottom": 100, "custom_minimum_size": [40, 10]}})");
     const entt::entity both = scene.create(
-        "both", R"({"Control": {"offset_left": 100, "offset_top": 100, "offset_right": 100,
+        "both", R"({"Widget": {"offset_left": 100, "offset_top": 100, "offset_right": 100,
                                 "offset_bottom": 100, "custom_minimum_size": [40, 10],
                                 "grow_horizontal": "both", "grow_vertical": "begin"}})");
     const ui::Layout layout = scene.layout();
@@ -204,9 +204,9 @@ TEST_CASE("a control smaller than its minimum size grows as grow_horizontal and 
 TEST_CASE("rotation and scale turn a control and its children around its pivot") {
     Scene scene;
     const entt::entity child = scene.create(
-        "child", R"({"Control": {"offset_left": 10, "offset_right": 20, "offset_bottom": 5}})");
+        "child", R"({"Widget": {"offset_left": 10, "offset_right": 20, "offset_bottom": 5}})");
     const entt::entity parent = scene.create("parent", "{}");
-    scene.set(parent, R"({"Control": {"offset_left": 100, "offset_top": 50, "offset_right": 140,
+    scene.set(parent, R"({"Widget": {"offset_left": 100, "offset_top": 50, "offset_right": 140,
                                       "offset_bottom": 70, "pivot_offset": [20, 10],
                                       "rotation": 1.5707963705062866, "scale": [2, 2],
                                       "children": ["child"]}})");
@@ -229,12 +229,12 @@ TEST_CASE("rotation and scale turn a control and its children around its pivot")
 
 TEST_CASE("modulate, visible and z_index pass from parents to children") {
     Scene scene;
-    const entt::entity a = scene.create("a", R"({"ColorRect": {}})");
-    const entt::entity b = scene.create("b", R"({"Control": {"z_index": -1}, "ColorRect": {}})");
+    const entt::entity a = scene.create("a", R"({"ColorFill": {}})");
+    const entt::entity b = scene.create("b", R"({"Widget": {"z_index": -1}, "ColorFill": {}})");
     const entt::entity top = scene.create("top", "{}");
-    scene.set(top, R"({"Control": {"modulate": [1, 0.5, 1, 0.5], "z_index": 2, "visible": false,
-                                   "children": ["a", "b"]}, "ColorRect": {}})");
-    const entt::entity loose = scene.create("loose", R"({"ColorRect": {}})");
+    scene.set(top, R"({"Widget": {"modulate": [1, 0.5, 1, 0.5], "z_index": 2, "visible": false,
+                                   "children": ["a", "b"]}, "ColorFill": {}})");
+    const entt::entity loose = scene.create("loose", R"({"ColorFill": {}})");
     const ui::Layout layout = scene.layout();
     CHECK(layout.find(a)->modulate == slash::Vec4{1.0F, 0.5F, 1.0F, 0.5F});
     CHECK_FALSE(layout.find(a)->visible);
@@ -242,9 +242,9 @@ TEST_CASE("modulate, visible and z_index pass from parents to children") {
     CHECK(layout.find(b)->z == 1);
     CHECK(layout.find(loose)->visible);
     // A z_index that isn't relative is the whole of it, as Godot's z_as_relative.
-    scene.set(b, R"({"Control": {"z_index": -1, "z_as_relative": false}})");
+    scene.set(b, R"({"Widget": {"z_index": -1, "z_as_relative": false}})");
     CHECK(scene.layout().find(b)->z == -1);
-    scene.set(b, R"({"Control": {"z_index": -1, "z_as_relative": true}})");
+    scene.set(b, R"({"Widget": {"z_index": -1, "z_as_relative": true}})");
     // By z, then parents before children and in order.
     CHECK(ids(scene.world, layout) == std::vector<std::string>{"loose", "b", "top", "a"});
     // Hidden controls draw nothing.
@@ -254,12 +254,12 @@ TEST_CASE("modulate, visible and z_index pass from parents to children") {
 
 TEST_CASE("children that can't be laid out are reported with their JSON Pointer") {
     Scene scene;
-    const entt::entity a = scene.create("a", R"({"Control": {}})");
-    const entt::entity b = scene.create("b", R"({"Control": {}})");
+    const entt::entity a = scene.create("a", R"({"Widget": {}})");
+    const entt::entity b = scene.create("b", R"({"Widget": {}})");
     scene.create("sprite", R"({"Transform2D": {}})");
-    scene.set(a, R"({"Control": {"children": ["b", "a", "sprite", null]}})");
-    scene.set(b, R"({"Control": {"children": ["a"]}})");
-    const entt::entity c = scene.create("c", R"({"Control": {"children": ["b"]}})");
+    scene.set(a, R"({"Widget": {"children": ["b", "a", "sprite", null]}})");
+    scene.set(b, R"({"Widget": {"children": ["a"]}})");
+    const entt::entity c = scene.create("c", R"({"Widget": {"children": ["b"]}})");
 
     const ui::Layout layout = scene.layout();
     std::vector<std::string> problems;
@@ -267,12 +267,12 @@ TEST_CASE("children that can't be laid out are reported with their JSON Pointer"
         problems.push_back(problem.id + problem.path + ": " + problem.message);
     }
     CHECK(problems == std::vector<std::string>{
-                          "a/components/Control/children/1: a control can't be its own child",
-                          "a/components/Control/children/2: \"sprite\" isn't a control; give it "
-                          "a Control or a UI component",
-                          "a/components/Control/children/3: names no entity",
-                          "c/components/Control/children/0: \"b\" is already a child of \"a\"",
-                          "b/components/Control/children/0: \"a\" contains \"b\", so it can't be "
+                          "a/components/Widget/children/1: a control can't be its own child",
+                          "a/components/Widget/children/2: \"sprite\" isn't a control; give it "
+                          "a Widget or a UI component",
+                          "a/components/Widget/children/3: names no entity",
+                          "c/components/Widget/children/0: \"b\" is already a child of \"a\"",
+                          "b/components/Widget/children/0: \"a\" contains \"b\", so it can't be "
                           "its child too",
                       });
     // Every control is still placed once.
@@ -288,11 +288,11 @@ TEST_CASE("a label is as big as its text and aligns its lines in its rect") {
     REQUIRE(hello == 36.0F);
     const entt::entity plain = scene.create("plain", R"({"Label": {"text": "Hello"}})");
     const entt::entity centered =
-        scene.create("centered", R"({"Control": {"offset_right": 100, "offset_bottom": 50},
+        scene.create("centered", R"({"Widget": {"offset_right": 100, "offset_bottom": 50},
                         "Label": {"text": "Hello", "horizontal_alignment": "center",
                                   "vertical_alignment": "center"}})");
     const entt::entity corner =
-        scene.create("corner", R"({"Control": {"offset_right": 100, "offset_bottom": 50},
+        scene.create("corner", R"({"Widget": {"offset_right": 100, "offset_bottom": 50},
                       "Label": {"text": "Hello", "horizontal_alignment": "right",
                                 "vertical_alignment": "bottom"}})");
     const entt::entity two = scene.create("two", R"({"Label": {"text": "Hello\nHello, world"}})");
@@ -321,13 +321,13 @@ TEST_CASE("a label is as big as its text and aligns its lines in its rect") {
 
 TEST_CASE("a wrapping label grows down to fit its lines, and max_lines_visible trims them") {
     Scene scene;
-    const entt::entity all = scene.create("all", R"({"Control": {"offset_right": 60},
+    const entt::entity all = scene.create("all", R"({"Widget": {"offset_right": 60},
                    "Label": {"text": "Hello world again", "autowrap_mode": "word"}})");
-    const entt::entity two = scene.create("two", R"({"Control": {"offset_right": 60},
+    const entt::entity two = scene.create("two", R"({"Widget": {"offset_right": 60},
                    "Label": {"text": "Hello world again", "autowrap_mode": "word",
                              "max_lines_visible": 2,
                              "text_overrun_behavior": "trim_ellipsis"}})");
-    const entt::entity skip = scene.create("skip", R"({"Control": {"offset_right": 60},
+    const entt::entity skip = scene.create("skip", R"({"Widget": {"offset_right": 60},
                     "Label": {"text": "Hello world again", "autowrap_mode": "word",
                               "lines_skipped": 1}})");
     const ui::Layout layout = scene.layout();
@@ -344,15 +344,15 @@ TEST_CASE("a wrapping label grows down to fit its lines, and max_lines_visible t
 
 TEST_CASE("labels trim lines too wide for their rect, and clip_text cuts off what's outside") {
     Scene scene;
-    const entt::entity trimmed = scene.create("trimmed", R"({"Control": {"offset_right": 30},
+    const entt::entity trimmed = scene.create("trimmed", R"({"Widget": {"offset_right": 30},
                        "Label": {"text": "Hello", "text_overrun_behavior": "trim_char"}})");
-    const entt::entity dots = scene.create("dots", R"({"Control": {"offset_right": 30},
+    const entt::entity dots = scene.create("dots", R"({"Widget": {"offset_right": 30},
                     "Label": {"text": "Hello", "text_overrun_behavior": "trim_ellipsis",
                               "ellipsis_char": ".."}})");
     const entt::entity wide =
-        scene.create("wide", R"({"Control": {"offset_right": 20}, "Label": {"text": "Hello"}})");
+        scene.create("wide", R"({"Widget": {"offset_right": 20}, "Label": {"text": "Hello"}})");
     const entt::entity clipped = scene.create(
-        "clipped", R"({"Control": {"offset_left": 200, "offset_top": 200, "offset_right": 220,
+        "clipped", R"({"Widget": {"offset_left": 200, "offset_top": 200, "offset_right": 220,
                                    "offset_bottom": 210},
                        "Label": {"text": "Hello", "clip_text": true}})");
 
@@ -390,7 +390,7 @@ TEST_CASE("labels trim lines too wide for their rect, and clip_text cuts off wha
 
 TEST_CASE("fill alignment stretches the spaces of a line to the rect's width") {
     Scene scene;
-    const entt::entity filled = scene.create("filled", R"({"Control": {"offset_right": 200},
+    const entt::entity filled = scene.create("filled", R"({"Widget": {"offset_right": 200},
                       "Label": {"text": "a b c", "horizontal_alignment": "fill"}})");
     const ui::Layout layout = scene.layout();
     const ui::LabelText& label = *layout.label(filled);
@@ -425,11 +425,11 @@ TEST_CASE("uppercase and visible_characters change what a label shows") {
 
 TEST_CASE("draw_calls draws color rects, then text with its shadow and outline under it") {
     Scene scene;
-    scene.create("back", R"({"Control": {"offset_right": 50, "offset_bottom": 20,
+    scene.create("back", R"({"Widget": {"offset_right": 50, "offset_bottom": 20,
                                          "self_modulate": [1, 1, 1, 0.5]},
-                             "ColorRect": {"color": [1, 0, 0, 1]}})");
+                             "ColorFill": {"color": [1, 0, 0, 1]}})");
     const entt::entity label = scene.create(
-        "label", R"({"Control": {"offset_left": 4, "offset_top": 2}, "Label": {"text": "Hi"}})");
+        "label", R"({"Widget": {"offset_left": 4, "offset_top": 2}, "Label": {"text": "Hi"}})");
 
     ui::DrawList drawn = ui::draw_calls(scene.layout(), scene.world, scene.fonts());
     CHECK(drawn.controls == 2);
@@ -448,7 +448,7 @@ TEST_CASE("draw_calls draws color rects, then text with its shadow and outline u
         CHECK(vertex.y == std::floor(vertex.y));
     }
 
-    scene.set(label, R"({"Control": {"offset_left": 4, "offset_top": 2,
+    scene.set(label, R"({"Widget": {"offset_left": 4, "offset_top": 2,
                                      "theme_override_colors": {"font_shadow_color": [0, 0, 0, 1]},
                                      "theme_override_constants": {"outline_size": 4}}})");
     drawn = ui::draw_calls(scene.layout(), scene.world, scene.fonts());
@@ -460,22 +460,22 @@ TEST_CASE("draw_calls draws color rects, then text with its shadow and outline u
 
 TEST_CASE("check finds theme overrides a control's type doesn't have, and fonts that don't load") {
     Scene scene;
-    scene.create("title", R"({"Control": {"theme_override_colors": {"font_colour": [1, 1, 1, 1]},
+    scene.create("title", R"({"Widget": {"theme_override_colors": {"font_colour": [1, 1, 1, 1]},
                                           "theme_override_fonts": {"font": "fonts/missing.ttf"}},
                               "Label": {"text": "Hi"}})");
-    scene.create("rect", R"({"Control": {"theme_override_constants": {"margin": 4}},
-                             "ColorRect": {}})");
+    scene.create("rect", R"({"Widget": {"theme_override_constants": {"margin": 4}},
+                             "ColorFill": {}})");
     const std::vector<ui::Problem> problems = ui::check(scene.world, scene.fonts());
     std::vector<std::string> lines;
     for (const ui::Problem& problem : problems) {
         lines.push_back(problem.id + problem.path + ": " + problem.message);
     }
     CHECK(lines == std::vector<std::string>{
-                       "rect/components/Control/theme_override_constants/margin: ColorRect has "
+                       "rect/components/Widget/theme_override_constants/margin: ColorFill has "
                        "no constants item \"margin\"; it has none",
-                       "title/components/Control/theme_override_colors/font_colour: Label has no "
+                       "title/components/Widget/theme_override_colors/font_colour: Label has no "
                        "colors item \"font_colour\"; did you mean \"font_color\"?",
-                       "title/components/Control/theme_override_fonts/font: asset "
+                       "title/components/Widget/theme_override_fonts/font: asset "
                        "\"fonts/missing.ttf\" could not be read: no such file",
                    });
     // The label still draws, with the default font.
@@ -496,7 +496,7 @@ TEST_CASE("the canvas renderer draws controls above the world") {
     canvas::install(world, assets);
     const entt::entity entity = world.create("hello").value();
     world.ecs().emplace<world::Label>(entity, world::Label{.text = "Hello"});
-    world.ecs().emplace<world::ColorRect>(world.create("rect").value());
+    world.ecs().emplace<world::ColorFill>(world.create("rect").value());
 
     const auto device = render::create_null_device();
     canvas::CanvasRenderer renderer(*device, assets);
@@ -577,11 +577,11 @@ TEST_CASE("text draws on a GPU as the CPU works it out, from glyph images and di
             R"({"format": 1, "font": "fonts/roboto.ttf", "multichannel_signed_distance_field": true})";
         constexpr std::uint32_t kWidth = 96;
         constexpr std::uint32_t kHeight = 64;
-        scene.create("back", R"({"Control": {"offset_right": 96, "offset_bottom": 64},
-                                 "ColorRect": {"color": [0.1, 0.2, 0.6, 1]}})");
-        scene.create("small", R"({"Control": {"offset_left": 3, "offset_top": 2},
+        scene.create("back", R"({"Widget": {"offset_right": 96, "offset_bottom": 64},
+                                 "ColorFill": {"color": [0.1, 0.2, 0.6, 1]}})");
+        scene.create("small", R"({"Widget": {"offset_left": 3, "offset_top": 2},
                                   "Label": {"text": "Hello!"}})");
-        scene.create("sharp", R"({"Control": {"offset_left": 2, "offset_top": 22,
+        scene.create("sharp", R"({"Widget": {"offset_left": 2, "offset_top": 22,
                                               "theme_override_fonts": {"font": "fonts/sharp.font.json"},
                                               "theme_override_font_sizes": {"font_size": 30},
                                               "theme_override_colors": {"font_color": [1, 0.9, 0.2, 1]}},

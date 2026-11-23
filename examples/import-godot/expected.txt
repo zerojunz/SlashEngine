@@ -140,7 +140,7 @@ project.import {"source":"godot"}
   "entities": {
     "animated_sprite2d": {
       "components": {
-        "AnimatedSprite2D": {
+        "Flipbook2D": {
           "animation": "spin",
           "sprite_frames": "godot/main_sprite_frames_coin.frames.json"
         },
@@ -150,7 +150,7 @@ project.import {"source":"godot"}
     },
     "animation_player": {
       "components": {
-        "AnimationPlayer": {
+        "Animator": {
           "animation": "bob",
           "library": "godot/main_animation_library_coin.anim.json",
           "targets": {
@@ -162,16 +162,16 @@ project.import {"source":"godot"}
     },
     "coin": {
       "components": {
-        "Area2D": {},
         "Transform2D": {
           "children": ["animated_sprite2d", "coin_collision_shape2d"],
           "position": [200.0, 140.0]
-        }
+        },
+        "Zone2D": {}
       }
     },
     "coin_collision_shape2d": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "radius": 5.0,
           "shape": "circle"
         },
@@ -180,7 +180,7 @@ project.import {"source":"godot"}
     },
     "collision_shape2d": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [640.0, 20.0]
         },
         "Transform2D": {}
@@ -197,7 +197,7 @@ project.import {"source":"godot"}
     },
     "hud": {
       "components": {
-        "CanvasLayer": {
+        "ScreenLayer": {
           "children": ["score"]
         }
       }
@@ -214,7 +214,7 @@ project.import {"source":"godot"}
     },
     "music": {
       "components": {
-        "AudioStreamPlayer": {
+        "SoundPlayer": {
           "autoplay": true,
           "stream": "godot/music.audio.json"
         }
@@ -222,7 +222,7 @@ project.import {"source":"godot"}
     },
     "platforms": {
       "components": {
-        "TileMapLayer": {
+        "TileLayer2D": {
           "legend": {
             "a": "tiles:0,0",
             "b": "tiles:1,0",
@@ -248,7 +248,10 @@ project.import {"source":"godot"}
     },
     "score": {
       "components": {
-        "Control": {
+        "Label": {
+          "text": "Coins: 0"
+        },
+        "Widget": {
           "offset_bottom": 24.0,
           "offset_left": 8.0,
           "offset_right": 120.0,
@@ -259,9 +262,6 @@ project.import {"source":"godot"}
           "theme_override_font_sizes": {
             "font_size": 12
           }
-        },
-        "Label": {
-          "text": "Coins: 0"
         }
       }
     },
@@ -547,7 +547,7 @@ world.query {"include":["AnimatedSprite2D","Transform2D"],"with":["AnimatedSprit
   "entities": [
     {
       "components": {
-        "AnimatedSprite2D": {
+        "Flipbook2D": {
           "animation": "spin",
           "frame": 2,
           "frame_progress": 0.50000024,
@@ -568,7 +568,7 @@ world.query {"include":["AnimatedSprite2D","Transform2D"],"with":["AnimatedSprit
     },
     {
       "components": {
-        "AnimatedSprite2D": {
+        "Flipbook2D": {
           "animation": "idle",
           "frame": 0,
           "frame_progress": 0.0,

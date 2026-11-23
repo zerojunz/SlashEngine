@@ -43,7 +43,7 @@ using RpcFunction =
     std::function<void(world::World& world, entt::entity entity, const json::Value& args)>;
 
 // Makes the entity a custom spawn becomes, with the ID given, from the data passed to
-// Multiplayer::spawn, on every peer, as a MultiplayerSpawner's spawn_function. The spawner then
+// Multiplayer::spawn, on every peer, as a NetSpawner's spawn_function. The spawner then
 // places it under its spawn_path.
 using SpawnFunction = std::function<Result<entt::entity>(world::World& world, std::string_view id,
                                                          const json::Value& data)>;
@@ -67,9 +67,9 @@ struct RawPacket {
 // connection_failed, server_disconnected, peer_authenticating, peer_authentication_failed and
 // peer_packet (data {"peer", "size"}). It starts offline: a server alone.
 //
-// It also replicates, as Godot's SceneReplicationInterface: each MultiplayerSpawner's authority
+// It also replicates, as Godot's SceneReplicationInterface: each NetSpawner's authority
 // spawns the entities placed under its spawn_path on the peers (spawned and despawned events,
-// with the entity's ID and data {"spawner"}), and each MultiplayerSynchronizer's authority sends
+// with the entity's ID and data {"spawner"}), and each NetSync's authority sends
 // its properties to the peers it is visible to (synchronized and delta_synchronized events, with
 // the synchronizer's ID). Only entities with IDs take part; a spawned entity keeps its ID.
 class Multiplayer {
@@ -134,7 +134,7 @@ public:
                      int peer = kTargetPeerBroadcast);
 
     // Spawns a custom entity under a spawner's spawn_path on every peer, made by the spawner's
-    // spawn function from data, as MultiplayerSpawner.spawn. Only the spawner's authority may.
+    // spawn function from data, as NetSpawner.spawn. Only the spawner's authority may.
     Result<entt::entity> spawn(std::string_view spawner, std::string_view id,
                                const json::Value& data = {});
     void set_spawn_function(std::string_view spawner, SpawnFunction function);

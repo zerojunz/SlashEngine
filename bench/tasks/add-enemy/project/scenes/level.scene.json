@@ -2,7 +2,7 @@
   "entities": {
     "floor": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [640.0, 32.0]
         },
         "StaticBody2D": {},
@@ -13,8 +13,8 @@
     },
     "player": {
       "components": {
-        "CharacterBody2D": {},
-        "CollisionShape2D": {
+        "CharacterMover2D": {},
+        "Collider2D": {
           "height": 28.0,
           "radius": 8.0,
           "shape": "capsule"

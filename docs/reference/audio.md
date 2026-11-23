@@ -28,20 +28,20 @@ analyzer with Bernsee's FFT code under its own notice) and sends to an earlier b
 Master. `Server::effect_instance` and `spectrum_analyzer`, `capture_effect` and `record_effect`
 reach a bus's analyzer, capture buffer and recorder from C++. A `.bus_layout.json` file
 (`$cli schema bus_layout`; project.json's `audio.bus_layout`) is Godot's `default_bus_layout.tres`.
-`AudioStreamPlayer`, `AudioStreamPlayer2D`, `AudioStreamPlayer3D`, `AudioListener2D` and
-`AudioListener3D` are components, played by the
+`SoundPlayer`, `SoundPlayer2D`, `SoundPlayer3D`, `Listener2D` and
+`Listener3D` are components, played by the
 `audio` system (priority 1200, last), which mixes each tick's share of frames, so the same ticks
 make the same sound, and hands them to a sink: `audio::SdlOutput` in a window, nowhere headless.
-An `Area2D` with `audio_bus_override` sends the 2D players inside it whose `area_mask` it
+An `Zone2D` with `audio_bus_override` sends the 2D players inside it whose `area_mask` it
 matches to its `audio_bus_name`, as Godot's `_get_actual_bus`. A 3D player fades by Godot's
 attenuation models, pans, is muffled by a high shelf with distance and outside its emission
-angle, shifts pitch with the Doppler effect (velocity tracked by ticks) and follows an `Area3D`'s
+angle, shifts pitch with the Doppler effect (velocity tracked by ticks) and follows an `Zone3D`'s
 bus and reverb bus, as Godot's `_update_panning`: each playback mixes into several buses at once
 (`Server::set_bus_volumes`) through one high shelf (`Server::set_highshelf`), as Godot's mixer.
 Sound mixes for project.json's `audio.speaker_mode` (Godot's speaker modes, up to 7.1; `auto`
 follows the sink's device, `SdlOutput::speaker_mode()`): each bus has a buffer and its own
 effects per speaker pair (`audio::Volumes`, a gain per pair), 3D players pan by Godot's Spcap,
-an `AudioStreamPlayer`'s `mix_target` picks its speakers, and mixes and sinks interleave the
+an `SoundPlayer`'s `mix_target` picks its speakers, and mixes and sinks interleave the
 pairs. Sessions keep ten seconds of each bus for `audio.capture`, which measures it (peak, RMS,
 slices and each speaker in dB) or writes a `.wav` file; `audio.spectrum` reads a bus's `spectrum_analyzer` in
 frequency bands, `audio.record` starts and stops its `record` effect and writes the take, and

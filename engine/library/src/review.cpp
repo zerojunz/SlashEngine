@@ -92,15 +92,15 @@ Result<std::vector<render::Image>> turntable(Session& session, const std::string
 
     const entt::entity model = world.create();
     ecs.emplace<world::Transform3D>(model);
-    ecs.emplace<world::MeshInstance3D>(model).mesh = path;
+    ecs.emplace<world::Model3D>(model).mesh = path;
     const entt::entity backdrop = world.create();
-    world::WorldEnvironment environment;
+    world::Environment3D environment;
     environment.background_mode = "color";
     environment.background_color = {0.32F, 0.34F, 0.38F, 1.0F};
     environment.ambient_light_source = "color";
     environment.ambient_light_color = {1.0F, 1.0F, 1.0F, 1.0F};
     environment.ambient_light_energy = 0.25F;
-    ecs.emplace<world::WorldEnvironment>(backdrop, environment);
+    ecs.emplace<world::Environment3D>(backdrop, environment);
     const entt::entity camera = world.create();
     ecs.emplace<world::Transform3D>(camera);
     world::Camera3D lens;
@@ -111,12 +111,12 @@ Result<std::vector<render::Image>> turntable(Session& session, const std::string
     ecs.emplace<world::Camera3D>(camera, lens);
     const entt::entity key = world.create();
     ecs.emplace<world::Transform3D>(key);
-    ecs.emplace<world::DirectionalLight3D>(key);
+    ecs.emplace<world::SunLight3D>(key);
     const entt::entity fill = world.create();
     ecs.emplace<world::Transform3D>(fill);
-    world::DirectionalLight3D fill_light;
+    world::SunLight3D fill_light;
     fill_light.light_energy = 0.3F;
-    ecs.emplace<world::DirectionalLight3D>(fill, fill_light);
+    ecs.emplace<world::SunLight3D>(fill, fill_light);
 
     std::vector<render::Image> out;
     const Vec2 up = cos_sin(kElevation);

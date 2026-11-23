@@ -15,7 +15,7 @@
 {"id":15,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":[],"position":[4.1602015,0.9912062,0.020858413],"rotation":[0.000032538548,-0.009939211,-1.5882009],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"top"}}
 {"id":16,"jsonrpc":"2.0","result":{"animation":"collapse","bodies":["bottom","middle","top"],"keys":176,"length":2.0,"out":"anims/collapse.anim.json"}}
 {"id":17,"jsonrpc":"2.0","result":{"entities":10,"restored":"default"}}
-{"id":18,"jsonrpc":"2.0","result":{"added":["AnimationPlayer"],"changed":{"AnimationPlayer":{"animation":"collapse","library":"anims/collapse.anim.json","targets":{"bottom":"bottom","middle":"middle","top":"top"}}},"id":"director"}}
+{"id":18,"jsonrpc":"2.0","result":{"added":["Animator"],"changed":{"Animator":{"animation":"collapse","library":"anims/collapse.anim.json","targets":{"bottom":"bottom","middle":"middle","top":"top"}}},"id":"director"}}
 {"id":19,"jsonrpc":"2.0","result":{"tick":300,"ticks":120}}
 {"id":20,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":[],"position":[4.1602,0.9912,0.0209],"rotation":[0.0,-0.0099,-1.5882],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"top"}}
 {"error":{"code":-32001,"data":{"path":"/id"},"message":"/id: no entity has the id \"tp\"; did you mean \"top\"?"},"id":21,"jsonrpc":"2.0"}

@@ -30,7 +30,7 @@ namespace slash::ui {
 
 // One element of the tree: a control, an open popup menu or one of its items.
 struct AccessElement {
-    // The control; for a menu, the PopupMenu, OptionButton or MenuButton whose menu it is, and
+    // The control; for a menu, the PopupList, Dropdown or MenuButton whose menu it is, and
     // for an item, that menu's.
     entt::entity entity = entt::null;
     bool menu = false; // an open popup menu (role "menu")
@@ -49,7 +49,7 @@ struct AccessElement {
     std::string popup_type;                      // "list" or "menu" for a button that opens one
     std::optional<bool> checked;                 // a toggle button's or check item's state
     std::optional<std::array<double, 4>> range;  // a Range's [value, min, max, step]
-    std::optional<Vec4> color;                   // a ColorRect's
+    std::optional<Vec4> color;                   // a ColorFill's
     std::optional<std::array<int, 2>> selection; // a text field's, [from, to] in characters
     Vec4 rect;                                   // its bounds in the viewport, [x, y, w, h]
     bool selected = false;                       // a menu item hovered or moved to
@@ -88,7 +88,7 @@ struct AccessTree {
 // ui::press; an item is picked, as ui::select_item), "focus", "blur", "show_tooltip",
 // "hide_tooltip", "scroll_into_view", "increment" and "decrement" (a Range by its step),
 // "set_value" (a Range's number, or a text field's text), "scroll_up", "scroll_down",
-// "scroll_left" and "scroll_right" (a ScrollContainer by a page, or an eighth of one with data
+// "scroll_left" and "scroll_right" (a ScrollBox by a page, or an eighth of one with data
 // "item") and "set_scroll_offset" (data [x, y]). Fails when the element doesn't take it.
 Result<void> accessibility_action(world::World& world, entt::entity entity, std::string_view action,
                                   const json::Value& data = {}, int item = -1);

@@ -70,18 +70,19 @@ struct Scene {
 };
 
 // A floor of 4 by 4 meters with a box of 1 meter on it, lit from above at a slant by a sun whose
-// light is baked, under a grey sky color, and a LightmapGI baking them with few rays.
+// light is baked, under a grey sky color, and a BakedLighting3D baking them with few rays.
 struct Room : Scene {
     entt::entity gi = entt::null;
 
     explicit Room(std::string_view quality = "low") {
-        create("floor", R"({"Transform3D": {}, "MeshInstance3D": {},
-            "PlaneMesh": {"size": [4, 4]}})");
-        create("box", R"({"Transform3D": {"position": [0, 0.5, 0]}, "MeshInstance3D": {},
-            "BoxMesh": {}, "StandardMaterial3D": {"albedo_color": [1, 0.2, 0.2, 1]}})");
+        create("floor", R"({"Transform3D": {}, "Model3D": {},
+            "PlaneGeometry": {"size": [4, 4]}})");
+        create("box", R"({"Transform3D": {"position": [0, 0.5, 0]}, "Model3D": {},
+            "BoxGeometry": {}, "Surface3D": {"albedo_color": [1, 0.2, 0.2, 1]}})");
         create("sun", R"({"Transform3D": {"rotation": [-1.0, 0.6, 0]},
-            "DirectionalLight3D": {"light_bake_mode": "static"}})");
-        gi = create("gi", std::string(R"({"LightmapGI": {"quality": ")") + std::string(quality) +
+            "SunLight3D": {"light_bake_mode": "static"}})");
+        gi = create("gi", std::string(R"({"BakedLighting3D": {"quality": ")") +
+                              std::string(quality) +
                               R"(", "bounces": 1, "environment_mode": "custom_color",
             "environment_custom_color": [0.2, 0.2, 0.2, 1]}})");
     }
@@ -111,7 +112,7 @@ std::array<float, 3> light_at(const scene3d::LightmapBake& bake, std::string_vie
 
 // Where on the floor's lightmap a point of the floor is: the UV2 of its unwrap's triangle there.
 std::array<float, 2> floor_uv2(const scene3d::LightmapBake& bake, float x, float z) {
-    world::PlaneMesh floor;
+    world::PlaneGeometry floor;
     floor.size = {4.0F, 4.0F};
     const scene3d::MeshData plane = scene3d::plane_mesh(floor);
     const scene3d::LightmapUnwrap& unwrap =
@@ -269,7 +270,7 @@ TEST_CASE(".lightmap.json files keep unwraps and users, and say what's wrong wit
     CHECK(scene3d::lightmap_texture_path("one.json") == "one.json.hdr");
 }
 
-TEST_CASE("a LightmapGI bakes its static meshes' light, shadows and bounces, as Godot's") {
+TEST_CASE("a BakedLighting3D bakes its static meshes' light, shadows and bounces, as Godot's") {
     Room room;
     const scene3d::LightmapBake bake = scene3d::bake_lightmap(room.world, room.gi, {}).value();
     CHECK(bake.problems.empty());
@@ -322,7 +323,7 @@ TEST_CASE("project.json's rendering.lightmapping sets bakes' rays and passes, as
 
     // Fewer rays at the room's low quality and smaller passes make other bakes, lit and finite.
     Room room;
-    room.world.ecs().get<world::LightmapGI>(room.gi).use_denoiser = false;
+    room.world.ecs().get<world::BakedLighting3D>(room.gi).use_denoiser = false;
     const scene3d::LightmapBake standard = scene3d::bake_lightmap(room.world, room.gi, {}).value();
     scene3d::LightmapSources sources;
     sources.lightmapping.ray_count[0] = 8;
@@ -362,8 +363,8 @@ TEST_CASE("bakes are the same for any number of threads") {
 TEST_CASE("devices that trace rays bake lightmaps as the CPU does") {
     const auto bake_room = [](render::RenderDevice* device) {
         Room room;
-        room.create("doorway", R"({"Transform3D": {"position": [1, 1, 1]}, "LightmapProbe": {}})");
-        room.world.ecs().get<world::LightmapGI>(room.gi).use_denoiser = false;
+        room.create("doorway", R"({"Transform3D": {"position": [1, 1, 1]}, "LightProbe3D": {}})");
+        room.world.ecs().get<world::BakedLighting3D>(room.gi).use_denoiser = false;
         scene3d::LightmapSources sources;
         sources.device = device;
         return scene3d::bake_lightmap(room.world, room.gi, sources).value();
@@ -509,7 +510,7 @@ float sh_value(const scene3d::LightmapSh& sh, std::size_t c, const Point& n) {
 } // namespace
 
 TEST_CASE("light probes go where Godot's LightmapGI places them") {
-    // A floor of 4 by 4 meters, and a LightmapProbe in a doorway above it.
+    // A floor of 4 by 4 meters, and a LightProbe3D in a doorway above it.
     const std::vector<Point> floor{{-2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, 2.0F},
                                    {-2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, 2.0F},  {-2.0F, 0.0F, 2.0F}};
     const std::vector<Point> doorway{{0.5F, 1.0F, 0.5F}};
@@ -523,8 +524,8 @@ TEST_CASE("light probes go where Godot's LightmapGI places them") {
         return true;
     };
 
-    // With no octree, the LightmapProbe first and then the bounds' corners, the bounds grown a
-    // little around the floor and the LightmapProbe.
+    // With no octree, the LightProbe3D first and then the bounds' corners, the bounds grown a
+    // little around the floor and the LightProbe3D.
     const scene3d::LightmapProbes corners = scene3d::place_lightmap_probes(floor, doorway, 0);
     REQUIRE(corners.points.size() == 9);
     CHECK(corners.points[0] == doorway[0]);
@@ -538,7 +539,7 @@ TEST_CASE("light probes go where Godot's LightmapGI places them") {
     }
 
     // An octree of 4 cells along the floor puts probes on the corners of the cells the floor
-    // touches, none of them within half a cell of the LightmapProbe or twice in one place.
+    // touches, none of them within half a cell of the LightProbe3D or twice in one place.
     const scene3d::LightmapProbes octree = scene3d::place_lightmap_probes(floor, doorway, 4);
     const float cell = octree.bounds_size[0] / 4.0F;
     CHECK(octree.bounds_size[2] == doctest::Approx(cell * 4.0F));
@@ -723,7 +724,7 @@ TEST_CASE("a BSP tree finds the tetrahedron of probes around a point, whose ligh
     CHECK(scene3d::lightmap_bsp_tree(probes.points, std::span(probes.tetrahedra).first(1)).empty());
 }
 
-TEST_CASE("light probes' light turns with their LightmapGI, and blends where meshes are") {
+TEST_CASE("light probes' light turns with their BakedLighting3D, and blends where meshes are") {
     // Turned light, looked at along a turned direction, is the light along the direction.
     scene3d::LightmapSh sh{};
     Numbers numbers;
@@ -754,8 +755,8 @@ TEST_CASE("light probes' light turns with their LightmapGI, and blends where mes
         }
     }
 
-    // A LightmapGI turned half round y, 10 meters along x, whose probes are lit only from their
-    // +x: a mesh in it is lit from the world's -x, times the exposure.
+    // A BakedLighting3D turned half round y, 10 meters along x, whose probes are lit only from
+    // their +x: a mesh in it is lit from the world's -x, times the exposure.
     const Point low{-2.0F, -2.0F, -2.0F};
     const Point high{2.0F, 2.0F, 2.0F};
     scene3d::LightmapProbes probes = probes_at(
@@ -837,9 +838,9 @@ TEST_CASE(".lightmap.json files keep light probes, and say what's wrong with the
     CHECK(errors[1].message == "isn't base64 of 24-byte nodes");
 }
 
-TEST_CASE("a LightmapGI bakes light probes over its static meshes, as Godot's") {
+TEST_CASE("a BakedLighting3D bakes light probes over its static meshes, as Godot's") {
     Room room;
-    room.create("doorway", R"({"Transform3D": {"position": [1, 1, 1]}, "LightmapProbe": {}})");
+    room.create("doorway", R"({"Transform3D": {"position": [1, 1, 1]}, "LightProbe3D": {}})");
     const scene3d::LightmapBake bake = scene3d::bake_lightmap(room.world, room.gi, {}).value();
     const scene3d::LightmapProbes& probes = bake.data.probes;
     REQUIRE(probes.points.size() > 9);
@@ -866,8 +867,8 @@ TEST_CASE("a LightmapGI bakes light probes over its static meshes, as Godot's") 
     CAPTURE(shadowed);
     CHECK(lit > shadowed * 1.5F);
 
-    // Without an octree, the bounds' corners only; an interior LightmapGI says so.
-    auto& gi = room.world.ecs().get<world::LightmapGI>(room.gi);
+    // Without an octree, the bounds' corners only; an interior BakedLighting3D says so.
+    auto& gi = room.world.ecs().get<world::BakedLighting3D>(room.gi);
     gi.generate_probes_subdiv = "disabled";
     gi.interior = true;
     const scene3d::LightmapBake corners = scene3d::bake_lightmap(room.world, room.gi, {}).value();
@@ -951,7 +952,8 @@ TEST_CASE("lightmapped meshes draw their baked light in place of baked lights, a
     bake.data.texture = "room.lightmap.hdr";
     drawn.files["room.lightmap.json"] = json::write(scene3d::lightmap_json(bake.data));
     drawn.files["room.lightmap.hdr"] = render::encode_hdr(bake.texels).value();
-    drawn.room.world.ecs().get<world::LightmapGI>(drawn.room.gi).light_data = "room.lightmap.json";
+    drawn.room.world.ecs().get<world::BakedLighting3D>(drawn.room.gi).light_data =
+        "room.lightmap.json";
     // Baked, the floor takes the sun from the lightmap, with the box's shadow in it, and the sun
     // no longer lights it live.
     const render::Image baked = drawn.capture();
@@ -964,17 +966,17 @@ TEST_CASE("lightmapped meshes draw their baked light in place of baked lights, a
     CHECK(shadowed > 0.0F);
 
     // A mesh changed since the bake draws without its lightmap.
-    drawn.room.world.ecs().get<world::PlaneMesh>(drawn.room.world.find("floor")).size = {4.0F,
-                                                                                         4.5F};
+    drawn.room.world.ecs().get<world::PlaneGeometry>(drawn.room.world.find("floor")).size = {4.0F,
+                                                                                             4.5F};
     const render::Image changed = drawn.capture();
     CHECK(std::abs(floor_pixel(changed, -0.2F, -0.95F) - live_shadowed) < 0.05F);
 }
 
-TEST_CASE("moving meshes take their ambient light from a LightmapGI's probes, as Godot's") {
+TEST_CASE("moving meshes take their ambient light from a BakedLighting3D's probes, as Godot's") {
     DrawnRoom drawn;
     const entt::entity ball =
         drawn.room.create("ball", R"({"Transform3D": {"position": [1.2, 0.5, 1.2]},
-        "MeshInstance3D": {"gi_mode": "dynamic"}, "SphereMesh": {"radius": 0.4, "height": 0.8}})");
+        "Model3D": {"gi_mode": "dynamic"}, "SphereGeometry": {"radius": 0.4, "height": 0.8}})");
     auto& place = drawn.room.world.ecs().get<world::Transform3D>(ball);
     const render::Image unbaked = drawn.capture();
     place.position = {1.2F, 2.0F, 1.2F};
@@ -988,7 +990,7 @@ TEST_CASE("moving meshes take their ambient light from a LightmapGI's probes, as
     bake.data.texture = "room.lightmap.hdr";
     drawn.files["room.lightmap.json"] = json::write(scene3d::lightmap_json(bake.data));
     drawn.files["room.lightmap.hdr"] = render::encode_hdr(bake.texels).value();
-    auto& gi = drawn.room.world.ecs().get<world::LightmapGI>(drawn.room.gi);
+    auto& gi = drawn.room.world.ecs().get<world::BakedLighting3D>(drawn.room.gi);
     gi.light_data = "room.lightmap.json";
     place.position = {1.2F, 0.5F, 1.2F};
     const render::Image baked = drawn.capture();
@@ -1007,7 +1009,7 @@ TEST_CASE("moving meshes take their ambient light from a LightmapGI's probes, as
         const float t = (p[0] - low[0]) / (high[0] - low[0]);
         return std::array<float, 3>{0.8F * (1.0F - t), 0.05F, 0.8F * t};
     });
-    auto& sun = drawn.room.world.ecs().get<world::DirectionalLight3D>(drawn.room.world.find("sun"));
+    auto& sun = drawn.room.world.ecs().get<world::SunLight3D>(drawn.room.world.find("sun"));
     sun.light_energy = 0.0F;
     drawn.files["colored.lightmap.json"] = json::write(scene3d::lightmap_json(bake.data));
     gi.light_data = "colored.lightmap.json";

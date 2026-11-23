@@ -52,11 +52,11 @@ SLASH_COMPONENT(Transform3D, position, rotation, scale, visible, top_level, chil
 // ---- 3D drawing, as Godot's 3D nodes (engine/scene3d) ----
 
 // Draws the entity's mesh at its Transform3D, as Godot's MeshInstance3D: its primitive mesh
-// component (BoxMesh, SphereMesh and the rest), colored by its StandardMaterial3D, or Godot's
+// component (BoxGeometry, SphereGeometry and the rest), colored by its Surface3D, or Godot's
 // default material without one; or a model file, with its own materials.
-struct MeshInstance3D {
+struct Model3D {
     // A .gltf, .glb, .obj, .fbx, .blend or .model.json file's meshes, placed as its nodes place
-    // them, in place of a primitive mesh component; "" for none. A StandardMaterial3D on the entity
+    // them, in place of a primitive mesh component; "" for none. A Surface3D on the entity
     // replaces the file's materials, as Godot's material_override.
     std::string mesh;
     // The render layers it is on: cameras whose cull_mask and lights whose light_cull_mask share
@@ -66,7 +66,7 @@ struct MeshInstance3D {
     // "double_sided" (with no faces culled) or "shadows_only" (it casts but isn't seen).
     std::string cast_shadow = "on";
     // How it takes part in global illumination, as Godot's GeometryInstance3D.gi_mode: "static"
-    // meshes are baked into a LightmapGI's lightmap (and lit by it), "dynamic" ones take their
+    // meshes are baked into a BakedLighting3D's lightmap (and lit by it), "dynamic" ones take their
     // ambient light from its light probes, and "disabled" ones from neither.
     // gi_lightmap_texel_scale scales its lightmap's texels across.
     std::string gi_mode = "static";
@@ -84,7 +84,7 @@ struct MeshInstance3D {
     bool ignore_occlusion_culling = false;
     // A spatial .material.json file (a game's shader) or a .standard_material.json file that takes
     // the place of every surface's material, as Godot's GeometryInstance3D.material_override; ""
-    // for none. It goes before a StandardMaterial3D on the entity.
+    // for none. It goes before a Surface3D on the entity.
     std::string material_override;
     // Values for the spatial material's params, as Sprite2D's material_params.
     std::map<std::string, json::Value> material_params;
@@ -94,13 +94,13 @@ struct MeshInstance3D {
     // animations' blend shape tracks blend from these.
     std::map<std::string, float> blend_shapes;
 
-    friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
+    friend bool operator==(const Model3D&, const Model3D&) = default;
 };
-SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
-                lod_bias, virtualized, ignore_occlusion_culling, material_override, material_params,
+SLASH_COMPONENT(Model3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale, lod_bias,
+                virtualized, ignore_occlusion_culling, material_override, material_params,
                 blend_shapes)
 
-// One instance of a MultiMeshInstance3D's mesh: where it is in the entity's space, as a
+// One instance of a ModelInstances3D's mesh: where it is in the entity's space, as a
 // Transform3D's position, rotation (radians, Godot's YXZ order) and scale.
 struct MultiMeshInstance {
     Vec3 position;
@@ -113,21 +113,21 @@ SLASH_REFLECT(MultiMeshInstance, position, rotation, scale)
 
 // Draws a model many times, as Godot's MultiMeshInstance3D with a MultiMesh of 3D transforms:
 // each instance where its transform puts it in the entity's space. Scatter rules make them.
-struct MultiMeshInstance3D {
-    // A .gltf, .glb, .obj, .fbx, .blend or .model.json file, as MeshInstance3D's mesh. A
-    // StandardMaterial3D on the entity replaces its materials.
+struct ModelInstances3D {
+    // A .gltf, .glb, .obj, .fbx, .blend or .model.json file, as Model3D's mesh. A
+    // Surface3D on the entity replaces its materials.
     std::string mesh;
     std::vector<MultiMeshInstance> instances;
     // How many of the instances draw, from the first, as Godot's visible_instance_count; -1 for
     // all of them.
     int visible_instance_count = -1;
-    std::uint32_t layers = 1;       // as MeshInstance3D's
-    std::string cast_shadow = "on"; // as MeshInstance3D's
-    float lod_bias = 1.0F;          // as MeshInstance3D's
+    std::uint32_t layers = 1;       // as Model3D's
+    std::string cast_shadow = "on"; // as Model3D's
+    float lod_bias = 1.0F;          // as Model3D's
 
-    friend bool operator==(const MultiMeshInstance3D&, const MultiMeshInstance3D&) = default;
+    friend bool operator==(const ModelInstances3D&, const ModelInstances3D&) = default;
 };
-SLASH_COMPONENT(MultiMeshInstance3D, mesh, instances, visible_instance_count, layers, cast_shadow,
+SLASH_COMPONENT(ModelInstances3D, mesh, instances, visible_instance_count, layers, cast_shadow,
                 lod_bias)
 
 // The instances painted of one foliage type, as a group of Unreal's foliage instances: type names
@@ -145,16 +145,16 @@ SLASH_REFLECT(FoliageGroup3D, type, instances)
 // their type's model, bend in the wind, part for characters and block them as the type says.
 struct Foliage3D {
     std::vector<FoliageGroup3D> groups;
-    std::uint32_t layers = 1;          // render layers, as MeshInstance3D's
+    std::uint32_t layers = 1;          // render layers, as Model3D's
     std::uint32_t collision_layer = 1; // the layers types with collision block on
     std::uint32_t collision_mask = 1;
-    float lod_bias = 1.0F; // as MeshInstance3D's
+    float lod_bias = 1.0F; // as Model3D's
 
     friend bool operator==(const Foliage3D&, const Foliage3D&) = default;
 };
 SLASH_COMPONENT(Foliage3D, groups, layers, collision_layer, collision_mask, lod_bias)
 
-// Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
+// Poses the skeleton of the model the entity's Model3D draws by hand, as Godot's Skeleton3D
 // bone poses: each bone, or other node of the model, named in these maps takes the position, the
 // rotation (radians about each axis, in Transform3D's order) or the scale given, in its parent's
 // space, in place of what its animation or its rest pose gives it.
@@ -169,10 +169,10 @@ struct Skeleton3D {
 };
 SLASH_COMPONENT(Skeleton3D, bone_positions, bone_rotations, bone_scales, show_rest_only)
 
-// Skeleton modifiers turn bones of the model an entity's MeshInstance3D draws after its
+// Skeleton modifiers turn bones of the model an entity's Model3D draws after its
 // animations and Skeleton3D, as Godot's SkeletonModifier3D children of a Skeleton3D do: those on
 // the entity, then those on each entity in its Transform3D children, in list order; on each,
-// TwoBoneIK3D, FABRIK3D, CCDIK3D, JacobianIK3D, then PhysicalBoneSimulator3D. Each moves the
+// TwoBoneIK3D, FabrikIK3D, CcdIK3D, JacobianIK3D, then BoneSimulation3D. Each moves the
 // pose influence of the way.
 
 // One arm or leg a TwoBoneIK3D bends, as a Godot TwoBoneIK3D setting: from root_bone through
@@ -250,11 +250,11 @@ struct ChainIKSetting {
 SLASH_REFLECT(ChainIKSetting, root_bone, end_bone, extend_end_bone, end_bone_direction,
               end_bone_length, target, joints)
 
-// Godot's iterating IK solvers, FABRIK3D, CCDIK3D and JacobianIK3D: each tick takes up to
+// Godot's iterating IK solvers, FabrikIK3D, CcdIK3D and JacobianIK3D: each tick takes up to
 // max_iterations steps, each turning a bone at most angular_delta_limit radians, until the end is
 // within min_distance of the target. Unless deterministic, a chain carries on from where the last
 // tick left it, so it eases toward a target that jumps.
-struct FABRIK3D {
+struct FabrikIK3D {
     std::vector<ChainIKSetting> settings;
     double min_distance = 0.001;
     double angular_delta_limit = 0.03490658503988659; // 2 degrees
@@ -264,12 +264,12 @@ struct FABRIK3D {
     bool mutable_bone_axes = true;
     bool deterministic = false;
 
-    friend bool operator==(const FABRIK3D&, const FABRIK3D&) = default;
+    friend bool operator==(const FabrikIK3D&, const FabrikIK3D&) = default;
 };
-SLASH_COMPONENT(FABRIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
+SLASH_COMPONENT(FabrikIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
                 min_distance, angular_delta_limit, deterministic)
 
-struct CCDIK3D {
+struct CcdIK3D {
     std::vector<ChainIKSetting> settings;
     double min_distance = 0.001;
     double angular_delta_limit = 0.03490658503988659;
@@ -279,9 +279,9 @@ struct CCDIK3D {
     bool mutable_bone_axes = true;
     bool deterministic = false;
 
-    friend bool operator==(const CCDIK3D&, const CCDIK3D&) = default;
+    friend bool operator==(const CcdIK3D&, const CcdIK3D&) = default;
 };
-SLASH_COMPONENT(CCDIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
+SLASH_COMPONENT(CcdIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
                 min_distance, angular_delta_limit, deterministic)
 
 struct JacobianIK3D {
@@ -304,7 +304,7 @@ SLASH_COMPONENT(JacobianIK3D, settings, active, influence, mutable_bone_axes, ma
 // limit angles when use_angle_limitation is on, eased toward the limits past their damp
 // thresholds. A target that jumps across an axis turns the bone over duration seconds by
 // transition_type and ease_type, as Godot's Tween equations.
-struct LookAtModifier3D {
+struct BoneLookAt3D {
     std::string bone;
     entt::entity target_node{entt::null};
     std::string forward_axis = "plus_z";     // "plus_x", "minus_x", ... "minus_z"
@@ -336,9 +336,9 @@ struct LookAtModifier3D {
     float influence = 1.0F;
     bool active = true;
 
-    friend bool operator==(const LookAtModifier3D&, const LookAtModifier3D&) = default;
+    friend bool operator==(const BoneLookAt3D&, const BoneLookAt3D&) = default;
 };
-SLASH_COMPONENT(LookAtModifier3D, bone, target_node, forward_axis, primary_rotation_axis,
+SLASH_COMPONENT(BoneLookAt3D, bone, target_node, forward_axis, primary_rotation_axis,
                 use_secondary_rotation, relative, origin_from, origin_bone, origin_external_node,
                 origin_offset, origin_safe_margin, duration, transition_type, ease_type,
                 use_angle_limitation, symmetry_limitation, primary_limit_angle,
@@ -349,7 +349,7 @@ SLASH_COMPONENT(LookAtModifier3D, bone, target_node, forward_axis, primary_rotat
                 secondary_negative_limit_angle, secondary_negative_damp_threshold, influence,
                 active)
 
-// One bone a CopyTransformModifier3D moves, as a Godot BoneConstraint3D setting: apply_bone takes
+// One bone a BoneCopy3D moves, as a Godot BoneConstraint3D setting: apply_bone takes
 // amount of the reference's transform (reference_type "bone": reference_bone's pose; "node": the
 // reference_node entity's place in the bone's parent's space), masked to the axes enabled.
 struct CopyTransformSetting {
@@ -377,45 +377,44 @@ SLASH_REFLECT(CopyTransformSetting, amount, apply_bone, reference_type, referenc
               axis_y_enabled, axis_z_enabled, axis_x_inverted, axis_y_inverted, axis_z_inverted,
               relative, additive)
 
-// Copies bones' transforms onto others, as Godot 4.5's CopyTransformModifier3D: a twist bone
+// Copies bones' transforms onto others, as Godot 4.5's BoneCopy3D: a twist bone
 // takes a share of its hand's roll, an eyelid follows its eye.
-struct CopyTransformModifier3D {
+struct BoneCopy3D {
     std::vector<CopyTransformSetting> settings;
     float influence = 1.0F;
     bool active = true;
 
-    friend bool operator==(const CopyTransformModifier3D&,
-                           const CopyTransformModifier3D&) = default;
+    friend bool operator==(const BoneCopy3D&, const BoneCopy3D&) = default;
 };
-SLASH_COMPONENT(CopyTransformModifier3D, settings, influence, active)
+SLASH_COMPONENT(BoneCopy3D, settings, influence, active)
 
 // Follows a bone of a model, as Godot's BoneAttachment3D: each tick, after the model's animations
 // and skeleton modifiers, the entity goes where the bone is posed, so what hangs under it in its
 // Transform3D children (a sword in a hand, a hit box on a head) moves with the bone. The model is
 // the one its Transform3D parent draws, or external_skeleton's, as Godot's use_external_skeleton.
-struct BoneAttachment3D {
+struct BoneSocket3D {
     std::string bone_name;
     entt::entity external_skeleton{entt::null};
 
-    friend bool operator==(const BoneAttachment3D&, const BoneAttachment3D&) = default;
+    friend bool operator==(const BoneSocket3D&, const BoneSocket3D&) = default;
 };
-SLASH_COMPONENT(BoneAttachment3D, bone_name, external_skeleton)
+SLASH_COMPONENT(BoneSocket3D, bone_name, external_skeleton)
 
 // Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
 // strips along each axis.
-struct BoxMesh {
+struct BoxGeometry {
     Vec3 size{1.0F, 1.0F, 1.0F};
     int subdivide_width = 0;
     int subdivide_height = 0;
     int subdivide_depth = 0;
     bool flip_faces = false; // its inside shows, as Godot's PrimitiveMesh.flip_faces
 
-    friend bool operator==(const BoxMesh&, const BoxMesh&) = default;
+    friend bool operator==(const BoxGeometry&, const BoxGeometry&) = default;
 };
-SLASH_COMPONENT(BoxMesh, size, subdivide_width, subdivide_height, subdivide_depth, flip_faces)
+SLASH_COMPONENT(BoxGeometry, size, subdivide_width, subdivide_height, subdivide_depth, flip_faces)
 
 // Godot's SphereMesh: an ellipsoid of radius around y and height along it, or its top half.
-struct SphereMesh {
+struct SphereGeometry {
     float radius = 0.5F;
     float height = 1.0F;
     int radial_segments = 64;
@@ -423,12 +422,12 @@ struct SphereMesh {
     bool is_hemisphere = false;
     bool flip_faces = false;
 
-    friend bool operator==(const SphereMesh&, const SphereMesh&) = default;
+    friend bool operator==(const SphereGeometry&, const SphereGeometry&) = default;
 };
-SLASH_COMPONENT(SphereMesh, radius, height, radial_segments, rings, is_hemisphere, flip_faces)
+SLASH_COMPONENT(SphereGeometry, radius, height, radial_segments, rings, is_hemisphere, flip_faces)
 
 // Godot's CylinderMesh: a cylinder or cone along y, with caps.
-struct CylinderMesh {
+struct CylinderGeometry {
     float top_radius = 0.5F;
     float bottom_radius = 0.5F;
     float height = 2.0F;
@@ -438,25 +437,25 @@ struct CylinderMesh {
     bool cap_bottom = true;
     bool flip_faces = false;
 
-    friend bool operator==(const CylinderMesh&, const CylinderMesh&) = default;
+    friend bool operator==(const CylinderGeometry&, const CylinderGeometry&) = default;
 };
-SLASH_COMPONENT(CylinderMesh, top_radius, bottom_radius, height, radial_segments, rings, cap_top,
-                cap_bottom, flip_faces)
+SLASH_COMPONENT(CylinderGeometry, top_radius, bottom_radius, height, radial_segments, rings,
+                cap_top, cap_bottom, flip_faces)
 
 // Godot's CapsuleMesh: a cylinder along y with half spheres on its ends, height end to end.
-struct CapsuleMesh {
+struct CapsuleGeometry {
     float radius = 0.5F;
     float height = 2.0F;
     int radial_segments = 64;
     int rings = 8;
     bool flip_faces = false;
 
-    friend bool operator==(const CapsuleMesh&, const CapsuleMesh&) = default;
+    friend bool operator==(const CapsuleGeometry&, const CapsuleGeometry&) = default;
 };
-SLASH_COMPONENT(CapsuleMesh, radius, height, radial_segments, rings, flip_faces)
+SLASH_COMPONENT(CapsuleGeometry, radius, height, radial_segments, rings, flip_faces)
 
 // Godot's PlaneMesh: a flat rectangle facing up y (or x or z, by orientation).
-struct PlaneMesh {
+struct PlaneGeometry {
     Vec2 size{2.0F, 2.0F};
     int subdivide_width = 0;
     int subdivide_depth = 0;
@@ -464,13 +463,13 @@ struct PlaneMesh {
     std::string orientation = "y"; // the axis it faces: "x", "y" or "z"
     bool flip_faces = false;
 
-    friend bool operator==(const PlaneMesh&, const PlaneMesh&) = default;
+    friend bool operator==(const PlaneGeometry&, const PlaneGeometry&) = default;
 };
-SLASH_COMPONENT(PlaneMesh, size, subdivide_width, subdivide_depth, center_offset, orientation,
+SLASH_COMPONENT(PlaneGeometry, size, subdivide_width, subdivide_depth, center_offset, orientation,
                 flip_faces)
 
-// Godot's QuadMesh: a PlaneMesh that faces z and is 1 by 1.
-struct QuadMesh {
+// Godot's QuadMesh: a PlaneGeometry that faces z and is 1 by 1.
+struct QuadGeometry {
     Vec2 size{1.0F, 1.0F};
     int subdivide_width = 0;
     int subdivide_depth = 0;
@@ -478,13 +477,13 @@ struct QuadMesh {
     std::string orientation = "z";
     bool flip_faces = false;
 
-    friend bool operator==(const QuadMesh&, const QuadMesh&) = default;
+    friend bool operator==(const QuadGeometry&, const QuadGeometry&) = default;
 };
-SLASH_COMPONENT(QuadMesh, size, subdivide_width, subdivide_depth, center_offset, orientation,
+SLASH_COMPONENT(QuadGeometry, size, subdivide_width, subdivide_depth, center_offset, orientation,
                 flip_faces)
 
 // Godot's PrismMesh: a wedge of size whose top edge sits left_to_right of the way across.
-struct PrismMesh {
+struct PrismGeometry {
     float left_to_right = 0.5F;
     Vec3 size{1.0F, 1.0F, 1.0F};
     int subdivide_width = 0;
@@ -492,26 +491,26 @@ struct PrismMesh {
     int subdivide_depth = 0;
     bool flip_faces = false;
 
-    friend bool operator==(const PrismMesh&, const PrismMesh&) = default;
+    friend bool operator==(const PrismGeometry&, const PrismGeometry&) = default;
 };
-SLASH_COMPONENT(PrismMesh, left_to_right, size, subdivide_width, subdivide_height, subdivide_depth,
-                flip_faces)
+SLASH_COMPONENT(PrismGeometry, left_to_right, size, subdivide_width, subdivide_height,
+                subdivide_depth, flip_faces)
 
 // Godot's TorusMesh: a ring around y between inner_radius and outer_radius.
-struct TorusMesh {
+struct TorusGeometry {
     float inner_radius = 0.5F;
     float outer_radius = 1.0F;
     int rings = 64;
     int ring_segments = 32;
     bool flip_faces = false;
 
-    friend bool operator==(const TorusMesh&, const TorusMesh&) = default;
+    friend bool operator==(const TorusGeometry&, const TorusGeometry&) = default;
 };
-SLASH_COMPONENT(TorusMesh, inner_radius, outer_radius, rings, ring_segments, flip_faces)
+SLASH_COMPONENT(TorusGeometry, inner_radius, outer_radius, rings, ring_segments, flip_faces)
 
 // What the entity's mesh is made of, as Godot's StandardMaterial3D set as its material_override.
 // Colors are sRGB. Textures are project paths of PNG, BMP or KTX2 files; "" leaves one out.
-struct StandardMaterial3D {
+struct Surface3D {
     // "disabled", "alpha", "alpha_scissor" or "alpha_hash"
     std::string transparency = "disabled";
     float alpha_scissor_threshold = 0.5F;
@@ -564,7 +563,7 @@ struct StandardMaterial3D {
     // angle). billboard_keep_scale keeps the mesh's scale, which billboards otherwise drop.
     std::string billboard_mode = "disabled";
     bool texture_repeat = true; // textures tile past 0..1; false stretches their edges
-    bool disable_fog = false;   // the WorldEnvironment's fog leaves it alone
+    bool disable_fog = false;   // the Environment3D's fog leaves it alone
     bool billboard_keep_scale = false;
     bool particles_anim_loop = false;
     // Godot's rim (rim_enabled, rim, rim_tint): each light also lights the edges facing away
@@ -582,19 +581,18 @@ struct StandardMaterial3D {
     bool subsurf_scatter_skin_mode = false;
     bool subsurf_scatter_transmittance_enabled = false;
 
-    friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
+    friend bool operator==(const Surface3D&, const Surface3D&) = default;
 };
-SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, alpha_hash_scale,
-                blend_mode, cull_mode, shading_mode, vertex_color_use_as_albedo, albedo_color,
-                albedo_texture, metallic, metallic_specular, metallic_texture,
-                metallic_texture_channel, roughness, roughness_texture, roughness_texture_channel,
-                emission_enabled, emission, emission_energy_multiplier, emission_intensity,
-                emission_texture, normal_enabled, normal_scale, normal_texture, uv1_scale,
-                uv1_offset, texture_filter, texture_repeat, disable_fog, billboard_mode,
-                billboard_keep_scale, particles_anim_h_frames, particles_anim_v_frames,
-                particles_anim_loop, rim_enabled, rim, rim_tint, clearcoat_enabled, clearcoat,
-                clearcoat_roughness, anisotropy_enabled, anisotropy, subsurf_scatter_enabled,
-                subsurf_scatter_strength, subsurf_scatter_skin_mode,
+SLASH_COMPONENT(Surface3D, transparency, alpha_scissor_threshold, alpha_hash_scale, blend_mode,
+                cull_mode, shading_mode, vertex_color_use_as_albedo, albedo_color, albedo_texture,
+                metallic, metallic_specular, metallic_texture, metallic_texture_channel, roughness,
+                roughness_texture, roughness_texture_channel, emission_enabled, emission,
+                emission_energy_multiplier, emission_intensity, emission_texture, normal_enabled,
+                normal_scale, normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat,
+                disable_fog, billboard_mode, billboard_keep_scale, particles_anim_h_frames,
+                particles_anim_v_frames, particles_anim_loop, rim_enabled, rim, rim_tint,
+                clearcoat_enabled, clearcoat, clearcoat_roughness, anisotropy_enabled, anisotropy,
+                subsurf_scatter_enabled, subsurf_scatter_strength, subsurf_scatter_skin_mode,
                 subsurf_scatter_transmittance_enabled, subsurf_scatter_transmittance_color,
                 subsurf_scatter_transmittance_depth, subsurf_scatter_transmittance_boost)
 
@@ -616,7 +614,7 @@ struct Camera3D {
     // "idle_step" or "physics_step".
     std::string doppler_tracking = "disabled";
     // A .pipeline.json file's project path, as Godot's Camera3D.compositor: its passes and effects
-    // in place of the WorldEnvironment's while it is current. "" for the environment's.
+    // in place of the Environment3D's while it is current. "" for the environment's.
     std::string compositor{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const Camera3D&, const Camera3D&) = default;
@@ -667,18 +665,18 @@ SLASH_COMPONENT(XRCamera3D)
 
 // Moves a face's blend shapes by a face tracker, as Godot's XRFaceModifier3D: each blend shape of
 // the target's model named in Unified Expressions, ARKit, SRanipal or Meta's standard
-// (slash/xr/face.hpp) takes its face shape's weight into the target's MeshInstance3D.
-struct XRFaceModifier3D {
+// (slash/xr/face.hpp) takes its face shape's weight into the target's Model3D.
+struct XRFace3D {
     std::string face_tracker = "/user/face_tracker";
     std::string target; // the entity drawing the face; "" for this one
 
-    friend bool operator==(const XRFaceModifier3D&, const XRFaceModifier3D&) = default;
+    friend bool operator==(const XRFace3D&, const XRFace3D&) = default;
 };
-SLASH_COMPONENT(XRFaceModifier3D, face_tracker, target)
+SLASH_COMPONENT(XRFace3D, face_tracker, target)
 
 // Light from one direction over the whole world, as Godot's DirectionalLight3D, such as the sun:
 // it shines down its entity's -z.
-struct DirectionalLight3D {
+struct SunLight3D {
     Vec4 light_color{1.0F, 1.0F, 1.0F, 1.0F};
     float light_energy = 1.0F;
     float light_specular = 0.5F;
@@ -706,14 +704,14 @@ struct DirectionalLight3D {
     float directional_shadow_fade_start = 0.8F;
     float directional_shadow_max_distance = 100.0F;
     float directional_shadow_pancake_size = 20.0F;
-    // Its sun in a WorldEnvironment's sky: degrees across its radius there, and whether it lights
+    // Its sun in a Environment3D's sky: degrees across its radius there, and whether it lights
     // meshes and shows in the sky ("light_and_sky"), only lights ("light_only") or only shows
     // ("sky_only").
     float light_angular_distance = 0.0F;
     std::string sky_mode = "light_and_sky";
-    // Baking into a LightmapGI, as Godot's Light3D: how much it lights what bounces, whether it is
-    // left out ("disabled"), baked for bounces only and lit live ("dynamic") or baked whole and not
-    // lit live on lightmapped meshes ("static"), and how far its soft shadows blur.
+    // Baking into a BakedLighting3D, as Godot's Light3D: how much it lights what bounces, whether
+    // it is left out ("disabled"), baked for bounces only and lit live ("dynamic") or baked whole
+    // and not lit live on lightmapped meshes ("static"), and how far its soft shadows blur.
     float light_indirect_energy = 1.0F;
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
@@ -726,9 +724,9 @@ struct DirectionalLight3D {
     float light_temperature = 6500.0F;
     float light_intensity_lux = 100000.0F;
 
-    friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
+    friend bool operator==(const SunLight3D&, const SunLight3D&) = default;
 };
-SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, light_negative,
+SLASH_COMPONENT(SunLight3D, light_color, light_energy, light_specular, light_negative,
                 light_cull_mask, shadow_enabled, shadow_bias, shadow_normal_bias,
                 shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
                 directional_shadow_mode, directional_shadow_split_1, directional_shadow_split_2,
@@ -739,7 +737,7 @@ SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, l
                 shadow_transmittance_bias, light_temperature, light_intensity_lux)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
-struct OmniLight3D {
+struct PointLight3D {
     Vec4 light_color{1.0F, 1.0F, 1.0F, 1.0F};
     float light_energy = 1.0F;
     float light_specular = 0.5F;
@@ -756,8 +754,9 @@ struct OmniLight3D {
     bool shadow_reverse_cull_face = false;
     float shadow_opacity = 1.0F;
     std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
-    // Baking into a LightmapGI, as Godot's Light3D: how much it lights what bounces, its radius
-    // for soft shadows, whether it is left out ("disabled"), baked for bounces only and lit live
+    // Baking into a BakedLighting3D, as Godot's Light3D: how much it lights what bounces, its
+    // radius for soft shadows, whether it is left out ("disabled"), baked for bounces only and lit
+    // live
     // ("dynamic") or baked whole and not lit live on lightmapped meshes ("static"), and how far
     // its soft shadows blur.
     float light_indirect_energy = 1.0F;
@@ -779,9 +778,9 @@ struct OmniLight3D {
     Vec2 light_projector_scroll;
     std::string light_ies;
 
-    friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
+    friend bool operator==(const PointLight3D&, const PointLight3D&) = default;
 };
-SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_negative,
+SLASH_COMPONENT(PointLight3D, light_color, light_energy, light_specular, light_negative,
                 light_cull_mask, omni_range, omni_attenuation, shadow_enabled, shadow_bias,
                 shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
                 light_indirect_energy, light_size, light_bake_mode, shadow_blur,
@@ -808,8 +807,9 @@ struct SpotLight3D {
     bool shadow_reverse_cull_face = false;
     float shadow_opacity = 1.0F;
     std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
-    // Baking into a LightmapGI, as Godot's Light3D: how much it lights what bounces, its radius
-    // for soft shadows, whether it is left out ("disabled"), baked for bounces only and lit live
+    // Baking into a BakedLighting3D, as Godot's Light3D: how much it lights what bounces, its
+    // radius for soft shadows, whether it is left out ("disabled"), baked for bounces only and lit
+    // live
     // ("dynamic") or baked whole and not lit live on lightmapped meshes ("static"), and how far
     // its soft shadows blur.
     float light_indirect_energy = 1.0F;
@@ -841,10 +841,10 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 shadow_transmittance_bias, light_temperature, light_intensity_lumens,
                 light_projector, light_projector_scroll, light_ies)
 
-// Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
-// horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;
+// Godot's ProceduralSkyMaterial, on a Environment3D's entity: a sky from its top through the
+// horizon to the ground's bottom, with each SunLight3D's sun on it. Colors are sRGB;
 // sky_cover is the project path of a panorama over the sky, or "".
-struct ProceduralSkyMaterial {
+struct SkyGradient {
     Vec4 sky_top_color{0.385F, 0.454F, 0.55F, 1.0F};
     Vec4 sky_horizon_color{0.6463F, 0.6558F, 0.6708F, 1.0F};
     float sky_curve = 0.15F;
@@ -860,17 +860,17 @@ struct ProceduralSkyMaterial {
     bool use_debanding = true;
     float energy_multiplier = 1.0F;
 
-    friend bool operator==(const ProceduralSkyMaterial&, const ProceduralSkyMaterial&) = default;
+    friend bool operator==(const SkyGradient&, const SkyGradient&) = default;
 };
-SLASH_COMPONENT(ProceduralSkyMaterial, sky_top_color, sky_horizon_color, sky_curve,
-                sky_energy_multiplier, sky_cover, sky_cover_modulate, ground_bottom_color,
-                ground_horizon_color, ground_curve, ground_energy_multiplier, sun_angle_max,
-                sun_curve, use_debanding, energy_multiplier)
+SLASH_COMPONENT(SkyGradient, sky_top_color, sky_horizon_color, sky_curve, sky_energy_multiplier,
+                sky_cover, sky_cover_modulate, ground_bottom_color, ground_horizon_color,
+                ground_curve, ground_energy_multiplier, sun_angle_max, sun_curve, use_debanding,
+                energy_multiplier)
 
-// Godot's PhysicalSkyMaterial, on a WorldEnvironment's entity: the first DirectionalLight3D's
+// Godot's PhysicalSkyMaterial, on a Environment3D's entity: the first SunLight3D's
 // light scattered through the air. Colors are sRGB; night_sky is the project path of a panorama
 // behind it, or "".
-struct PhysicalSkyMaterial {
+struct SkyScattering {
     float rayleigh_coefficient = 2.0F;
     Vec4 rayleigh_color{0.3F, 0.405F, 0.6F, 1.0F};
     float mie_coefficient = 0.005F;
@@ -883,22 +883,22 @@ struct PhysicalSkyMaterial {
     bool use_debanding = true;
     std::string night_sky;
 
-    friend bool operator==(const PhysicalSkyMaterial&, const PhysicalSkyMaterial&) = default;
+    friend bool operator==(const SkyScattering&, const SkyScattering&) = default;
 };
-SLASH_COMPONENT(PhysicalSkyMaterial, rayleigh_coefficient, rayleigh_color, mie_coefficient,
+SLASH_COMPONENT(SkyScattering, rayleigh_coefficient, rayleigh_color, mie_coefficient,
                 mie_eccentricity, mie_color, turbidity, sun_disk_scale, ground_color,
                 energy_multiplier, use_debanding, night_sky)
 
-// Godot's PanoramaSkyMaterial, on a WorldEnvironment's entity: an equirectangular texture all
+// Godot's PanoramaSkyMaterial, on a Environment3D's entity: an equirectangular texture all
 // round, by its project path.
-struct PanoramaSkyMaterial {
+struct SkyPanorama {
     std::string panorama;
     bool filter = true; // samples it smoothly rather than by its nearest texel
     float energy_multiplier = 1.0F;
 
-    friend bool operator==(const PanoramaSkyMaterial&, const PanoramaSkyMaterial&) = default;
+    friend bool operator==(const SkyPanorama&, const SkyPanorama&) = default;
 };
-SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
+SLASH_COMPONENT(SkyPanorama, panorama, filter, energy_multiplier)
 
 // A box that reflects its surroundings, as Godot's ReflectionProbe: in Forward+, meshes inside it
 // reflect a cube drawn from origin_offset in place of the sky's, by roughness, and may take their
@@ -929,7 +929,7 @@ SLASH_COMPONENT(ReflectionProbe, update_mode, intensity, blend_distance, max_dis
 // MeshInstance3Ds and the lights that bake (light_bake_mode) under its entity's parent (the whole
 // world for a root) into light_data, and lightmapped meshes then take their ambient light from it,
 // in place of the environment's and reflection probes'. Its own place doesn't matter.
-struct LightmapGI {
+struct BakedLighting3D {
     std::string quality = "medium"; // "low", "medium", "high" or "ultra": rays traced a texel
     bool supersampling = false;     // bake at supersampling_factor times the texels, then shrink
     float supersampling_factor = 2.0F;
@@ -945,11 +945,11 @@ struct LightmapGI {
     float texel_scale = 1.0F;
     int max_texture_size = 16384;
     // The light rays that leave the world bring: "disabled" (none), "scene" (the
-    // WorldEnvironment's, as meshes would take ambient light from it) or "custom_color".
+    // Environment3D's, as meshes would take ambient light from it) or "custom_color".
     std::string environment_mode = "scene";
     Vec4 environment_custom_color{1.0F, 1.0F, 1.0F, 1.0F};
     float environment_custom_energy = 1.0F;
-    // The entity whose CameraAttributesPractical's exposure_multiplier the light is baked with,
+    // The entity whose CameraLens's exposure_multiplier the light is baked with,
     // or "" for 1.
     std::string camera_attributes;
     // Light probes for moving meshes, as Godot's: "disabled" for 8 at the bounds' corners, or
@@ -958,21 +958,21 @@ struct LightmapGI {
     // The .lightmap.json file lightmap.bake writes, project path; "" before a bake.
     std::string light_data;
 
-    friend bool operator==(const LightmapGI&, const LightmapGI&) = default;
+    friend bool operator==(const BakedLighting3D&, const BakedLighting3D&) = default;
 };
-SLASH_COMPONENT(LightmapGI, quality, supersampling, supersampling_factor, bounces,
+SLASH_COMPONENT(BakedLighting3D, quality, supersampling, supersampling_factor, bounces,
                 bounce_indirect_energy, use_texture_for_bounces, interior, use_denoiser,
                 denoiser_strength, denoiser_range, bias, texel_scale, max_texture_size,
                 environment_mode, environment_custom_color, environment_custom_energy,
                 camera_attributes, generate_probes_subdiv, light_data)
 
-// A place a LightmapGI bakes a light probe, besides those it places itself, as Godot's
-// LightmapProbe: where moving meshes' light changes quickly, as in a doorway. It counts under the
-// LightmapGI's parent, as meshes do.
-struct LightmapProbe {
-    friend bool operator==(const LightmapProbe&, const LightmapProbe&) = default;
+// A place a BakedLighting3D bakes a light probe, besides those it places itself, as Godot's
+// LightProbe3D: where moving meshes' light changes quickly, as in a doorway. It counts under the
+// BakedLighting3D's parent, as meshes do.
+struct LightProbe3D {
+    friend bool operator==(const LightProbe3D&, const LightProbe3D&) = default;
 };
-SLASH_COMPONENT(LightmapProbe)
+SLASH_COMPONENT(LightProbe3D)
 
 // Light bounced around a box of the world in real time, as Godot's VoxelGI and its VoxelGIData:
 // voxel_gi.bake voxelizes the static MeshInstance3Ds under its entity's parent (the whole world
@@ -980,10 +980,10 @@ SLASH_COMPONENT(LightmapProbe)
 // injected into those cells whenever they change, so lights may move while the meshes stay put.
 // Meshes in the box take their ambient light and reflections from the cells, in place of the
 // environment's, unless they are lightmapped.
-struct VoxelGI {
+struct VoxelLighting3D {
     std::string subdiv = "128"; // cells along the box's longest side: "64", "128", "256" or "512"
     Vec3 size{20.0F, 20.0F, 20.0F};
-    // The entity whose CameraAttributesPractical's exposure_multiplier emission is baked with,
+    // The entity whose CameraLens's exposure_multiplier emission is baked with,
     // or "" for 1.
     std::string camera_attributes;
     // The .voxelgi.json file voxel_gi.bake writes, project path; "" before a bake.
@@ -996,9 +996,9 @@ struct VoxelGI {
     bool use_two_bounces = true;
     bool interior = false; // the environment's light doesn't come in
 
-    friend bool operator==(const VoxelGI&, const VoxelGI&) = default;
+    friend bool operator==(const VoxelLighting3D&, const VoxelLighting3D&) = default;
 };
-SLASH_COMPONENT(VoxelGI, subdiv, size, camera_attributes, data, dynamic_range, energy, bias,
+SLASH_COMPONENT(VoxelLighting3D, subdiv, size, camera_attributes, data, dynamic_range, energy, bias,
                 normal_bias, propagation, use_two_bounces, interior)
 
 // A shape that hides the meshes behind it from the camera, as Godot's OccluderInstance3D with its
@@ -1009,7 +1009,7 @@ SLASH_COMPONENT(VoxelGI, subdiv, size, camera_attributes, data, dynamic_range, e
 // "polygon" (PolygonOccluder3D, polygon's points in its XY plane) or "array" (ArrayOccluder3D,
 // vertices and every three indices a triangle, as occluder.bake writes them). bake_mask and
 // bake_simplification_distance are the bake's.
-struct OccluderInstance3D {
+struct Occluder3D {
     std::string shape = "quad";
     Vec3 size{1.0F, 1.0F, 1.0F};
     float radius = 1.0F;
@@ -1019,9 +1019,9 @@ struct OccluderInstance3D {
     std::uint32_t bake_mask = 0xFFFFFFFF;
     float bake_simplification_distance = 0.1F;
 
-    friend bool operator==(const OccluderInstance3D&, const OccluderInstance3D&) = default;
+    friend bool operator==(const Occluder3D&, const Occluder3D&) = default;
 };
-SLASH_COMPONENT(OccluderInstance3D, shape, size, radius, polygon, vertices, indices, bake_mask,
+SLASH_COMPONENT(Occluder3D, shape, size, radius, polygon, vertices, indices, bake_mask,
                 bake_simplification_distance)
 
 // A box that projects textures onto the meshes inside it, as Godot's Decal, in Forward+: down its
@@ -1046,7 +1046,7 @@ struct Decal {
     float distance_fade_begin = 40.0F;
     float distance_fade_length = 10.0F;
     std::uint32_t cull_mask = 0xFFFFF; // the layers of the meshes it draws on
-    std::uint32_t layers = 1;          // as MeshInstance3D's: the cameras that see it
+    std::uint32_t layers = 1;          // as Model3D's: the cameras that see it
     float sorting_offset = 0.0F;
 
     friend bool operator==(const Decal&, const Decal&) = default;
@@ -1059,24 +1059,24 @@ SLASH_COMPONENT(Decal, size, texture_albedo, texture_normal, texture_orm, textur
 // A cloud of 3D Gaussians captured from a real place or thing, from a 3D Gaussian Splatting .ply
 // file, placed by the entity's Transform3D and blended over the opaque meshes in Forward+ (a
 // research spike of SlashEngine's own, Godot has none: the software device draws them).
-struct GaussianSplat3D {
+struct Splat3D {
     std::string splats;         // project path of the .ply file
     std::int32_t sh_degree = 3; // the most spherical harmonics degree its colors use, 0 to 3
     float opacity = 1.0F;       // times each splat's
-    std::uint32_t layers = 1;   // as MeshInstance3D's: the cameras that see it
+    std::uint32_t layers = 1;   // as Model3D's: the cameras that see it
 
-    friend bool operator==(const GaussianSplat3D&, const GaussianSplat3D&) = default;
+    friend bool operator==(const Splat3D&, const Splat3D&) = default;
 };
-SLASH_COMPONENT(GaussianSplat3D, splats, sh_degree, opacity, layers)
+SLASH_COMPONENT(Splat3D, splats, sh_degree, opacity, layers)
 
 // Forward+: a place where the volumetric fog is thicker, thinner or glows, as Godot's FogVolume:
 // a shape of size centered on the entity, in its space, or the whole fog ("world"), filled as the
-// FogMaterial on the same entity says (with none, a density of 1 and white light scattered, as
-// Godot's default fog material). It shows only while the WorldEnvironment has volumetric fog.
+// FogVolumeLook on the same entity says (with none, a density of 1 and white light scattered, as
+// Godot's default fog material). It shows only while the Environment3D has volumetric fog.
 struct FogVolume {
     Vec3 size{2.0F, 2.0F, 2.0F};
     std::string shape = "box"; // "ellipsoid", "cone", "cylinder", "box" or "world"
-    std::uint32_t layers = 1;  // as MeshInstance3D's: the cameras that see it
+    std::uint32_t layers = 1;  // as Model3D's: the cameras that see it
 
     friend bool operator==(const FogVolume&, const FogVolume&) = default;
 };
@@ -1084,25 +1084,25 @@ SLASH_COMPONENT(FogVolume, size, shape, layers)
 
 // How a FogVolume on the same entity fills its shape, as Godot's FogMaterial: its density, faded
 // toward the shape's edges and with height, and the colors it scatters light with and glows.
-struct FogMaterial {
+struct FogVolumeLook {
     float density = 1.0F;                  // added to the fog's own; below 0 takes fog away
     Vec4 albedo{1.0F, 1.0F, 1.0F, 1.0F};   // sRGB
     Vec4 emission{0.0F, 0.0F, 0.0F, 1.0F}; // sRGB
     float height_falloff = 0.0F;           // how fast it thins above the entity
     float edge_fade = 0.1F; // how far in from the shape's edges it fades: the curve's power
 
-    friend bool operator==(const FogMaterial&, const FogMaterial&) = default;
+    friend bool operator==(const FogVolumeLook&, const FogVolumeLook&) = default;
 };
-SLASH_COMPONENT(FogMaterial, density, albedo, emission, height_falloff, edge_fade)
+SLASH_COMPONENT(FogVolumeLook, density, albedo, emission, height_falloff, edge_fade)
 
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog,
 // volumetric fog and adjustments, as Godot's WorldEnvironment and its Environment. The first one
 // made applies; without one the background is the project's clear color, there is no ambient light
 // and colors are left as they are. A "sky" background is the sky material on the same entity: a
-// ProceduralSkyMaterial, PhysicalSkyMaterial or PanoramaSkyMaterial, or Godot's default
+// SkyGradient, SkyScattering or SkyPanorama, or Godot's default
 // procedural sky with none. That sky also lights and is reflected in lit surfaces, by
 // ambient_light_source and reflected_light_source, whatever the background.
-struct WorldEnvironment {
+struct Environment3D {
     std::string background_mode = "clear_color"; // "clear_color", "color" or "sky"
     Vec4 background_color{0.0F, 0.0F, 0.0F, 1.0F};
     float background_energy_multiplier = 1.0F;
@@ -1211,10 +1211,10 @@ struct WorldEnvironment {
     // turns off and the effects it draws. "" for none.
     std::string compositor{}; // NOLINT(readability-redundant-member-init)
 
-    friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
+    friend bool operator==(const Environment3D&, const Environment3D&) = default;
 };
 SLASH_COMPONENT(
-    WorldEnvironment, background_mode, background_color, background_energy_multiplier,
+    Environment3D, background_mode, background_color, background_energy_multiplier,
     background_intensity, sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
     ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
     reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white, tonemap_agx_white,
@@ -1235,14 +1235,14 @@ SLASH_COMPONENT(
     adjustment_contrast, adjustment_saturation, adjustment_color_correction, compositor)
 
 // How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
-// entity for that camera, or on the WorldEnvironment's entity for cameras without their own.
+// entity for that camera, or on the Environment3D's entity for cameras without their own.
 // exposure_multiplier brightens the lights, emission, background and the sky's light, as Godot's
 // exposure normalization does. With auto exposure, Forward+ measures each frame's brightness and
 // exposes it so that brightness comes out at auto_exposure_scale, moving toward it as an eye
 // adapts, at auto_exposure_speed. With far or near blur, Forward+ blurs what is past
 // dof_blur_far_distance or nearer than dof_blur_near_distance, up to dof_blur_amount times 64
 // pixels, as Godot's depth of field.
-struct CameraAttributesPractical {
+struct CameraLens {
     float exposure_sensitivity = 100.0F; // ISO; the auto exposure sensitivities are over it
     float exposure_multiplier = 1.0F;
     bool auto_exposure_enabled = false;
@@ -1265,24 +1265,22 @@ struct CameraAttributesPractical {
     float dof_blur_near_transition = 1.0F;
     float dof_blur_amount = 0.1F;
 
-    friend bool operator==(const CameraAttributesPractical&,
-                           const CameraAttributesPractical&) = default;
+    friend bool operator==(const CameraLens&, const CameraLens&) = default;
 };
-SLASH_COMPONENT(CameraAttributesPractical, exposure_sensitivity, exposure_multiplier,
-                auto_exposure_enabled, auto_exposure_scale, auto_exposure_speed,
-                auto_exposure_min_sensitivity, auto_exposure_max_sensitivity,
-                auto_exposure_metering, dof_blur_far_enabled, dof_blur_far_distance,
-                dof_blur_far_transition, dof_blur_near_enabled, dof_blur_near_distance,
-                dof_blur_near_transition, dof_blur_amount)
+SLASH_COMPONENT(CameraLens, exposure_sensitivity, exposure_multiplier, auto_exposure_enabled,
+                auto_exposure_scale, auto_exposure_speed, auto_exposure_min_sensitivity,
+                auto_exposure_max_sensitivity, auto_exposure_metering, dof_blur_far_enabled,
+                dof_blur_far_distance, dof_blur_far_transition, dof_blur_near_enabled,
+                dof_blur_near_distance, dof_blur_near_transition, dof_blur_amount)
 
-// ---- Paths, as Godot's Path2D and Path3D with their curves (path.hpp) ----
+// ---- Paths, as Godot's Path2D and Spline3D with their curves (path.hpp) ----
 //
 // A path is a curve of Bézier segments from each point to the next in the entity's space, as
 // Godot's Curve2D and Curve3D: each point has control handles before (in) and after (out) it,
-// relative to it, and both zero make the segments straight lines. A PathFollow2D or PathFollow3D
-// child is placed on its parent's curve each tick by the path_follow system.
+// relative to it, and both zero make the segments straight lines. A SplineFollower2D or
+// SplineFollower3D child is placed on its parent's curve each tick by the path_follow system.
 
-// A point of a Path2D's curve, as Godot's Curve2D keeps them.
+// A point of a Spline2D's curve, as Godot's Curve2D keeps them.
 struct CurvePoint2D {
     Vec2 position;
     Vec2 in;
@@ -1293,16 +1291,16 @@ struct CurvePoint2D {
 SLASH_REFLECT(CurvePoint2D, position, in, out)
 
 // Godot's Path2D with its Curve2D.
-struct Path2D {
+struct Spline2D {
     std::vector<CurvePoint2D> points;
     float bake_interval = 5.0F; // pixels between the points it is baked into
 
-    friend bool operator==(const Path2D&, const Path2D&) = default;
+    friend bool operator==(const Spline2D&, const Spline2D&) = default;
 };
-SLASH_COMPONENT(Path2D, points, bake_interval)
+SLASH_COMPONENT(Spline2D, points, bake_interval)
 
-// Godot's PathFollow2D: places the entity's Transform2D on its parent's Path2D curve.
-struct PathFollow2D {
+// Godot's PathFollow2D: places the entity's Transform2D on its parent's Spline2D curve.
+struct SplineFollower2D {
     float progress = 0.0F; // pixels along the curve
     float h_offset = 0.0F; // along the curve
     float v_offset = 0.0F; // across it
@@ -1310,11 +1308,11 @@ struct PathFollow2D {
     bool cubic_interp = true;
     bool loop = true;
 
-    friend bool operator==(const PathFollow2D&, const PathFollow2D&) = default;
+    friend bool operator==(const SplineFollower2D&, const SplineFollower2D&) = default;
 };
-SLASH_COMPONENT(PathFollow2D, progress, h_offset, v_offset, rotates, cubic_interp, loop)
+SLASH_COMPONENT(SplineFollower2D, progress, h_offset, v_offset, rotates, cubic_interp, loop)
 
-// A point of a Path3D's curve, as Godot's Curve3D keeps them, with its tilt in radians.
+// A point of a Spline3D's curve, as Godot's Curve3D keeps them, with its tilt in radians.
 struct CurvePoint3D {
     Vec3 position;
     Vec3 in;
@@ -1326,18 +1324,18 @@ struct CurvePoint3D {
 SLASH_REFLECT(CurvePoint3D, position, in, out, tilt)
 
 // Godot's Path3D with its Curve3D.
-struct Path3D {
+struct Spline3D {
     std::vector<CurvePoint3D> points;
     bool closed = false;        // a segment from the last point back to the first
     float bake_interval = 0.2F; // meters between the points it is baked into
     bool up_vector_enabled = true;
 
-    friend bool operator==(const Path3D&, const Path3D&) = default;
+    friend bool operator==(const Spline3D&, const Spline3D&) = default;
 };
-SLASH_COMPONENT(Path3D, points, closed, bake_interval, up_vector_enabled)
+SLASH_COMPONENT(Spline3D, points, closed, bake_interval, up_vector_enabled)
 
-// Godot's PathFollow3D: places the entity's Transform3D on its parent's Path3D curve.
-struct PathFollow3D {
+// Godot's PathFollow3D: places the entity's Transform3D on its parent's Spline3D curve.
+struct SplineFollower3D {
     float progress = 0.0F;             // meters along the curve
     float h_offset = 0.0F;             // to the side
     float v_offset = 0.0F;             // up
@@ -1347,9 +1345,9 @@ struct PathFollow3D {
     bool loop = true;
     bool tilt_enabled = true;
 
-    friend bool operator==(const PathFollow3D&, const PathFollow3D&) = default;
+    friend bool operator==(const SplineFollower3D&, const SplineFollower3D&) = default;
 };
-SLASH_COMPONENT(PathFollow3D, progress, h_offset, v_offset, rotation_mode, use_model_front,
+SLASH_COMPONENT(SplineFollower3D, progress, h_offset, v_offset, rotation_mode, use_model_front,
                 cubic_interp, loop, tilt_enabled)
 
 // ---- CSG shapes, as Godot's CSG nodes (engine/scene3d/src/csg.cpp) ----
@@ -1358,14 +1356,14 @@ SLASH_COMPONENT(PathFollow3D, progress, h_offset, v_offset, rotation_mode, use_m
 // a CSG shape too is combined into it, and the outermost one, the root, draws the result. Each
 // child, in its parent's children order and placed by its own Transform3D, is added to what
 // comes before it (union), keeps only where they overlap (intersection) or is cut out of it
-// (subtraction); hidden children are left out. A shape's StandardMaterial3D colors its faces, as
+// (subtraction); hidden children are left out. A shape's Surface3D colors its faces, as
 // Godot's material property, wherever they end up. Every CSG component ends with Godot's
 // CSGShape3D fields: operation, calculate_tangents (tangents for normal maps), use_collision,
 // collision_layer and collision_mask (the root is a static body of its triangles), and
-// MeshInstance3D's layers and cast_shadow; only the root's collision and drawing fields count.
+// Model3D's layers and cast_shadow; only the root's collision and drawing fields count.
 
 // Godot's CSGCombiner3D: no shape of its own, only its children's.
-struct CSGCombiner3D {
+struct SolidGroup3D {
     std::string operation = "union";
     bool calculate_tangents = true;
     bool use_collision = false;
@@ -1374,13 +1372,13 @@ struct CSGCombiner3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGCombiner3D&, const CSGCombiner3D&) = default;
+    friend bool operator==(const SolidGroup3D&, const SolidGroup3D&) = default;
 };
-SLASH_COMPONENT(CSGCombiner3D, operation, calculate_tangents, use_collision, collision_layer,
+SLASH_COMPONENT(SolidGroup3D, operation, calculate_tangents, use_collision, collision_layer,
                 collision_mask, layers, cast_shadow)
 
 // Godot's CSGBox3D: a box of size centered on the entity.
-struct CSGBox3D {
+struct SolidBox3D {
     Vec3 size{1.0F, 1.0F, 1.0F};
     bool flip_faces = false; // its faces point in, as Godot's CSGPrimitive3D.flip_faces
     std::string operation = "union";
@@ -1391,14 +1389,14 @@ struct CSGBox3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGBox3D&, const CSGBox3D&) = default;
+    friend bool operator==(const SolidBox3D&, const SolidBox3D&) = default;
 };
-SLASH_COMPONENT(CSGBox3D, size, flip_faces, operation, calculate_tangents, use_collision,
+SLASH_COMPONENT(SolidBox3D, size, flip_faces, operation, calculate_tangents, use_collision,
                 collision_layer, collision_mask, layers, cast_shadow)
 
 // Godot's CSGSphere3D: a sphere around the entity, radial_segments around y and rings from pole
 // to pole.
-struct CSGSphere3D {
+struct SolidSphere3D {
     float radius = 0.5F;
     int radial_segments = 12;
     int rings = 6;
@@ -1412,15 +1410,15 @@ struct CSGSphere3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGSphere3D&, const CSGSphere3D&) = default;
+    friend bool operator==(const SolidSphere3D&, const SolidSphere3D&) = default;
 };
-SLASH_COMPONENT(CSGSphere3D, radius, radial_segments, rings, smooth_faces, flip_faces, operation,
+SLASH_COMPONENT(SolidSphere3D, radius, radial_segments, rings, smooth_faces, flip_faces, operation,
                 calculate_tangents, use_collision, collision_layer, collision_mask, layers,
                 cast_shadow)
 
 // Godot's CSGCylinder3D: a cylinder of height along y centered on the entity, or a cone with its
 // point up.
-struct CSGCylinder3D {
+struct SolidCylinder3D {
     float radius = 0.5F;
     float height = 2.0F;
     int sides = 8;
@@ -1435,14 +1433,14 @@ struct CSGCylinder3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGCylinder3D&, const CSGCylinder3D&) = default;
+    friend bool operator==(const SolidCylinder3D&, const SolidCylinder3D&) = default;
 };
-SLASH_COMPONENT(CSGCylinder3D, radius, height, sides, cone, smooth_faces, flip_faces, operation,
+SLASH_COMPONENT(SolidCylinder3D, radius, height, sides, cone, smooth_faces, flip_faces, operation,
                 calculate_tangents, use_collision, collision_layer, collision_mask, layers,
                 cast_shadow)
 
 // Godot's CSGTorus3D: a ring around y between inner_radius and outer_radius.
-struct CSGTorus3D {
+struct SolidTorus3D {
     float inner_radius = 0.5F;
     float outer_radius = 1.0F;
     int sides = 8;
@@ -1457,22 +1455,22 @@ struct CSGTorus3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGTorus3D&, const CSGTorus3D&) = default;
+    friend bool operator==(const SolidTorus3D&, const SolidTorus3D&) = default;
 };
-SLASH_COMPONENT(CSGTorus3D, inner_radius, outer_radius, sides, ring_sides, smooth_faces, flip_faces,
-                operation, calculate_tangents, use_collision, collision_layer, collision_mask,
-                layers, cast_shadow)
+SLASH_COMPONENT(SolidTorus3D, inner_radius, outer_radius, sides, ring_sides, smooth_faces,
+                flip_faces, operation, calculate_tangents, use_collision, collision_layer,
+                collision_mask, layers, cast_shadow)
 
 // Godot's CSGPolygon3D: a polygon in the entity's xy plane, pushed depth along -z ("depth"),
-// turned spin_degrees around y in spin_sides steps ("spin") or pushed along a Path3D's curve
+// turned spin_degrees around y in spin_sides steps ("spin") or pushed along a Spline3D's curve
 // ("path"), where the path's place in the world is where it starts unless path_local.
-struct CSGPolygon3D {
+struct SolidExtrusion3D {
     std::vector<Vec2> polygon{{0.0F, 0.0F}, {0.0F, 1.0F}, {1.0F, 1.0F}, {1.0F, 0.0F}};
     std::string mode = "depth"; // "depth", "spin" or "path"
     float depth = 1.0F;
     float spin_degrees = 360.0F;
     int spin_sides = 8;
-    entt::entity path_node{entt::null};          // the Path3D it is pushed along, in path mode
+    entt::entity path_node{entt::null};          // the Spline3D it is pushed along, in path mode
     std::string path_interval_type = "distance"; // or "subdivide"
     float path_interval = 1.0F;
     float path_simplify_angle = 0.0F;
@@ -1492,19 +1490,20 @@ struct CSGPolygon3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGPolygon3D&, const CSGPolygon3D&) = default;
+    friend bool operator==(const SolidExtrusion3D&, const SolidExtrusion3D&) = default;
 };
-SLASH_COMPONENT(CSGPolygon3D, polygon, mode, depth, spin_degrees, spin_sides, path_node,
+SLASH_COMPONENT(SolidExtrusion3D, polygon, mode, depth, spin_degrees, spin_sides, path_node,
                 path_interval_type, path_interval, path_simplify_angle, path_rotation,
                 path_rotation_accurate, path_local, path_continuous_u, path_u_distance, path_joined,
                 smooth_faces, flip_faces, operation, calculate_tangents, use_collision,
                 collision_layer, collision_mask, layers, cast_shadow)
 
 // Godot's CSGMesh3D: a closed mesh as a shape, a model's meshes or the entity's primitive mesh.
-struct CSGMesh3D {
+struct SolidMesh3D {
     // A .gltf, .glb, .obj, .fbx, .blend or .model.json file's meshes, placed as its nodes place
     // them at rest;
-    // "" for the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, PrismMesh or TorusMesh.
+    // "" for the entity's BoxGeometry, SphereGeometry, CylinderGeometry, CapsuleGeometry,
+    // PrismGeometry or TorusGeometry.
     std::string mesh;
     bool flip_faces = false;
     std::string operation = "union";
@@ -1515,14 +1514,14 @@ struct CSGMesh3D {
     std::uint32_t layers = 1;
     std::string cast_shadow = "on";
 
-    friend bool operator==(const CSGMesh3D&, const CSGMesh3D&) = default;
+    friend bool operator==(const SolidMesh3D&, const SolidMesh3D&) = default;
 };
-SLASH_COMPONENT(CSGMesh3D, mesh, flip_faces, operation, calculate_tangents, use_collision,
+SLASH_COMPONENT(SolidMesh3D, mesh, flip_faces, operation, calculate_tangents, use_collision,
                 collision_layer, collision_mask, layers, cast_shadow)
 
 // ---- Grid maps, as Godot's GridMap (engine/scene3d/src/gridmap.cpp) ----
 
-// One floor of a GridMap's cells: the rows of legend keys at height y, as TileMapLayer's rows.
+// One floor of a BlockMap3D's cells: the rows of legend keys at height y, as TileLayer2D's rows.
 // Each row is a string of keys for the cells from origin's x toward +x, and each row after the
 // first is one cell further toward +z.
 struct GridFloor {
@@ -1539,7 +1538,7 @@ SLASH_REFLECT(GridFloor, y, origin, rows)
 // their items' meshes, collide as a static body of their shapes and, with bake_navigation, are
 // navigation regions of their items' navigation meshes. A cell's center is cell_size times the
 // cell, moved half a cell along the axes cell_center_* name.
-struct GridMap {
+struct BlockMap3D {
     std::string mesh_library; // project path of a .meshlib.json file
     Vec3 cell_size{2.0F, 2.0F, 2.0F};
     int cell_octant_size = 8; // cells along each side of the blocks drawn and rebuilt together
@@ -1556,13 +1555,13 @@ struct GridMap {
     std::map<std::string, std::string> legend;
     std::vector<GridFloor> floors;
 
-    friend bool operator==(const GridMap&, const GridMap&) = default;
+    friend bool operator==(const BlockMap3D&, const BlockMap3D&) = default;
 };
-SLASH_COMPONENT(GridMap, mesh_library, cell_size, cell_octant_size, cell_center_x, cell_center_y,
+SLASH_COMPONENT(BlockMap3D, mesh_library, cell_size, cell_octant_size, cell_center_x, cell_center_y,
                 cell_center_z, cell_scale, collision_layer, collision_mask, friction, bounce,
                 bake_navigation, legend, floors)
 
-// One of an HTerrain's four ground textures, as the HTerrain plugin's texture set: an albedo with
+// One of an Terrain3D's four ground textures, as the Terrain3D plugin's texture set: an albedo with
 // a bump (its height, for depth blending) in alpha, a normal map with roughness in alpha, how many
 // cells one repeat covers and how much the terrain's color map tints it.
 struct TerrainTexture {
@@ -1575,7 +1574,7 @@ struct TerrainTexture {
 };
 SLASH_REFLECT(TerrainTexture, albedo_bump, normal_roughness, uv_scale, colormap_opacity)
 
-// A crater an explosion left in an HTerrain (slash/world/damage.hpp's carve): a bowl around a
+// A crater an explosion left in an Terrain3D (slash/world/damage.hpp's carve): a bowl around a
 // place on the map, its rim thrown up around it, over the heightmap's heights.
 struct TerrainCrater {
     Vec2 center;         // cells along x and z from the map's corner
@@ -1586,15 +1585,15 @@ struct TerrainCrater {
 };
 SLASH_REFLECT(TerrainCrater, center, radius, depth)
 
-// A heightmap terrain, as the HTerrain plugin for Godot (Godot has no terrain node of its own):
+// A heightmap terrain, as the Terrain3D plugin for Godot (Godot has no terrain node of its own):
 // resolution x resolution heights, one a cell apart, in the entity's Transform3D space from its
 // origin toward +X and +Z (or around it, centered), scaled by map_scale. The heightmap is a 16-bit
 // gray PNG whose 0 and 65535 are height_range's ends; the splat map weighs the four textures in
 // its RGBA channels and the color map tints them, its alpha under 0.5 cutting holes. A map file
 // that doesn't exist yet reads as flat at height_range's low end, the first texture everywhere and
-// white. It draws in chunks of chunk_size cells, coarser with distance as HTerrain's quad tree
+// white. It draws in chunks of chunk_size cells, coarser with distance as Terrain3D's quad tree
 // makes them, collides as a static height field and is walked on by navigation bakes.
-struct HTerrain {
+struct Terrain3D {
     std::string heightmap; // project path of a .height.png file
     int resolution = 513;  // heights along each side: a power of two plus one, 65 to 4097
     Vec2 height_range{0.0F, 100.0F};
@@ -1612,13 +1611,13 @@ struct HTerrain {
     std::uint32_t collision_mask = 1;
     float friction = 1.0F; // its physics material's
     float bounce = 0.0F;
-    std::uint32_t render_layers = 1;    // as MeshInstance3D's layers
-    std::string cast_shadow = "on";     // as MeshInstance3D's
+    std::uint32_t render_layers = 1;    // as Model3D's layers
+    std::string cast_shadow = "on";     // as Model3D's
     std::vector<TerrainCrater> craters; // cut into its heights, oldest first
 
-    friend bool operator==(const HTerrain&, const HTerrain&) = default;
+    friend bool operator==(const Terrain3D&, const Terrain3D&) = default;
 };
-SLASH_COMPONENT(HTerrain, heightmap, resolution, height_range, splatmap, colormap, textures,
+SLASH_COMPONENT(Terrain3D, heightmap, resolution, height_range, splatmap, colormap, textures,
                 depth_blending, specular, map_scale, centered, chunk_size, lod_scale,
                 collision_enabled, collision_layer, collision_mask, friction, bounce, render_layers,
                 cast_shadow, craters)
@@ -1665,7 +1664,7 @@ SLASH_COMPONENT(Sprite2D, texture, centered, offset, flip_h, flip_v, hframes, vf
 
 // Plays animations from a .frames.json file (Godot's SpriteFrames) on the entity's Sprite2D,
 // as Godot's AnimatedSprite2D: each tick it sets the sprite's texture, sheet and frame.
-struct AnimatedSprite2D {
+struct Flipbook2D {
     std::string sprite_frames; // project path of a .frames.json file
     std::string animation = "default";
     bool playing = true;
@@ -1673,15 +1672,14 @@ struct AnimatedSprite2D {
     int frame = 0;               // the animation's current frame
     float frame_progress = 0.0F; // how far through the current frame, from 0 to 1
 };
-SLASH_COMPONENT(AnimatedSprite2D, sprite_frames, animation, playing, speed_scale, frame,
-                frame_progress)
+SLASH_COMPONENT(Flipbook2D, sprite_frames, animation, playing, speed_scale, frame, frame_progress)
 
 // Plays keyframe animations from a .anim.json file, as Godot's AnimationPlayer: each tick it
 // moves the time on and sets every field the animation's tracks name, on the entity's own
 // components or, for a track with a target, on the entity targets maps that name to. A model
 // file's animations, played from the file or from a .anim.json file that names them, pose the
-// skeleton of the model the entity's MeshInstance3D draws.
-struct AnimationPlayer {
+// skeleton of the model the entity's Model3D draws.
+struct Animator {
     std::string library; // project path of a .anim.json file, or a model file
     std::string animation;
     bool playing = true;
@@ -1695,10 +1693,10 @@ struct AnimationPlayer {
     // AnimationMixer.audio_max_polyphony (1 to 128).
     int audio_max_polyphony = 32;
 };
-SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards, targets,
+SLASH_COMPONENT(Animator, library, animation, playing, speed_scale, time, backwards, targets,
                 audio_max_polyphony)
 
-// An animation an AnimationTree played on its last tick: how far in it was and how much it
+// An animation an AnimationGraph played on its last tick: how far in it was and how much it
 // counted, as the most any of its tracks did, and the model nodes that counted otherwise, as
 // filters leave them.
 struct TreeAnimation {
@@ -1710,16 +1708,16 @@ struct TreeAnimation {
 SLASH_REFLECT(TreeAnimation, animation, time, weight, node_weights)
 
 // Blends animations as a .animtree.json file's tree of animation nodes says, as Godot's
-// AnimationTree: each tick it works out how much each animation of its libraries counts, track by
+// AnimationGraph: each tick it works out how much each animation of its libraries counts, track by
 // track, and mixes them into the components their tracks name and the pose of the model the
-// entity's MeshInstance3D draws. Games set its parameters (a Blend2's blend_amount, a OneShot's
+// entity's Model3D draws. Games set its parameters (a Blend2's blend_amount, a OneShot's
 // request); the tree keeps the rest of what it needs as it plays in state.
-struct AnimationTree {
+struct AnimationGraph {
     std::string tree_root; // project path of a .animtree.json file
     // The .anim.json files or models its animations come from, by library name. The tree names
     // the animations of the library named "" by themselves and others' as "library/animation".
     std::map<std::string, std::string> libraries;
-    std::map<std::string, entt::entity> targets; // as AnimationPlayer's
+    std::map<std::string, entt::entity> targets; // as Animator's
     bool active = true;
     // Tracks no animation plays go back to their RESET values; otherwise each track's weights
     // are scaled to add up to 1, as Godot's deterministic.
@@ -1727,7 +1725,7 @@ struct AnimationTree {
     // A model node whose motion is reported in root_motion_* rather than posed.
     std::string root_motion_track;
     bool root_motion_local = false; // report root motion position in the node's own frame
-    int audio_max_polyphony = 32;   // as AnimationPlayer's
+    int audio_max_polyphony = 32;   // as Animator's
     // Parameters set by the game, by their names in the tree, as "speed/blend_amount"; the tree
     // sets requests back to their defaults once it has acted on them.
     json::Object parameters;
@@ -1744,7 +1742,7 @@ struct AnimationTree {
     Quat root_motion_rotation_accumulator;
     Vec3 root_motion_scale_accumulator{1.0F, 1.0F, 1.0F};
 };
-SLASH_COMPONENT(AnimationTree, tree_root, libraries, targets, active, deterministic,
+SLASH_COMPONENT(AnimationGraph, tree_root, libraries, targets, active, deterministic,
                 root_motion_track, root_motion_local, audio_max_polyphony, parameters, state,
                 playing, invalid, root_motion_position, root_motion_rotation, root_motion_scale,
                 root_motion_position_accumulator, root_motion_rotation_accumulator,
@@ -1754,7 +1752,7 @@ SLASH_COMPONENT(AnimationTree, tree_root, libraries, targets, active, determinis
 // Transform2D with cell [0, 0]'s top left corner there. Its cells are text: each row is a string
 // of keys, each key standing for the tile the legend names, and "." for an empty cell. The
 // tilemap commands keep them in canonical form, so most edits go through them.
-struct TileMapLayer {
+struct TileLayer2D {
     std::string tile_set; // project path of a .tileset.json file
     Vec2i origin;         // the cell the first key of the first row stands for
     // key -> tile: a tile's name or "source:x,y", then ":alternative" and ":turns" if any
@@ -1770,16 +1768,16 @@ struct TileMapLayer {
     bool occlusion_enabled = true;          // its tiles' occluders cast shadows
     bool navigation_enabled = true; // each cell is a region of its tile's navigation polygons
 };
-SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, z_as_relative, visible,
+SLASH_COMPONENT(TileLayer2D, tile_set, origin, legend, rows, z_index, z_as_relative, visible,
                 modulate, texture_filter, light_mask, collision_enabled, occlusion_enabled,
                 navigation_enabled)
 
 // A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
 // PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with
 // range_item_cull_mask, whose z_index is in its range and whose canvas's layer is in its layer
-// range, and with shadow_enabled, the LightOccluder2D polygons whose occluder_light_mask shares a
+// range, and with shadow_enabled, the Occluder2D polygons whose occluder_light_mask shares a
 // bit with shadow_item_cull_mask cast shadows from it, as do tiles' occluders whose occlusion
-// layer's light_mask does. In a CanvasLayer, it shines from where its canvas puts it on the
+// layer's light_mask does. In a ScreenLayer, it shines from where its canvas puts it on the
 // screen.
 struct PointLight2D {
     bool enabled = true;
@@ -1794,7 +1792,7 @@ struct PointLight2D {
     float height = 0.0F;            // pixels above the plane, for normal maps
     int range_z_min = -1024;
     int range_z_max = 1024;
-    int range_layer_min = 0; // the canvas layers it lights: the world is 0, a CanvasLayer its layer
+    int range_layer_min = 0; // the canvas layers it lights: the world is 0, a ScreenLayer its layer
     int range_layer_max = 0;
     int range_item_cull_mask = 1;
     bool shadow_enabled = false;
@@ -1812,7 +1810,7 @@ SLASH_COMPONENT(PointLight2D, enabled, texture, texture_scale, offset, color, en
 // Light from one direction over everything, as Godot's DirectionalLight2D, such as the sun or the
 // moon. It shines down the screen, turned by the entity's Transform2D rotation if it has one.
 // Masks, ranges and shadows work as PointLight2D's.
-struct DirectionalLight2D {
+struct SunLight2D {
     bool enabled = true;
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     float energy = 1.0F;
@@ -1821,7 +1819,7 @@ struct DirectionalLight2D {
     float max_distance = 10000.0F;  // how far shadows reach past their occluders, in pixels
     int range_z_min = -1024;
     int range_z_max = 1024;
-    int range_layer_min = 0; // the canvas layers it lights: the world is 0, a CanvasLayer its layer
+    int range_layer_min = 0; // the canvas layers it lights: the world is 0, a ScreenLayer its layer
     int range_layer_max = 0;
     int range_item_cull_mask = 1;
     bool shadow_enabled = false;
@@ -1831,28 +1829,28 @@ struct DirectionalLight2D {
     int shadow_item_cull_mask = 1;
     float temperature = 0.0F; // Kelvin that tints color, as a 3D light's; 0 keeps color as it is
 };
-SLASH_COMPONENT(DirectionalLight2D, enabled, color, energy, blend_mode, height, max_distance,
-                range_z_min, range_z_max, range_layer_min, range_layer_max, range_item_cull_mask,
-                shadow_enabled, shadow_color, shadow_filter, shadow_filter_smooth,
-                shadow_item_cull_mask, temperature)
+SLASH_COMPONENT(SunLight2D, enabled, color, energy, blend_mode, height, max_distance, range_z_min,
+                range_z_max, range_layer_min, range_layer_max, range_item_cull_mask, shadow_enabled,
+                shadow_color, shadow_filter, shadow_filter_smooth, shadow_item_cull_mask,
+                temperature)
 
 // A polygon that casts shadows from 2D lights, as Godot's LightOccluder2D with its
 // OccluderPolygon2D, placed by the entity's Transform2D if it has one.
-struct LightOccluder2D {
+struct Occluder2D {
     std::vector<Vec2> polygon;          // points in pixels
     bool closed = true;                 // the last point joins the first
     std::string cull_mode = "disabled"; // "disabled", "clockwise" or "counter_clockwise"
     bool sdf_collision = true;          // GPU particles collide with it
     int occluder_light_mask = 1;
 };
-SLASH_COMPONENT(LightOccluder2D, polygon, closed, cull_mode, sdf_collision, occluder_light_mask)
+SLASH_COMPONENT(Occluder2D, polygon, closed, cull_mode, sdf_collision, occluder_light_mask)
 
 // Tints everything lit in its canvas, as Godot's CanvasModulate: the light the world, or a
-// CanvasLayer it is in, has where no light reaches. One per canvas.
-struct CanvasModulate {
+// ScreenLayer it is in, has where no light reaches. One per canvas.
+struct AmbientTint2D {
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
 };
-SLASH_COMPONENT(CanvasModulate, color)
+SLASH_COMPONENT(AmbientTint2D, color)
 
 // A 2D reflection, SlashEngine's own (Godot draws one with a screen texture shader): a rect
 // whose top edge, at the entity's Transform2D, is a mirror line, showing what its canvas drew
@@ -1876,7 +1874,7 @@ SLASH_COMPONENT(Reflection2D, size, tint, opacity, fade, ripple_amplitude, rippl
 // The part of the 2D world the window shows, as Godot's Camera2D, from where its Transform2D
 // places it (see camera2d.hpp). The first enabled one in drawing order is current; with none,
 // the window shows world pixels from [0, 0]. Controls stay put on the screen, as in a Godot
-// CanvasLayer.
+// ScreenLayer.
 struct Camera2D {
     bool enabled = true;
     std::string anchor_mode = "drag_center"; // or "fixed_top_left"
@@ -1912,9 +1910,9 @@ SLASH_COMPONENT(Camera2D, enabled, anchor_mode, ignore_rotation, offset, zoom, l
 // A canvas of its own over or under the world, as Godot's CanvasLayer (see canvas_layer.hpp): the
 // entities in its children, and theirs, draw in it, moved by its offset, rotation and scale
 // instead of the camera, and controls in it lay out in the viewport. Canvases draw in order of
-// layer; the world is layer 0, under any CanvasLayer of layer 0. Lights whose layer range holds
-// its layer shade it, and a CanvasModulate in it tints only it.
-struct CanvasLayer {
+// layer; the world is layer 0, under any ScreenLayer of layer 0. Lights whose layer range holds
+// its layer shade it, and a AmbientTint2D in it tints only it.
+struct ScreenLayer {
     std::vector<entt::entity> children;
     Vec2 offset;
     Vec2 scale{1.0F, 1.0F};
@@ -1926,7 +1924,7 @@ struct CanvasLayer {
     // follow_viewport_scale around the middle of the screen.
     bool follow_viewport_enabled = false;
 };
-SLASH_COMPONENT(CanvasLayer, layer, visible, offset, rotation, scale, follow_viewport_enabled,
+SLASH_COMPONENT(ScreenLayer, layer, visible, offset, rotation, scale, follow_viewport_enabled,
                 follow_viewport_scale, children)
 
 // Scrolls the entity's children at a different speed from the camera, as Godot's Parallax2D:
@@ -1943,7 +1941,7 @@ struct Parallax2D {
     // half the screen.
     Vec2 screen_offset;
     int repeat_times = 1; // copies drawn each way past the first, half of them before it
-    // Off for one in a CanvasLayer that doesn't follow the viewport, so the camera doesn't move it.
+    // Off for one in a ScreenLayer that doesn't follow the viewport, so the camera doesn't move it.
     bool follow_viewport = true;
     bool ignore_camera_scroll = false; // leave screen_offset as it is
 };
@@ -1951,13 +1949,13 @@ SLASH_COMPONENT(Parallax2D, scroll_scale, scroll_offset, repeat_size, autoscroll
                 limit_begin, limit_end, follow_viewport, ignore_camera_scroll, screen_offset)
 
 // ---- 2D physics, as Godot's: a body component makes its entity a physics body, placed by its
-// Transform2D, and the entity's CollisionShape2D and CollisionPolygon2D give it shapes. Units are
+// Transform2D, and the entity's Collider2D and PolygonCollider2D give it shapes. Units are
 // pixels, seconds, radians and kilograms; layers and masks are Godot's 32 physics layers, and two
 // objects collide when either one's collision_mask shares a bit with the other's collision_layer.
 
 // A shape of the entity's body or area, as Godot's CollisionShape2D with its Shape2D, moved and
 // turned from the entity's Transform2D by position and rotation, and scaled by its scale.
-struct CollisionShape2D {
+struct Collider2D {
     std::string shape = "rectangle"; // "rectangle", "circle", "capsule", "segment" or "polygon"
     Vec2 size{20.0F, 20.0F};         // rectangle
     float radius = 10.0F;            // circle and capsule
@@ -1971,23 +1969,23 @@ struct CollisionShape2D {
     bool one_way_collision = false; // collide only with what comes from the shape's -y side
     float one_way_collision_margin = 1.0F;
 
-    friend bool operator==(const CollisionShape2D&, const CollisionShape2D&) = default;
+    friend bool operator==(const Collider2D&, const Collider2D&) = default;
 };
-SLASH_COMPONENT(CollisionShape2D, shape, size, radius, height, a, b, points, position, rotation,
-                disabled, one_way_collision, one_way_collision_margin)
+SLASH_COMPONENT(Collider2D, shape, size, radius, height, a, b, points, position, rotation, disabled,
+                one_way_collision, one_way_collision_margin)
 
 // A polygon shape of the entity's body or area, as Godot's CollisionPolygon2D: any simple
 // polygon, filled ("solids", split into convex parts) or only its edges ("segments").
-struct CollisionPolygon2D {
+struct PolygonCollider2D {
     std::vector<Vec2> polygon;         // points in pixels, from the entity
     std::string build_mode = "solids"; // "solids" or "segments"
     bool disabled = false;
     bool one_way_collision = false;
     float one_way_collision_margin = 1.0F;
 
-    friend bool operator==(const CollisionPolygon2D&, const CollisionPolygon2D&) = default;
+    friend bool operator==(const PolygonCollider2D&, const PolygonCollider2D&) = default;
 };
-SLASH_COMPONENT(CollisionPolygon2D, polygon, build_mode, disabled, one_way_collision,
+SLASH_COMPONENT(PolygonCollider2D, polygon, build_mode, disabled, one_way_collision,
                 one_way_collision_margin)
 
 // A body that doesn't move on its own, such as a wall or the ground, as Godot's StaticBody2D.
@@ -2006,9 +2004,9 @@ SLASH_COMPONENT(StaticBody2D, collision_layer, collision_mask, friction, bounce,
                 physics_material_override, constant_linear_velocity, constant_angular_velocity)
 
 // A body that goes where its Transform2D says, as Godot's AnimatableBody2D: moving platforms and
-// doors that gameplay code or an AnimationPlayer moves. With sync_to_physics it moves there
+// doors that gameplay code or an Animator moves. With sync_to_physics it moves there
 // during the physics step, pushing bodies in its way and carrying those on it.
-struct AnimatableBody2D {
+struct MovingBody2D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
@@ -2018,7 +2016,7 @@ struct AnimatableBody2D {
     float constant_angular_velocity = 0.0F;
     bool sync_to_physics = true;
 };
-SLASH_COMPONENT(AnimatableBody2D, collision_layer, collision_mask, friction, bounce,
+SLASH_COMPONENT(MovingBody2D, collision_layer, collision_mask, friction, bounce,
                 physics_material_override, constant_linear_velocity, constant_angular_velocity,
                 sync_to_physics)
 
@@ -2059,9 +2057,9 @@ SLASH_COMPONENT(RigidBody2D, collision_layer, collision_mask, friction, bounce,
 
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody2D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
-// Transform2D, velocity and what it touches. It moves as its CollisionShape2D (a polygon as its
-// convex hull, with corners rounded by a pixel), else as its CollisionPolygon2D's convex hull.
-struct CharacterBody2D {
+// Transform2D, velocity and what it touches. It moves as its Collider2D (a polygon as its
+// convex hull, with corners rounded by a pixel), else as its PolygonCollider2D's convex hull.
+struct CharacterMover2D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     std::string motion_mode = "grounded"; // "grounded" (floors, walls, ceilings) or "floating"
@@ -2087,7 +2085,7 @@ struct CharacterBody2D {
     Vec2 wall_normal;
     Vec2 platform_velocity; // of the moving body it stands on
 };
-SLASH_COMPONENT(CharacterBody2D, collision_layer, collision_mask, motion_mode, up_direction,
+SLASH_COMPONENT(CharacterMover2D, collision_layer, collision_mask, motion_mode, up_direction,
                 velocity, max_slides, slide_on_ceiling, wall_min_slide_angle, floor_stop_on_slope,
                 floor_constant_speed, floor_block_on_wall, floor_max_angle, floor_snap_length,
                 platform_on_leave, platform_floor_layers, platform_wall_layers, safe_margin,
@@ -2100,7 +2098,7 @@ SLASH_COMPONENT(CharacterBody2D, collision_layer, collision_mask, motion_mode, u
 // and lets lower areas and the project add theirs, "replace" uses only its own,
 // "combine_replace" adds its own and stops there, and "replace_combine" drops what higher areas
 // gave and lets lower ones add.
-struct Area2D {
+struct Zone2D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     bool monitoring = true;  // report what enters
@@ -2116,10 +2114,10 @@ struct Area2D {
     float linear_damp = 0.1F;
     std::string angular_damp_space_override = "disabled";
     float angular_damp = 1.0F;
-    bool audio_bus_override = false;       // AudioStreamPlayer2D sounds in it play through:
+    bool audio_bus_override = false;       // SoundPlayer2D sounds in it play through:
     std::string audio_bus_name = "Master"; // this bus
 };
-SLASH_COMPONENT(Area2D, collision_layer, collision_mask, monitoring, monitorable, priority,
+SLASH_COMPONENT(Zone2D, collision_layer, collision_mask, monitoring, monitorable, priority,
                 gravity_space_override, gravity_point, gravity_point_unit_distance,
                 gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
                 linear_damp, angular_damp_space_override, angular_damp, audio_bus_override,
@@ -2145,7 +2143,7 @@ SLASH_COMPONENT(PinJoint2D, node_a, node_b, disable_collision, angular_limit_ena
 
 // A spring from node_a at the entity's Transform2D to node_b, length of the entity's pixels
 // along its y axis (so its scale stretches it), as Godot's DampedSpringJoint2D.
-struct DampedSpringJoint2D {
+struct SpringJoint2D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
     bool disable_collision = true;
@@ -2154,33 +2152,33 @@ struct DampedSpringJoint2D {
     float stiffness = 20.0F;
     float damping = 1.0F;
 
-    friend bool operator==(const DampedSpringJoint2D&, const DampedSpringJoint2D&) = default;
+    friend bool operator==(const SpringJoint2D&, const SpringJoint2D&) = default;
 };
-SLASH_COMPONENT(DampedSpringJoint2D, node_a, node_b, disable_collision, length, rest_length,
-                stiffness, damping)
+SLASH_COMPONENT(SpringJoint2D, node_a, node_b, disable_collision, length, rest_length, stiffness,
+                damping)
 
 // Keeps node_b on a groove of node_a's, from the entity's Transform2D length of its pixels along
 // its y axis, as Godot's GrooveJoint2D; node_b slides along it and turns freely.
-struct GrooveJoint2D {
+struct TrackJoint2D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
     bool disable_collision = true;
     float length = 50.0F;
     float initial_offset = 25.0F; // where node_b starts along the groove
 
-    friend bool operator==(const GrooveJoint2D&, const GrooveJoint2D&) = default;
+    friend bool operator==(const TrackJoint2D&, const TrackJoint2D&) = default;
 };
-SLASH_COMPONENT(GrooveJoint2D, node_a, node_b, disable_collision, length, initial_offset)
+SLASH_COMPONENT(TrackJoint2D, node_a, node_b, disable_collision, length, initial_offset)
 
 // ---- 3D physics, as Godot's (engine/physics3d, on Jolt Physics as Godot 4.4's Jolt module): a
 // body component makes its entity a physics body, placed by its Transform3D, and the entity's
-// CollisionShape3D gives it a shape, as do those of the entities under it that are no body or
+// Collider3D gives it a shape, as do those of the entities under it that are no body or
 // area themselves. Units are meters, seconds, radians and kilograms; layers and masks are as in
 // 2D.
 
 // A shape of the entity's body or area, as Godot's CollisionShape3D with its Shape3D, moved and
 // turned from the entity by position and rotation and scaled by its Transform3D's scale.
-struct CollisionShape3D {
+struct Collider3D {
     // "box", "sphere", "capsule", "cylinder", "convex_polygon", "concave_polygon" or
     // "world_boundary".
     std::string shape = "box";
@@ -2198,10 +2196,10 @@ struct CollisionShape3D {
     Vec3 rotation; // radians, as Transform3D's
     bool disabled = false;
 
-    friend bool operator==(const CollisionShape3D&, const CollisionShape3D&) = default;
+    friend bool operator==(const Collider3D&, const Collider3D&) = default;
 };
-SLASH_COMPONENT(CollisionShape3D, shape, size, radius, height, points, faces, backface_collision,
-                plane, margin, position, rotation, disabled)
+SLASH_COMPONENT(Collider3D, shape, size, radius, height, points, faces, backface_collision, plane,
+                margin, position, rotation, disabled)
 
 // A body that doesn't move on its own, as Godot's StaticBody3D. Changing its Transform3D moves it
 // there at once. Its constant velocities don't move it but carry what touches it as if it moved.
@@ -2220,7 +2218,7 @@ SLASH_COMPONENT(StaticBody3D, collision_layer, collision_mask, friction, bounce,
 // A body that goes where its Transform3D says, as Godot's AnimatableBody3D. With sync_to_physics
 // it moves there during the physics step, pushing rigid bodies in its way and carrying those on
 // it.
-struct AnimatableBody3D {
+struct MovingBody3D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     float friction = 1.0F;
@@ -2230,7 +2228,7 @@ struct AnimatableBody3D {
     Vec3 constant_angular_velocity;
     bool sync_to_physics = true;
 };
-SLASH_COMPONENT(AnimatableBody3D, collision_layer, collision_mask, friction, bounce,
+SLASH_COMPONENT(MovingBody3D, collision_layer, collision_mask, friction, bounce,
                 physics_material_override, constant_linear_velocity, constant_angular_velocity,
                 sync_to_physics)
 
@@ -2280,7 +2278,7 @@ SLASH_COMPONENT(RigidBody3D, collision_layer, collision_mask, friction, bounce,
 // A body that gameplay code moves by setting its velocity, as Godot's CharacterBody3D: each tick
 // the physics step runs move_and_slide, sliding it along what it hits, then writes its
 // Transform3D, velocity and what it touches.
-struct CharacterBody3D {
+struct CharacterMover3D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     std::string motion_mode = "grounded"; // "grounded" (floors, walls, ceilings) or "floating"
@@ -2306,15 +2304,15 @@ struct CharacterBody3D {
     Vec3 wall_normal;
     Vec3 platform_velocity; // of the moving body it stands on
 };
-SLASH_COMPONENT(CharacterBody3D, collision_layer, collision_mask, motion_mode, up_direction,
+SLASH_COMPONENT(CharacterMover3D, collision_layer, collision_mask, motion_mode, up_direction,
                 velocity, max_slides, slide_on_ceiling, wall_min_slide_angle, floor_stop_on_slope,
                 floor_constant_speed, floor_block_on_wall, floor_max_angle, floor_snap_length,
                 platform_on_leave, platform_floor_layers, platform_wall_layers, safe_margin,
                 on_floor, on_wall, on_ceiling, floor_normal, wall_normal, platform_velocity)
 
 // A region that reports bodies and areas entering and leaving its shapes, as Godot's Area3D, and
-// whose space overrides change the gravity and damping of rigid bodies in it, as Area2D's.
-struct Area3D {
+// whose space overrides change the gravity and damping of rigid bodies in it, as Zone2D's.
+struct Zone3D {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
     bool monitoring = true;  // report what enters
@@ -2336,7 +2334,7 @@ struct Area3D {
     float wind_force_magnitude = 0.0F;
     float wind_attenuation_factor = 0.0F;
     entt::entity wind_source_path{entt::null};
-    // What happens to AudioStreamPlayer3D sounds in it, as Godot's Area3D: they play through
+    // What happens to SoundPlayer3D sounds in it, as Godot's Area3D: they play through
     // audio_bus_name and send to reverb_bus_name.
     bool audio_bus_override = false;
     std::string audio_bus_name = "Master";
@@ -2345,7 +2343,7 @@ struct Area3D {
     float reverb_bus_amount = 0.0F;
     float reverb_bus_uniformity = 0.0F;
 };
-SLASH_COMPONENT(Area3D, collision_layer, collision_mask, monitoring, monitorable, priority,
+SLASH_COMPONENT(Zone3D, collision_layer, collision_mask, monitoring, monitorable, priority,
                 gravity_space_override, gravity_point, gravity_point_unit_distance,
                 gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
                 linear_damp, angular_damp_space_override, angular_damp, wind_force_magnitude,
@@ -2388,33 +2386,32 @@ SLASH_COMPONENT(HingeJoint3D, node_a, node_b, exclude_nodes_from_collision, angu
                 motor_max_impulse)
 
 // Lets two bodies slide along the entity's x axis only, as Godot's SliderJoint3D.
-struct SliderJoint3D {
+struct SlideJoint3D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
     bool exclude_nodes_from_collision = true;
     float linear_limit_upper = 1.0F;  // meters
     float linear_limit_lower = -1.0F; // meters
 
-    friend bool operator==(const SliderJoint3D&, const SliderJoint3D&) = default;
+    friend bool operator==(const SlideJoint3D&, const SlideJoint3D&) = default;
 };
-SLASH_COMPONENT(SliderJoint3D, node_a, node_b, exclude_nodes_from_collision, linear_limit_upper,
+SLASH_COMPONENT(SlideJoint3D, node_a, node_b, exclude_nodes_from_collision, linear_limit_upper,
                 linear_limit_lower)
 
 // Lets two bodies swing in a cone about the entity's x axis and twist about it, as a shoulder,
 // as Godot's ConeTwistJoint3D.
-struct ConeTwistJoint3D {
+struct ConeJoint3D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
     bool exclude_nodes_from_collision = true;
     float swing_span = 0.7853982F;                // radians
     float twist_span = std::numbers::pi_v<float>; // radians
 
-    friend bool operator==(const ConeTwistJoint3D&, const ConeTwistJoint3D&) = default;
+    friend bool operator==(const ConeJoint3D&, const ConeJoint3D&) = default;
 };
-SLASH_COMPONENT(ConeTwistJoint3D, node_a, node_b, exclude_nodes_from_collision, swing_span,
-                twist_span)
+SLASH_COMPONENT(ConeJoint3D, node_a, node_b, exclude_nodes_from_collision, swing_span, twist_span)
 
-// One axis of a Generic6DOFJoint3D along which the bodies move.
+// One axis of a SixAxisJoint3D along which the bodies move.
 struct Joint3DLinearAxis {
     bool limit_enabled = true;
     float limit_upper = 0.0F; // meters
@@ -2433,7 +2430,7 @@ SLASH_REFLECT(Joint3DLinearAxis, limit_enabled, limit_upper, limit_lower, motor_
               motor_target_velocity, motor_force_limit, spring_enabled, spring_stiffness,
               spring_damping, spring_equilibrium_point)
 
-// One axis of a Generic6DOFJoint3D about which the bodies turn.
+// One axis of a SixAxisJoint3D about which the bodies turn.
 struct Joint3DAngularAxis {
     bool limit_enabled = true;
     float limit_upper = 0.0F; // radians
@@ -2454,7 +2451,7 @@ SLASH_REFLECT(Joint3DAngularAxis, limit_enabled, limit_upper, limit_lower, motor
 
 // Limits, drives or springs each of the six ways two bodies move apart, along and about the
 // entity's axes, as Godot's Generic6DOFJoint3D. By default every axis is locked.
-struct Generic6DOFJoint3D {
+struct SixAxisJoint3D {
     entt::entity node_a{entt::null};
     entt::entity node_b{entt::null};
     bool exclude_nodes_from_collision = true;
@@ -2465,25 +2462,25 @@ struct Generic6DOFJoint3D {
     Joint3DAngularAxis angular_y;
     Joint3DAngularAxis angular_z;
 
-    friend bool operator==(const Generic6DOFJoint3D&, const Generic6DOFJoint3D&) = default;
+    friend bool operator==(const SixAxisJoint3D&, const SixAxisJoint3D&) = default;
 };
-SLASH_COMPONENT(Generic6DOFJoint3D, node_a, node_b, exclude_nodes_from_collision, linear_x,
-                linear_y, linear_z, angular_x, angular_y, angular_z)
+SLASH_COMPONENT(SixAxisJoint3D, node_a, node_b, exclude_nodes_from_collision, linear_x, linear_y,
+                linear_z, angular_x, angular_y, angular_z)
 
 // A car, as Godot's VehicleBody3D: the RigidBody3D on the same entity rolls on the
-// VehicleWheel3D entities right under it. Its engine force, brake and steering go to its wheels
+// Wheel3D entities right under it. Its engine force, brake and steering go to its wheels
 // when they change. Godot's VehicleBody3D is a rigid body of 40 kilograms.
-struct VehicleBody3D {
+struct WheeledBody3D {
     float engine_force = 0.0F; // newtons, to the wheels used as traction
     float brake = 0.0F;        // to every wheel
     float steering = 0.0F;     // radians, to the wheels used as steering; positive turns left
 };
-SLASH_COMPONENT(VehicleBody3D, engine_force, brake, steering)
+SLASH_COMPONENT(WheeledBody3D, engine_force, brake, steering)
 
-// A wheel of the VehicleBody3D its entity is right under, as Godot's VehicleWheel3D: a ray cast
+// A wheel of the WheeledBody3D its entity is right under, as Godot's VehicleWheel3D: a ray cast
 // down its y axis is its suspension, and its x axis is its axle. The physics step rolls, steers
 // and lifts it from where it is mounted, writing its Transform3D, and writes what it found.
-struct VehicleWheel3D {
+struct Wheel3D {
     float engine_force = 0.0F; // newtons
     float brake = 0.0F;
     float steering = 0.0F; // radians
@@ -2508,18 +2505,18 @@ struct VehicleWheel3D {
     float rpm = 0.0F;
     float skid_info = 0.0F; // 1 grips, toward 0 skids
 };
-SLASH_COMPONENT(VehicleWheel3D, engine_force, brake, steering, use_as_traction, use_as_steering,
+SLASH_COMPONENT(Wheel3D, engine_force, brake, steering, use_as_traction, use_as_steering,
                 wheel_roll_influence, wheel_radius, wheel_rest_length, wheel_friction_slip,
                 suspension_travel, suspension_stiffness, suspension_max_force, damping_compression,
                 damping_relaxation, in_contact, contact_point, contact_normal, contact_body,
                 suspension_length, rotation, rpm, skid_info)
 
-// The ragdoll of a model, as Godot 4.6's PhysicalBoneSimulator3D: a skeleton modifier on the entity
-// that draws the model or on one of its Transform3D children, whose PhysicalBone3D children are
+// The ragdoll of a model, as Godot 4.6's BoneSimulation3D: a skeleton modifier on the entity
+// that draws the model or on one of its Transform3D children, whose SimulatedBone3D children are
 // bodies for the model's bones. While it simulates, physics moves the bones it names (and those
 // under them, or every bone when it names none) and they pose the model; the other bones' bodies
 // follow the model's pose as kinematic bodies, while it is active.
-struct PhysicalBoneSimulator3D {
+struct BoneSimulation3D {
     bool active = true;
     float influence = 1.0F; // how far simulated bones replace the pose, 0 to 1
     // Godot's physical_bones_start_simulation and physical_bones_stop_simulation.
@@ -2527,13 +2524,12 @@ struct PhysicalBoneSimulator3D {
     std::vector<std::string> simulated_bones;       // with the bones under them; empty for all
     std::vector<entt::entity> collision_exceptions; // bodies its bones never collide with
 
-    friend bool operator==(const PhysicalBoneSimulator3D&,
-                           const PhysicalBoneSimulator3D&) = default;
+    friend bool operator==(const BoneSimulation3D&, const BoneSimulation3D&) = default;
 };
-SLASH_COMPONENT(PhysicalBoneSimulator3D, active, influence, simulating, simulated_bones,
+SLASH_COMPONENT(BoneSimulation3D, active, influence, simulating, simulated_bones,
                 collision_exceptions)
 
-// One axis of a PhysicalBone3D's "6dof" joint, along and about which the bodies move.
+// One axis of a SimulatedBone3D's "6dof" joint, along and about which the bodies move.
 struct PhysicalBone3DAxis {
     bool linear_limit_enabled = true;
     float linear_limit_upper = 0.0F; // meters
@@ -2558,7 +2554,7 @@ SLASH_REFLECT(PhysicalBone3DAxis, linear_limit_enabled, linear_limit_upper, line
               angular_limit_lower, angular_spring_enabled, angular_spring_stiffness,
               angular_spring_damping, angular_equilibrium_point)
 
-// The muscle of a PhysicalBone3D, SlashEngine's own after Unreal's physical animation drives and
+// The muscle of a SimulatedBone3D, SlashEngine's own after Unreal's physical animation drives and
 // PuppetMaster's pins: while the body simulates, it turns toward where the animated pose puts it
 // (in its parent bone's body, pushing the parent back, or in the world) and is pinned to that
 // place in the world, as springs that take effect as acceleration, so a body's mass doesn't
@@ -2579,12 +2575,12 @@ SLASH_REFLECT(PhysicalBoneDrive, space, orientation_strength, angular_velocity_s
               max_linear_acceleration)
 
 // A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child of a
-// PhysicalBoneSimulator3D's entity, shaped by its CollisionShape3D or those of entities under it,
+// BoneSimulation3D's entity, shaped by its Collider3D or those of entities under it,
 // placed at the bone times body_offset. Its joint holds it to the body of the nearest bone above
 // its own that has one, at its bone's origin. The physics step writes its Transform3D (top_level
 // while it simulates) and velocities, and the skeleton_modifiers system its Transform3D while it
 // follows the pose. Joint parameters Godot's Jolt module ignores are left out.
-struct PhysicalBone3D {
+struct SimulatedBone3D {
     std::string bone_name;
     Vec3 body_offset_position;       // where the body is in the bone's space
     Vec3 body_offset_rotation;       // radians, as Transform3D's
@@ -2616,9 +2612,9 @@ struct PhysicalBone3D {
     bool can_sleep = true;
     PhysicalBoneDrive drive;
 
-    friend bool operator==(const PhysicalBone3D&, const PhysicalBone3D&) = default;
+    friend bool operator==(const SimulatedBone3D&, const SimulatedBone3D&) = default;
 };
-SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rotation, joint_type,
+SLASH_COMPONENT(SimulatedBone3D, bone_name, body_offset_position, body_offset_rotation, joint_type,
                 joint_rotation, swing_span, twist_span, angular_limit_enabled, angular_limit_upper,
                 angular_limit_lower, linear_limit_upper, linear_limit_lower, x, y, z,
                 collision_layer, collision_mask, mass, friction, bounce, physics_material_override,
@@ -2626,8 +2622,8 @@ SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rot
                 linear_velocity, angular_velocity, can_sleep, drive)
 
 // A character's or creature's own ragdoll from a .ragdoll.json profile, SlashEngine's own after
-// Unreal's physics assets and Physical Animation component, on the entity whose MeshInstance3D
-// draws the model: the ragdoll system keeps a PhysicalBoneSimulator3D on it and a PhysicalBone3D
+// Unreal's physics assets and Physical Animation component, on the entity whose Model3D
+// draws the model: the ragdoll system keeps a BoneSimulation3D on it and a SimulatedBone3D
 // child (made as "<id>_<bone>") for each bone the profile names, set as the profile and
 // overrides say. Its state is "animated" (the bodies follow the animation, so cloth, hair and
 // hits find them), "active" (the bodies simulate and their muscles drive them toward the
@@ -2654,7 +2650,7 @@ SLASH_COMPONENT(Ragdoll3D, profile, overrides, state, rest_state, strength, weak
 
 // A 2D character's or creature's own ragdoll from a .ragdoll.json profile (in pixels), on the
 // root of a cut-out character's Transform2D tree: each profile bone is an entity under it, which
-// the ragdoll system makes a RigidBody2D with a CollisionShape2D joined to the bone above by a
+// the ragdoll system makes a RigidBody2D with a Collider2D joined to the bone above by a
 // PinJoint2D ("<bone>_joint"). The same states, hits and getting up as Ragdoll3D's.
 struct Ragdoll2D {
     std::string profile;                 // project path of a .ragdoll.json file
@@ -2783,7 +2779,7 @@ SLASH_COMPONENT(Character2D, recipe, pixels_per_meter, flip_h, look_at, jaw_open
                 hand_back, expressions)
 
 // A character's muscles simulated as flesh, after Unreal's Chaos Flesh (slash/world/flesh.hpp):
-// on the .character.json model its entity's MeshInstance3D draws, its muscles bulge as they
+// on the .character.json model its entity's Model3D draws, its muscles bulge as they
 // shorten or are activated and jiggle as it moves, and its skin follows them. The same fields
 // as Flesh2D.
 struct Flesh3D {
@@ -2844,9 +2840,9 @@ struct CreatureMind {
 SLASH_REFLECT(CreatureMind, mode, target, owner, rider, fed, hunger, timer, homed, home, goal,
               velocity, steer, gait)
 
-// An animal in 3D, behaving as its .creature.json recipe says. Its MeshInstance3D draws the
-// recipe and its AnimationPlayer plays the recipe's animations, which the fauna system picks by
-// what it is doing; it moves its Transform3D, or a CharacterBody3D's velocity when it has one.
+// An animal in 3D, behaving as its .creature.json recipe says. Its Model3D draws the
+// recipe and its Animator plays the recipe's animations, which the fauna system picks by
+// what it is doing; it moves its Transform3D, or a CharacterMover3D's velocity when it has one.
 struct Creature3D {
     std::string recipe;
     bool enabled = true;
@@ -2901,8 +2897,8 @@ struct VehicleDrive {
 SLASH_REFLECT(VehicleDrive, gear, rpm, shift_timer, steer, speed)
 
 // A vehicle in 3D from a .vehicle.json recipe (slash/world/vehicle.hpp), on a RigidBody3D whose
-// MeshInstance3D draws the recipe: the vehicles system gives the body the recipe's mass, center
-// of mass and (rolling kinds) a VehicleBody3D with a wheel child <id>_wheel_<n> per wheel, then
+// Model3D draws the recipe: the vehicles system gives the body the recipe's mass, center
+// of mass and (rolling kinds) a WheeledBody3D with a wheel child <id>_wheel_<n> per wheel, then
 // drives it from controls each tick, floats boats and flies aircraft. Who sits in it has a
 // VehicleRider naming it; the driver's seat drives.
 struct Vehicle3D {
@@ -2918,8 +2914,8 @@ SLASH_COMPONENT(Vehicle3D, recipe, enabled, overrides, controls, drive)
 
 // A vehicle in 2D, seen from the side with its nose toward +x (or -x with flip_h), on a
 // RigidBody2D: the vehicles system gives it a collision box and Polygon2D pieces as children
-// <id>_<piece>, and each wheel a RigidBody2D child <id>_wheel_<n> on a GrooveJoint2D and a
-// DampedSpringJoint2D, pixels_per_meter big, and drives the wheels from controls.
+// <id>_<piece>, and each wheel a RigidBody2D child <id>_wheel_<n> on a TrackJoint2D and a
+// SpringJoint2D, pixels_per_meter big, and drives the wheels from controls.
 struct Vehicle2D {
     std::string recipe;
     float pixels_per_meter = 50.0F;
@@ -3019,7 +3015,7 @@ SLASH_COMPONENT(SoftBody3D, collision_layer, collision_mask, parent_collision_ig
                 pressure_coefficient, damping_coefficient, drag_coefficient, ray_pickable,
                 pinned_points, tear_stretch, torn)
 
-// Simulates part of the model its entity's MeshInstance3D draws as cloth on its skin, as Unreal's
+// Simulates part of the model its entity's Model3D draws as cloth on its skin, as Unreal's
 // Chaos Cloth (Godot has none): the surfaces drawn with the material named section become a
 // Jolt soft body whose points the model's skin (its skeleton as animated, or its nodes) carries
 // along, each free to move up to its share of max_distance from where the skin puts it and kept
@@ -3060,11 +3056,11 @@ SLASH_COMPONENT(Cloth3D, section, max_distance, max_distance_map, gradient, vert
                 drag_coefficient, simulation_precision, collision_layer, collision_mask,
                 tear_stretch, torn)
 
-// Hair or fur grown over the model its entity's MeshInstance3D draws, as Unreal's Groom
+// Hair or fur grown over the model its entity's Model3D draws, as Unreal's Groom
 // component: groom names a .groom.json file saying how its strands grow, draw and move. A few
 // guide strands follow the model's skin and are stepped by 3D physics; the rest are drawn
 // following them.
-struct HairInstance3D {
+struct Hair3D {
     std::string groom;   // a .groom.json file
     std::string section; // the model's material it grows on; "" every surface
     bool visible = true;
@@ -3072,9 +3068,9 @@ struct HairInstance3D {
     bool collide = true;            // with its body's spheres, capsules and boxes
     std::string cast_shadow = "on"; // "off", "on", "double_sided" or "shadows_only"
 
-    friend bool operator==(const HairInstance3D&, const HairInstance3D&) = default;
+    friend bool operator==(const Hair3D&, const Hair3D&) = default;
 };
-SLASH_COMPONENT(HairInstance3D, groom, section, visible, simulate, collide, cast_shadow)
+SLASH_COMPONENT(Hair3D, groom, section, visible, simulate, collide, cast_shadow)
 
 // A dent pushed into a Destructible3D's mesh, in the mesh's space: the surface within radius of
 // at goes in along direction, depth at the middle and smoothly less to nothing at the edge.
@@ -3131,7 +3127,7 @@ struct FractureLink {
 SLASH_REFLECT(FractureLink, piece, area)
 
 // Breaks a body into pieces, as Unreal's geometry collections (Godot has no destruction): the
-// mesh its entity's MeshInstance3D draws is cut into cells, and when its health runs out (an
+// mesh its entity's Model3D draws is cut into cells, and when its health runs out (an
 // impact, damage.apply, a strain field) or physics.break says so, the entity is replaced by a
 // rigid body per piece (FracturePiece3D) moving as it moved. With a profile (a .damage.json
 // file, slash/world/damage.hpp) it takes damage as its material does, changes its looks by its
@@ -3159,8 +3155,8 @@ struct Destructible3D {
 SLASH_COMPONENT(Destructible3D, pieces, seed, damage_threshold, mass, debris_lifetime, profile,
                 overrides, health, state, level, dents, carves)
 
-// One piece of a broken Destructible3D: the entity's MeshInstance3D draws only this cell of its
-// mesh's fracture, and its CollisionShape3D is the cell's hull.
+// One piece of a broken Destructible3D: the entity's Model3D draws only this cell of its
+// mesh's fracture, and its Collider3D is the cell's hull.
 struct FracturePiece3D {
     int pieces = 8; // the Destructible3D's pieces and seed, which made the cells
     std::uint32_t seed = 0;
@@ -3177,9 +3173,9 @@ struct FracturePiece3D {
 };
 SLASH_COMPONENT(FracturePiece3D, pieces, seed, index, lifetime, cuts, group, links, anchored)
 
-// Breaks a 2D body into pieces, as Destructible3D does in 3D: its outline (a CollisionPolygon2D,
-// else its CollisionShape2D, else its Sprite2D's rectangle) is cut into cells, and each piece is
-// a RigidBody2D with a CollisionPolygon2D and a Polygon2D drawing that part of its texture
+// Breaks a 2D body into pieces, as Destructible3D does in 3D: its outline (a PolygonCollider2D,
+// else its Collider2D, else its Sprite2D's rectangle) is cut into cells, and each piece is
+// a RigidBody2D with a PolygonCollider2D and a Polygon2D drawing that part of its texture
 // (FracturePiece2D). Its entity is a StaticBody2D or a RigidBody2D.
 struct Destructible2D {
     int pieces = 8;
@@ -3198,7 +3194,7 @@ struct Destructible2D {
 SLASH_COMPONENT(Destructible2D, pieces, seed, damage_threshold, mass, debris_lifetime, profile,
                 overrides, health, state, level)
 
-// One piece of a broken Destructible2D: its CollisionPolygon2D and Polygon2D hold its outline.
+// One piece of a broken Destructible2D: its PolygonCollider2D and Polygon2D hold its outline.
 struct FracturePiece2D {
     float lifetime = 0.0F;
     std::string group;
@@ -3210,8 +3206,8 @@ struct FracturePiece2D {
 SLASH_COMPONENT(FracturePiece2D, lifetime, group, links, anchored)
 
 // Something a hit, a break, a death or a wreck left, made from a .damage.json profile's effects:
-// debris or dust (a one-shot CPUParticles3D or CPUParticles2D), a decal (a Decal or a Sprite2D)
-// or a sound (an AudioStreamPlayer3D or AudioStreamPlayer2D). It goes when its lifetime runs out.
+// debris or dust (a one-shot Emitter3D or Emitter2D), a decal (a Decal or a Sprite2D)
+// or a sound (an SoundPlayer3D or SoundPlayer2D). It goes when its lifetime runs out.
 struct DamageEffect {
     float lifetime = 0.0F; // seconds left; 0 keeps it
     std::string body;      // the body it came from
@@ -3223,7 +3219,7 @@ SLASH_COMPONENT(DamageEffect, lifetime, body)
 // A visual effect playing a .vfx.json recipe at the entity's Transform3D, after Unreal's Niagara
 // components (Godot has none: its effects are scenes a script times). The "vfx" system makes
 // each layer an entity "<id>_<layer>" under it while the layer plays. Under a model, with a
-// BoneAttachment3D, it follows a bone or an attachment point.
+// BoneSocket3D, it follows a bone or an attachment point.
 struct VisualEffect3D {
     std::string recipe;     // a .vfx.json file
     json::Value parameters; // values for the recipe's parameters by name, over its defaults
@@ -3421,7 +3417,7 @@ SLASH_COMPONENT(FluidSink2D, fluid, size, enabled)
 // A lake, ocean or river from a .water.json recipe (slash/world/water.hpp): a surface of
 // Gerstner waves at the entity's Transform3D, at rest on its x-z plane, size wide (x, z; an
 // ocean's size bounds only where its shore is measured, its surface drawing round the camera),
-// or a river width wide along the Path3D entity path names. Bodies float and drift in it.
+// or a river width wide along the Spline3D entity path names. Bodies float and drift in it.
 struct Water3D {
     std::string recipe;
     json::Value overrides; // a merge patch over the recipe
@@ -3521,9 +3517,9 @@ struct ParticleSimulation {
     friend bool operator==(const ParticleSimulation&, const ParticleSimulation&) = default;
 };
 
-// Simulation stages over the entity's CPUParticles3D, in meters: it collides with
+// Simulation stages over the entity's Emitter3D, in meters: it collides with
 // GPUParticlesCollision3Ds ("colliders"), with what the current Camera3D sees ("depth") or both.
-// Beside a GPUParticles3D, its neighbor, curl noise, drag and speed stages run on the device after
+// Beside a GpuEmitter3D, its neighbor, curl noise, drag and speed stages run on the device after
 // each step (scene3d::gpu_stages); attributes, events and collide are the CPU stages' alone.
 struct ParticleSimulation3D : ParticleSimulation {
     friend bool operator==(const ParticleSimulation3D&, const ParticleSimulation3D&) = default;
@@ -3533,7 +3529,7 @@ SLASH_COMPONENT(ParticleSimulation3D, enabled, neighbor_radius, max_neighbors, s
                 attractors, collide, response, collision_radius, bounce, friction, depth_thickness,
                 attributes, events)
 
-// Simulation stages over the entity's CPUParticles2D, in pixels: it collides with
+// Simulation stages over the entity's Emitter2D, in pixels: it collides with
 // LightOccluder2Ds and tile occluders with sdf_collision ("occluders").
 struct ParticleSimulation2D : ParticleSimulation {
     ParticleSimulation2D() {
@@ -3564,7 +3560,7 @@ struct StreamingSource3D {
 };
 SLASH_COMPONENT(StreamingSource3D, enabled)
 
-// Wind, after Unreal's WindDirectionalSource (Godot has only Area3D's wind for soft bodies): it
+// Wind, after Unreal's WindDirectionalSource (Godot has only Zone3D's wind for soft bodies): it
 // blows along its entity's -Z, or out from its entity with point_wind, at strength meters a
 // second, with gusts that sweep along with it and turbulence across it. world::WindField sums
 // every enabled source; spatial shaders read the wind as WIND, soft bodies feel it by their
@@ -3621,7 +3617,7 @@ struct PhysicsField3D {
     std::string falloff = "none";   // "none", "linear" or "squared", toward the shape's edge
     std::uint32_t collision_mask = 0xFFFFFFFFU;
     float noise_frequency = 2.0F; // noise_force: times a second its push turns
-    bool particles = true;        // forces also push CPUParticles3D
+    bool particles = true;        // forces also push Emitter3D
 
     friend bool operator==(const PhysicsField3D&, const PhysicsField3D&) = default;
 };
@@ -3642,7 +3638,7 @@ struct PhysicsField2D {
     std::string falloff = "none";
     std::uint32_t collision_mask = 0xFFFFFFFFU;
     float noise_frequency = 2.0F;
-    bool particles = true; // forces also push CPUParticles2D
+    bool particles = true; // forces also push Emitter2D
 
     friend bool operator==(const PhysicsField2D&, const PhysicsField2D&) = default;
 };
@@ -3653,9 +3649,9 @@ SLASH_COMPONENT(PhysicsField2D, enabled, type, magnitude, shape, radius, size, f
 // places and agents that follow paths over them, on one 2D and one 3D map per world.
 
 // Places a .navpoly.json navigation polygon on the 2D map at the entity's Transform2D, as Godot's
-// NavigationRegion2D. Regions join where their edges meet or come within the map's
+// NavArea2D. Regions join where their edges meet or come within the map's
 // edge_connection_margin.
-struct NavigationRegion2D {
+struct NavArea2D {
     std::string navigation_polygon; // a .navpoly.json file
     bool enabled = true;
     bool use_edge_connections = true; // join edges near other regions' edges
@@ -3663,14 +3659,14 @@ struct NavigationRegion2D {
     float enter_cost = 0.0F;  // added to a path that enters it from another region
     float travel_cost = 1.0F; // what each unit of distance in it costs
 
-    friend bool operator==(const NavigationRegion2D&, const NavigationRegion2D&) = default;
+    friend bool operator==(const NavArea2D&, const NavArea2D&) = default;
 };
-SLASH_COMPONENT(NavigationRegion2D, navigation_polygon, enabled, use_edge_connections,
-                navigation_layers, enter_cost, travel_cost)
+SLASH_COMPONENT(NavArea2D, navigation_polygon, enabled, use_edge_connections, navigation_layers,
+                enter_cost, travel_cost)
 
 // Places a .navmesh.json navigation mesh on the 3D map at the entity's Transform3D, as Godot's
-// NavigationRegion3D.
-struct NavigationRegion3D {
+// NavArea3D.
+struct NavArea3D {
     std::string navigation_mesh; // a .navmesh.json file
     bool enabled = true;
     bool use_edge_connections = true;
@@ -3678,16 +3674,16 @@ struct NavigationRegion3D {
     float enter_cost = 0.0F;
     float travel_cost = 1.0F;
 
-    friend bool operator==(const NavigationRegion3D&, const NavigationRegion3D&) = default;
+    friend bool operator==(const NavArea3D&, const NavArea3D&) = default;
 };
-SLASH_COMPONENT(NavigationRegion3D, navigation_mesh, enabled, use_edge_connections,
-                navigation_layers, enter_cost, travel_cost)
+SLASH_COMPONENT(NavArea3D, navigation_mesh, enabled, use_edge_connections, navigation_layers,
+                enter_cost, travel_cost)
 
 // A way between two places on the 2D map that the regions don't join, such as a jump or a
 // ladder, as Godot's NavigationLink2D: start_position and end_position are in the entity's
 // Transform2D space, and each end joins the closest region polygon within the map's
 // link_connection_radius.
-struct NavigationLink2D {
+struct NavLink2D {
     bool enabled = true;
     bool bidirectional = true; // false: only from start to end
     std::uint32_t navigation_layers = 1;
@@ -3696,13 +3692,13 @@ struct NavigationLink2D {
     float enter_cost = 0.0F;
     float travel_cost = 1.0F;
 
-    friend bool operator==(const NavigationLink2D&, const NavigationLink2D&) = default;
+    friend bool operator==(const NavLink2D&, const NavLink2D&) = default;
 };
-SLASH_COMPONENT(NavigationLink2D, enabled, bidirectional, navigation_layers, start_position,
-                end_position, enter_cost, travel_cost)
+SLASH_COMPONENT(NavLink2D, enabled, bidirectional, navigation_layers, start_position, end_position,
+                enter_cost, travel_cost)
 
 // The same on the 3D map, as Godot's NavigationLink3D.
-struct NavigationLink3D {
+struct NavLink3D {
     bool enabled = true;
     bool bidirectional = true;
     std::uint32_t navigation_layers = 1;
@@ -3711,10 +3707,10 @@ struct NavigationLink3D {
     float enter_cost = 0.0F;
     float travel_cost = 1.0F;
 
-    friend bool operator==(const NavigationLink3D&, const NavigationLink3D&) = default;
+    friend bool operator==(const NavLink3D&, const NavLink3D&) = default;
 };
-SLASH_COMPONENT(NavigationLink3D, enabled, bidirectional, navigation_layers, start_position,
-                end_position, enter_cost, travel_cost)
+SLASH_COMPONENT(NavLink3D, enabled, bidirectional, navigation_layers, start_position, end_position,
+                enter_cost, travel_cost)
 
 // Finds a path on the 2D map from the entity's Transform2D to target_position and follows its
 // progress, as Godot's NavigationAgent2D. Setting target_position asks for a path; gameplay code
@@ -3726,7 +3722,7 @@ SLASH_COMPONENT(NavigationLink3D, enabled, bidirectional, navigation_layers, sta
 // code wants it to move at, into a safe velocity that keeps it clear of other agents and of
 // obstacles, with RVO2 as Godot's, and emits it as velocity_computed (also
 // navigation::safe_velocity_2d). velocity counts only while the agent follows a path.
-struct NavigationAgent2D {
+struct NavAgent2D {
     Vec2 target_position;
     Vec2 velocity;
     float path_desired_distance = 20.0F;   // how near a waypoint counts as reaching it
@@ -3751,9 +3747,9 @@ struct NavigationAgent2D {
     std::uint32_t avoidance_mask = 1;   // the layers of what it avoids
     float avoidance_priority = 1.0F;    // from 0 to 1: it leaves agents of higher ones alone
 
-    friend bool operator==(const NavigationAgent2D&, const NavigationAgent2D&) = default;
+    friend bool operator==(const NavAgent2D&, const NavAgent2D&) = default;
 };
-SLASH_COMPONENT(NavigationAgent2D, target_position, path_desired_distance, target_desired_distance,
+SLASH_COMPONENT(NavAgent2D, target_position, path_desired_distance, target_desired_distance,
                 path_max_distance, navigation_layers, path_postprocessing, simplify_path,
                 simplify_epsilon, path_return_max_length, path_return_max_radius,
                 path_search_max_polygons, path_search_max_distance, avoidance_enabled, velocity,
@@ -3764,7 +3760,7 @@ SLASH_COMPONENT(NavigationAgent2D, target_position, path_desired_distance, targe
 // The same on the 3D map from the entity's Transform3D, as Godot's NavigationAgent3D. Its
 // avoidance is on the ground (x and z) unless use_3d_avoidance: there it is kept from what is
 // below or above it by height, and with keep_y_velocity the safe velocity keeps velocity's y.
-struct NavigationAgent3D {
+struct NavAgent3D {
     Vec3 target_position;
     Vec3 velocity;
     float path_desired_distance = 1.0F;
@@ -3793,9 +3789,9 @@ struct NavigationAgent3D {
     std::uint32_t avoidance_mask = 1;
     float avoidance_priority = 1.0F;
 
-    friend bool operator==(const NavigationAgent3D&, const NavigationAgent3D&) = default;
+    friend bool operator==(const NavAgent3D&, const NavAgent3D&) = default;
 };
-SLASH_COMPONENT(NavigationAgent3D, target_position, path_desired_distance, target_desired_distance,
+SLASH_COMPONENT(NavAgent3D, target_position, path_desired_distance, target_desired_distance,
                 path_height_offset, path_max_distance, navigation_layers, path_postprocessing,
                 simplify_path, simplify_epsilon, path_return_max_length, path_return_max_radius,
                 path_search_max_polygons, path_search_max_distance, avoidance_enabled, velocity,
@@ -3804,11 +3800,11 @@ SLASH_COMPONENT(NavigationAgent3D, target_position, path_desired_distance, targe
                 avoidance_layers, avoidance_mask, avoidance_priority)
 
 // Something agents keep clear of on the 2D map, at the entity's Transform2D, as Godot's
-// NavigationObstacle2D: a circle of radius that moves at velocity, avoided as an agent that
+// NavObstacle2D: a circle of radius that moves at velocity, avoided as an agent that
 // doesn't avoid back, and an outline of vertices that agents keep out of (or, wound the other
 // way, in). With affect_navigation_mesh, navigation.bake also takes it out of the regions it is
 // under: shrunk around by their agent_radius, or exactly as it is with carve_navigation_mesh.
-struct NavigationObstacle2D {
+struct NavObstacle2D {
     std::vector<Vec2> vertices;
     Vec2 velocity;
     float radius = 0.0F;
@@ -3817,15 +3813,15 @@ struct NavigationObstacle2D {
     bool affect_navigation_mesh = false;
     bool carve_navigation_mesh = false;
 
-    friend bool operator==(const NavigationObstacle2D&, const NavigationObstacle2D&) = default;
+    friend bool operator==(const NavObstacle2D&, const NavObstacle2D&) = default;
 };
-SLASH_COMPONENT(NavigationObstacle2D, radius, vertices, avoidance_enabled, velocity,
-                avoidance_layers, affect_navigation_mesh, carve_navigation_mesh)
+SLASH_COMPONENT(NavObstacle2D, radius, vertices, avoidance_enabled, velocity, avoidance_layers,
+                affect_navigation_mesh, carve_navigation_mesh)
 
 // The same on the 3D map, as Godot's NavigationObstacle3D. Its outline is on the ground: the
 // vertices' y is not used, only the entity's turn about y counts, and it reaches height up from
 // the entity. The circle is a sphere with use_3d_avoidance, for agents that use it too.
-struct NavigationObstacle3D {
+struct NavObstacle3D {
     std::vector<Vec3> vertices;
     Vec3 velocity;
     float radius = 0.0F;
@@ -3836,9 +3832,9 @@ struct NavigationObstacle3D {
     bool affect_navigation_mesh = false;
     bool carve_navigation_mesh = false;
 
-    friend bool operator==(const NavigationObstacle3D&, const NavigationObstacle3D&) = default;
+    friend bool operator==(const NavObstacle3D&, const NavObstacle3D&) = default;
 };
-SLASH_COMPONENT(NavigationObstacle3D, radius, height, vertices, avoidance_enabled, velocity,
+SLASH_COMPONENT(NavObstacle3D, radius, height, vertices, avoidance_enabled, velocity,
                 avoidance_layers, use_3d_avoidance, affect_navigation_mesh, carve_navigation_mesh)
 
 // An NPC that plans, as F.E.A.R.'s goal-oriented action planning: its .npc.json brain names
@@ -3910,11 +3906,11 @@ struct GradientPoint {
 SLASH_REFLECT(GradientPoint, offset, color)
 
 // Emits and moves particles from the entity's Transform2D and draws them, as Godot's
-// CPUParticles2D. Each particle takes a random value between a parameter's _min and _max when
+// Emitter2D. Each particle takes a random value between a parameter's _min and _max when
 // it is emitted, and the parameter's _curve, points [offset, value] over the particle's life
 // from 0 to 1, multiplies it as it ages (no points: 1). Angles are in degrees, as Godot's
 // properties. The particles themselves are not saved.
-struct CPUParticles2D {
+struct Emitter2D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
     std::vector<Vec2> emission_points;
@@ -3993,9 +3989,9 @@ struct CPUParticles2D {
     bool visible = true;
     bool particle_flag_align_y = false;
 
-    friend bool operator==(const CPUParticles2D&, const CPUParticles2D&) = default;
+    friend bool operator==(const Emitter2D&, const Emitter2D&) = default;
 };
-SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess, speed_scale,
+SLASH_COMPONENT(Emitter2D, emitting, amount, lifetime, one_shot, preprocess, speed_scale,
                 explosiveness, randomness, lifetime_randomness, seed, local_coords, draw_order,
                 texture, texture_filter, hframes, vframes, anim_loop, z_index, z_as_relative,
                 visible, material, material_params, light_mask, emission_shape,
@@ -4014,13 +4010,13 @@ SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess
                 anim_offset_curve)
 
 // Emits particles from the entity's Transform3D, moves them and draws its mesh at each, as Godot's
-// CPUParticles3D. The mesh is the entity's primitive mesh component (a QuadMesh, say) or the
-// model file mesh names, made of its StandardMaterial3D or the model's materials; a material with
+// Emitter3D. The mesh is the entity's primitive mesh component (a QuadGeometry, say) or the
+// model file mesh names, made of its Surface3D or the model's materials; a material with
 // billboard_mode "particles" turns each to face the camera, rotated by its angle. Lengths are in
 // meters and angles in degrees, as Godot's properties. Each particle takes a random value between
 // a parameter's _min and _max when it is emitted, and the parameter's _curve multiplies it as it
-// ages, as CPUParticles2D's. The particles themselves are not saved.
-struct CPUParticles3D {
+// ages, as Emitter2D's. The particles themselves are not saved.
+struct Emitter3D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
     std::vector<Vec3> emission_points;
@@ -4046,10 +4042,10 @@ struct CPUParticles3D {
     // A .gltf, .glb, .obj, .fbx, .blend or .model.json file's meshes, drawn at each particle in
     // place of a primitive mesh component; "" for none.
     std::string mesh;
-    std::string cast_shadow = "on"; // as MeshInstance3D's
+    std::string cast_shadow = "on"; // as Model3D's
     // "point", "sphere", "sphere_surface", "box", "points", "directed_points" or "ring"
     std::string emission_shape = "point";
-    std::uint32_t layers = 1; // as MeshInstance3D's
+    std::uint32_t layers = 1; // as Model3D's
     int amount = 8;
     int seed = 0;
     float lifetime = 1.0F;
@@ -4103,9 +4099,9 @@ struct CPUParticles3D {
     bool particle_flag_disable_z = false;
     bool split_scale = false;
 
-    friend bool operator==(const CPUParticles3D&, const CPUParticles3D&) = default;
+    friend bool operator==(const Emitter3D&, const Emitter3D&) = default;
 };
-SLASH_COMPONENT(CPUParticles3D, emitting, amount, lifetime, one_shot, preprocess, speed_scale,
+SLASH_COMPONENT(Emitter3D, emitting, amount, lifetime, one_shot, preprocess, speed_scale,
                 explosiveness, randomness, lifetime_randomness, seed, local_coords, draw_order,
                 mesh, layers, cast_shadow, emission_shape, emission_sphere_radius,
                 emission_box_extents, emission_points, emission_normals, emission_colors,
@@ -4125,11 +4121,11 @@ SLASH_COMPONENT(CPUParticles3D, emitting, amount, lifetime, one_shot, preprocess
                 anim_offset_curve)
 
 // Emits particles from the entity's Transform2D and moves them on the GPU, as Godot's
-// GPUParticles2D: process_material names a .process_material.json file (Godot's
+// GpuEmitter2D: process_material names a .process_material.json file (Godot's
 // ParticleProcessMaterial) that says how they start and move. The gpu_particles_2d system steps
 // each emitter's emission cycle every tick; renderers run the steps on their device and draw the
 // particles, the same on every device. The particles themselves are not saved.
-struct GPUParticles2D {
+struct GpuEmitter2D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
     std::string process_material; // project path of a .process_material.json file
@@ -4148,7 +4144,7 @@ struct GPUParticles2D {
     int light_mask = 1;
     int trail_sections = 8; // a trail draws as a ribbon through this many sections
     int trail_section_subdivisions = 4;
-    entt::entity sub_emitter{entt::null}; // the GPUParticles2D its particles start particles in
+    entt::entity sub_emitter{entt::null}; // the GpuEmitter2D its particles start particles in
     float amount_ratio = 1.0F;
     float lifetime = 1.0F;
     float interp_to_end = 0.0F;
@@ -4168,9 +4164,9 @@ struct GPUParticles2D {
     bool visible = true;
     bool trail_enabled = false;
 
-    friend bool operator==(const GPUParticles2D&, const GPUParticles2D&) = default;
+    friend bool operator==(const GpuEmitter2D&, const GpuEmitter2D&) = default;
 };
-SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, sub_emitter, process_material,
+SLASH_COMPONENT(GpuEmitter2D, emitting, amount, amount_ratio, sub_emitter, process_material,
                 texture, lifetime, interp_to_end, one_shot, preprocess, speed_scale, explosiveness,
                 randomness, use_fixed_seed, seed, fixed_fps, interpolate, fract_delta,
                 collision_base_size, local_coords, draw_order, trail_enabled, trail_lifetime,
@@ -4178,12 +4174,12 @@ SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, sub_emitter, pro
                 anim_loop, z_index, z_as_relative, visible, material, material_params, light_mask)
 
 // Emits particles from the entity's Transform3D and moves them on the device, as Godot's
-// GPUParticles3D: process_material names a .process_material.json file (Godot's
+// GpuEmitter3D: process_material names a .process_material.json file (Godot's
 // ParticleProcessMaterial) that says how they start and move. The gpu_particles_3d system steps
 // each emitter's emission cycle every tick; renderers run the steps on their device and draw each
 // draw pass's mesh at every particle, the same on every device. The particles themselves are not
 // saved.
-struct GPUParticles3D {
+struct GpuEmitter3D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
     std::string process_material; // project path of a .process_material.json file
@@ -4196,8 +4192,8 @@ struct GPUParticles3D {
     std::string draw_order = "index"; // "index", "lifetime", "reverse_lifetime" or "view_depth"
     // "disabled", "z_billboard", "y_to_velocity" or "z_billboard_y_to_velocity"
     std::string transform_align = "disabled";
-    std::string cast_shadow = "on"; // as MeshInstance3D's
-    std::uint32_t layers = 1;       // as MeshInstance3D's
+    std::string cast_shadow = "on"; // as Model3D's
+    std::uint32_t layers = 1;       // as Model3D's
     int amount = 8;
     int draw_passes = 1; // 1 to 4
     int seed = 0;
@@ -4223,9 +4219,9 @@ struct GPUParticles3D {
     bool fract_delta = true;
     bool local_coords = false;
 
-    friend bool operator==(const GPUParticles3D&, const GPUParticles3D&) = default;
+    friend bool operator==(const GpuEmitter3D&, const GpuEmitter3D&) = default;
 };
-SLASH_COMPONENT(GPUParticles3D, emitting, amount, amount_ratio, process_material, lifetime,
+SLASH_COMPONENT(GpuEmitter3D, emitting, amount, amount_ratio, process_material, lifetime,
                 interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
                 use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, collision_base_size,
                 wind_influence, visibility_aabb_position, visibility_aabb_size, local_coords,
@@ -4236,38 +4232,36 @@ SLASH_COMPONENT(GPUParticles3D, emitting, amount, amount_ratio, process_material
 // pushes them away), as Godot's GPUParticlesAttractorSphere3D. Each tick the gpu_particles_3d
 // system pairs it with the emitters whose visibility box its bounds touch and whose layers share
 // a bit with its cull_mask, at most 32 an emitter, when it is visible in the tree.
-struct GPUParticlesAttractorSphere3D {
+struct ParticleAttractorSphere3D {
     float strength = 1.0F;
     float attenuation = 1.0F;
     float directionality = 0.0F;
     std::uint32_t cull_mask = 0xFFFFFU; // every layer
     float radius = 1.0F;
 
-    friend bool operator==(const GPUParticlesAttractorSphere3D&,
-                           const GPUParticlesAttractorSphere3D&) = default;
+    friend bool operator==(const ParticleAttractorSphere3D&,
+                           const ParticleAttractorSphere3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesAttractorSphere3D, strength, attenuation, directionality, cull_mask,
-                radius)
+SLASH_COMPONENT(ParticleAttractorSphere3D, strength, attenuation, directionality, cull_mask, radius)
 
-// As GPUParticlesAttractorSphere3D, in a box, as Godot's GPUParticlesAttractorBox3D.
-struct GPUParticlesAttractorBox3D {
+// As ParticleAttractorSphere3D, in a box, as Godot's GPUParticlesAttractorBox3D.
+struct ParticleAttractorBox3D {
     float strength = 1.0F;
     float attenuation = 1.0F;
     float directionality = 0.0F;
     std::uint32_t cull_mask = 0xFFFFFU; // every layer
     Vec3 size{2.0F, 2.0F, 2.0F};
 
-    friend bool operator==(const GPUParticlesAttractorBox3D&,
-                           const GPUParticlesAttractorBox3D&) = default;
+    friend bool operator==(const ParticleAttractorBox3D&, const ParticleAttractorBox3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesAttractorBox3D, strength, attenuation, directionality, cull_mask, size)
+SLASH_COMPONENT(ParticleAttractorBox3D, strength, attenuation, directionality, cull_mask, size)
 
 // Pushes particles inside a box along a field of directions, as Godot's
-// GPUParticlesAttractorVectorField3D: texture is an image cut into slices_horizontal by
+// ParticleFlowField3D: texture is an image cut into slices_horizontal by
 // slices_vertical slices, left to right then top to bottom, stacked front to back as Godot's
 // Texture3D importer stacks them; each texel's color c pushes along c * 2 - 1, in the box's
 // space. Without a texture every texel is white.
-struct GPUParticlesAttractorVectorField3D {
+struct ParticleFlowField3D {
     std::string texture; // project path of a .png, .jpg or .bmp file; "" for none
     float strength = 1.0F;
     float attenuation = 1.0F;
@@ -4277,42 +4271,40 @@ struct GPUParticlesAttractorVectorField3D {
     int slices_horizontal = 8;
     int slices_vertical = 8;
 
-    friend bool operator==(const GPUParticlesAttractorVectorField3D&,
-                           const GPUParticlesAttractorVectorField3D&) = default;
+    friend bool operator==(const ParticleFlowField3D&, const ParticleFlowField3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesAttractorVectorField3D, strength, attenuation, directionality,
-                cull_mask, size, texture, slices_horizontal, slices_vertical)
+SLASH_COMPONENT(ParticleFlowField3D, strength, attenuation, directionality, cull_mask, size,
+                texture, slices_horizontal, slices_vertical)
 
 // A sphere the particles of GPUParticles3Ds collide with, as Godot's
-// GPUParticlesCollisionSphere3D: what they do on touching it is their process material's
+// ParticleColliderSphere3D: what they do on touching it is their process material's
 // collision_mode. Each tick the gpu_particles_3d system pairs it with emitters as it pairs
 // attractors, at most 32 colliders an emitter.
-struct GPUParticlesCollisionSphere3D {
+struct ParticleColliderSphere3D {
     std::uint32_t cull_mask = 0xFFFFFU; // every layer
     float radius = 1.0F;
 
-    friend bool operator==(const GPUParticlesCollisionSphere3D&,
-                           const GPUParticlesCollisionSphere3D&) = default;
+    friend bool operator==(const ParticleColliderSphere3D&,
+                           const ParticleColliderSphere3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesCollisionSphere3D, cull_mask, radius)
+SLASH_COMPONENT(ParticleColliderSphere3D, cull_mask, radius)
 
-// As GPUParticlesCollisionSphere3D, a box, as Godot's GPUParticlesCollisionBox3D.
-struct GPUParticlesCollisionBox3D {
+// As ParticleColliderSphere3D, a box, as Godot's GPUParticlesCollisionBox3D.
+struct ParticleColliderBox3D {
     std::uint32_t cull_mask = 0xFFFFFU; // every layer
     Vec3 size{2.0F, 2.0F, 2.0F};
 
-    friend bool operator==(const GPUParticlesCollisionBox3D&,
-                           const GPUParticlesCollisionBox3D&) = default;
+    friend bool operator==(const ParticleColliderBox3D&, const ParticleColliderBox3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesCollisionBox3D, cull_mask, size)
+SLASH_COMPONENT(ParticleColliderBox3D, cull_mask, size)
 
-// As GPUParticlesCollisionSphere3D, the shape of the meshes in a box, as Godot's
-// GPUParticlesCollisionSDF3D: particles.bake_sdf writes the distance from each of resolution
+// As ParticleColliderSphere3D, the shape of the meshes in a box, as Godot's
+// ParticleColliderSdf3D: particles.bake_sdf writes the distance from each of resolution
 // cells along the box's longest side to the nearest surface of the meshes on a layer of
 // bake_mask into texture, a .sdf.png file whose slices_vertical slices are the cells' depth.
 // Particles read the distances, so they collide with any shape, from outside or within thickness
 // cells behind a face.
-struct GPUParticlesCollisionSDF3D {
+struct ParticleColliderSdf3D {
     std::uint32_t cull_mask = 0xFFFFFU; // every layer
     Vec3 size{2.0F, 2.0F, 2.0F};
     std::string resolution = "64"; // "16", "32", "64", "128", "256" or "512"
@@ -4322,19 +4314,18 @@ struct GPUParticlesCollisionSDF3D {
     int slices_horizontal = 1;
     int slices_vertical = 1;
 
-    friend bool operator==(const GPUParticlesCollisionSDF3D&,
-                           const GPUParticlesCollisionSDF3D&) = default;
+    friend bool operator==(const ParticleColliderSdf3D&, const ParticleColliderSdf3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesCollisionSDF3D, cull_mask, size, resolution, thickness, bake_mask,
-                texture, slices_horizontal, slices_vertical)
+SLASH_COMPONENT(ParticleColliderSdf3D, cull_mask, size, resolution, thickness, bake_mask, texture,
+                slices_horizontal, slices_vertical)
 
-// As GPUParticlesCollisionSphere3D, the ground under a box, as Godot's
-// GPUParticlesCollisionHeightField3D: the gpu_particles_3d system draws the highest surface of
+// As ParticleColliderSphere3D, the ground under a box, as Godot's
+// ParticleColliderHeight3D: the gpu_particles_3d system draws the highest surface of
 // the meshes on a layer of heightfield_mask in the box from above, resolution texels along its
 // longer side, when it moves (update_mode "when_moved") or every tick ("always"), and with
 // follow_camera_enabled steps it after the current Camera3D, as Godot does, by the length of its
 // x and z axes (a meter unscaled). One height field acts on an emitter.
-struct GPUParticlesCollisionHeightField3D {
+struct ParticleColliderHeight3D {
     std::uint32_t cull_mask = 0xFFFFFU; // every layer
     Vec3 size{2.0F, 2.0F, 2.0F};
     std::string resolution = "1024"; // "256", "512" or "1024"
@@ -4342,10 +4333,10 @@ struct GPUParticlesCollisionHeightField3D {
     bool follow_camera_enabled = false;
     std::uint32_t heightfield_mask = 0xFFFFFU;
 
-    friend bool operator==(const GPUParticlesCollisionHeightField3D&,
-                           const GPUParticlesCollisionHeightField3D&) = default;
+    friend bool operator==(const ParticleColliderHeight3D&,
+                           const ParticleColliderHeight3D&) = default;
 };
-SLASH_COMPONENT(GPUParticlesCollisionHeightField3D, cull_mask, size, resolution, update_mode,
+SLASH_COMPONENT(ParticleColliderHeight3D, cull_mask, size, resolution, update_mode,
                 follow_camera_enabled, heightfield_mask)
 
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
@@ -4353,7 +4344,7 @@ SLASH_COMPONENT(GPUParticlesCollisionHeightField3D, cull_mask, size, resolution,
 // Plays a sound through a bus, as Godot's AudioStreamPlayer: the same wherever the entity is.
 // Setting playing starts or stops it, and the audio system sets it back to false when the sound
 // ends, emitting finished.
-struct AudioStreamPlayer {
+struct SoundPlayer {
     std::string stream; // project path of a .wav, .ogg, .mp3 or .audio.json file
     float volume_db = 0.0F;
     float pitch_scale = 1.0F;
@@ -4368,14 +4359,14 @@ struct AudioStreamPlayer {
     // The stream's parameters, as Godot's parameters/*: "switch_to_clip" for interactive music.
     std::map<std::string, json::Value> parameters;
 
-    friend bool operator==(const AudioStreamPlayer&, const AudioStreamPlayer&) = default;
+    friend bool operator==(const SoundPlayer&, const SoundPlayer&) = default;
 };
-SLASH_COMPONENT(AudioStreamPlayer, stream, volume_db, pitch_scale, playing, autoplay, stream_paused,
+SLASH_COMPONENT(SoundPlayer, stream, volume_db, pitch_scale, playing, autoplay, stream_paused,
                 max_polyphony, bus, mix_target, parameters)
 
 // Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: quieter with
 // distance from the listener and panned by where it is on screen.
-struct AudioStreamPlayer2D {
+struct SoundPlayer2D {
     std::string stream; // project path of a .wav, .ogg, .mp3 or .audio.json file
     float volume_db = 0.0F;
     float pitch_scale = 1.0F;
@@ -4387,28 +4378,28 @@ struct AudioStreamPlayer2D {
     int max_polyphony = 1;
     float panning_strength = 1.0F;
     std::string bus = "Master";
-    std::uint32_t area_mask = 1; // Area2D layers whose audio_bus_override applies; 0 for none
+    std::uint32_t area_mask = 1; // Zone2D layers whose audio_bus_override applies; 0 for none
     std::map<std::string, json::Value> parameters;
 
-    friend bool operator==(const AudioStreamPlayer2D&, const AudioStreamPlayer2D&) = default;
+    friend bool operator==(const SoundPlayer2D&, const SoundPlayer2D&) = default;
 };
-SLASH_COMPONENT(AudioStreamPlayer2D, stream, volume_db, pitch_scale, playing, autoplay,
-                stream_paused, max_distance, attenuation, max_polyphony, panning_strength, bus,
-                area_mask, parameters)
+SLASH_COMPONENT(SoundPlayer2D, stream, volume_db, pitch_scale, playing, autoplay, stream_paused,
+                max_distance, attenuation, max_polyphony, panning_strength, bus, area_mask,
+                parameters)
 
 // Where 2D sounds are heard from, as Godot's AudioListener2D, while current; with none, the
 // middle of the screen.
-struct AudioListener2D {
+struct Listener2D {
     bool current = false;
 
-    friend bool operator==(const AudioListener2D&, const AudioListener2D&) = default;
+    friend bool operator==(const Listener2D&, const Listener2D&) = default;
 };
-SLASH_COMPONENT(AudioListener2D, current)
+SLASH_COMPONENT(Listener2D, current)
 
 // Plays a sound at the entity's Transform3D, as Godot's AudioStreamPlayer3D: quieter with
 // distance from the listener, panned by where it is around it, muffled with distance and
-// outside its emission cone, pitched by doppler, and sent to the buses of an Area3D it is in.
-struct AudioStreamPlayer3D {
+// outside its emission cone, pitched by doppler, and sent to the buses of an Zone3D it is in.
+struct SoundPlayer3D {
     std::string stream; // project path of a .wav, .ogg, .mp3 or .audio.json file
     // "inverse_distance", "inverse_square_distance", "logarithmic" or "disabled".
     std::string attenuation_model = "inverse_distance";
@@ -4423,7 +4414,7 @@ struct AudioStreamPlayer3D {
     int max_polyphony = 1;
     float panning_strength = 1.0F;
     std::string bus = "Master";
-    std::uint32_t area_mask = 1; // Area3D layers whose bus override and reverb apply; 0 for none
+    std::uint32_t area_mask = 1; // Zone3D layers whose bus override and reverb apply; 0 for none
     bool emission_angle_enabled = false;
     float emission_angle_degrees = 45.0F; // half the cone it faces down its -z
     float emission_angle_filter_attenuation_db = -12.0F;
@@ -4432,22 +4423,22 @@ struct AudioStreamPlayer3D {
     std::string doppler_tracking = "disabled"; // "disabled", "idle_step" or "physics_step"
     std::map<std::string, json::Value> parameters;
 
-    friend bool operator==(const AudioStreamPlayer3D&, const AudioStreamPlayer3D&) = default;
+    friend bool operator==(const SoundPlayer3D&, const SoundPlayer3D&) = default;
 };
-SLASH_COMPONENT(AudioStreamPlayer3D, stream, attenuation_model, volume_db, unit_size, max_db,
-                pitch_scale, playing, autoplay, stream_paused, max_distance, max_polyphony,
-                panning_strength, bus, area_mask, emission_angle_enabled, emission_angle_degrees,
+SLASH_COMPONENT(SoundPlayer3D, stream, attenuation_model, volume_db, unit_size, max_db, pitch_scale,
+                playing, autoplay, stream_paused, max_distance, max_polyphony, panning_strength,
+                bus, area_mask, emission_angle_enabled, emission_angle_degrees,
                 emission_angle_filter_attenuation_db, attenuation_filter_cutoff_hz,
                 attenuation_filter_db, doppler_tracking, parameters)
 
 // Where 3D sounds are heard from, as Godot's AudioListener3D, in place of the current Camera3D.
-struct AudioListener3D {
+struct Listener3D {
     bool current = false;
     std::string doppler_tracking = "disabled"; // "disabled", "idle_step" or "physics_step"
 
-    friend bool operator==(const AudioListener3D&, const AudioListener3D&) = default;
+    friend bool operator==(const Listener3D&, const Listener3D&) = default;
 };
-SLASH_COMPONENT(AudioListener3D, current, doppler_tracking)
+SLASH_COMPONENT(Listener3D, current, doppler_tracking)
 
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);
@@ -4455,11 +4446,11 @@ void register_builtin_components(ComponentRegistry& registry);
 // ---- UI, as Godot's Control nodes.
 
 // A UI element, as Godot's Control: a rect placed in its parent's by anchors and offsets, and
-// children, which lay out in its rect and draw over it in order. Label, ColorRect and the other
-// UI components draw in the rect; an entity with one of them and no Control lays out with
-// Control's defaults. A control in no Control's children is placed in the viewport. Controls
-// draw above sprites, tile maps and particles, as on a CanvasLayer in Godot.
-struct Control {
+// children, which lay out in its rect and draw over it in order. Label, ColorFill and the other
+// UI components draw in the rect; an entity with one of them and no Widget lays out with
+// Widget's defaults. A control in no Widget's children is placed in the viewport. Controls
+// draw above sprites, tile maps and particles, as on a ScreenLayer in Godot.
+struct Widget {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
     std::vector<entt::entity> children;
@@ -4474,8 +4465,8 @@ struct Control {
     // Shown in a box beside the pointer once it rests on the control, as Godot's tooltip_text.
     std::string tooltip_text;
     // Whether the pointer stops at it ("stop"), goes on to its parent too ("pass") or passes it
-    // by ("ignore"); "" takes its type's, as in Godot: ignore for Label and NinePatchRect, pass
-    // for containers and TextureRect, stop for the rest.
+    // by ("ignore"); "" takes its type's, as in Godot: ignore for Label and NineSlice, pass
+    // for containers and Picture, stop for the rest.
     std::string mouse_filter;
     // Whether it takes focus from clicks and the keyboard ("all"), clicks only ("click"), only
     // while a screen reader is in use ("accessibility") or never ("none"); "" takes its type's:
@@ -4544,14 +4535,14 @@ struct Control {
     entt::entity focus_previous = entt::null;
     bool visible = true;
     // Cut off its drawing and its children's at its rect, and let the pointer reach only the
-    // part of its children inside it, as Godot's clip_contents. A ScrollContainer always does.
+    // part of its children inside it, as Godot's clip_contents. A ScrollBox always does.
     bool clip_contents = false;
 
-    friend bool operator==(const Control&, const Control&) = default;
+    friend bool operator==(const Widget&, const Widget&) = default;
 };
-SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor_bottom,
-                offset_left, offset_top, offset_right, offset_bottom, grow_horizontal,
-                grow_vertical, clip_contents, custom_minimum_size, rotation, scale, pivot_offset,
+SLASH_COMPONENT(Widget, children, anchor_left, anchor_top, anchor_right, anchor_bottom, offset_left,
+                offset_top, offset_right, offset_bottom, grow_horizontal, grow_vertical,
+                clip_contents, custom_minimum_size, rotation, scale, pivot_offset,
                 size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
@@ -4583,7 +4574,7 @@ struct DragAndDrop {
 SLASH_COMPONENT(DragAndDrop, drag_data, can_drop, drag_preview)
 
 // Text in a control's rect, as Godot's Label. Its font, size, colors, outline and shadow are
-// theme items, set per label with Control's theme_override_* fields.
+// theme items, set per label with Widget's theme_override_* fields.
 struct Label {
     std::string text;
     std::string horizontal_alignment = "left"; // "left", "center", "right" or "fill"
@@ -4611,12 +4602,12 @@ SLASH_COMPONENT(Label, text, horizontal_alignment, vertical_alignment, autowrap_
                 visible_characters, visible_characters_behavior, text_direction, language)
 
 // A rect of one color, as Godot's ColorRect.
-struct ColorRect {
+struct ColorFill {
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
 
-    friend bool operator==(const ColorRect&, const ColorRect&) = default;
+    friend bool operator==(const ColorFill&, const ColorFill&) = default;
 };
-SLASH_COMPONENT(ColorRect, color)
+SLASH_COMPONENT(ColorFill, color)
 
 // Draws the theme's "panel" style box in the control's rect, as Godot's Panel.
 struct Panel {
@@ -4625,21 +4616,21 @@ struct Panel {
 SLASH_COMPONENT(Panel)
 
 // A texture in the control's rect, as Godot's TextureRect.
-struct TextureRect {
+struct Picture {
     std::string texture; // project path of a PNG, BMP or KTX2 file; "" draws nothing
     std::string expand_mode = "keep_size"; // how the texture sets the minimum size
     std::string stretch_mode = "scale";    // how the texture fills the rect
     bool flip_h = false;
     bool flip_v = false;
 
-    friend bool operator==(const TextureRect&, const TextureRect&) = default;
+    friend bool operator==(const Picture&, const Picture&) = default;
 };
-SLASH_COMPONENT(TextureRect, texture, expand_mode, stretch_mode, flip_h, flip_v)
+SLASH_COMPONENT(Picture, texture, expand_mode, stretch_mode, flip_h, flip_v)
 
 // Plays an AV1 video in the control's rect, as Godot's VideoStreamPlayer. Setting playing starts
 // it from stream_position, and the video system sets it back to false at the end, emitting
 // finished, unless it loops. Stopped or paused, it shows the frame at stream_position.
-struct VideoStreamPlayer {
+struct Video {
     std::string
         stream; // project path of an .ivf, .webm or .mkv file of AV1 video; "" plays nothing
     bool playing = false;
@@ -4653,14 +4644,14 @@ struct VideoStreamPlayer {
     float volume_db = 0.0F;
     int audio_track = 0; // which of the video's audio tracks plays
 
-    friend bool operator==(const VideoStreamPlayer&, const VideoStreamPlayer&) = default;
+    friend bool operator==(const Video&, const Video&) = default;
 };
-SLASH_COMPONENT(VideoStreamPlayer, stream, playing, autoplay, paused, loop, expand, speed_scale,
+SLASH_COMPONENT(Video, stream, playing, autoplay, paused, loop, expand, speed_scale,
                 stream_position, volume_db, bus, audio_track)
 
 // A texture cut into nine parts that stretch to the control's rect without stretching its
 // corners, as Godot's NinePatchRect.
-struct NinePatchRect {
+struct NineSlice {
     std::string texture;
     std::string axis_stretch_horizontal = "stretch"; // "stretch", "tile" or "tile_fit"
     std::string axis_stretch_vertical = "stretch";
@@ -4671,10 +4662,10 @@ struct NinePatchRect {
     int patch_margin_bottom = 0;
     bool draw_center = true;
 
-    friend bool operator==(const NinePatchRect&, const NinePatchRect&) = default;
+    friend bool operator==(const NineSlice&, const NineSlice&) = default;
 };
-SLASH_COMPONENT(NinePatchRect, texture, draw_center, region_rect, patch_margin_left,
-                patch_margin_top, patch_margin_right, patch_margin_bottom, axis_stretch_horizontal,
+SLASH_COMPONENT(NineSlice, texture, draw_center, region_rect, patch_margin_left, patch_margin_top,
+                patch_margin_right, patch_margin_bottom, axis_stretch_horizontal,
                 axis_stretch_vertical)
 
 // A bar filled to show a value between a minimum and a maximum, as Godot's ProgressBar.
@@ -4795,22 +4786,22 @@ SLASH_COMPONENT(CheckBox, text, icon, flat, alignment, text_overrun_behavior, au
                 button_group, shortcut, shortcut_feedback, text_direction, language)
 
 // A toggle button with a switch at its end that shows whether it is on, as Godot's
-// CheckButton. Its icons (checked, unchecked, their _disabled ones and _mirrored ones for right
+// ToggleSwitch. Its icons (checked, unchecked, their _disabled ones and _mirrored ones for right
 // to left) are theme items.
-struct CheckButton : Button {
-    CheckButton() {
+struct ToggleSwitch : Button {
+    ToggleSwitch() {
         toggle_mode = true;
         alignment = "left";
     }
 
-    friend bool operator==(const CheckButton&, const CheckButton&) = default;
+    friend bool operator==(const ToggleSwitch&, const ToggleSwitch&) = default;
 };
-SLASH_COMPONENT(CheckButton, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
+SLASH_COMPONENT(ToggleSwitch, text, icon, flat, alignment, text_overrun_behavior, autowrap_mode,
                 clip_text, icon_alignment, vertical_icon_alignment, expand_icon, disabled,
                 toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
                 button_group, shortcut, shortcut_feedback, text_direction, language)
 
-// One item of a PopupMenu or MenuButton, as Godot's PopupMenu items: text with an icon, a
+// One item of a PopupList or MenuButton, as Godot's PopupMenu items: text with an icon, a
 // check box or radio button beside it, or a separator line.
 struct PopupMenuItem {
     std::string text;
@@ -4830,7 +4821,7 @@ struct PopupMenuItem {
 SLASH_REFLECT(PopupMenuItem, text, icon, checkable, checked, id, disabled, separator, indent,
               tooltip, auto_translate_mode)
 
-// One option of an OptionButton, as Godot's OptionButton items.
+// One option of an Dropdown, as Godot's OptionButton items.
 struct OptionButtonItem {
     std::string text;
     std::string icon;    // project path of a PNG, BMP or KTX2 file; "" for none
@@ -4850,11 +4841,11 @@ SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator, tooltip, au
 // while visible, which closes it again when an item is picked (as the hide_on_* fields say), a
 // click lands outside it or ui_cancel is pressed. It emits about_to_popup, popup_hide,
 // id_pressed and index_pressed (data {"id", "index"}) and id_focused (data {"id"}), when the
-// keys move to an item. Its theme items are PopupMenu's in the project's theme or its own.
-struct PopupMenu {
+// keys move to an item. Its theme items are PopupList's in the project's theme or its own.
+struct PopupList {
     std::vector<PopupMenuItem> items;
     std::string theme; // project path of a .theme.json file; "" for none
-    // "inherited", "application_locale", "ltr", "rtl" or "system_locale", as a Control's
+    // "inherited", "application_locale", "ltr", "rtl" or "system_locale", as a Widget's
     std::string layout_direction = "inherited";
     Vec2 position; // its top left corner in the viewport, in pixels
     bool visible = false;
@@ -4862,16 +4853,16 @@ struct PopupMenu {
     bool hide_on_checkable_item_selection = true;
     bool allow_search = true; // typing the start of an item's text moves to it
 
-    friend bool operator==(const PopupMenu&, const PopupMenu&) = default;
+    friend bool operator==(const PopupList&, const PopupList&) = default;
 };
-SLASH_COMPONENT(PopupMenu, items, position, visible, hide_on_item_selection,
+SLASH_COMPONENT(PopupList, items, position, visible, hide_on_item_selection,
                 hide_on_checkable_item_selection, allow_search, theme, layout_direction)
 
 // A button that shows the option picked and opens a list of them below it when pressed, as
 // Godot's OptionButton. Its text and icon are the selected option's. Picking one sets selected
 // and emits item_selected (data {"index"}); moving to one with the keys emits item_focused.
-struct OptionButton : Button {
-    OptionButton() {
+struct Dropdown : Button {
+    Dropdown() {
         toggle_mode = true;
         alignment = "left";
         action_mode = "press";
@@ -4882,9 +4873,9 @@ struct OptionButton : Button {
     bool fit_to_longest_item = true; // as wide as its widest option, not only the one shown
     bool allow_reselect = false;     // picking the option already shown emits item_selected
 
-    friend bool operator==(const OptionButton&, const OptionButton&) = default;
+    friend bool operator==(const Dropdown&, const Dropdown&) = default;
 };
-SLASH_COMPONENT(OptionButton, items, selected, fit_to_longest_item, allow_reselect, flat, alignment,
+SLASH_COMPONENT(Dropdown, items, selected, fit_to_longest_item, allow_reselect, flat, alignment,
                 text_overrun_behavior, autowrap_mode, clip_text, icon_alignment,
                 vertical_icon_alignment, expand_icon, disabled, toggle_mode, button_pressed,
                 action_mode, button_mask, keep_pressed_outside, button_group, shortcut,
@@ -4914,7 +4905,7 @@ SLASH_COMPONENT(MenuButton, items, switch_on_hover, text, icon, flat, alignment,
                 shortcut_feedback, text_direction, language)
 
 // A button drawn with a texture per state, as Godot's TextureButton.
-struct TextureButton {
+struct ImageButton {
     std::vector<std::string> button_mask{"left"};
     std::vector<json::Value> shortcut;
     std::string texture_normal; // project paths of PNG, BMP or KTX2 files; "" for none
@@ -4934,16 +4925,16 @@ struct TextureButton {
     bool keep_pressed_outside = false;
     bool shortcut_feedback = true;
 
-    friend bool operator==(const TextureButton&, const TextureButton&) = default;
+    friend bool operator==(const ImageButton&, const ImageButton&) = default;
 };
-SLASH_COMPONENT(TextureButton, texture_normal, texture_pressed, texture_hover, texture_disabled,
+SLASH_COMPONENT(ImageButton, texture_normal, texture_pressed, texture_hover, texture_disabled,
                 texture_focused, ignore_texture_size, stretch_mode, flip_h, flip_v, disabled,
                 toggle_mode, button_pressed, action_mode, button_mask, keep_pressed_outside,
                 button_group, shortcut, shortcut_feedback)
 
 // A one-line text field, as Godot's LineEdit: typed into while it has focus, with a caret,
 // selection, undo, the clipboard, an input method's composition and the on-screen keyboard.
-struct LineEdit {
+struct TextField {
     std::string text;
     std::string placeholder_text;   // shown, dimmed, while the text is empty
     std::string alignment = "left"; // "left", "center", "right" or "fill"
@@ -4975,9 +4966,9 @@ struct LineEdit {
     std::string text_direction = "auto"; // as Label's
     std::string language{};              // NOLINT(readability-redundant-member-init)
 
-    friend bool operator==(const LineEdit&, const LineEdit&) = default;
+    friend bool operator==(const TextField&, const TextField&) = default;
 };
-SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editable,
+SLASH_COMPONENT(TextField, text, placeholder_text, alignment, max_length, editable,
                 keep_editing_on_text_submit, expand_to_text_length,
                 backspace_deletes_composite_character_enabled, virtual_keyboard_enabled,
                 virtual_keyboard_show_on_focus, virtual_keyboard_type, clear_button_enabled,
@@ -4987,7 +4978,7 @@ SLASH_COMPONENT(LineEdit, text, placeholder_text, alignment, max_length, editabl
                 caret_force_displayed, caret_mid_grapheme, secret, secret_character, text_direction,
                 language)
 
-// One line's entry in a TextEdit gutter, as Godot's line gutter text, icon and item color.
+// One line's entry in a TextArea gutter, as Godot's line gutter text, icon and item color.
 struct TextEditGutterLine {
     int line = 0;
     std::string text; // what a "string" gutter shows on the line
@@ -4998,7 +4989,7 @@ struct TextEditGutterLine {
 };
 SLASH_REFLECT(TextEditGutterLine, line, text, icon, color)
 
-// A column left of a TextEdit's text, as Godot's TextEdit gutters: text or an icon per line,
+// A column left of a TextArea's text, as Godot's TextEdit gutters: text or an icon per line,
 // kept with their lines as the text is edited.
 struct TextEditGutter {
     std::string name;
@@ -5013,7 +5004,7 @@ SLASH_REFLECT(TextEditGutter, name, type, width, draw, lines)
 
 // A text field of several lines, as Godot's TextEdit: typed into while it has focus, with one
 // caret, selection, undo, the clipboard, line wrapping and scrolling.
-struct TextEdit {
+struct TextArea {
     std::string text;
     std::string placeholder_text; // shown, dimmed, while the text is empty
     bool editable = true;
@@ -5049,11 +5040,11 @@ struct TextEdit {
     std::vector<std::string> search_flags;  // "match_case", "whole_words"
     std::string text_direction = "auto";    // as Label's
     std::string language{};                 // NOLINT(readability-redundant-member-init)
-    std::vector<TextEditGutter> gutters;    // after a CodeEdit's, left to right
+    std::vector<TextEditGutter> gutters;    // after a CodeEditor's, left to right
 
-    friend bool operator==(const TextEdit&, const TextEdit&) = default;
+    friend bool operator==(const TextArea&, const TextArea&) = default;
 };
-SLASH_COMPONENT(TextEdit, text, placeholder_text, editable,
+SLASH_COMPONENT(TextArea, text, placeholder_text, editable,
                 backspace_deletes_composite_character_enabled, shortcut_keys_enabled,
                 selecting_enabled, deselect_on_focus_loss_enabled, drag_and_drop_selection_enabled,
                 empty_selection_clipboard_enabled, wrap_mode, autowrap_mode, tab_input_mode,
@@ -5065,10 +5056,10 @@ SLASH_COMPONENT(TextEdit, text, placeholder_text, editable,
                 highlight_all_occurrences, search_text, search_flags, text_direction, language,
                 gutters)
 
-// Colors the text of the TextEdit on its entity as code, as Godot's CodeHighlighter set as a
-// TextEdit's syntax_highlighter: keywords, numbers, symbols, function names, members after a
+// Colors the text of the TextArea on its entity as code, as Godot's CodeHighlighter set as a
+// TextArea's syntax_highlighter: keywords, numbers, symbols, function names, members after a
 // '.', and regions such as strings and comments that may run over several lines.
-struct CodeHighlighter {
+struct SyntaxColors {
     Vec4 number_color{0.0F, 0.0F, 0.0F, 1.0F};
     Vec4 symbol_color{0.0F, 0.0F, 0.0F, 1.0F};
     Vec4 function_color{0.0F, 0.0F, 0.0F, 1.0F};
@@ -5077,16 +5068,16 @@ struct CodeHighlighter {
     std::map<std::string, Vec4> member_keyword_colors; // not after a '.'
     std::map<std::string, Vec4> color_regions;         // "start end", or "start" to the line's end
 
-    friend bool operator==(const CodeHighlighter&, const CodeHighlighter&) = default;
+    friend bool operator==(const SyntaxColors&, const SyntaxColors&) = default;
 };
-SLASH_COMPONENT(CodeHighlighter, number_color, symbol_color, function_color, member_variable_color,
+SLASH_COMPONENT(SyntaxColors, number_color, symbol_color, function_color, member_variable_color,
                 keyword_colors, member_keyword_colors, color_regions)
 
-// Makes the TextEdit on its entity a code editor, as Godot's CodeEdit: line numbers, and a
+// Makes the TextArea on its entity a code editor, as Godot's CodeEdit: line numbers, and a
 // gutter of breakpoints, bookmarks and executing lines, kept with their lines as the text is
 // edited, and lines marking columns. Clicking the gutter toggles a breakpoint (a bookmark with
 // Shift); clicking a line number selects the line.
-struct CodeEdit {
+struct CodeEditor {
     bool gutters_draw_breakpoints_gutter = false;
     bool gutters_draw_bookmarks = false;
     bool gutters_draw_executing_lines = false;
@@ -5098,9 +5089,9 @@ struct CodeEdit {
     std::vector<int> bookmarked_lines;
     std::vector<int> executing_lines;
 
-    friend bool operator==(const CodeEdit&, const CodeEdit&) = default;
+    friend bool operator==(const CodeEditor&, const CodeEditor&) = default;
 };
-SLASH_COMPONENT(CodeEdit, gutters_draw_breakpoints_gutter, gutters_draw_bookmarks,
+SLASH_COMPONENT(CodeEditor, gutters_draw_breakpoints_gutter, gutters_draw_bookmarks,
                 gutters_draw_executing_lines, gutters_draw_line_numbers,
                 gutters_zero_pad_line_numbers, gutters_line_numbers_min_digits,
                 line_length_guidelines, breakpointed_lines, bookmarked_lines, executing_lines)
@@ -5110,60 +5101,60 @@ SLASH_COMPONENT(CodeEdit, gutters_draw_breakpoints_gutter, gutters_draw_bookmark
 
 // Lays out its children in a row, or a column when vertical, as Godot's BoxContainer
 // (HBoxContainer and VBoxContainer).
-struct BoxContainer {
+struct StackBox {
     std::string alignment = "begin"; // "begin", "center" or "end"
     bool vertical = false;
 
-    friend bool operator==(const BoxContainer&, const BoxContainer&) = default;
+    friend bool operator==(const StackBox&, const StackBox&) = default;
 };
-SLASH_COMPONENT(BoxContainer, alignment, vertical)
+SLASH_COMPONENT(StackBox, alignment, vertical)
 
 // Lays out its children in a grid, left to right then top to bottom, as Godot's GridContainer.
-struct GridContainer {
+struct GridBox {
     int columns = 1;
 
-    friend bool operator==(const GridContainer&, const GridContainer&) = default;
+    friend bool operator==(const GridBox&, const GridBox&) = default;
 };
-SLASH_COMPONENT(GridContainer, columns)
+SLASH_COMPONENT(GridBox, columns)
 
 // Fits its children in its rect less the theme's margins, as Godot's MarginContainer.
-struct MarginContainer {
-    friend bool operator==(const MarginContainer&, const MarginContainer&) = default;
+struct MarginBox {
+    friend bool operator==(const MarginBox&, const MarginBox&) = default;
 };
-SLASH_COMPONENT(MarginContainer)
+SLASH_COMPONENT(MarginBox)
 
 // Centers its children at their minimum sizes, as Godot's CenterContainer.
-struct CenterContainer {
+struct CenterBox {
     bool use_top_left = false; // center them on its top-left corner instead
 
-    friend bool operator==(const CenterContainer&, const CenterContainer&) = default;
+    friend bool operator==(const CenterBox&, const CenterBox&) = default;
 };
-SLASH_COMPONENT(CenterContainer, use_top_left)
+SLASH_COMPONENT(CenterBox, use_top_left)
 
 // Lays out its children in rows that wrap to its width, or columns that wrap to its height when
 // vertical, as Godot's FlowContainer (HFlowContainer and VFlowContainer).
-struct FlowContainer {
+struct FlowBox {
     std::string alignment = "begin";             // "begin", "center" or "end"
     std::string last_wrap_alignment = "inherit"; // "inherit", "begin", "center" or "end"
     bool vertical = false;
     bool reverse_fill = false; // rows from the bottom up, or columns from the right
 
-    friend bool operator==(const FlowContainer&, const FlowContainer&) = default;
+    friend bool operator==(const FlowBox&, const FlowBox&) = default;
 };
-SLASH_COMPONENT(FlowContainer, alignment, last_wrap_alignment, vertical, reverse_fill)
+SLASH_COMPONENT(FlowBox, alignment, last_wrap_alignment, vertical, reverse_fill)
 
 // Draws the theme's "panel" style box and fits its children inside the style's margins, as
 // Godot's PanelContainer.
-struct PanelContainer {
-    friend bool operator==(const PanelContainer&, const PanelContainer&) = default;
+struct PanelBox {
+    friend bool operator==(const PanelBox&, const PanelBox&) = default;
 };
-SLASH_COMPONENT(PanelContainer)
+SLASH_COMPONENT(PanelBox)
 
 // Shows its children through its rect, scrolled, with scroll bars when they don't fit, as
 // Godot's ScrollContainer. Each child takes its minimum size, or the whole visible width or
 // height on an axis its size flags expand. The wheel, the scroll bars and touch drags scroll
 // it; it always clips its children. It emits scroll_started and scroll_ended around a drag.
-struct ScrollContainer {
+struct ScrollBox {
     // Each axis's: "disabled" (no scrolling: it is as wide as its children), "auto" (a scroll
     // bar when they don't fit), "always", "never" (scrolls, with no bar) or "reserve" (as auto,
     // with room kept for the bar).
@@ -5178,19 +5169,18 @@ struct ScrollContainer {
     bool scroll_horizontal_by_default = false; // the wheel scrolls across, and Shift+wheel down
     bool draw_focus_border = false;            // draw the focus style while it or a child has focus
 
-    friend bool operator==(const ScrollContainer&, const ScrollContainer&) = default;
+    friend bool operator==(const ScrollBox&, const ScrollBox&) = default;
 };
-SLASH_COMPONENT(ScrollContainer, follow_focus, draw_focus_border, scroll_horizontal,
-                scroll_vertical, scroll_horizontal_custom_step, scroll_vertical_custom_step,
-                horizontal_scroll_mode, vertical_scroll_mode, scroll_horizontal_by_default,
-                scroll_deadzone)
+SLASH_COMPONENT(ScrollBox, follow_focus, draw_focus_border, scroll_horizontal, scroll_vertical,
+                scroll_horizontal_custom_step, scroll_vertical_custom_step, horizontal_scroll_mode,
+                vertical_scroll_mode, scroll_horizontal_by_default, scroll_deadzone)
 
-// A property a MultiplayerSynchronizer replicates, as an entry of Godot's
+// A property a NetSync replicates, as an entry of Godot's
 // SceneReplicationConfig.
 struct ReplicationProperty {
     // "Component/field", or part of one ("Transform2D/position/x"), on the synchronizer's root.
     std::string path;
-    bool spawn = true; // sent with the entity when a MultiplayerSpawner spawns it
+    bool spawn = true; // sent with the entity when a NetSpawner spawns it
     // "never", "always" (in every sync, unreliably) or "on_change" (reliably, when it changes).
     std::string replication_mode = "always";
 
@@ -5200,19 +5190,19 @@ SLASH_REFLECT(ReplicationProperty, path, spawn, replication_mode)
 
 // Spawns, on every peer, the entities its multiplayer authority places under spawn_path that
 // extend one of its spawnable scenes, and despawns them when they go, as Godot's
-// MultiplayerSpawner.
-struct MultiplayerSpawner {
+// NetSpawner.
+struct NetSpawner {
     std::vector<std::string> spawnable_scenes;
     entt::entity spawn_path{entt::null}; // the entity whose Transform2D or 3D children it watches
     int spawn_limit = 0;                 // 0 for none
 
-    friend bool operator==(const MultiplayerSpawner&, const MultiplayerSpawner&) = default;
+    friend bool operator==(const NetSpawner&, const NetSpawner&) = default;
 };
-SLASH_COMPONENT(MultiplayerSpawner, spawnable_scenes, spawn_path, spawn_limit)
+SLASH_COMPONENT(NetSpawner, spawnable_scenes, spawn_path, spawn_limit)
 
 // Replicates its root entity's properties from its multiplayer authority to the other peers, as
 // Godot's MultiplayerSynchronizer.
-struct MultiplayerSynchronizer {
+struct NetSync {
     entt::entity root_path{entt::null}; // the entity it replicates; null for its own
     double replication_interval = 0.0;  // seconds between syncs; 0 for every tick
     double delta_interval = 0.0;        // seconds between looks for changes; 0 for every tick
@@ -5220,10 +5210,136 @@ struct MultiplayerSynchronizer {
     std::string visibility_update_mode = "idle"; // "idle", "physics" or "none"
     std::vector<ReplicationProperty> properties;
 
-    friend bool operator==(const MultiplayerSynchronizer&,
-                           const MultiplayerSynchronizer&) = default;
+    friend bool operator==(const NetSync&, const NetSync&) = default;
 };
-SLASH_COMPONENT(MultiplayerSynchronizer, root_path, replication_interval, delta_interval,
-                public_visibility, visibility_update_mode, properties)
+SLASH_COMPONENT(NetSync, root_path, replication_interval, delta_interval, public_visibility,
+                visibility_update_mode, properties)
+
+// The components' C++ names before they were renamed (November 2026;
+// slash/world/aliases.hpp), so games' code keeps compiling, with a warning that names
+// the new one.
+using AnimatableBody2D [[deprecated("renamed MovingBody2D")]] = MovingBody2D;
+using AnimatableBody3D [[deprecated("renamed MovingBody3D")]] = MovingBody3D;
+using AnimatedSprite2D [[deprecated("renamed Flipbook2D")]] = Flipbook2D;
+using AnimationPlayer [[deprecated("renamed Animator")]] = Animator;
+using AnimationTree [[deprecated("renamed AnimationGraph")]] = AnimationGraph;
+using Area2D [[deprecated("renamed Zone2D")]] = Zone2D;
+using Area3D [[deprecated("renamed Zone3D")]] = Zone3D;
+using AudioListener2D [[deprecated("renamed Listener2D")]] = Listener2D;
+using AudioListener3D [[deprecated("renamed Listener3D")]] = Listener3D;
+using AudioStreamPlayer [[deprecated("renamed SoundPlayer")]] = SoundPlayer;
+using AudioStreamPlayer2D [[deprecated("renamed SoundPlayer2D")]] = SoundPlayer2D;
+using AudioStreamPlayer3D [[deprecated("renamed SoundPlayer3D")]] = SoundPlayer3D;
+using BoneAttachment3D [[deprecated("renamed BoneSocket3D")]] = BoneSocket3D;
+using BoxContainer [[deprecated("renamed StackBox")]] = StackBox;
+using BoxMesh [[deprecated("renamed BoxGeometry")]] = BoxGeometry;
+using CCDIK3D [[deprecated("renamed CcdIK3D")]] = CcdIK3D;
+using CPUParticles2D [[deprecated("renamed Emitter2D")]] = Emitter2D;
+using CPUParticles3D [[deprecated("renamed Emitter3D")]] = Emitter3D;
+using CSGBox3D [[deprecated("renamed SolidBox3D")]] = SolidBox3D;
+using CSGCombiner3D [[deprecated("renamed SolidGroup3D")]] = SolidGroup3D;
+using CSGCylinder3D [[deprecated("renamed SolidCylinder3D")]] = SolidCylinder3D;
+using CSGMesh3D [[deprecated("renamed SolidMesh3D")]] = SolidMesh3D;
+using CSGPolygon3D [[deprecated("renamed SolidExtrusion3D")]] = SolidExtrusion3D;
+using CSGSphere3D [[deprecated("renamed SolidSphere3D")]] = SolidSphere3D;
+using CSGTorus3D [[deprecated("renamed SolidTorus3D")]] = SolidTorus3D;
+using CameraAttributesPractical [[deprecated("renamed CameraLens")]] = CameraLens;
+using CanvasLayer [[deprecated("renamed ScreenLayer")]] = ScreenLayer;
+using CanvasModulate [[deprecated("renamed AmbientTint2D")]] = AmbientTint2D;
+using CapsuleMesh [[deprecated("renamed CapsuleGeometry")]] = CapsuleGeometry;
+using CenterContainer [[deprecated("renamed CenterBox")]] = CenterBox;
+using CharacterBody2D [[deprecated("renamed CharacterMover2D")]] = CharacterMover2D;
+using CharacterBody3D [[deprecated("renamed CharacterMover3D")]] = CharacterMover3D;
+using CheckButton [[deprecated("renamed ToggleSwitch")]] = ToggleSwitch;
+using CodeEdit [[deprecated("renamed CodeEditor")]] = CodeEditor;
+using CodeHighlighter [[deprecated("renamed SyntaxColors")]] = SyntaxColors;
+using CollisionPolygon2D [[deprecated("renamed PolygonCollider2D")]] = PolygonCollider2D;
+using CollisionShape2D [[deprecated("renamed Collider2D")]] = Collider2D;
+using CollisionShape3D [[deprecated("renamed Collider3D")]] = Collider3D;
+using ColorRect [[deprecated("renamed ColorFill")]] = ColorFill;
+using ConeTwistJoint3D [[deprecated("renamed ConeJoint3D")]] = ConeJoint3D;
+using Control [[deprecated("renamed Widget")]] = Widget;
+using CopyTransformModifier3D [[deprecated("renamed BoneCopy3D")]] = BoneCopy3D;
+using CylinderMesh [[deprecated("renamed CylinderGeometry")]] = CylinderGeometry;
+using DampedSpringJoint2D [[deprecated("renamed SpringJoint2D")]] = SpringJoint2D;
+using DirectionalLight2D [[deprecated("renamed SunLight2D")]] = SunLight2D;
+using DirectionalLight3D [[deprecated("renamed SunLight3D")]] = SunLight3D;
+using FABRIK3D [[deprecated("renamed FabrikIK3D")]] = FabrikIK3D;
+using FlowContainer [[deprecated("renamed FlowBox")]] = FlowBox;
+using FogMaterial [[deprecated("renamed FogVolumeLook")]] = FogVolumeLook;
+using GPUParticles2D [[deprecated("renamed GpuEmitter2D")]] = GpuEmitter2D;
+using GPUParticles3D [[deprecated("renamed GpuEmitter3D")]] = GpuEmitter3D;
+using GPUParticlesAttractorBox3D [[deprecated("renamed ParticleAttractorBox3D")]] =
+    ParticleAttractorBox3D;
+using GPUParticlesAttractorSphere3D [[deprecated("renamed ParticleAttractorSphere3D")]] =
+    ParticleAttractorSphere3D;
+using GPUParticlesAttractorVectorField3D [[deprecated("renamed ParticleFlowField3D")]] =
+    ParticleFlowField3D;
+using GPUParticlesCollisionBox3D [[deprecated("renamed ParticleColliderBox3D")]] =
+    ParticleColliderBox3D;
+using GPUParticlesCollisionHeightField3D [[deprecated("renamed ParticleColliderHeight3D")]] =
+    ParticleColliderHeight3D;
+using GPUParticlesCollisionSDF3D [[deprecated("renamed ParticleColliderSdf3D")]] =
+    ParticleColliderSdf3D;
+using GPUParticlesCollisionSphere3D [[deprecated("renamed ParticleColliderSphere3D")]] =
+    ParticleColliderSphere3D;
+using GaussianSplat3D [[deprecated("renamed Splat3D")]] = Splat3D;
+using Generic6DOFJoint3D [[deprecated("renamed SixAxisJoint3D")]] = SixAxisJoint3D;
+using GridContainer [[deprecated("renamed GridBox")]] = GridBox;
+using GridMap [[deprecated("renamed BlockMap3D")]] = BlockMap3D;
+using GrooveJoint2D [[deprecated("renamed TrackJoint2D")]] = TrackJoint2D;
+using HTerrain [[deprecated("renamed Terrain3D")]] = Terrain3D;
+using HairInstance3D [[deprecated("renamed Hair3D")]] = Hair3D;
+using LightOccluder2D [[deprecated("renamed Occluder2D")]] = Occluder2D;
+using LightmapGI [[deprecated("renamed BakedLighting3D")]] = BakedLighting3D;
+using LightmapProbe [[deprecated("renamed LightProbe3D")]] = LightProbe3D;
+using LineEdit [[deprecated("renamed TextField")]] = TextField;
+using LookAtModifier3D [[deprecated("renamed BoneLookAt3D")]] = BoneLookAt3D;
+using MarginContainer [[deprecated("renamed MarginBox")]] = MarginBox;
+using MeshInstance3D [[deprecated("renamed Model3D")]] = Model3D;
+using MultiMeshInstance3D [[deprecated("renamed ModelInstances3D")]] = ModelInstances3D;
+using MultiplayerSpawner [[deprecated("renamed NetSpawner")]] = NetSpawner;
+using MultiplayerSynchronizer [[deprecated("renamed NetSync")]] = NetSync;
+using NavigationAgent2D [[deprecated("renamed NavAgent2D")]] = NavAgent2D;
+using NavigationAgent3D [[deprecated("renamed NavAgent3D")]] = NavAgent3D;
+using NavigationLink2D [[deprecated("renamed NavLink2D")]] = NavLink2D;
+using NavigationLink3D [[deprecated("renamed NavLink3D")]] = NavLink3D;
+using NavigationObstacle2D [[deprecated("renamed NavObstacle2D")]] = NavObstacle2D;
+using NavigationObstacle3D [[deprecated("renamed NavObstacle3D")]] = NavObstacle3D;
+using NavigationRegion2D [[deprecated("renamed NavArea2D")]] = NavArea2D;
+using NavigationRegion3D [[deprecated("renamed NavArea3D")]] = NavArea3D;
+using NinePatchRect [[deprecated("renamed NineSlice")]] = NineSlice;
+using OccluderInstance3D [[deprecated("renamed Occluder3D")]] = Occluder3D;
+using OmniLight3D [[deprecated("renamed PointLight3D")]] = PointLight3D;
+using OptionButton [[deprecated("renamed Dropdown")]] = Dropdown;
+using PanelContainer [[deprecated("renamed PanelBox")]] = PanelBox;
+using PanoramaSkyMaterial [[deprecated("renamed SkyPanorama")]] = SkyPanorama;
+using Path2D [[deprecated("renamed Spline2D")]] = Spline2D;
+using Path3D [[deprecated("renamed Spline3D")]] = Spline3D;
+using PathFollow2D [[deprecated("renamed SplineFollower2D")]] = SplineFollower2D;
+using PathFollow3D [[deprecated("renamed SplineFollower3D")]] = SplineFollower3D;
+using PhysicalBone3D [[deprecated("renamed SimulatedBone3D")]] = SimulatedBone3D;
+using PhysicalBoneSimulator3D [[deprecated("renamed BoneSimulation3D")]] = BoneSimulation3D;
+using PhysicalSkyMaterial [[deprecated("renamed SkyScattering")]] = SkyScattering;
+using PlaneMesh [[deprecated("renamed PlaneGeometry")]] = PlaneGeometry;
+using PopupMenu [[deprecated("renamed PopupList")]] = PopupList;
+using PrismMesh [[deprecated("renamed PrismGeometry")]] = PrismGeometry;
+using ProceduralSkyMaterial [[deprecated("renamed SkyGradient")]] = SkyGradient;
+using QuadMesh [[deprecated("renamed QuadGeometry")]] = QuadGeometry;
+using ScrollContainer [[deprecated("renamed ScrollBox")]] = ScrollBox;
+using SliderJoint3D [[deprecated("renamed SlideJoint3D")]] = SlideJoint3D;
+using SphereMesh [[deprecated("renamed SphereGeometry")]] = SphereGeometry;
+using StandardMaterial3D [[deprecated("renamed Surface3D")]] = Surface3D;
+using TextEdit [[deprecated("renamed TextArea")]] = TextArea;
+using TextureButton [[deprecated("renamed ImageButton")]] = ImageButton;
+using TextureRect [[deprecated("renamed Picture")]] = Picture;
+using TileMapLayer [[deprecated("renamed TileLayer2D")]] = TileLayer2D;
+using TorusMesh [[deprecated("renamed TorusGeometry")]] = TorusGeometry;
+using VehicleBody3D [[deprecated("renamed WheeledBody3D")]] = WheeledBody3D;
+using VehicleWheel3D [[deprecated("renamed Wheel3D")]] = Wheel3D;
+using VideoStreamPlayer [[deprecated("renamed Video")]] = Video;
+using VoxelGI [[deprecated("renamed VoxelLighting3D")]] = VoxelLighting3D;
+using WorldEnvironment [[deprecated("renamed Environment3D")]] = Environment3D;
+using XRFaceModifier3D [[deprecated("renamed XRFace3D")]] = XRFace3D;
 
 } // namespace slash::world

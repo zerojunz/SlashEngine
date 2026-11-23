@@ -27,14 +27,14 @@ namespace slash::navigation {
 
 namespace {
 
-using world::NavigationAgent2D;
-using world::NavigationAgent3D;
-using world::NavigationLink2D;
-using world::NavigationLink3D;
-using world::NavigationObstacle2D;
-using world::NavigationObstacle3D;
-using world::NavigationRegion2D;
-using world::NavigationRegion3D;
+using world::NavAgent2D;
+using world::NavAgent3D;
+using world::NavArea2D;
+using world::NavArea3D;
+using world::NavLink2D;
+using world::NavLink3D;
+using world::NavObstacle2D;
+using world::NavObstacle3D;
 
 // NavigationDefaults3D::NAV_MESH_CELL_SIZE_MIN, the smallest cell a map takes.
 constexpr float kCellSizeMin = 0.01F;
@@ -175,7 +175,7 @@ struct AgentState {
     Vec3 rvo_velocity;
     Vec3 preferred_velocity;
     Vec3 safe_velocity;
-    float stored_y_velocity = 0.0F; // NavigationAgent3D's, put back on the safe velocity
+    float stored_y_velocity = 0.0F; // NavAgent3D's, put back on the safe velocity
     bool forced_submitted = false;  // set_velocity_forced was called
     Vec3 velocity_forced;
 };
@@ -217,7 +217,7 @@ struct TileLayerRegions {
     std::vector<MapError> errors;
     bool used = false;
 
-    [[nodiscard]] bool same(const std::string& layer_id, const world::TileMapLayer& layer,
+    [[nodiscard]] bool same(const std::string& layer_id, const world::TileLayer2D& layer,
                             const std::shared_ptr<const void>& file,
                             const std::array<float, 12>& key) const {
         return id == layer_id && tile_set == layer.tile_set && origin == layer.origin &&
@@ -227,13 +227,13 @@ struct TileLayerRegions {
     }
 };
 
-// A GridMap's regions as last gathered, and what they were gathered from, so a GridMap that is
-// as it was isn't gathered again each tick.
+// A BlockMap3D's regions as last gathered, and what they were gathered from, so a BlockMap3D that
+// is as it was isn't gathered again each tick.
 struct GridMapRegions {
     std::shared_ptr<const scene3d::GridMesh> mesh;
-    std::array<float, 12> transform{}; // the GridMap's
+    std::array<float, 12> transform{}; // the BlockMap3D's
     // Each navigation mesh its cells name, loaded, so a reload gathers anew; kept loaded while
-    // the GridMap uses it.
+    // the BlockMap3D uses it.
     std::vector<std::pair<std::string, asset::Handle<NavigationMesh>>> files;
     std::vector<std::string> failed; // files that didn't load, with why, in the same order
     std::vector<RegionInput> regions;
@@ -272,7 +272,7 @@ PathOptions options_of(const auto& agent) {
     return options;
 }
 
-AgentParams params_of(const NavigationAgent2D& agent) {
+AgentParams params_of(const NavAgent2D& agent) {
     return {.target = to_map(agent.target_position),
             .path_desired_distance = agent.path_desired_distance,
             .target_desired_distance = agent.target_desired_distance,
@@ -282,7 +282,7 @@ AgentParams params_of(const NavigationAgent2D& agent) {
             .avoidance_enabled = agent.avoidance_enabled};
 }
 
-AgentParams params_of(const NavigationAgent3D& agent) {
+AgentParams params_of(const NavAgent3D& agent) {
     return {.target = agent.target_position,
             .path_desired_distance = agent.path_desired_distance,
             .target_desired_distance = agent.target_desired_distance,
@@ -409,7 +409,7 @@ void gather_regions(const world::World& world, const State& state, const Trees& 
     for (const Order& order : ordered<Component>(world)) {
         const Component& region = world.ecs().get<const Component>(order.entity);
         const std::string& path = [&]() -> const std::string& {
-            if constexpr (std::is_same_v<Component, NavigationRegion3D>) {
+            if constexpr (std::is_same_v<Component, NavArea3D>) {
                 return region.navigation_mesh;
             } else {
                 return region.navigation_polygon;
@@ -529,8 +529,8 @@ void gather_tile_regions(const world::World& world, State& state, const Trees& t
     for (auto& [entity, cached] : state.tile_layers) {
         cached.used = false;
     }
-    for (const Order& order : ordered<world::TileMapLayer>(world)) {
-        const auto& layer = world.ecs().get<const world::TileMapLayer>(order.entity);
+    for (const Order& order : ordered<world::TileLayer2D>(world)) {
+        const auto& layer = world.ecs().get<const world::TileLayer2D>(order.entity);
         if (!layer.navigation_enabled || layer.tile_set.empty()) {
             continue;
         }
@@ -611,15 +611,15 @@ void gather_tile_regions(const world::World& world, State& state, const Trees& t
 }
 
 // GridMap::_octant_update with bake_navigation: a region for each cell whose item has a
-// navigation mesh, at the GridMap's global transform times the cell's, in the item's navigation
+// navigation mesh, at the BlockMap3D's global transform times the cell's, in the item's navigation
 // layers.
 void gather_gridmap_regions(const world::World& world, State& state, const Trees& trees,
                             std::vector<RegionInput>& out, std::vector<MapError>& errors) {
     for (auto& [entity, cached] : state.gridmaps) {
         cached.used = false;
     }
-    for (const Order& order : ordered<world::GridMap>(world)) {
-        if (!world.ecs().get<const world::GridMap>(order.entity).bake_navigation) {
+    for (const Order& order : ordered<world::BlockMap3D>(world)) {
+        if (!world.ecs().get<const world::BlockMap3D>(order.entity).bake_navigation) {
             continue;
         }
         const std::shared_ptr<const scene3d::GridMesh> mesh =
@@ -698,7 +698,7 @@ void gather_links(const world::World& world, const Trees& trees, Map kind,
         const Placement placement = trees.placement(kind, order.entity);
         Vec3 start;
         Vec3 end;
-        if constexpr (std::is_same_v<Component, NavigationLink3D>) {
+        if constexpr (std::is_same_v<Component, NavLink3D>) {
             start = link.start_position;
             end = link.end_position;
         } else {
@@ -757,15 +757,13 @@ void sync_map(const world::World& world, State& state, const Trees& trees, MapSt
     std::vector<LinkInput> links;
     std::vector<MapError> errors;
     if (m.kind == Map::ThreeD) {
-        gather_regions<NavigationRegion3D, NavigationMesh>(world, state, trees, m.kind, regions,
-                                                           errors);
+        gather_regions<NavArea3D, NavigationMesh>(world, state, trees, m.kind, regions, errors);
         gather_gridmap_regions(world, state, trees, regions, errors);
-        gather_links<NavigationLink3D>(world, trees, m.kind, links);
+        gather_links<NavLink3D>(world, trees, m.kind, links);
     } else {
-        gather_regions<NavigationRegion2D, NavigationPolygon>(world, state, trees, m.kind, regions,
-                                                              errors);
+        gather_regions<NavArea2D, NavigationPolygon>(world, state, trees, m.kind, regions, errors);
         gather_tile_regions(world, state, trees, regions, errors);
-        gather_links<NavigationLink2D>(world, trees, m.kind, links);
+        gather_links<NavLink2D>(world, trees, m.kind, links);
     }
     m.errors = std::move(errors);
 
@@ -901,7 +899,7 @@ Path<Vec3> run_query(const MapState& m, Vec3 start, Vec3 target, const PathOptio
     return out;
 }
 
-// ---- Agents, as Godot's NavigationAgent2D and NavigationAgent3D.
+// ---- Agents, as Godot's NavigationAgent2D and NavAgent3D.
 
 json::Value point_json(Map kind, Vec3 point) {
     if (kind == Map::TwoD) {
@@ -919,9 +917,9 @@ Vec3 agent_origin(const world::World& world, Map kind, entt::entity entity) {
 
 AgentParams agent_params(const world::World& world, Map kind, entt::entity entity) {
     if (kind == Map::ThreeD) {
-        return params_of(world.ecs().get<const NavigationAgent3D>(entity));
+        return params_of(world.ecs().get<const NavAgent3D>(entity));
     }
-    return params_of(world.ecs().get<const NavigationAgent2D>(entity));
+    return params_of(world.ecs().get<const NavAgent2D>(entity));
 }
 
 class AgentUpdate {
@@ -1071,13 +1069,13 @@ private:
             Placement placement;
             placement.three_d = kind_ == Map::ThreeD;
             if (kind_ == Map::ThreeD) {
-                if (const auto* link = world_.ecs().try_get<const NavigationLink3D>(owner)) {
+                if (const auto* link = world_.ecs().try_get<const NavLink3D>(owner)) {
                     placement.affine_3d = world::Tree3D(world_).global(owner);
                     start = placement.apply(link->start_position);
                     end = placement.apply(link->end_position);
                     found = true;
                 }
-            } else if (const auto* link = world_.ecs().try_get<const NavigationLink2D>(owner)) {
+            } else if (const auto* link = world_.ecs().try_get<const NavLink2D>(owner)) {
                 placement.affine_2d = world::Tree2D(world_).global_affine(owner);
                 start = placement.apply(to_map(link->start_position));
                 end = placement.apply(to_map(link->end_position));
@@ -1123,8 +1121,8 @@ bool has_agent(const world::World& world, Map kind, entt::entity entity) {
     if (!world.valid(entity)) {
         return false;
     }
-    return kind == Map::ThreeD ? world.ecs().all_of<NavigationAgent3D>(entity)
-                               : world.ecs().all_of<NavigationAgent2D>(entity);
+    return kind == Map::ThreeD ? world.ecs().all_of<NavAgent3D>(entity)
+                               : world.ecs().all_of<NavAgent2D>(entity);
 }
 
 // Which map an agent is on: its 3D agent's, or else its 2D agent's.
@@ -1152,10 +1150,10 @@ void drop_stale_agents(const world::World& world, State& state) {
                       [&](const auto& entry) { return !has_agent(world, kind, entry.first); });
     }
     std::erase_if(state.obstacles_2d, [&](const auto& entry) {
-        return !world.valid(entry.first) || !world.ecs().all_of<NavigationObstacle2D>(entry.first);
+        return !world.valid(entry.first) || !world.ecs().all_of<NavObstacle2D>(entry.first);
     });
     std::erase_if(state.obstacles_3d, [&](const auto& entry) {
-        return !world.valid(entry.first) || !world.ecs().all_of<NavigationObstacle3D>(entry.first);
+        return !world.valid(entry.first) || !world.ecs().all_of<NavObstacle3D>(entry.first);
     });
 }
 
@@ -1217,7 +1215,7 @@ struct Avoider {
     bool keep_y_velocity = false;
 };
 
-Avoider avoider_of(entt::entity entity, const NavigationAgent2D& agent) {
+Avoider avoider_of(entt::entity entity, const NavAgent2D& agent) {
     return {.entity = entity,
             .velocity = to_map(agent.velocity),
             .height = 0.0F,
@@ -1234,7 +1232,7 @@ Avoider avoider_of(entt::entity entity, const NavigationAgent2D& agent) {
             .keep_y_velocity = false};
 }
 
-Avoider avoider_of(entt::entity entity, const NavigationAgent3D& agent) {
+Avoider avoider_of(entt::entity entity, const NavAgent3D& agent) {
     return {.entity = entity,
             .velocity = agent.velocity,
             .height = agent.height,
@@ -1264,11 +1262,11 @@ public:
 
     void run(float delta) {
         if (kind_ == Map::TwoD) {
-            add_agents<NavigationAgent2D>();
-            add_obstacles<NavigationObstacle2D>();
+            add_agents<NavAgent2D>();
+            add_obstacles<NavObstacle2D>();
         } else {
-            add_agents<NavigationAgent3D>();
-            add_obstacles<NavigationObstacle3D>();
+            add_agents<NavAgent3D>();
+            add_obstacles<NavObstacle3D>();
         }
         if (sim_2d_.agents.empty() && sim_3d_.agents.empty()) {
             return;
@@ -1374,7 +1372,7 @@ private:
     // velocity and avoids nothing, and an outline in the 2D simulation.
     template <typename Component>
     void add_obstacles() {
-        constexpr bool kThreeD = std::is_same_v<Component, NavigationObstacle3D>;
+        constexpr bool kThreeD = std::is_same_v<Component, NavObstacle3D>;
         // NavigationDefaults2D and 3D's AVOIDANCE_AGENT_MAX_SPEED, which obstacles' agents keep.
         constexpr float kMaxSpeed = kThreeD ? 10.0F : 100.0F;
         for (const Order& order : ordered<Component>(world_)) {
@@ -1527,8 +1525,8 @@ void step(world::World& world, State& state, double tick_seconds) {
             update.update();
         }
     };
-    run.template operator()<NavigationAgent2D>(Map::TwoD);
-    run.template operator()<NavigationAgent3D>(Map::ThreeD);
+    run.template operator()<NavAgent2D>(Map::TwoD);
+    run.template operator()<NavAgent3D>(Map::ThreeD);
     AvoidanceStep(world, state, Map::TwoD).run(static_cast<float>(tick_seconds));
     AvoidanceStep(world, state, Map::ThreeD).run(static_cast<float>(tick_seconds));
 }
@@ -1822,7 +1820,7 @@ void set_target_position(world::World& world, entt::entity agent, Vec2 position)
     if (!has_agent(world, Map::TwoD, agent)) {
         return;
     }
-    world.ecs().patch<NavigationAgent2D>(agent, [&](auto& a) { a.target_position = position; });
+    world.ecs().patch<NavAgent2D>(agent, [&](auto& a) { a.target_position = position; });
     State* state = find_state(world);
     if (state == nullptr) {
         return;
@@ -1836,7 +1834,7 @@ void set_target_position(world::World& world, entt::entity agent, Vec3 position)
     if (!has_agent(world, Map::ThreeD, agent)) {
         return;
     }
-    world.ecs().patch<NavigationAgent3D>(agent, [&](auto& a) { a.target_position = position; });
+    world.ecs().patch<NavAgent3D>(agent, [&](auto& a) { a.target_position = position; });
     State* state = find_state(world);
     if (state == nullptr) {
         return;
@@ -1922,11 +1920,11 @@ Vec3 safe_velocity(const world::World& world, entt::entity agent, Map kind) {
     bool avoiding = false;
     Vec3 velocity;
     if (kind == Map::ThreeD) {
-        const auto& component = world.ecs().get<const NavigationAgent3D>(agent);
+        const auto& component = world.ecs().get<const NavAgent3D>(agent);
         avoiding = component.avoidance_enabled;
         velocity = component.velocity;
     } else {
-        const auto& component = world.ecs().get<const NavigationAgent2D>(agent);
+        const auto& component = world.ecs().get<const NavAgent2D>(agent);
         avoiding = component.avoidance_enabled;
         velocity = to_map(component.velocity);
     }
@@ -2116,8 +2114,8 @@ std::vector<json::ValidationError> check_scene(const json::Value& doc,
     };
     const auto check = [&](const json::Value& components, const std::string& at) {
         for (const auto& [name, field, three_d] :
-             {std::tuple{"NavigationRegion2D", "navigation_polygon", false},
-              std::tuple{"NavigationRegion3D", "navigation_mesh", true}}) {
+             {std::tuple{"NavArea2D", "navigation_polygon", false},
+              std::tuple{"NavArea3D", "navigation_mesh", true}}) {
             const json::Value* region = components.find(name);
             if (region == nullptr || !region->is_object()) {
                 continue;

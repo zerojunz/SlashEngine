@@ -118,7 +118,7 @@ std::size_t live_count(std::span<const render::Particle> particles, std::uint32_
                               [](const render::Particle& p) { return p.active(); }));
 }
 
-// Adds a GPUParticles2D's live particles' quads, or its trails' segments, as the device draws
+// Adds a GpuEmitter2D's live particles' quads, or its trails' segments, as the device draws
 // them: one not live has no area.
 void append_live_quads(std::span<const render::Particle> particles, const render::ParticleDraw& at,
                        std::uint32_t trail, std::vector<render::Vertex2D>& vertices) {
@@ -150,7 +150,7 @@ struct Item {
     const render::Image* image = nullptr; // white when null
     std::string_view path;                // the image's project path
     std::size_t drawn = 0;                // tiles or particles
-    // A GPUParticles2D's particles, which the device draws instead of the vertices.
+    // A GpuEmitter2D's particles, which the device draws instead of the vertices.
     render::ParticlesId particles = render::ParticlesId::None;
     render::ParticleDraw look;
 };
@@ -319,12 +319,11 @@ Inherited inherited(const world::World& world, const world::Tree2D& tree, entt::
         };
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(up); sprite != nullptr) {
             take(sprite->z_index, sprite->z_as_relative, sprite->visible, &sprite->modulate);
-        } else if (const auto* layer = ecs.try_get<world::TileMapLayer>(up); layer != nullptr) {
+        } else if (const auto* layer = ecs.try_get<world::TileLayer2D>(up); layer != nullptr) {
             take(layer->z_index, layer->z_as_relative, layer->visible, &layer->modulate);
-        } else if (const auto* emitter = ecs.try_get<world::CPUParticles2D>(up);
-                   emitter != nullptr) {
+        } else if (const auto* emitter = ecs.try_get<world::Emitter2D>(up); emitter != nullptr) {
             take(emitter->z_index, emitter->z_as_relative, emitter->visible, nullptr);
-        } else if (const auto* gpu = ecs.try_get<world::GPUParticles2D>(up); gpu != nullptr) {
+        } else if (const auto* gpu = ecs.try_get<world::GpuEmitter2D>(up); gpu != nullptr) {
             take(gpu->z_index, gpu->z_as_relative, gpu->visible, nullptr);
         }
         if (top_level(up)) {
@@ -622,14 +621,14 @@ void CanvasRenderer::before_tick(const world::World& world) {
         }
     };
     keep(ecs.view<const world::Transform2D, const world::Sprite2D>());
-    keep(ecs.view<const world::Transform2D, const world::TileMapLayer>());
+    keep(ecs.view<const world::Transform2D, const world::TileLayer2D>());
     keep(ecs.view<const world::Transform2D, const world::PointLight2D>());
-    keep(ecs.view<const world::Transform2D, const world::DirectionalLight2D>());
-    keep(ecs.view<const world::Transform2D, const world::LightOccluder2D>());
-    keep(ecs.view<const world::Transform2D, const world::CPUParticles2D>());
-    keep(ecs.view<const world::Transform2D, const world::GPUParticles2D>());
-    keep(ecs.view<const world::Transform2D, const world::CollisionShape2D>());
-    keep(ecs.view<const world::Transform2D, const world::CollisionPolygon2D>());
+    keep(ecs.view<const world::Transform2D, const world::SunLight2D>());
+    keep(ecs.view<const world::Transform2D, const world::Occluder2D>());
+    keep(ecs.view<const world::Transform2D, const world::Emitter2D>());
+    keep(ecs.view<const world::Transform2D, const world::GpuEmitter2D>());
+    keep(ecs.view<const world::Transform2D, const world::Collider2D>());
+    keep(ecs.view<const world::Transform2D, const world::PolygonCollider2D>());
     previous_parallax_.clear();
     for (const auto [entity, parallax, transform] :
          ecs.view<const world::Parallax2D, const world::Transform2D>().each()) {
@@ -918,7 +917,7 @@ void CanvasRenderer::drop_unseen_gpu_systems() {
 }
 
 const CanvasRenderer::LayerCells& CanvasRenderer::cells(entt::entity entity,
-                                                        const world::TileMapLayer& layer,
+                                                        const world::TileLayer2D& layer,
                                                         const TileSet& set,
                                                         std::uint64_t set_version) {
     auto [it, added] = layer_cells_.try_emplace(entity);
@@ -1071,7 +1070,7 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
     const auto key = std::make_pair(path, filter);
     auto it = textures_.find(key);
     if (path.starts_with(video::kTexturePrefix)) {
-        // A VideoStreamPlayer's frame, made again whenever the video system decodes another.
+        // A Video's frame, made again whenever the video system decodes another.
         const video::Shown shown =
             world_ != nullptr
                 ? video::shown(*world_, std::string_view(path).substr(video::kTexturePrefix.size()))
@@ -2392,7 +2391,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                                 world::parts(view.canvas), options.interpolation));
     }
     // The canvases, the world's through that view, and the matrix each one's draws move by:
-    // the camera's for the world, a CanvasLayer's transform, or none to leave them in place.
+    // the camera's for the world, a ScreenLayer's transform, or none to leave them in place.
     const world::Canvases canvases(world, tree, view, viewport);
     const std::vector<world::Canvas>& canvas_list = canvases.all();
     const std::size_t world_canvas = canvases.world_canvas();
@@ -2554,7 +2553,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         ++sprites;
     }
 
-    for (const auto [entity, emitter] : ecs.view<const world::CPUParticles2D>().each()) {
+    for (const auto [entity, emitter] : ecs.view<const world::Emitter2D>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
         const std::size_t canvas = canvases.of(entity);
         if (!emitter.visible || !from_parents.visible || !canvas_list[canvas].visible) {
@@ -2582,7 +2581,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto texture = this->texture(emitter.texture, filter);
             if (!texture) {
                 warn_once(emitter.texture, texture.error().message, "texture", kEvent);
-                problem(entity, "/components/CPUParticles2D/texture", texture.error().message);
+                problem(entity, "/components/Emitter2D/texture", texture.error().message);
                 continue;
             }
             texture_id = texture.value()->id;
@@ -2602,7 +2601,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto made = this->material(look, filter, options.time, &light_mode, wind.at(entity));
             if (!made) {
                 warn_once(emitter.material, made.error().message, "material", kEvent);
-                problem(entity, "/components/CPUParticles2D/material", made.error().message);
+                problem(entity, "/components/Emitter2D/material", made.error().message);
                 continue;
             }
             material = std::move(made).value();
@@ -2681,7 +2680,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
 
     gather_foliage(state);
 
-    // GPUParticles2D: each system runs the steps it hasn't on the device once the frame begins,
+    // GpuEmitter2D: each system runs the steps it hasn't on the device once the frame begins,
     // then draws there.
     for (auto& [entity, cached] : gpu_systems_) {
         cached.seen = false;
@@ -2690,12 +2689,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const double tick_seconds = settings(world).tick_seconds;
     constexpr std::string_view kParticlesEvent = "particles can't draw";
     const auto shown = [&](entt::entity entity) {
-        return ecs.get<world::GPUParticles2D>(entity).visible &&
+        return ecs.get<world::GpuEmitter2D>(entity).visible &&
                inherited(world, tree, entity).visible && canvas_list[canvases.of(entity)].visible;
     };
     std::set<entt::entity> unprocessed; // emitters whose process material didn't load
     const auto process_of = [&](entt::entity entity) -> const render::ParticleProcess* {
-        const auto& emitter = ecs.get<world::GPUParticles2D>(entity);
+        const auto& emitter = ecs.get<world::GpuEmitter2D>(entity);
         if (emitter.process_material.empty()) {
             return &kStill;
         }
@@ -2704,7 +2703,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             if (unprocessed.insert(entity).second) {
                 warn_once(emitter.process_material, loaded.error().message, "process_material",
                           kParticlesEvent);
-                problem(entity, "/components/GPUParticles2D/process_material",
+                problem(entity, "/components/GpuEmitter2D/process_material",
                         loaded.error().message);
             }
             return nullptr;
@@ -2714,7 +2713,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     // A chain of sub-emitters runs from its root, all of it while any of it shows, before any
     // of it draws.
     std::set<entt::entity> chained;
-    for (const auto [entity, emitter] : ecs.view<const world::GPUParticles2D>().each()) {
+    for (const auto [entity, emitter] : ecs.view<const world::GpuEmitter2D>().each()) {
         const std::optional<ParticleSteps> kept = particle_steps(world, entity);
         if (!kept || kept->links < 2 || kept->link != 0) {
             continue;
@@ -2739,14 +2738,14 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         if (auto made = chain_jobs(chain, processes, particle_jobs); !made) {
             warn_once(entity_name(world, entity), made.error().message, "id", kParticlesEvent);
-            problem(entity, "/components/GPUParticles2D/amount", made.error().message);
+            problem(entity, "/components/GpuEmitter2D/amount", made.error().message);
             continue;
         }
         if (contents != nullptr) {
             mirror_chain(chain, processes);
         }
     }
-    for (const auto [entity, emitter] : ecs.view<const world::GPUParticles2D>().each()) {
+    for (const auto [entity, emitter] : ecs.view<const world::GpuEmitter2D>().each()) {
         const std::optional<ParticleSteps> kept = particle_steps(world, entity);
         if (!kept) {
             continue;
@@ -2778,7 +2777,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto texture = this->texture(emitter.texture, filter);
             if (!texture) {
                 warn_once(emitter.texture, texture.error().message, "texture", kParticlesEvent);
-                problem(entity, "/components/GPUParticles2D/texture", texture.error().message);
+                problem(entity, "/components/GpuEmitter2D/texture", texture.error().message);
                 continue;
             }
             texture_id = texture.value()->id;
@@ -2797,7 +2796,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto made = this->material(sprite, filter, options.time, &light_mode, wind.at(entity));
             if (!made) {
                 warn_once(emitter.material, made.error().message, "material", kParticlesEvent);
-                problem(entity, "/components/GPUParticles2D/material", made.error().message);
+                problem(entity, "/components/GpuEmitter2D/material", made.error().message);
                 continue;
             }
             material = std::move(made).value();
@@ -2808,7 +2807,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto job = particle_job(cached, *kept, process);
             if (!job) {
                 warn_once(entity_name(world, entity), job.error().message, "id", kParticlesEvent);
-                problem(entity, "/components/GPUParticles2D/amount", job.error().message);
+                problem(entity, "/components/GpuEmitter2D/amount", job.error().message);
                 continue;
             }
             if (job.value()) {
@@ -2888,7 +2887,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     for (auto& [entity, cached] : layer_cells_) {
         cached.seen = false;
     }
-    for (const auto [entity, layer] : ecs.view<const world::TileMapLayer>().each()) {
+    for (const auto [entity, layer] : ecs.view<const world::TileLayer2D>().each()) {
         const Inherited from_parents = inherited(world, tree, entity);
         const std::size_t canvas = canvases.of(entity);
         if (!layer.visible || !from_parents.visible || layer.tile_set.empty() ||
@@ -2900,17 +2899,17 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         auto set = tile_set(layer.tile_set);
         if (!set) {
             warn_once(layer.tile_set, set.error().message, "tile_set", kEvent);
-            problem(entity, "/components/TileMapLayer/tile_set", set.error().message);
+            problem(entity, "/components/TileLayer2D/tile_set", set.error().message);
             continue;
         }
         const LayerCells& cached =
             cells(entity, layer, *set.value(), tile_sets_.at(layer.tile_set).version());
         if (!cached.error.empty()) {
-            warn_once(entity_name(world, entity), "TileMapLayer" + cached.error, "id", kEvent);
+            warn_once(entity_name(world, entity), "TileLayer2D" + cached.error, "id", kEvent);
             // The error starts with the bad value's JSON Pointer in the layer.
             const std::size_t split = cached.error.find(": ");
             problem(entity,
-                    "/components/TileMapLayer" +
+                    "/components/TileLayer2D" +
                         (split == std::string::npos ? "" : cached.error.substr(0, split)),
                     split == std::string::npos ? cached.error : cached.error.substr(split + 2));
             continue;
@@ -2963,7 +2962,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                     *slot = map.value()->id;
                 } else {
                     warn_once(*path, map.error().message, "texture", kEvent);
-                    problem(entity, "/components/TileMapLayer/tile_set",
+                    problem(entity, "/components/TileLayer2D/tile_set",
                             *path + ": " + map.error().message);
                 }
             }
@@ -2983,7 +2982,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             auto texture = this->texture(source.texture, filter);
             if (!texture) {
                 warn_once(source.texture, texture.error().message, "texture", kEvent);
-                problem(entity, "/components/TileMapLayer/tile_set",
+                problem(entity, "/components/TileLayer2D/tile_set",
                         source.texture + ": " + texture.error().message);
                 continue;
             }
@@ -3016,7 +3015,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             if (!outside.empty()) {
                 warn_once(layer.tile_set, outside, "tile_set", kEvent);
-                problem(entity, "/components/TileMapLayer/tile_set", std::move(outside));
+                problem(entity, "/components/TileLayer2D/tile_set", std::move(outside));
                 continue;
             }
             const auto [rx, ry, rw, rh] = tile_region(source, tile.atlas, frame);
@@ -3115,7 +3114,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         item.material.transform = matrices[item.canvas];
     }
 
-    // Collision shapes, over the world's canvas. Those of entities in a CanvasLayer are drawn
+    // Collision shapes, over the world's canvas. Those of entities in a ScreenLayer are drawn
     // where the layer shows them, through the camera's view undone.
     CollisionShapes shapes;
     if (options.collisions) {
@@ -3148,7 +3147,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         overlay = ui::draw_calls(ui::layout(*options.overlay, *fonts, viewport), *options.overlay,
                                  *fonts);
     }
-    // The layout places a CanvasLayer's controls with the camera as it is; following the
+    // The layout places a ScreenLayer's controls with the camera as it is; following the
     // viewport between ticks, they move to where this frame shows the layer.
     std::vector<std::optional<render::Mat4>> control_matrices(canvas_list.size() + 1);
     if (options.interpolation < 1.0 && layout.canvases.size() == canvas_list.size()) {
@@ -3189,7 +3188,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         std::unordered_map<entt::entity, std::size_t> tooltip_items;
         const auto control_item = [&](entt::entity entity, bool popup, bool tooltip,
                                       std::size_t canvas) -> FrameItem& {
-            FrameItem::Kind kind = FrameItem::Kind::Control;
+            FrameItem::Kind kind = FrameItem::Kind::Widget;
             auto* kept = &control_items;
             if (tooltip) {
                 kind = FrameItem::Kind::Tooltip;
@@ -3566,11 +3565,11 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
 
     // The world's picture, drawn over the screen before the world's controls, when the world
     // drew apart: upscaled, or into frame generation's target.
-    struct Picture {
+    struct Backdrop {
         render::TextureId texture = render::TextureId::None;
         render::Material material;
     };
-    std::optional<Picture> picture;
+    std::optional<Backdrop> picture;
     if (upscaler_ != nullptr) {
         const render::UpscaleSize size{
             .render_width = render::render_size(output_width, scaling.scale),
@@ -3591,7 +3590,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         if (!made) {
             return made.error();
         }
-        picture = Picture{.texture = made.value().texture, .material = made.value().material};
+        picture = Backdrop{.texture = made.value().texture, .material = made.value().material};
         frame.view = render::pixel_projection(view_width, view_height);
         scaled_ = {.upscaler = upscaler_name_, .size = size};
     }
@@ -3621,7 +3620,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         if (auto drawn = draw_world(world_frame); !drawn) {
             return drawn;
         }
-        picture = Picture{.texture = distortion_target_, .material = {}};
+        picture = Backdrop{.texture = distortion_target_, .material = {}};
         frame.view = render::pixel_projection(view_width, view_height);
     } else if (!distort && distortion_target_ != render::TextureId::None) {
         device_->destroy_texture(std::exchange(distortion_target_, render::TextureId::None));
@@ -3633,7 +3632,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     // Frame generation: the world's picture goes into the first of its targets, and the frame
     // halfway between it and the one before into the second, shown first.
     generated_ = false;
-    std::optional<Picture> generated;
+    std::optional<Backdrop> generated;
     const bool generate = submission.generate && output_width > 0 && output_height > 0;
     if (generate && generation_size_ != std::array{output_width, output_height}) {
         release_generation_targets();
@@ -3656,7 +3655,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         world_frame.target = generation_targets_[0];
         world_frame.view = render::pixel_projection(view_width, view_height);
         if (picture) {
-            const Picture drawn_picture = picture.value_or(Picture{});
+            const Backdrop drawn_picture = picture.value_or(Backdrop{});
             if (auto began = device_->begin_frame(world_frame); !began) {
                 return began.error();
             }
@@ -3670,11 +3669,11 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         } else if (auto drawn = draw_world(world_frame); !drawn) {
             return drawn;
         }
-        picture = Picture{.texture = generation_targets_[0], .material = {}};
+        picture = Backdrop{.texture = generation_targets_[0], .material = {}};
         frame.view = render::pixel_projection(view_width, view_height);
         if (auto made = device_->generate_frame(generation_targets_[0], generation_targets_[1]);
             made) {
-            generated = Picture{.texture = generation_targets_[1], .material = {}};
+            generated = Backdrop{.texture = generation_targets_[1], .material = {}};
         } else if (warned_.insert("frame generation").second) {
             log::warn("generating a frame failed", {{"error", made.error().message}});
         }
@@ -3684,7 +3683,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     // canvases above and the overlay. Returns whether the frame was drawn.
     const std::size_t first_item = next_item;
     const std::size_t first_call = next_call;
-    const auto show = [&](const std::optional<Picture>& shown) -> Result<bool> {
+    const auto show = [&](const std::optional<Backdrop>& shown) -> Result<bool> {
         next_item = first_item;
         next_call = first_call;
         render::Frame shown_frame = frame;

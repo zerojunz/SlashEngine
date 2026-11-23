@@ -34,7 +34,7 @@ Box rect_box(Vec2 position, Vec2 size, Vec4 color) {
     return box;
 }
 
-// What a LineEdit shows for one character: line breaks and other controls as spaces, so each
+// What a TextField shows for one character: line breaks and other controls as spaces, so each
 // character keeps its place and the text stays one line.
 char32_t displayable(char32_t c) {
     if (c < 0x20U) {
@@ -46,7 +46,7 @@ char32_t displayable(char32_t c) {
     return c;
 }
 
-text::Direction direction_of(const world::LineEdit& edit, bool rtl) {
+text::Direction direction_of(const world::TextField& edit, bool rtl) {
     if (edit.text_direction == "inherited") {
         return rtl ? text::Direction::Rtl : text::Direction::Ltr;
     }
@@ -55,7 +55,7 @@ text::Direction direction_of(const world::LineEdit& edit, bool rtl) {
 
 } // namespace
 
-std::u32string characters(const world::LineEdit& edit) {
+std::u32string characters(const world::TextField& edit) {
     return to_utf32(edit.text);
 }
 
@@ -77,7 +77,7 @@ Field::Field(text::Fonts& fonts, const LineEditView& view, Vec2 size)
     }
 }
 
-void Field::shape(const world::LineEdit& edit, const EditState& state) {
+void Field::shape(const world::TextField& edit, const EditState& state) {
     const std::u32string text = characters(edit);
     std::u32string shown;
     placeholder_ = text.empty() && state.ime_text.empty();
@@ -117,15 +117,15 @@ void Field::shape(const world::LineEdit& edit, const EditState& state) {
     line_ = text::ShapedLine(shown_, layout_, 0);
 }
 
-bool Field::clear_icon_shown(const world::LineEdit& edit) const {
+bool Field::clear_icon_shown(const world::TextField& edit) const {
     return !placeholder_ && edit.editable && edit.clear_button_enabled;
 }
 
-bool Field::icon_shown(const world::LineEdit& edit) const {
+bool Field::icon_shown(const world::TextField& edit) const {
     return (view_->right_icon.has_value() && !edit.right_icon.empty()) || clear_icon_shown(edit);
 }
 
-Vec2 Field::icon_size(const world::LineEdit& edit, bool clear) const {
+Vec2 Field::icon_size(const world::TextField& edit, bool clear) const {
     Vec2 texture =
         clear ? Vec2{kClearIconSize, kClearIconSize} : view_->right_icon.value_or(Vec2{});
     if (!clear && (!view_->right_icon || edit.right_icon.empty())) {
@@ -149,7 +149,7 @@ Vec2 Field::icon_size(const world::LineEdit& edit, bool clear) const {
     return texture;
 }
 
-float Field::x_ofs(const world::LineEdit& edit, const EditState& state, bool draw) const {
+float Field::x_ofs(const world::TextField& edit, const EditState& state, bool draw) const {
     const StyleBox& style = draw && !edit.editable ? view_->read_only : view_->normal;
     const bool rtl = view_->rtl;
     const float left = style.margin(0);
@@ -194,7 +194,7 @@ float Field::x_ofs(const world::LineEdit& edit, const EditState& state, bool dra
     return static_cast<float>(x);
 }
 
-float Field::ofs_max(const world::LineEdit& edit) const {
+float Field::ofs_max(const world::TextField& edit) const {
     int max = to_int(size_.x - view_->normal.margin(2));
     if (icon_shown(edit) && !view_->rtl) {
         max = to_int(static_cast<float>(max) - icon_size(edit, clear_icon_shown(edit)).x);
@@ -209,7 +209,7 @@ float Field::y_ofs() const {
         to_int(style.margin(1) + ((static_cast<float>(y_area) - text_height()) / 2.0F)));
 }
 
-Vec2 Field::caret_pixel_pos(const world::LineEdit& edit, const EditState& state) const {
+Vec2 Field::caret_pixel_pos(const world::TextField& edit, const EditState& state) const {
     const float x = x_ofs(edit, state);
     const int caret = edit.caret_column;
     const auto pick = [&](int position) {
@@ -238,7 +238,7 @@ Vec2 Field::caret_pixel_pos(const world::LineEdit& edit, const EditState& state)
     return out;
 }
 
-void Field::fit(const world::LineEdit& edit, EditState& state) const {
+void Field::fit(const world::TextField& edit, EditState& state) const {
     const float x = x_ofs(edit, state);
     const float max = ofs_max(edit);
     const Vec2 caret = caret_pixel_pos(edit, state);
@@ -256,7 +256,7 @@ void Field::fit(const world::LineEdit& edit, EditState& state) const {
     state.scroll_offset = std::min(0.0F, state.scroll_offset);
 }
 
-int Field::column_at(const world::LineEdit& edit, const EditState& state, float x) const {
+int Field::column_at(const world::TextField& edit, const EditState& state, float x) const {
     auto column = line_.hit_test(x - x_ofs(edit, state) - state.scroll_offset);
     if (!edit.caret_mid_grapheme) {
         column = line_.closest_character(column);
@@ -264,7 +264,7 @@ int Field::column_at(const world::LineEdit& edit, const EditState& state, float 
     return static_cast<int>(column);
 }
 
-bool Field::over_clear_button(const world::LineEdit& edit, Vec2 point) const {
+bool Field::over_clear_button(const world::TextField& edit, Vec2 point) const {
     if (!edit.clear_button_enabled || point.x < 0.0F || point.y < 0.0F || point.x >= size_.x ||
         point.y >= size_.y) {
         return false;
@@ -275,7 +275,7 @@ bool Field::over_clear_button(const world::LineEdit& edit, Vec2 point) const {
                       : point.x > size_.x - icon.y - style.margin(2);
 }
 
-Vec2 Field::minimum_size(const world::LineEdit& edit) const {
+Vec2 Field::minimum_size(const world::TextField& edit) const {
     Vec2 size{static_cast<float>(view_->minimum_character_width) * em_, 0.0F};
     if (edit.expand_to_text_length) {
         // Room for the caret at the end.
@@ -304,7 +304,7 @@ Vec2 Field::minimum_size(const world::LineEdit& edit) const {
     return {std::max(normal.x, read_only.x) + size.x, std::max(normal.y, read_only.y) + size.y};
 }
 
-void Field::draw(const world::LineEdit& edit, const EditState& state, bool focused,
+void Field::draw(const world::TextField& edit, const EditState& state, bool focused,
                  std::vector<Box>& under, LabelText& text, std::vector<Box>& over,
                  LineEditView& out) const {
     const LineEditView& view = *view_;

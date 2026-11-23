@@ -31,8 +31,8 @@ frame.capture {"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/rebuilt.
   for how far each of the card's pixels moved, and FSR 2 reads the frames before from where they
   were, so the edges stay smooth in the first frame after the turn (`shots/turned.png`).
 - 15 more frames settle the turned card's edges in `shots/settled.png`.
-- The `batch` puts a night sky behind the card, a `ProceduralSkyMaterial` with a `moon`: a
-  `DirectionalLight3D` whose disc is 4 degrees across, up and to the left. After 16 frames its
+- The `batch` puts a night sky behind the card, a `SkyGradient` with a `moon`: a
+  `SunLight3D` whose disc is 4 degrees across, up and to the left. After 16 frames its
   edges are smooth (`shots/moon.png`): the sky is drawn through the same jittered camera as the
   meshes, as Godot's.
 - `component.set` turns the camera 0.03 radians to the left, and the moon moves about three

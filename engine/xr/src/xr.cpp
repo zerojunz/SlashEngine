@@ -170,9 +170,9 @@ entt::entity current_origin(const world::World& world, const world::Tree3D& tree
     return first;
 }
 
-// The blend shapes of the model an entity's MeshInstance3D draws, each name once.
+// The blend shapes of the model an entity's Model3D draws, each name once.
 std::vector<std::string> blend_shape_names(const world::World& world,
-                                           const world::MeshInstance3D& instance) {
+                                           const world::Model3D& instance) {
     std::vector<std::string> names;
     asset::Assets* assets = asset::assets_of(world.ecs());
     if (assets == nullptr || instance.mesh.empty()) {
@@ -192,22 +192,22 @@ std::vector<std::string> blend_shape_names(const world::World& world,
     return names;
 }
 
-// XRFaceModifier3D's _update_face_blends, its mapping (_get_blend_data) made from the target's
+// XRFace3D's _update_face_blends, its mapping (_get_blend_data) made from the target's
 // model each time, so a changed model or target is followed at once.
 void drive_faces(world::World& world, const std::map<std::string, Tracker, std::less<>>& trackers) {
     auto& ecs = world.ecs();
-    for (const entt::entity entity : ecs.view<world::XRFaceModifier3D>()) {
-        const auto& modifier = ecs.get<world::XRFaceModifier3D>(entity);
+    for (const entt::entity entity : ecs.view<world::XRFace3D>()) {
+        const auto& modifier = ecs.get<world::XRFace3D>(entity);
         const auto tracker = trackers.find(modifier.face_tracker);
         if (tracker == trackers.end() || tracker->second.type != TrackerType::Face ||
             tracker->second.blend_shapes.size() != kFaceShapeCount) {
             continue;
         }
         const entt::entity target = modifier.target.empty() ? entity : world.find(modifier.target);
-        if (target == entt::null || !ecs.all_of<world::MeshInstance3D>(target)) {
+        if (target == entt::null || !ecs.all_of<world::Model3D>(target)) {
             continue;
         }
-        auto& instance = ecs.get<world::MeshInstance3D>(target);
+        auto& instance = ecs.get<world::Model3D>(target);
         const std::vector<std::string> names = blend_shape_names(world, instance);
         for (const auto& [name, shape] : face_blend_mapping(names)) {
             const float weight = tracker->second.blend_shapes[shape];

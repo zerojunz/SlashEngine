@@ -57,7 +57,7 @@ struct Game {
                 if (hero == entt::null) {
                     return;
                 }
-                auto& body = w.ecs().get<world::CharacterBody2D>(hero);
+                auto& body = w.ecs().get<world::CharacterMover2D>(hero);
                 body.velocity.x = input::get_axis(w, "move_left", "move_right") * kWalkSpeed;
                 if (!body.on_floor) {
                     body.velocity.y += kGravity * static_cast<float>(seconds);
@@ -107,7 +107,7 @@ struct Game {
         const world::World& w = session->world();
         const entt::entity hero = w.find("hero");
         const auto& transform = w.ecs().get<world::Transform2D>(hero);
-        const auto& body = w.ecs().get<world::CharacterBody2D>(hero);
+        const auto& body = w.ecs().get<world::CharacterMover2D>(hero);
         std::printf("tick %llu: hero at (%.1f, %.1f)%s, coin %s\n",
                     static_cast<unsigned long long>(w.tick()), transform.position.x,
                     transform.position.y, body.on_floor ? " on the floor" : " in the air",
@@ -173,8 +173,8 @@ int main() {
     agent.call("replay.run", R"({"path": "replays/run.replay.json", "tick": 55})");
     agent.print_hero();
     agent.call("input.state", R"({"actions": ["jump", "move_right"]})");
-    // The moment the coin went: the first tick with no Area2D left, then one tick back.
-    agent.call("replay.seek", R"({"with": ["Area2D"], "until": "none"})");
+    // The moment the coin went: the first tick with no Zone2D left, then one tick back.
+    agent.call("replay.seek", R"({"with": ["Zone2D"], "until": "none"})");
     agent.print_hero();
     agent.call("replay.seek", R"({"ticks": -1})");
     agent.print_hero();

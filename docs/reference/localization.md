@@ -18,7 +18,7 @@ repeat. `l10n::tr` and `tr_n` look up a message as Godot's `TranslationDomain` (
 translation that has it, then the fallback's, else the source text, so any language can be the
 source), `tr` pseudolocalizes as `TranslationDomain::pseudolocalize`, and `l10n::set_locale`
 emits `translation_changed`. `ui::layout` shows controls' text, placeholders, tooltips and items
-translated by `Control.auto_translate_mode` (Godot's `can_auto_translate`, items' modes as
+translated by `Widget.auto_translate_mode` (Godot's `can_auto_translate`, items' modes as
 `PopupMenu::_atr`), lays out by `l10n::is_layout_rtl` (Godot's `is_layout_rtl`, with
 `application_locale` and `system_locale`) and shapes text whose `language` is `""` in the locale
 once the project localizes (`l10n::text_language`), so fonts' `language_support` picks glyphs.

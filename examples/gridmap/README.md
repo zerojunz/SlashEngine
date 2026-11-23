@@ -1,13 +1,13 @@
-# GridMap
+# BlockMap3D
 
-A level built from blocks in cells, as Godot 4.6's `GridMap` and `MeshLibrary`.
+A level built from blocks in cells, as Godot 4.6's `BlockMap3D` and `MeshLibrary`.
 [blocks.meshlib.json](blocks.meshlib.json) is the library: four items, each a mesh (here a
 primitive with a material), the shapes it collides with and a navigation mesh, all in the
 space of one 2 x 2 x 2 meter cell.
 
 ```json
 "ramp": {
-  "primitive": {"PrismMesh": {"left_to_right": 0, "size": [2, 2, 2]}},
+  "primitive": {"PrismGeometry": {"left_to_right": 0, "size": [2, 2, 2]}},
   "material": {"albedo_color": [0.85, 0.65, 0.3, 1]},
   "shapes": [{"shape": "convex_polygon", "points": [[-1, -1, -1], [1, -1, -1], ...]}],
   "navigation_mesh": "nav/ramp.navmesh.json"
@@ -17,8 +17,8 @@ space of one 2 x 2 x 2 meter cell.
 The floor tile and the platform share [nav/square.navmesh.json](nav/square.navmesh.json),
 moved to their tops by `navigation_mesh_transform`. The ramp has its own slope.
 
-The `level` entity in [main.scene.json](main.scene.json) places them. Like a `TileMapLayer`, a
-`GridMap` writes its cells as text: a `legend` of short keys, and per floor (`y`) rows of keys
+The `level` entity in [main.scene.json](main.scene.json) places them. Like a `TileLayer2D`, a
+`BlockMap3D` writes its cells as text: a `legend` of short keys, and per floor (`y`) rows of keys
 going toward +z, each key a cell toward +x. `"r": "ramp:10"` is the ramp turned 180 degrees
 about y by Godot's orthogonal index 10, so it rises toward the platform:
 

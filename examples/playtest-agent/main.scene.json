@@ -37,7 +37,7 @@
     },
     "hud": {
       "components": {
-        "CanvasLayer": {
+        "ScreenLayer": {
           "children": ["coins"]
         }
       }
@@ -54,7 +54,7 @@
         "Button": {
           "text": "Start"
         },
-        "Control": {
+        "Widget": {
           "offset_bottom": 110.0,
           "offset_left": 120.0,
           "offset_right": 200.0,

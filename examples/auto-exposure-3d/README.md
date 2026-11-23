@@ -6,8 +6,8 @@ daylight at its far end, seen through a `Camera3D` in a 320x180 window. The dayl
 whose `emission_energy_multiplier` is 6, so it shines six times its color, and a lamp just inside
 the mouth lights the last of the tunnel.
 
-The camera's `CameraAttributesPractical` sets `auto_exposure_enabled`, as Godot's camera
-`attributes` do (a `WorldEnvironment`'s entity can hold one too, for every camera without its
+The camera's `CameraLens` sets `auto_exposure_enabled`, as Godot's camera
+`attributes` do (a `Environment3D`'s entity can hold one too, for every camera without its
 own):
 
 - Each frame is measured: Forward+ averages the brightest channel of each pixel, in blocks of 8 by

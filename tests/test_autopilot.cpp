@@ -85,13 +85,13 @@ fs::path write_project(std::string_view name) {
         "jump": {"events": [{"physical_key": "Space", "type": "key"}]}}})");
     write(root / "level.scene.json", R"({"format": 1, "entities": {
         "player": {"components": {"Transform2D": {"position": [100, 200]}, "Walker": {}}},
-        "hud": {"components": {"CanvasLayer": {"children": ["coins"]}}},
+        "hud": {"components": {"ScreenLayer": {"children": ["coins"]}}},
         "coins": {"components": {"Label": {"text": "Coins 4/3"}}},
         "start": {"components": {"Button": {"text": "Start"},
-            "Control": {"offset_left": 200, "offset_top": 100, "offset_right": 300,
+            "Widget": {"offset_left": 200, "offset_top": 100, "offset_right": 300,
                         "offset_bottom": 140}}},
         "volume": {"components": {"Slider": {"value": 50},
-            "Control": {"offset_left": 200, "offset_top": 160, "offset_right": 300,
+            "Widget": {"offset_left": 200, "offset_top": 160, "offset_right": 300,
                         "offset_bottom": 176}}}}})");
     write(root / "src/walker.cpp", "// The walker's code lives in the test.\n");
     write(root / "README.md", "Not Autopilot's README.\n");

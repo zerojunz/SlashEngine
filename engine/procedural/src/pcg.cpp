@@ -245,7 +245,7 @@ json::Value node_schema() {
     p["op"]["enum"] = std::move(op_names);
     p["op"]["description"] =
         "What the node does. Samplers make points: surface (over the ground), grid, points, path "
-        "(along a Path3D or Path2D) and entities (at entities, by ID, component or storyboard "
+        "(along a Spline3D or Spline2D) and entities (at entities, by ID, component or storyboard "
         "entry). Modifiers keep, thin, move and turn the points of the nodes in from: filter, "
         "density, prune, difference, near, transform and merge. Spawners place things at them: "
         "spawn (an entity a point), multimesh, foliage (instances of a .foliage.json type), "
@@ -303,7 +303,7 @@ json::Value node_schema() {
     point_list["items"]["maxItems"] = 3;
     point_list["maxItems"] = kMaxPoints;
     point_list["description"] = "points: [x, y, z] in 3D or [x, y] in 2D, in world space.";
-    p["path"] = text("path: ID of the Path3D or Path2D entity whose curve to follow.");
+    p["path"] = text("path: ID of the Spline3D or Spline2D entity whose curve to follow.");
     p["side"] = number("path: move each point this far to the curve's side (right in 3D, the "
                        "curve's left-hand normal in 2D).");
     p["ids"] = names("entities: these entities.");
@@ -530,7 +530,7 @@ std::vector<json::ValidationError> validate_pcg(const json::Value& doc, const st
             } else if (op == "points") {
                 need("points", "where they are");
             } else if (op == "path") {
-                need("path", "the Path3D or Path2D entity to follow");
+                need("path", "the Spline3D or Spline2D entity to follow");
                 need("spacing", "the distance between points along the curve");
             } else if (op == "entities") {
                 if (!has(node, "ids") && !has(node, "with") && !has(node, "story")) {

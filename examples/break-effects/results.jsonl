@@ -1,5 +1,5 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
-{"id":2,"jsonrpc":"2.0","result":{"components":["Transform3D","MeshInstance3D","RigidBody3D","Vehicle3D"],"id":"van","kind":"car","seats":["driver","passenger"],"wheels":4}}
+{"id":2,"jsonrpc":"2.0","result":{"components":["Transform3D","Model3D","RigidBody3D","Vehicle3D"],"id":"van","kind":"car","seats":["driver","passenger"],"wheels":4}}
 {"id":3,"jsonrpc":"2.0","result":{"added":["Destructible3D"],"changed":{"Destructible3D":{"profile":"profiles/van.damage.json"}},"id":"van"}}
 {"id":4,"jsonrpc":"2.0","result":{"problems":[],"profiles":{"profiles/crate.damage.json":{"fracture":{"levels":2,"pattern":"splinters","pieces":10},"health":80.0,"material":"wood","name":"crate","resist":{"blunt":1.0,"cut":1.2,"explosive":1.2,"fire":2.0,"impact":1.0,"pierce":0.6},"states":0},"profiles/flesh.damage.json":{"fracture":{"levels":1,"pattern":"none","pieces":8},"health":100.0,"material":"flesh","name":"deer","resist":{"blunt":1.0,"cut":1.0,"explosive":1.2,"fire":1.5,"impact":1.0,"pierce":1.0},"states":0},"profiles/van.damage.json":{"fracture":{"levels":1,"pattern":"slices","pieces":4},"health":300.0,"material":"metal","name":"van","resist":{"blunt":0.5,"cut":0.3,"explosive":0.8,"fire":0.2,"impact":1.0,"pierce":0.4},"states":0}}}}
 {"id":5,"jsonrpc":"2.0","result":{"subscription":"events_1"}}

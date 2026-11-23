@@ -1,4 +1,4 @@
-// A LightmapGI's light probes, as Godot 4.6's: where they go (LightmapGI::bake's octree), the
+// A BakedLighting3D's light probes, as Godot 4.6's: where they go (LightmapGI::bake's octree), the
 // Delaunay tetrahedra between them (core/math/delaunay_3d.h), the BSP tree that finds a point's
 // tetrahedron (LightmapGI::_compute_bsp_tree), the light at a point (LightStorage::
 // lightmap_tap_sh_light) and the light a moving mesh takes (RendererSceneCull::
@@ -298,7 +298,7 @@ int det3_sign(const Row& u, const Row& v, const Row& w) {
 // Whether e is inside the sphere through a, b, c and d, never on it: where Shewchuk's insphere
 // and orient3d have the same sign. Godot works it out from the circumsphere in 128-bit fixed point
 // with a tolerance, which lets tetrahedra overlap where points lie in flat layers or on a grid,
-// as a LightmapGI's probes over a floor do; here it is exact.
+// as a BakedLighting3D's probes over a floor do; here it is exact.
 bool in_sphere(Vec3 a, Vec3 b, Vec3 c, Vec3 d, Vec3 e) {
     const int orientation = det3_sign(difference(a, d), difference(b, d), difference(c, d));
     if (orientation == 0) {

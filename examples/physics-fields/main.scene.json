@@ -26,7 +26,7 @@
     },
     "crate_high": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [0.6, 0.6, 0.6]
         },
         "RigidBody3D": {
@@ -39,7 +39,7 @@
     },
     "crate_low": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [0.6, 0.6, 0.6]
         },
         "RigidBody3D": {
@@ -64,7 +64,7 @@
     },
     "floor": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [20.0, 1.0, 20.0]
         },
         "StaticBody3D": {
@@ -88,7 +88,7 @@
     },
     "lantern": {
       "components": {
-        "CollisionShape3D": {
+        "Collider3D": {
           "radius": 0.2,
           "shape": "sphere"
         },
@@ -126,7 +126,7 @@
     },
     "puck": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [32.0, 32.0]
         },
         "RigidBody2D": {
@@ -140,7 +140,7 @@
     },
     "rink": {
       "components": {
-        "CollisionShape2D": {
+        "Collider2D": {
           "size": [2000.0, 40.0]
         },
         "StaticBody2D": {
@@ -153,7 +153,7 @@
     },
     "sparks": {
       "components": {
-        "CPUParticles2D": {
+        "Emitter2D": {
           "amount": 6,
           "emission_shape": "sphere",
           "emission_sphere_radius": 20.0,
@@ -168,16 +168,16 @@
     },
     "window": {
       "components": {
-        "BoxMesh": {
+        "BoxGeometry": {
           "size": [1.5, 1.5, 0.05]
         },
-        "CollisionShape3D": {
+        "Collider3D": {
           "size": [1.5, 1.5, 0.05]
         },
         "Destructible3D": {
           "pieces": 4
         },
-        "MeshInstance3D": {},
+        "Model3D": {},
         "StaticBody3D": {
           "physics_material_override": "materials/glass.physics_material.json"
         },

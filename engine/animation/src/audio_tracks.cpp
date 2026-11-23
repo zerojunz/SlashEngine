@@ -201,8 +201,8 @@ void sweep_audio(world::World& world) {
     for (const auto& [owner, infos] : *owners) {
         const auto [entity, mixer] = owner;
         if (!world.valid(entity) ||
-            (mixer == Mixer::Player ? !world.ecs().all_of<world::AnimationPlayer>(entity)
-                                    : !world.ecs().all_of<world::AnimationTree>(entity))) {
+            (mixer == Mixer::Player ? !world.ecs().all_of<world::Animator>(entity)
+                                    : !world.ecs().all_of<world::AnimationGraph>(entity))) {
             gone.push_back(owner);
         }
     }

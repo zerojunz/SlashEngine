@@ -12,7 +12,7 @@
     },
     "environment": {
       "components": {
-        "WorldEnvironment": {
+        "Environment3D": {
           "ambient_light_color": [0.3, 0.32, 0.4, 1.0],
           "ambient_light_energy": 0.3,
           "ambient_light_source": "color",
@@ -23,7 +23,7 @@
     },
     "moon": {
       "components": {
-        "MeshInstance3D": {
+        "Model3D": {
           "mesh": "props/moon.model.json",
           "virtualized": true
         },
@@ -34,7 +34,7 @@
     },
     "sun": {
       "components": {
-        "DirectionalLight3D": {},
+        "SunLight3D": {},
         "Transform3D": {
           "rotation": [-0.5, -0.9, 0.0]
         }

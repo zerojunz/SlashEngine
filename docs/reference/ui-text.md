@@ -22,19 +22,19 @@ there. A run shapes with the font, then the clusters it lacks with its `.font.js
 font list; none on the web), counted in `TextLayout::system` and turned off by
 `gui.allow_system_fallback`. Tests and examples that print text layout turn them off so their
 output is the same on every machine, and make the fonts they need with `text::box_font` (a
-TrueType font of box glyphs) rather than committing font files. `Control.layout_direction`
+TrueType font of box glyphs) rather than committing font files. `Widget.layout_direction`
 mirrors layout as Godot's `is_layout_rtl`; `examples/text-languages` is a menu in Arabic.
 
 `engine/ui` is UI, as Godot's Control nodes. `Control` places a rect in its parent's (the
 entity listed in a `Control`'s `children`, or the viewport) by anchors, offsets and grow
-directions, turned and scaled around `pivot_offset`; `Label`, `ColorRect`, `Panel`,
-`TextureRect`, `NinePatchRect` and `ProgressBar` draw in it. A container component (`HBoxContainer`,
-`GridContainer`, `FlowContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer` and the
+directions, turned and scaled around `pivot_offset`; `Label`, `ColorFill`, `Panel`,
+`Picture`, `NineSlice` and `ProgressBar` draw in it. A container component (`HBoxContainer`,
+`GridBox`, `FlowBox`, `MarginBox`, `CenterBox`, `PanelBox` and the
 rest) places the control's children instead of their anchors. `ui::layout` (`src/layout.cpp`)
 follows Godot's `Control`, `Label` and container code, line for line where it can: minimum
 sizes, size flags and stretch ratios, wrapping, `max_lines_visible`, trimming and alignment.
 Theme items come from `theme_override_*` fields, then `.theme.json` themes (`src/theme.cpp`; a
-control's own and its parents' `Control.theme`, then the project's `gui.theme`; `$cli schema
+control's own and its parents' `Widget.theme`, then the project's `gui.theme`; `$cli schema
 theme`), then `ui::default_theme`, Godot's defaults; `ui.theme` says which one each item came
 from. Style boxes (`src/style.cpp`) are Godot's `StyleBoxFlat` and `StyleBoxTexture`.
 `ui::draw_calls` (`src/draw.cpp`) turns a layout into triangles, drawing flat style boxes as
@@ -47,7 +47,7 @@ every control's rect, lines and problems, `text.measure` sizes text, and `ui::ch
 `scene validate` and exports. `examples/ui-and-text` is a pause screen and
 `examples/ui-containers` an inventory laid out by containers and styled by a theme.
 
-Buttons and focus are Godot's `BaseButton`, `Button`, `TextureButton` and the GUI half of its
+Buttons and focus are Godot's `BaseButton`, `Button`, `ImageButton` and the GUI half of its
 `Viewport`. The `gui` system (`src/gui.cpp`, priority -900, right after `input`) sends each
 tick's `input::events` to controls: hover by `mouse_filter` (`update_mouse_over`), mouse focus
 and clicks, touches per finger, then keys, gamepads and actions to the control with focus and
@@ -59,7 +59,7 @@ events too. `ui::layout` lays buttons out by `ui::draw_mode` (`layout.buttons`),
 `ui.focus` drive them, and `ui::check_buttons` catches bad shortcuts, groups and focus fields.
 `examples/ui-buttons` is a title menu worked by mouse, keys and touch.
 
-`CheckBox` and `CheckButton` are structs derived from `Button` (reflection reads a base's
+`CheckBox` and `ToggleSwitch` are structs derived from `Button` (reflection reads a base's
 fields), so `button_of` serves every button type; layout adds their icon and Godot's internal
 margin on its side (`CheckWork` in `src/layout.cpp`). `Slider` is Godot's `HSlider` and
 `VSlider` over `Range`: `range_of`, `range_value` and `range_ratio` in `src/ui.cpp` follow
@@ -69,7 +69,7 @@ margin on its side (`CheckWork` in `src/layout.cpp`). `Slider` is Godot's `HSlid
 draws in code from the same shapes (`ui::builtin_icon`, `builtin:` paths, which
 `CanvasRenderer` uploads like files). `examples/ui-settings` is a settings screen.
 
-`ScrollBar` and `ScrollContainer` are Godot's. Layout places a container's children and bars as
+`ScrollBar` and `ScrollBox` are Godot's. Layout places a container's children and bars as
 `ScrollContainer::_reposition_children` and `_update_scrollbars` do and records each one's
 `ui::ScrollView` in `Layout::scrolls`; a control under a clip (`clip_contents`, every scroll
 container) gets a `Placed::clip`, which drawing cuts its triangles to and hit tests honor. In
@@ -81,7 +81,7 @@ component holds Godot's whole pixels: `absorb_scrolls` takes in changes made out
 `process_scrolls` glides touch drags, follows focus (`ensure_control_visible`) and holds each
 scroll to the layout's range every tick. `examples/ui-scrolling` is a quest log.
 
-`OptionButton`, `MenuButton` and `PopupMenu` are Godot's. A `PopupMenu` is an entity of its own,
+`Dropdown`, `MenuButton` and `PopupList` are Godot's. A `PopupList` is an entity of its own,
 not a control, since Godot's is a window; the gui state keeps each open popup's `PopupStatus`
 (focused item, scroll, the held click that opened it) by owner ID, one open at a time as
 embedded windows are. `ui::popup_items` gives an owner's items, an option button's as radio
@@ -102,7 +102,7 @@ popup's items have tooltips) and `DragStatus` its `drag_*` and `global_dragging`
 named after the one it ports (`_gui_show_tooltip`, `_gui_drop`, `gui_perform_drop_at`,
 `force_drag`). The `DragAndDrop` component stands for a script's `_get_drag_data`,
 `_can_drop_data` and `_drop_data`; `ui::set_drag_forwarding` keeps a game's C++ calls by ID in a
-holder snapshots leave alone. Text fields drag their selection as `LineEdit` and `TextEdit` do
+holder snapshots leave alone. Text fields drag their selection as `TextField` and `TextArea` do
 (`drag_attempt`, the drop caret, `NOTIFICATION_DRAG_END` in `end_drag`). Layout makes
 `Layout::tooltip` (`TooltipLabel` in a `TooltipPanel`, placed as `_gui_show_tooltip_at`) and
 `Layout::drag` (the preview root placed at the pointer, or a text field's text): the tooltip
@@ -116,34 +116,34 @@ with a `unicode` character, `ime` events and the `ui_text_*`, `ui_cut`/`copy`/`p
 Option on a Mac (`input::Keyboard`; tests pin `Keyboard::Pc`). `src/line_edit.cpp` is the
 geometry they share with the layout: shaping, scrolling, carets, hit tests and drawing, on
 `text::ShapedLine`'s carets, selections and word breaks (`engine/text/src/editing.cpp`).
-`LineEdit.text` and `caret_column` are the truth; the rest stays in the gui state, and a text
+`TextField.text` and `caret_column` are the truth; the rest stays in the gui state, and a text
 change from outside resets the undo history. `ui::text_input` tells the platform where the caret
 is and which on-screen keyboard to show (`SdlReader::set_text_input`), and
 `ui::set_clipboard_backend` connects SDL's clipboard in a window; `ui.clipboard` reads and sets
 it. `examples/text-input` is a sign-up form typed into with `input.inject`'s `text` and `ime`
 events.
 
-`TextEdit` is Godot's text field of several lines. `src/text_edit.cpp` is its geometry, shared
-with the layout: `TextArea` holds the lines shaped and wrapped (tabs every four spaces through
+`TextArea` is Godot's text field of several lines. `src/text_edit.cpp` is its geometry, shared
+with the layout: `EditArea` holds the lines shaped and wrapped (tabs every four spaces through
 `text::LayoutOptions::tab_stops`) and ports Godot's viewport, scroll bar, hit test, minimum size
 and drawing code. `src/text_editor.cpp` is the editing: `gui_input`, the caret and selection
 calls and Godot's undo history (operations chained into complex steps, typing merged until a
-three-second pause). `TextEdit.text`, `caret_line`, `caret_column` and the scroll are the truth;
+three-second pause). `TextArea.text`, `caret_line`, `caret_column` and the scroll are the truth;
 `TextEditState` keeps the rest in the gui state, and text set from outside goes in as Godot's
 `set_text`, as an undoable step. `text_changed` and `caret_changed` are deferred to the end of
 the tick, as Godot defers them. Its scroll bars are the gui system's virtual bar targets, as a
-`ScrollContainer`'s are. `src/syntax_highlighter.cpp` ports Godot's `CodeHighlighter` line by
-line for the `CodeHighlighter` component, and `text_edit_search` (in `src/text_edit.cpp`) its
-`TextEdit::search` for `search_text` and `ui.search`. Gutters are Godot's: `TextArea` sizes,
-draws and hit tests them (a `CodeEdit`'s `main_gutter` and `line_numbers`, then the
-`TextEdit`'s own), and tags each line with the line it came from (`mark_lines`, `moved_lines`)
+`ScrollBox`'s are. `src/syntax_highlighter.cpp` ports Godot's `CodeHighlighter` line by
+line for the `SyntaxColors` component, and `text_edit_search` (in `src/text_edit.cpp`) its
+`TextEdit::search` for `search_text` and `ui.search`. Gutters are Godot's: `EditArea` sizes,
+draws and hit tests them (a `CodeEditor`'s `main_gutter` and `line_numbers`, then the
+`TextArea`'s own), and tags each line with the line it came from (`mark_lines`, `moved_lines`)
 so the editor's `move_line_marks` keeps breakpoints and gutter entries on their lines as
 Godot's per-line data does. `examples/text-editor` writes a letter and `examples/code-editor`
 colors, numbers, searches and scrolls code.
 
 Accessibility is Godot 4.5's: `src/accessibility.cpp` (`slash/ui/accessibility.hpp`) builds the
 tree its controls fill in `NOTIFICATION_ACCESSIBILITY_UPDATE`, base class first as Godot sends
-it (Node, CanvasItem, Control, then the control's class): roles, names (a button's text, a text
+it (Node, CanvasItem, Widget, then the control's class): roles, names (a button's text, a text
 field's placeholder), values, checked states, ranges, flags, bounds, actions and related
 controls from `Control`'s `accessibility_*` fields, with open popup menus and their items.
 `ui::accessibility_action` runs the actions Godot's controls add (click, focus, increment,

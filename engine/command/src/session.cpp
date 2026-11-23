@@ -27,6 +27,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/services/services.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/xr/xr.hpp"
@@ -336,7 +337,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
     world_.set_file_reader(
         [this](std::string_view path) { return assets_.read(path, world::kPrefabType); });
     // Textures, fonts, sprite frames, animation libraries and the systems that play
-    // AnimatedSprite2D and AnimationPlayer, so step animates, 2D physics, input actions and
+    // Flipbook2D and Animator, so step animates, 2D physics, input actions and
     // sound.
     if (auto file = resolve_path("project.json")) {
         project_stamp_ = platform::file_stamp(file.value());
@@ -530,7 +531,15 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     }
 
     const json::Value empty = json::Object{};
-    const json::Value& args = params.is_null() ? empty : params;
+    // Components and fields may be named by their old names (slash/world/aliases.hpp).
+    json::Value upgraded;
+    const json::Value* given = params.is_null() ? &empty : &params;
+    if (world::params_have_old_names(params)) {
+        upgraded = params;
+        world::upgrade_params(upgraded);
+        given = &upgraded;
+    }
+    const json::Value& args = *given;
     if (const auto errors = json::validate(args, command->params); !errors.empty()) {
         return Reply::invalid_params(errors);
     }

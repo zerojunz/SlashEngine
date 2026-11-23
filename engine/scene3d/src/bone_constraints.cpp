@@ -9,7 +9,7 @@
 #include <numbers>
 #include <string_view>
 
-// Ports of Godot 4.6's LookAtModifier3D and CopyTransformModifier3D. Each function names the one
+// Ports of Godot 4.6's BoneLookAt3D and BoneCopy3D. Each function names the one
 // it follows. Godot works in the skeleton's global space; these work in the model's, which only
 // differs by the skeleton's own transform, so directions come out the same.
 namespace slash::scene3d::detail {
@@ -200,10 +200,10 @@ NodePose rest_of(const Model& model, int bone) {
     return {.position = node.position, .rotation = node.rotation, .scale = node.scale};
 }
 
-// ---- LookAtModifier3D ----
+// ---- BoneLookAt3D ----
 
 struct LookAt {
-    const world::LookAtModifier3D* m = nullptr;
+    const world::BoneLookAt3D* m = nullptr;
     int forward_axis = 4;
     int primary_rotation_axis = 1;
     int secondary_rotation_axis = 0;
@@ -330,7 +330,7 @@ Quat interpolate_via_rest(const Quat& from, const Quat& to, float weight, const 
     return normalized(from * slerp(Quat{}, inverse(rest) * to, weight));
 }
 
-// ---- CopyTransformModifier3D ----
+// ---- BoneCopy3D ----
 
 // SkeletonModifier3D::symmetrize_angle and get_roll_angle.
 float symmetrize_angle(float angle) {
@@ -484,7 +484,7 @@ void process_copy(const world::CopyTransformSetting& s, const Model& model,
 
 } // namespace
 
-void run_look_at(const world::LookAtModifier3D& modifier, const Model& model,
+void run_look_at(const world::BoneLookAt3D& modifier, const Model& model,
                  std::vector<NodePose>& pose, const LookAtPlaces& places, LookAtState& state,
                  double delta) {
     const int bone = find_node(model, modifier.bone);
@@ -587,7 +587,7 @@ void run_look_at(const world::LookAtModifier3D& modifier, const Model& model,
         (void)parse_ease(modifier.ease_type, ease);
         const float weight = run_equation(kind, ease, 1.0F - state.remaining, 0.0F, 1.0F, 1.0F);
         if (is_flippable) {
-            // Interpolate through the rest same as AnimationTree blending for preventing to
+            // Interpolate through the rest same as AnimationGraph blending for preventing to
             // penetrate the bone into the body.
             const Quat rest = normalized(model.nodes[index].rotation);
             destination =
@@ -602,7 +602,7 @@ void run_look_at(const world::LookAtModifier3D& modifier, const Model& model,
     state.prev_q = destination;
 }
 
-void run_copy_transform(const world::CopyTransformModifier3D& modifier, const Model& model,
+void run_copy_transform(const world::BoneCopy3D& modifier, const Model& model,
                         std::vector<NodePose>& pose, const NodePlace& node_place) {
     for (const world::CopyTransformSetting& s : modifier.settings) {
         const float amount = s.amount;

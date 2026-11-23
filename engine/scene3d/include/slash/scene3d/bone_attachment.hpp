@@ -14,12 +14,12 @@
 // modifiers, so what hangs under them moves with the bone.
 namespace slash::scene3d {
 
-// The entity drawing the model a BoneAttachment3D on attachment follows: its external_skeleton,
+// The entity drawing the model a BoneSocket3D on attachment follows: its external_skeleton,
 // or else its Transform3D parent; null when neither is a valid entity.
 [[nodiscard]] entt::entity attachment_skeleton(const world::World& world, const world::Tree3D& tree,
                                                entt::entity attachment);
 
-// Puts each entity with a BoneAttachment3D where its bone is posed, as Godot's
+// Puts each entity with a BoneSocket3D where its bone is posed, as Godot's
 // BoneAttachment3D::on_skeleton_update: its Transform3D becomes what puts it at the drawing
 // entity's transform times the bone's in the model, the pose being pose_of's, then the modifiers'
 // (apply_modifiers), on the models load gives. Parents come before their children, so one

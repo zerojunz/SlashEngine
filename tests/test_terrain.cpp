@@ -160,8 +160,8 @@ struct Scene {
         return entity;
     }
 
-    world::HTerrain& terrain(entt::entity entity) {
-        return world.ecs().get<world::HTerrain>(entity);
+    world::Terrain3D& terrain(entt::entity entity) {
+        return world.ecs().get<world::Terrain3D>(entity);
     }
 };
 
@@ -197,7 +197,7 @@ Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
 
 } // namespace
 
-TEST_CASE("terrain_indices makes HTerrain's mesher's triangles, stitched at seams") {
+TEST_CASE("terrain_indices makes Terrain3D's mesher's triangles, stitched at seams") {
     const auto check = [](int seams, std::size_t triangles) {
         CAPTURE(seams);
         const std::vector<std::uint32_t> indices = scene3d::terrain_indices(16, 16, seams);
@@ -229,7 +229,7 @@ TEST_CASE("terrain_indices makes HTerrain's mesher's triangles, stitched at seam
     CHECK(scene3d::terrain_indices(15, 15, scene3d::kSeamLeft).size() == 15 * 15 * 6);
 }
 
-TEST_CASE("terrain chunks split near the viewer as HTerrain's quad tree settles") {
+TEST_CASE("terrain chunks split near the viewer as Terrain3D's quad tree settles") {
     CHECK(scene3d::terrain_lod_count(513, 32) == 4);
     CHECK(scene3d::terrain_lod_count(513, 16) == 5);
     CHECK(scene3d::terrain_lod_count(65, 64) == 1);
@@ -352,7 +352,7 @@ TEST_CASE("heightmaps are 16-bit gray PNG files spanning height_range") {
     CHECK(white.value().values.front() == 65535);
 }
 
-TEST_CASE("generate_heights is HTerrain's generator, the same on every machine") {
+TEST_CASE("generate_heights is Terrain3D's generator, the same on every machine") {
     scene3d::TerrainNoise noise;
     noise.seed = 7;
     const std::vector<float> heights = scene3d::generate_heights(noise, 65);
@@ -390,7 +390,7 @@ TEST_CASE("generate_heights is HTerrain's generator, the same on every machine")
     }
 }
 
-TEST_CASE("brushes paint heights and maps as HTerrain's painter") {
+TEST_CASE("brushes paint heights and maps as Terrain3D's painter") {
     const auto flat = [] {
         TerrainMaps maps;
         maps.resolution = 65;
@@ -494,7 +494,7 @@ TEST_CASE("brushes paint heights and maps as HTerrain's painter") {
            .slope_max = 0.5F};
     scene3d::paint(maps, dab);
     CHECK(color(16, 16) == Rgba{255, 255, 255, 255});
-    // HTerrain's limits ease over 0.2 of the normal's y, so the slope takes nearly all of it.
+    // Terrain3D's limits ease over 0.2 of the normal's y, so the slope takes nearly all of it.
     dab.center = {48.0F, 16.0F};
     scene3d::paint(maps, dab);
     CHECK(color(48, 16) == Rgba{1, 1, 1, 255});
@@ -508,7 +508,7 @@ TEST_CASE("brushes paint heights and maps as HTerrain's painter") {
     CHECK(scene3d::paint(maps, {.center = {20.0F, 5.0F}, .radius = 0.0F}) == 0);
 }
 
-TEST_CASE("terrain normals are HTerrain's, turned by map_scale") {
+TEST_CASE("terrain normals are Terrain3D's, turned by map_scale") {
     const TerrainData flat = data_of(65, std::vector<float>(65 * 65, 3.0F));
     const render::Image normals = scene3d::terrain_normals(flat, {1.0F, 1.0F, 1.0F});
     REQUIRE(normals.width == 65);
@@ -528,13 +528,13 @@ TEST_CASE("terrain normals are HTerrain's, turned by map_scale") {
     CHECK(packed == Rgba{37, 218, 128, 255});
 }
 
-TEST_CASE("terrain data reads an HTerrain's maps, kept until they change") {
+TEST_CASE("terrain data reads an Terrain3D's maps, kept until they change") {
     Scene scene;
     const std::vector<float> heights =
         heights_of(65, [](int x, int z) { return static_cast<float>(x + z) * 0.1F; });
     scene.files.files.emplace("land.height.png", heightmap_file(heights, 65, {0.0F, 20.0F}));
     const entt::entity entity = scene.create("land", R"({"Transform3D": {},
-        "HTerrain": {"heightmap": "land.height.png", "resolution": 65,
+        "Terrain3D": {"heightmap": "land.height.png", "resolution": 65,
                      "height_range": [0, 20], "splatmap": "land.splat.png"}})");
     const std::shared_ptr<const TerrainData> data = scene3d::terrain_data(scene.world, entity);
     REQUIRE_FALSE(data->empty());
@@ -562,7 +562,7 @@ TEST_CASE("terrain data reads an HTerrain's maps, kept until they change") {
     Scene bare(false);
     bare.files.files.emplace("land.height.png", heightmap_file(heights, 65, {0.0F, 20.0F}));
     const entt::entity plain = bare.create("land", R"({"Transform3D": {},
-        "HTerrain": {"heightmap": "land.height.png", "resolution": 65, "height_range": [0, 20]}})");
+        "Terrain3D": {"heightmap": "land.height.png", "resolution": 65, "height_range": [0, 20]}})");
     CHECK(scene3d::terrain_data(bare.world, plain)->height(10, 20) ==
           doctest::Approx(3.0F).epsilon(0.001));
 }
@@ -573,31 +573,31 @@ TEST_CASE("check_terrains reports terrains that can't be made, at their JSON Poi
                               heightmap_file(std::vector<float>(33 * 33, 0.0F), 33, {0.0F, 1.0F}));
     scene.files.files.emplace("bad.png", image_file(64, {255, 0, 0, 0}));
     scene.files.files.emplace("broken.height.png", "not a png");
-    scene.create("odd", R"({"Transform3D": {}, "HTerrain": {"resolution": 64}})");
+    scene.create("odd", R"({"Transform3D": {}, "Terrain3D": {"resolution": 64}})");
     scene.create("small", R"({"Transform3D": {},
-        "HTerrain": {"heightmap": "small.height.png", "resolution": 65}})");
+        "Terrain3D": {"heightmap": "small.height.png", "resolution": 65}})");
     scene.create("splat", R"({"Transform3D": {},
-        "HTerrain": {"resolution": 65, "splatmap": "bad.png", "chunk_size": 20}})");
+        "Terrain3D": {"resolution": 65, "splatmap": "bad.png", "chunk_size": 20}})");
     scene.create("broken", R"({"Transform3D": {},
-        "HTerrain": {"heightmap": "broken.height.png", "resolution": 65}})");
+        "Terrain3D": {"heightmap": "broken.height.png", "resolution": 65}})");
     scene.create("body", R"({"Transform3D": {}, "StaticBody3D": {},
-        "HTerrain": {"resolution": 65, "textures": [{}, {}, {}, {}, {}]}})");
-    scene.create("fine", R"({"Transform3D": {}, "HTerrain": {"resolution": 65,
+        "Terrain3D": {"resolution": 65, "textures": [{}, {}, {}, {}, {}]}})");
+    scene.create("fine", R"({"Transform3D": {}, "Terrain3D": {"resolution": 65,
         "heightmap": "later.height.png"}})");
     const std::vector<std::string> problems = messages(scene3d::check_terrains(scene.world));
     REQUIRE(problems.size() == 7);
-    CHECK(problems[0] == "/components/HTerrain/resolution: is a power of two plus one from 65 to "
+    CHECK(problems[0] == "/components/Terrain3D/resolution: is a power of two plus one from 65 to "
                          "4097, such as 513, not 64");
-    CHECK(problems[1] == "/components/HTerrain/heightmap: \"small.height.png\" is 33x33 pixels, "
+    CHECK(problems[1] == "/components/Terrain3D/heightmap: \"small.height.png\" is 33x33 pixels, "
                          "but the resolution makes the maps 65x65");
-    CHECK(problems[2] == "/components/HTerrain/chunk_size: is 16, 32 or 64, not 20");
-    CHECK(problems[3] == "/components/HTerrain/splatmap: \"bad.png\" is 64x64 pixels, but the "
+    CHECK(problems[2] == "/components/Terrain3D/chunk_size: is 16, 32 or 64, not 20");
+    CHECK(problems[3] == "/components/Terrain3D/splatmap: \"bad.png\" is 64x64 pixels, but the "
                          "resolution makes the maps 65x65");
-    CHECK(problems[4].starts_with("/components/HTerrain/heightmap: "));
-    CHECK(problems[5] == "/components/HTerrain/textures: has 5 textures; a terrain shades with at "
+    CHECK(problems[4].starts_with("/components/Terrain3D/heightmap: "));
+    CHECK(problems[5] == "/components/Terrain3D/textures: has 5 textures; a terrain shades with at "
                          "most 4");
-    CHECK(problems[6] == "/components/HTerrain: is on a physics body, so it doesn't collide: put "
-                         "the HTerrain on an entity of its own");
+    CHECK(problems[6] == "/components/Terrain3D: is on a physics body, so it doesn't collide: put "
+                         "the Terrain3D on an entity of its own");
     CHECK(scene3d::check_meshes(scene.world).size() == problems.size());
 }
 
@@ -624,7 +624,7 @@ TEST_CASE("terrain_faces are every triangle at full detail, holes left out") {
     CHECK(faces.size() == ((64 * 64 * 2) - 6) * 3);
 }
 
-TEST_CASE("an HTerrain collides as a height field: bodies rest on it and holes let them through") {
+TEST_CASE("an Terrain3D collides as a height field: bodies rest on it and holes let them through") {
     Scene scene;
     physics3d::install(scene.world);
     const std::vector<float> heights = heights_of(65, [](int x, int z) {
@@ -647,7 +647,7 @@ TEST_CASE("an HTerrain collides as a height field: bodies rest on it and holes l
     scene.files.files.emplace("land.color.png", holes);
     const entt::entity entity = scene.create("land", R"({
         "Transform3D": {"position": [-10, 0, -10]},
-        "HTerrain": {"heightmap": "land.height.png", "colormap": "land.color.png",
+        "Terrain3D": {"heightmap": "land.height.png", "colormap": "land.color.png",
                      "resolution": 65, "height_range": [-20, 20], "map_scale": [0.5, 2, 0.5],
                      "collision_layer": 2, "friction": 0.8}})");
     // Rays hit the heights at their cells, map_scale moving and raising them.
@@ -689,12 +689,12 @@ TEST_CASE("an HTerrain collides as a height field: bodies rest on it and holes l
     (void)scene.assets.poll();
     scene.create("ball", R"({"Transform3D": {"position": [0, 20, 0]},
         "RigidBody3D": {"collision_mask": 2},
-        "CollisionShape3D": {"shape": "sphere", "radius": 0.5}})");
+        "Collider3D": {"shape": "sphere", "radius": 0.5}})");
     scene.create("lost", R"({"Transform3D": {"position": [11.25, 20, 11.25]},
         "RigidBody3D": {"collision_mask": 2},
-        "CollisionShape3D": {"shape": "sphere", "radius": 0.4}})");
+        "Collider3D": {"shape": "sphere", "radius": 0.4}})");
     scene.create("ghost", R"({"Transform3D": {"position": [1, 20, 0]}, "RigidBody3D": {},
-        "CollisionShape3D": {"shape": "sphere", "radius": 0.5}})");
+        "Collider3D": {"shape": "sphere", "radius": 0.5}})");
     for (int i = 0; i < 180; ++i) {
         scene.world.step(1.0 / 60.0);
     }
@@ -712,12 +712,11 @@ TEST_CASE("an HTerrain collides as a height field: bodies rest on it and holes l
     CHECK_FALSE(down(0.0F, 0.0F).has_value());
 }
 
-TEST_CASE("navigation bakes take an HTerrain's heights, and as a collider on the mask") {
+TEST_CASE("navigation bakes take an Terrain3D's heights, and as a collider on the mask") {
     Scene scene;
-    const entt::entity level =
-        scene.create("level", R"({"Transform3D": {}, "NavigationRegion3D": {}})");
+    const entt::entity level = scene.create("level", R"({"Transform3D": {}, "NavArea3D": {}})");
     const entt::entity entity = scene.create("land", R"({"Transform3D": {},
-        "HTerrain": {"resolution": 65, "collision_layer": 2}})");
+        "Terrain3D": {"resolution": 65, "collision_layer": 2}})");
     scene.world.ecs().get<world::Transform3D>(level).children.push_back(entity);
     const auto parsed = [&](std::string_view type, std::uint32_t mask) {
         auto read = navigation::parse_mesh(parse(
@@ -752,7 +751,7 @@ TEST_CASE("terrains draw in chunks kept until the terrain changes, with holes cu
                  R"({"Transform3D": {"position": [0, 30, 0], "rotation": [-1.5707963, 0, 0]},
                                "Camera3D": {"projection": "orthogonal", "size": 40}})");
     scene.create("sun", R"({"Transform3D": {"rotation": [-1.5707963, 0, 0]},
-                            "DirectionalLight3D": {}})");
+                            "SunLight3D": {}})");
     render::Image color;
     color.width = 65;
     color.height = 65;
@@ -766,7 +765,7 @@ TEST_CASE("terrains draw in chunks kept until the terrain changes, with holes cu
     }
     scene.files.files.emplace("land.color.png", render::encode_png(color).value());
     const entt::entity entity = scene.create("land", R"({"Transform3D": {},
-        "HTerrain": {"resolution": 65, "colormap": "land.color.png", "centered": true,
+        "Terrain3D": {"resolution": 65, "colormap": "land.color.png", "centered": true,
                      "chunk_size": 16}})");
     // Seen from above: the tinted ground in the middle, the hole on the left showing the clear
     // color through.
@@ -800,7 +799,7 @@ TEST_CASE("terrains draw in chunks kept until the terrain changes, with holes cu
     (void)renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
     CHECK(renderer.meshes() == 0);
     REQUIRE(renderer.problems().size() == 1);
-    CHECK(renderer.problems()[0].path == "/components/HTerrain/chunk_size");
+    CHECK(renderer.problems()[0].path == "/components/Terrain3D/chunk_size");
     scene.terrain(entity).chunk_size = 16;
     scene.world.ecs().get<world::Transform3D>(entity).visible = false;
     (void)renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
@@ -810,7 +809,7 @@ TEST_CASE("terrains draw in chunks kept until the terrain changes, with holes cu
 namespace {
 
 // A terrain chunk of 65 cells at its second level of detail, shaded with two ground layers, a
-// splat map, a color map with a hole and its normal map: what Renderer draws for an HTerrain.
+// splat map, a color map with a hole and its normal map: what Renderer draws for an Terrain3D.
 // Its hills are gentle, as GPUs filter 8-bit textures with 8-bit weights, which the light on a
 // steep, noisy terrain's normal map turns into pixels a few levels apart.
 render::Image draw_terrain(render::RenderDevice& device) {

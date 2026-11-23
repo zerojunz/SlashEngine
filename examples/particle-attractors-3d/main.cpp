@@ -103,7 +103,7 @@ void validate(const command::Session& session) {
 void count_swirl(command::Session& session) {
     const world::World& world = session.world();
     const entt::entity dust = world.find("dust");
-    const auto& emitter = world.ecs().get<const world::GPUParticles3D>(dust);
+    const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(dust);
     const auto process =
         session.assets().load<slash::canvas::ProcessMaterial>(emitter.process_material);
     if (!process) {
@@ -155,14 +155,14 @@ int main() {
     // with the well's on layer 2 only, the dust it gathered drifts on, slowed by damping, and no
     // more is drawn up.
     call(session, "component.set",
-         R"({"id": "well", "components": {"GPUParticlesAttractorSphere3D": {"cull_mask": 2}}})");
+         R"({"id": "well", "components": {"ParticleAttractorSphere3D": {"cull_mask": 2}}})");
     call(session, "step", R"({"ticks": 60})");
     call(session, "particles.eval", R"({"id": "dust"})");
 
     // A vector field's texture must cut into its slices: 16 across an 8 pixel wide image leaves
     // none, which scene validation reports (a field that can't be read or cut pushes as white).
     call(session, "component.set",
-         R"({"id": "swirl", "components": {"GPUParticlesAttractorVectorField3D":
+         R"({"id": "swirl", "components": {"ParticleFlowField3D":
              {"slices_horizontal": 16}}})");
     validate(session);
     return 0;

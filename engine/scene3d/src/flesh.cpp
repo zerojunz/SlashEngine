@@ -217,8 +217,8 @@ void install_flesh(world::World& world, ModelLoader load) {
         [held, load = std::move(load)](world::World& w, double seconds) {
             std::vector<entt::entity> characters;
             for (const entt::entity entity :
-                 w.ecs().view<const world::Flesh3D, const world::MeshInstance3D>()) {
-                const auto& mesh = w.ecs().get<const world::MeshInstance3D>(entity).mesh;
+                 w.ecs().view<const world::Flesh3D, const world::Model3D>()) {
+                const auto& mesh = w.ecs().get<const world::Model3D>(entity).mesh;
                 if (w.ecs().get<const world::Flesh3D>(entity).enabled &&
                     world::is_character_path(asset::file_of(mesh))) {
                     characters.push_back(entity);
@@ -232,7 +232,7 @@ void install_flesh(world::World& world, ModelLoader load) {
             }
             const world::Tree3D tree(w);
             for (const entt::entity entity : characters) {
-                const std::string& path = w.ecs().get<const world::MeshInstance3D>(entity).mesh;
+                const std::string& path = w.ecs().get<const world::Model3D>(entity).mesh;
                 auto model = load(path);
                 auto recipe = world::load_character(w, asset::file_of(path));
                 if (!model || !recipe) {
