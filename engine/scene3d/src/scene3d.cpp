@@ -2694,8 +2694,8 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
             draw.mesh = made.value();
             draw.entity = entity;
             draw.transform = transform;
-            draw.material = surface_material(surface.mesh.material, entity,
-                                             "/components/BlockMap3D/mesh_library");
+            draw.material =
+                surface_material(surface.mesh.material, entity, "/components/BlockMap3D/blocks");
             draw.layers = kLayers;
             draw.shadows = casting;
             draws_.push_back(draw);
@@ -3541,14 +3541,14 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     }
     static const render::ParticleProcess3D kStill{};
     std::shared_ptr<const render::ParticleProcess3D> process;
-    if (!emitter.process_material.empty()) {
-        constexpr std::string_view kProcessField = "/components/GpuEmitter3D/process_material";
+    if (!emitter.particle_rules.empty()) {
+        constexpr std::string_view kProcessField = "/components/GpuEmitter3D/particle_rules";
         if (!processes_) {
             problems_.push_back(
                 {entity, std::string(kProcessField), "process materials can't load here"});
             return;
         }
-        auto loaded = processes_(emitter.process_material);
+        auto loaded = processes_(emitter.particle_rules);
         if (!loaded) {
             problems_.push_back({entity, std::string(kProcessField), loaded.error().message});
             return;

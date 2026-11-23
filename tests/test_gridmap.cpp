@@ -131,7 +131,7 @@ struct Scene {
     world::World world{components};
 
     explicit Scene(bool installed = true) {
-        files.files.emplace("lib.meshlib.json", kLibrary);
+        files.files.emplace("lib.blocks.json", kLibrary);
         files.files.emplace("floor.navmesh.json", kFloorNavigation);
         files.files.emplace("ramp.obj", kRamp);
         world::register_builtin_components(components);
@@ -429,7 +429,7 @@ TEST_CASE("mesh libraries hold items by name, checked as they load") {
 TEST_CASE("a BlockMap3D's octants merge their cells' meshes by material, kept until cells change") {
     Scene scene;
     const entt::entity entity = scene.create("grid", R"({"Transform3D": {},
-        "BlockMap3D": {"mesh_library": "lib.meshlib.json",
+        "BlockMap3D": {"mesh_library": "lib.blocks.json",
                     "legend": {"b": "block", "p": "pillar", "f": "floor", "r": "ramp"},
                     "floors": [{"y": 0, "rows": ["bbp......b", "f", "r"]}]}})");
     const auto mesh = scene.mesh(entity);
@@ -490,7 +490,7 @@ TEST_CASE("a BlockMap3D's octants merge their cells' meshes by material, kept un
     // A world without install_gridmap makes them on each call, reading its files.
     Scene bare(false);
     const entt::entity loose = bare.create("grid", R"({"Transform3D": {},
-        "BlockMap3D": {"mesh_library": "lib.meshlib.json", "legend": {"b": "block"},
+        "BlockMap3D": {"mesh_library": "lib.blocks.json", "legend": {"b": "block"},
                     "floors": [{"y": 0, "rows": ["b"]}]}})");
     CHECK(bare.mesh(loose) != bare.mesh(loose));
     CHECK(bare.mesh(loose)->triangles == 12);
@@ -498,11 +498,11 @@ TEST_CASE("a BlockMap3D's octants merge their cells' meshes by material, kept un
 
 TEST_CASE("orientation and cell_scale turn and scale items; mirrored ones keep facing out") {
     Scene scene;
-    scene.files.files.emplace("long.meshlib.json", R"({"format": 1, "items": {
+    scene.files.files.emplace("long.blocks.json", R"({"format": 1, "items": {
         "beam": {"primitive": {"BoxGeometry": {"size": [2, 0.5, 0.5]}}},
         "mirror": {"primitive": {"BoxGeometry": {}}, "mesh_transform": {"scale": [-1, 1, 1]}}}})");
     const entt::entity entity = scene.create("grid", R"({"Transform3D": {},
-        "BlockMap3D": {"mesh_library": "long.meshlib.json", "cell_scale": 0.5,
+        "BlockMap3D": {"mesh_library": "long.blocks.json", "cell_scale": 0.5,
                     "legend": {"b": "beam:16"}, "floors": [{"y": 0, "rows": ["b"]}]}})");
     // Turned to run along z, at half size.
     const auto [low, high] = bounds(scene.mesh(entity)->octants[0]->surfaces[0].mesh);
@@ -524,31 +524,31 @@ TEST_CASE("orientation and cell_scale turn and scale items; mirrored ones keep f
 
 TEST_CASE("check_gridmaps reports cells that can't be made") {
     Scene scene;
-    scene.files.files.emplace("broken.meshlib.json",
+    scene.files.files.emplace("broken.blocks.json",
                               R"({"format": 1, "items": {"rock": {"mesh": "rock.obj"}}})");
-    scene.create("small", R"({"Transform3D": {}, "BlockMap3D": {"mesh_library": "lib.meshlib.json",
+    scene.create("small", R"({"Transform3D": {}, "BlockMap3D": {"mesh_library": "lib.blocks.json",
         "cell_size": [0, 1, 1]}})");
     scene.create("missing", R"({"Transform3D": {}, "BlockMap3D": {
-        "mesh_library": "missing.meshlib.json"}})");
+        "mesh_library": "missing.blocks.json"}})");
     scene.create("none", R"({"Transform3D": {}, "BlockMap3D": {"legend": {"b": "block"},
         "floors": [{"y": 0, "rows": ["bz"]}]}})");
-    scene.create("typo", R"({"Transform3D": {}, "BlockMap3D": {"mesh_library": "lib.meshlib.json",
+    scene.create("typo", R"({"Transform3D": {}, "BlockMap3D": {"mesh_library": "lib.blocks.json",
         "legend": {"b": "blok"}, "floors": [{"y": 0, "rows": ["b"]}]}})");
     scene.create("rock", R"({"Transform3D": {}, "BlockMap3D": {
-        "mesh_library": "broken.meshlib.json", "legend": {"r": "rock"},
+        "mesh_library": "broken.blocks.json", "legend": {"r": "rock"},
         "floors": [{"y": 0, "rows": ["r"]}]}})");
     scene.create("body", R"({"Transform3D": {}, "StaticBody3D": {}, "BlockMap3D": {}})");
     CHECK(messages(scene3d::check_gridmaps(scene.world)) ==
           std::vector<std::string>{
               "/components/BlockMap3D/cell_size: a cell is at least 0.001 meters along each axis",
-              "/components/BlockMap3D/mesh_library: asset \"missing.meshlib.json\" could not be "
+              "/components/BlockMap3D/blocks: asset \"missing.blocks.json\" could not be "
               "read: no such file",
               "/components/BlockMap3D/floors/0/rows/0: column 1: \"z\" is not in the legend",
-              "/components/BlockMap3D/mesh_library: names no mesh library, so its cells hold "
-              "nothing: name a .meshlib.json file",
-              "/components/BlockMap3D/legend/b: \"blok\" is not an item of \"lib.meshlib.json\"; "
+              "/components/BlockMap3D/blocks: names no mesh library, so its cells hold "
+              "nothing: name a .blocks.json file",
+              "/components/BlockMap3D/legend/b: \"blok\" is not an item of \"lib.blocks.json\"; "
               "did you mean \"block\"?",
-              "/components/BlockMap3D/mesh_library: item \"rock\"'s mesh: asset \"rock.obj\" could "
+              "/components/BlockMap3D/blocks: item \"rock\"'s mesh: asset \"rock.obj\" could "
               "not be read: no such file",
               "/components/BlockMap3D: is on a physics body, so its cells don't collide: put the "
               "BlockMap3D on an entity of its own"});
@@ -559,7 +559,7 @@ TEST_CASE("a BlockMap3D's cells' shapes are a static body that bodies rest on an
     physics3d::install(scene.world);
     // A floor of 3 by 3 tiles whose tops are at y 1, with a block on the middle one.
     const entt::entity entity = scene.create("grid", R"({"Transform3D": {"position": [-3, 0, -3]},
-        "BlockMap3D": {"mesh_library": "lib.meshlib.json", "collision_layer": 2, "friction": 0.5,
+        "BlockMap3D": {"mesh_library": "lib.blocks.json", "collision_layer": 2, "friction": 0.5,
                     "legend": {"f": "floor", "b": "block"},
                     "floors": [{"y": 0, "rows": ["fff", "fff", "fff"]},
                                {"y": 1, "origin": [1, 1], "rows": ["b"]}]}})");
@@ -614,7 +614,7 @@ TEST_CASE("with bake_navigation, cells whose items have navigation meshes are re
     Scene scene;
     navigation::install(scene.world, scene.assets);
     const entt::entity entity = scene.create("grid", R"({"Transform3D": {},
-        "BlockMap3D": {"mesh_library": "lib.meshlib.json", "legend": {"f": "floor"},
+        "BlockMap3D": {"mesh_library": "lib.blocks.json", "legend": {"f": "floor"},
                     "floors": [{"y": 0, "rows": ["ffff", "...f"]}]}})");
     navigation::PathOptions options;
     options.navigation_layers = 1;
@@ -640,7 +640,7 @@ TEST_CASE("navigation bakes take a BlockMap3D's meshes, and its shapes when it c
     Scene scene;
     const entt::entity level = scene.create("level", R"({"Transform3D": {}, "NavArea3D": {}})");
     const entt::entity entity = scene.create("grid", R"({"Transform3D": {},
-        "BlockMap3D": {"mesh_library": "lib.meshlib.json", "collision_layer": 2,
+        "BlockMap3D": {"mesh_library": "lib.blocks.json", "collision_layer": 2,
                     "legend": {"f": "floor", "p": "pillar"}, "floors": [{"y": 0, "rows": ["fp"]}]}})");
     scene.world.ecs().get<world::Transform3D>(level).children.push_back(entity);
     const auto parsed = [&](std::string_view type, std::uint32_t mask) {
@@ -663,7 +663,7 @@ TEST_CASE("navigation bakes take a BlockMap3D's meshes, and its shapes when it c
 TEST_CASE("GridMaps draw their octants, the same pixels as a mesh in the cell") {
     const auto draw = [](bool gridmap) {
         Scene scene;
-        scene.files.files.emplace("cube.meshlib.json", R"({"format": 1, "items": {"cube": {
+        scene.files.files.emplace("cube.blocks.json", R"({"format": 1, "items": {"cube": {
             "primitive": {"BoxGeometry": {}}, "material": {"albedo_color": [1, 0.5, 0.2, 1]}}}})");
         scene.create("camera",
                      R"({"Transform3D": {"position": [1.5, 1.7, 3.5], "rotation": [-0.35, 0.3, 0]},
@@ -672,7 +672,7 @@ TEST_CASE("GridMaps draw their octants, the same pixels as a mesh in the cell") 
                                 "SunLight3D": {}})");
         if (gridmap) {
             scene.create("grid", R"({"Transform3D": {}, "BlockMap3D": {
-                "mesh_library": "cube.meshlib.json", "cell_size": [1, 1, 1],
+                "mesh_library": "cube.blocks.json", "cell_size": [1, 1, 1],
                 "legend": {"c": "cube"}, "floors": [{"y": 0, "rows": ["c"]}]}})");
         } else {
             scene.create("cube", R"({"Transform3D": {"position": [0.5, 0.5, 0.5]},
@@ -704,7 +704,7 @@ TEST_CASE("GridMaps draw their octants, the same pixels as a mesh in the cell") 
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 9]}, "Camera3D": {}})");
     const entt::entity entity = scene.create("grid", R"({"Transform3D": {},
-        "BlockMap3D": {"mesh_library": "lib.meshlib.json", "legend": {"b": "block", "f": "floor"},
+        "BlockMap3D": {"mesh_library": "lib.blocks.json", "legend": {"b": "block", "f": "floor"},
                     "floors": [{"y": 0, "rows": ["bf......b"]}]}})");
     const auto device = render::create_null_device();
     scene3d::Renderer renderer(*device, nullptr);

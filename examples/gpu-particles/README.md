@@ -4,16 +4,16 @@ Particles run on the GPU, as Godot's `GPUParticles2D`. In [main.scene.json](main
 rises from a circle and fades from yellow to dark red, a one-shot burst of sparks goes off the same
 way each time, snow was already falling when the scene opened, smoke curls as it rises, rain lands
 on a ledge, rockets burst into sparks, comets draw trails and fireflies circle their emitter. How
-each one's particles start and move is a `.process_material.json` file, Godot's
-`ParticleProcessMaterial` in 2D: [fire.process_material.json](fire.process_material.json),
-[sparks.process_material.json](sparks.process_material.json),
-[snow.process_material.json](snow.process_material.json),
-[smoke.process_material.json](smoke.process_material.json),
-[rain.process_material.json](rain.process_material.json),
-[rockets.process_material.json](rockets.process_material.json),
-[burst.process_material.json](burst.process_material.json),
-[comets.process_material.json](comets.process_material.json) and
-[fireflies.process_material.json](fireflies.process_material.json). [main.cpp](main.cpp) makes the
+each one's particles start and move is a `.particles.json` file, Godot's
+`ParticleProcessMaterial` in 2D: [fire.particles.json](fire.particles.json),
+[sparks.particles.json](sparks.particles.json),
+[snow.particles.json](snow.particles.json),
+[smoke.particles.json](smoke.particles.json),
+[rain.particles.json](rain.particles.json),
+[rockets.particles.json](rockets.particles.json),
+[burst.particles.json](burst.particles.json),
+[comets.particles.json](comets.particles.json) and
+[fireflies.particles.json](fireflies.particles.json). [main.cpp](main.cpp) makes the
 dot and streak textures, checks the particles with `particles.eval` and `frame.capture`, hears the
 sparks finish and sets them off again, then draws the scene. [expected.txt](expected.txt) holds its
 output.
@@ -97,7 +97,7 @@ particles.eval {"id":"fire"}
 - A `one_shot` emitter stops emitting after one `lifetime` and emits `finished` once its
   particles have had time to die: `lifetime` times 2 - `explosiveness` after it started.
   Setting `emitting` sets it off again.
-- `slash-cli scene validate` checks a `.process_material.json` file and reports every mistake
+- `slash-cli scene validate` checks a `.particles.json` file and reports every mistake
   with its JSON Pointer; exports check every process material.
 - Godot projects import with their `GpuEmitter2D` nodes and `ParticleProcessMaterial`
   resources (`slash-cli import`), turbulence, collisions, sub-emitters and trails included;

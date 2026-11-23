@@ -11,7 +11,7 @@ report and the files it would write. `src/godot_text.cpp` parses Godot's text fo
 (`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
 beside each `.tscn`, a `.frames.json` per `SpriteFrames`, a `.tileset.json` per `TileSet`, a
 `.theme.json` per `Theme`, a `.bus_layout.json` per `AudioBusLayout`, a `.anim.json` per
-`AnimationPlayer` (tracks keep their node paths as targets), a `.process_material.json` per
+`AnimationPlayer` (tracks keep their node paths as targets), a `.particles.json` per
 `ParticleProcessMaterial` (read in 3D for a `GPUParticles3D`, `process_material_file`'s
 `three_d`; a vector field's slices come from its texture's `.import` file), `project.godot`'s settings,
 input map and translations merged into `project.json`, and a storyboard task per script (`task/port-<name>`)
@@ -104,7 +104,7 @@ lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal 
 (`convert_animation`) and an Animation Blueprint's sequences with an `AnimationTree` state machine
 (`anim_tree`), makes each landscape an `HTerrain` from the `.r16` heights the script
 writes (`convert_landscape`), makes each Niagara emitter a `CPUParticles3D` or a `GPUParticles3D` with
-a `.process_material.json` from its module stack, which the importer reads from the text (T3D)
+a `.particles.json` from its module stack, which the importer reads from the text (T3D)
 the script writes of the system (`niagara_from_text` in `src/unreal_text.cpp`, `convert_niagara`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
 sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Each `UCLASS` is
 also a C++ skeleton: `src/unreal_cpp.cpp` (`read_unreal_class`) reads its header and source into

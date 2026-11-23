@@ -27,6 +27,7 @@
       "components": {
         "BlockMap3D": {
           "bake_navigation": true,
+          "blocks": "blocks.blocks.json",
           "floors": [
             {
               "rows": ["ffffpp", "ffffrp", "ffwfff", "ffwfff"]
@@ -37,8 +38,7 @@
             "p": "platform",
             "r": "ramp:10",
             "w": "wall"
-          },
-          "mesh_library": "blocks.meshlib.json"
+          }
         },
         "Transform3D": {}
       }

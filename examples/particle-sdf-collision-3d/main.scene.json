@@ -50,7 +50,7 @@
           "collision_size": 0.03,
           "fixed_rate": 60,
           "lifetime": 4.0,
-          "process_material": "snow.process_material.json"
+          "particle_rules": "snow.particles.json"
         },
         "QuadGeometry": {
           "size": [0.06, 0.06]
@@ -84,7 +84,7 @@
           "collision_size": 0.05,
           "fixed_rate": 60,
           "lifetime": 2.0,
-          "process_material": "sparks.process_material.json"
+          "particle_rules": "sparks.particles.json"
         },
         "QuadGeometry": {
           "size": [0.1, 0.1]

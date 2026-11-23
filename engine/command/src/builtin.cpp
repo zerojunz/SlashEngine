@@ -474,7 +474,7 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "material") {
         return Reply::success(canvas::material_schema());
     }
-    if (kind == "process_material") {
+    if (kind == "particles") {
         return Reply::success(canvas::process_material_schema());
     }
     if (kind == "animation") {
@@ -501,7 +501,7 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "navmesh") {
         return Reply::success(navigation::mesh_schema());
     }
-    if (kind == "navpoly") {
+    if (kind == "navmesh2d") {
         return Reply::success(navigation::polygon_schema());
     }
     if (kind == "npc") {
@@ -513,13 +513,13 @@ Reply schema_get(Session& session, const json::Value& params) {
     if (kind == "dialogue") {
         return Reply::success(npc::dialogue_schema());
     }
-    if (kind == "meshlib") {
+    if (kind == "blocks") {
         return Reply::success(scene3d::mesh_library_schema());
     }
     if (kind == "lightmap") {
         return Reply::success(scene3d::lightmap_schema());
     }
-    if (kind == "voxel_gi") {
+    if (kind == "voxel_light") {
         return Reply::success(scene3d::voxel_gi_schema());
     }
     if (kind == "standard_material") {
@@ -2514,11 +2514,11 @@ Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value
         const auto& gpu = world.ecs().get<world::GpuEmitter3D>(entity);
         local_coords = gpu.local_space;
         render::ParticleProcess3D process;
-        if (!gpu.process_material.empty()) {
-            auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu.process_material);
+        if (!gpu.particle_rules.empty()) {
+            auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu.particle_rules);
             if (!loaded) {
                 return param_error(code::kInvalidArgument, "/id",
-                                   quoted(id) + "'s process_material: " + loaded.error().message);
+                                   quoted(id) + "'s particle_rules: " + loaded.error().message);
             }
             process = loaded.value()->space;
         }
@@ -2621,8 +2621,8 @@ Reply particles_eval(Session& session, const json::Value& params) {
         std::vector<canvas::ParticleTrail>* want = gpu->trail_enabled ? &trails : nullptr;
         if (time != nullptr) {
             render::ParticleProcess process;
-            if (!gpu->process_material.empty()) {
-                auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu->process_material);
+            if (!gpu->particle_rules.empty()) {
+                auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu->particle_rules);
                 if (!loaded) {
                     return Reply::failure(code::kInvalidArgument, loaded.error().message);
                 }
@@ -3516,7 +3516,7 @@ Reply skeleton_get(Session& session, const json::Value& params) {
 
 // What a CSG root makes, as Godot's root shape's mesh: its size, its surfaces by material and
 // what couldn't be made.
-Reply csg_get(Session& session, const json::Value& params) {
+Reply solid_get(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
     const entt::entity entity = world.find(id);
@@ -3716,8 +3716,8 @@ std::optional<Reply> find_gridmap(Session& session, const std::string& id, GridT
     if (map == nullptr) {
         return param_error(code::kInvalidParams, "/id", quoted(id) + " has no BlockMap3D");
     }
-    if (!map->mesh_library.empty()) {
-        auto library = session.assets().load<scene3d::MeshLibrary>(map->mesh_library);
+    if (!map->blocks.empty()) {
+        auto library = session.assets().load<scene3d::MeshLibrary>(map->blocks);
         if (!library) {
             return param_error(library.error(), "/id");
         }
@@ -3780,7 +3780,7 @@ std::optional<Reply> target_grid_cells(const json::Value& params, std::vector<Ve
 }
 
 // Sets cells to one item, as Godot's GridMap::set_cell_item, or erases them.
-Reply gridmap_set(Session& session, const json::Value& params) {
+Reply blockmap_set(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     GridTarget target;
     if (auto failed = find_gridmap(session, id, target)) {
@@ -3795,8 +3795,7 @@ Reply gridmap_set(Session& session, const json::Value& params) {
         const std::string& name = item.as_string();
         if (!target.library) {
             return param_error(code::kInvalidParams, "/id",
-                               quoted(id) +
-                                   "'s BlockMap3D has no mesh_library to place items from");
+                               quoted(id) + "'s BlockMap3D has no blocks file to place items from");
         }
         const auto& items = target.library->items;
         if (!items.contains(name)) {
@@ -3836,7 +3835,7 @@ Reply gridmap_set(Session& session, const json::Value& params) {
 // A BlockMap3D's cells as its legend and floors, with its library's items and the problems making
 // them; or given cells' items and centers, as Godot's get_cell_item and map_to_local; or the
 // cells points are in, as local_to_map.
-Reply gridmap_get(Session& session, const json::Value& params) {
+Reply blockmap_get(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     GridTarget target;
     if (auto failed = find_gridmap(session, id, target)) {
@@ -7172,74 +7171,41 @@ void register_builtin_commands(Registry& registry) {
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
                                           "\"material\" (.material.json), \"animation\" "
                                           "(.anim.json), \"animtree\" (.animtree.json), "
-                                          "\"process_material\" "
-                                          "(.process_material.json), \"tileset\" "
+                                          "\"particles\" "
+                                          "(.particles.json), \"tileset\" "
                                           "(.tileset.json), \"font\" "
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
-                                          "\"navmesh\" (.navmesh.json), \"navpoly\" "
-                                          "(.navpoly.json), \"meshlib\" (.meshlib.json), "
-                                          "\"lightmap\" (.lightmap.json), \"voxel_gi\" "
-                                          "(.voxelgi.json), \"model\" (.model.json), "
+                                          "\"navmesh\" (.navmesh.json), \"navmesh2d\" "
+                                          "(.navmesh2d.json), \"blocks\" (.blocks.json), "
+                                          "\"lightmap\" (.lightmap.json), \"voxel_light\" "
+                                          "(.voxellight.json), \"model\" (.model.json), "
                                           "\"standard_material\" (.standard_material.json), "
                                           "\"texture\" (.texture.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",
-                               "prefab",
-                               "frames",
-                               "material",
-                               "animation",
-                               "animtree",
-                               "process_material",
-                               "tileset",
-                               "font",
-                               "theme",
-                               "audio",
-                               "bus_layout",
-                               "navmesh",
-                               "navpoly",
-                               "npc",
-                               "quest",
-                               "dialogue",
-                               "meshlib",
-                               "lightmap",
-                               "voxel_gi",
-                               "model",
-                               "replay",
-                               "test",
-                               "score",
-                               "storyboard",
-                               "component",
-                               "command",
-                               "standard_material",
-                               "texture",
-                               "scatter",
-                               "pcg",
-                               "physics_material",
-                               "ragdoll",
-                               "foliage",
-                               "groom",
-                               "damage",
-                               "character",
-                               "face",
-                               "creature",
-                               "vehicle",
-                               "vfx",
-                               "fluid",
-                               "water",
-                               "pipeline"};
+    kind["enum"] = json::Array{"scene",      "prefab",    "frames",    "material",
+                               "animation",  "animtree",  "particles", "tileset",
+                               "font",       "theme",     "audio",     "bus_layout",
+                               "navmesh",    "navmesh2d", "npc",       "quest",
+                               "dialogue",   "blocks",    "lightmap",  "voxel_light",
+                               "model",      "replay",    "test",      "score",
+                               "storyboard", "component", "command",   "standard_material",
+                               "texture",    "scatter",   "pcg",       "physics_material",
+                               "ragdoll",    "foliage",   "groom",     "damage",
+                               "character",  "face",      "creature",  "vehicle",
+                               "vfx",        "fluid",     "water",     "pipeline"};
     registry.add({
         .name = "schema.get",
         .description =
             "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-            ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
+            ".anim.json, .animtree.json, .particles.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
-            ".bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, "
+            ".bus_layout.json, .navmesh.json, .navmesh2d.json, .npc.json, .blocks.json, "
             ".lightmap.json, "
-            ".voxelgi.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
+            ".voxellight.json, .model.json, .standard_material.json, .texture.json, .scatter.json, "
             ".pcg.json, .physics_material.json, .ragdoll.json, .foliage.json, .groom.json, "
             ".damage.json, "
             ".character.json, .face.json, .creature.json, .vehicle.json, .vfx.json, .fluid.json, "
@@ -8310,7 +8276,7 @@ void register_builtin_commands(Registry& registry) {
         .handler = path_get,
     });
     registry.add({
-        .name = "csg.get",
+        .name = "solid.get",
         .description = "Returns the mesh a CSG root makes from the shapes under it: triangles, "
                        "vertices, aabb and volume in its space, surfaces by material, and "
                        "shapes that couldn't be made.",
@@ -8319,7 +8285,7 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema({{"id", id_property("A CSG root: a CSG shape whose parent "
                                                     "isn't one.")}},
                                 {"id"}),
-        .handler = csg_get,
+        .handler = solid_get,
     });
 
     // A grid cell is [x, y, z]; a box is [x, y, z, width, height, depth].
@@ -8354,7 +8320,7 @@ void register_builtin_commands(Registry& registry) {
     orientation["maximum"] = scene3d::kOrientations - 1;
     const json::Value gridmap_id = id_property("An entity with a BlockMap3D.");
     registry.add({
-        .name = "gridmap.set",
+        .name = "blockmap.set",
         .description = "Sets cells of an entity's BlockMap3D to one item of its mesh library, "
                        "turned by orientation, or erases them. Returns how many changed.",
         .capabilities = {Edit},
@@ -8365,7 +8331,7 @@ void register_builtin_commands(Registry& registry) {
                                  {"item", std::move(grid_item)},
                                  {"orientation", std::move(orientation)}},
                                 {"id", "item"}),
-        .handler = gridmap_set,
+        .handler = blockmap_set,
     });
     grid_cells["description"] = "Cells as [x, y, z]: returns each one's item and center.";
     grid_cells["maxItems"] = 1024;
@@ -8379,7 +8345,7 @@ void register_builtin_commands(Registry& registry) {
     grid_points["minItems"] = 1;
     grid_points["maxItems"] = 1024;
     registry.add({
-        .name = "gridmap.get",
+        .name = "blockmap.get",
         .description = "Returns a BlockMap3D's cells as floors of rows of legend keys, its "
                        "library's items and problems; or given cells' items and centers; or the "
                        "cells points are in.",
@@ -8394,7 +8360,7 @@ void register_builtin_commands(Registry& registry) {
                                                "the BlockMap3D's. Default false.")},
             },
             {"id"}),
-        .handler = gridmap_get,
+        .handler = blockmap_get,
     });
 
     json::Value inject_events = property("array", "Events in order. Mouse and finger positions "

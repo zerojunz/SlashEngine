@@ -9,7 +9,7 @@
           "amount": 48,
           "burst": 1.0,
           "lifetime": 8.0,
-          "process_material": "bees.process_material.json"
+          "particle_rules": "bees.particles.json"
         },
         "ParticleSimulation3D": {
           "alignment": 1.0,

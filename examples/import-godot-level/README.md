@@ -10,12 +10,12 @@ JSON-RPC; [results.jsonl](results.jsonl) holds the replies.
 
 - The tower is a `CSGCombiner3D` of a `CSGCylinder3D` with a `CSGBox3D` door subtracted from it
   (`operation = 2` is `"subtraction"`). Each shape keeps its fields and its `material` becomes its
-  `StandardMaterial3D`; `csg.get` reports the cylinder's red faces and the door's, which have no
+  `StandardMaterial3D`; `solid.get` reports the cylinder's red faces and the door's, which have no
   material, cut into it.
 - The wall is a `CSGPolygon3D` pushed along the `WallLine` path: its `Curve3D` becomes the
   `Path3D`'s `points` and `path_node` names the path's entity. The guard is a `PathFollow3D` on
   the closed `Patrol` path, placed three meters along it, at its second corner, facing along it.
-- `blocks.tres` becomes `godot/blocks.meshlib.json`, each `item/<id>/` an item named after its
+- `blocks.tres` becomes `godot/blocks.blocks.json`, each `item/<id>/` an item named after its
   name with its mesh, material and box shape. The `GridMap`'s `data`, Godot's cells packed three
   numbers each, becomes its floor of keys: grass, with a row of stone across the middle.
 - The cart is a `VehicleBody3D` with four `VehicleWheel3D`s. It weighs Godot's 40 kilograms

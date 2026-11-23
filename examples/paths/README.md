@@ -28,11 +28,11 @@ every `path_interval` meters, and `path_joined` closes it into a loop.
 
 - `path.get` returns the track's length, where it is and which way it faces at each quarter,
   with its up vectors, and the nearest point of the curve to a spot behind the hill.
-- `csg.get` on the rail: its triangles, bounds and volume, the bar's area times the track's
+- `solid.get` on the rail: its triangles, bounds and volume, the bar's area times the track's
   length.
 - After 30 ticks the cart is 2 meters round, and `frame.capture` reads the cart, the rail in
   front and on the hill, the grass and the sky.
-- The hill goes up with `component.set` on the track's points. The rail follows, `csg.get`
+- The hill goes up with `component.set` on the track's points. The rail follows, `solid.get`
   shows it taller, the cart keeps to the new curve and the rail is now higher on screen.
 - The guard's `SplineFollower2D` is put 120 pixels along the patrol, turned along it, and
   `path.get` with `global` gives a point of the patrol in the world's space.

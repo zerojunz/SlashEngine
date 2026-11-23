@@ -5075,7 +5075,7 @@ private:
         return json::Value(std::move(points));
     }
 
-    // A ParticleProcessMaterial as a .process_material.json file, its CurveTextures,
+    // A ParticleProcessMaterial as a .particles.json file, its CurveTextures,
     // CurveXYZTextures and GradientTextures as their curves and gradients: for a GPUParticles2D
     // its 3D vectors cut to 2D, for a GPUParticles3D (three_d) as they are. A material both use
     // is written twice, the 3D one with "_3d" after its name.
@@ -6172,7 +6172,7 @@ private:
         return true;
     }
 
-    // GPUParticles3D's process material (as a 3D .process_material.json file), its visibility
+    // GPUParticles3D's process material (as a 3D .particles.json file), its visibility
     // box, its draw passes' meshes (draw_pass_1 as a CPUParticles3D's mesh, the others as model
     // files), material_override, else the first pass's own material, and its seed.
     bool gpu_particles_3d_property(const Node& node, const Property& property,
@@ -6664,7 +6664,7 @@ private:
     }
 
     // A VoxelGI's data: the VoxelGIData's settings on the VoxelGI and its baked cells as a
-    // .voxelgi.json file.
+    // .voxellight.json file.
     void convert_voxel_gi_data(const Value& reference, const TextFile& file,
                                json::Object& components, const Node& node) {
         if (reference.kind == Value::Kind::Nil) {
@@ -6684,9 +6684,9 @@ private:
         }
     }
 
-    // A VoxelGIData's cells as a .voxelgi.json file, written once: the bounds, octree size, level
-    // counts and data cells Godot's VoxelGIData::_get_data keeps, whose layout is the file's, and
-    // the exposure their emission was baked at. Godot's octree and distance field are left out,
+    // A VoxelGIData's cells as a .voxellight.json file, written once: the bounds, octree size,
+    // level counts and data cells Godot's VoxelGIData::_get_data keeps, whose layout is the file's,
+    // and the exposure their emission was baked at. Godot's octree and distance field are left out,
     // since they follow from the cells. "" and a report when there are none or they don't make a
     // VoxelGI's cells.
     std::string voxel_gi_file(const TextFile& file, const Section& section, float exposure,
@@ -6709,7 +6709,7 @@ private:
         const Value* cells_value = data != nullptr ? data->get("octree_data") : nullptr;
         const auto bytes = cells_value != nullptr ? byte_array(*cells_value) : std::nullopt;
         if (!bounds || !size || !levels || !bytes || bytes->empty()) {
-            problems_.add("VoxelGIData with no cells", where, "bake it with voxel_gi.bake");
+            problems_.add("VoxelGIData with no cells", where, "bake it with voxel_lighting.bake");
             return {};
         }
         scene3d::VoxelGIData out;
@@ -6737,7 +6737,7 @@ private:
                               (errors.empty() ? std::string()
                                               : " (" + errors.front().path + ": " +
                                                     errors.front().message + ")") +
-                              "; bake it again with voxel_gi.bake");
+                              "; bake it again with voxel_lighting.bake");
             return {};
         }
         written = destination(base + std::string(scene3d::kVoxelGISuffix));
@@ -6949,7 +6949,7 @@ private:
         grid["floors"] = std::move(floors);
     }
 
-    // A MeshLibrary as a .meshlib.json file: each "item/<id>/" property set as an item named
+    // A MeshLibrary as a .blocks.json file: each "item/<id>/" property set as an item named
     // after its name, unique and without ':' (its ID when it has none), so GridMaps' cells can
     // name it.
     std::string mesh_library_file(const TextFile& file, const Section& library,
@@ -7100,7 +7100,7 @@ private:
         return path;
     }
 
-    // A NavigationMesh as a .navmesh.json file, or a NavigationPolygon as a .navpoly.json file:
+    // A NavigationMesh as a .navmesh.json file, or a NavigationPolygon as a .navmesh2d.json file:
     // its polygons and the settings that bake them, with Godot's names.
     std::string navigation_file(const TextFile& file, const Section& section,
                                 const std::string& base, bool three_d) {

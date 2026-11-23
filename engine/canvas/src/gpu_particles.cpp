@@ -616,10 +616,10 @@ public:
     // What an emitter collides with this tick, if its process material collides.
     [[nodiscard]] std::optional<Collision> of(entt::entity entity, const GpuEmitter2D& settings,
                                               const world::Transform2D& global) {
-        if (assets_ == nullptr || settings.process_material.empty()) {
+        if (assets_ == nullptr || settings.particle_rules.empty()) {
             return std::nullopt;
         }
-        const auto process = assets_->load<ProcessMaterial>(settings.process_material);
+        const auto process = assets_->load<ProcessMaterial>(settings.particle_rules);
         if (!process ||
             process.value()->flat.collision_mode == render::ParticleCollision::Disabled) {
             return std::nullopt;
@@ -1254,10 +1254,10 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
     const auto& settings = world.ecs().get<GpuEmitter2D>(entity);
     const auto process_of =
         [&](const GpuEmitter2D& emitter) -> Result<std::shared_ptr<const render::ParticleProcess>> {
-        if (emitter.process_material.empty()) {
+        if (emitter.particle_rules.empty()) {
             return std::make_shared<const render::ParticleProcess>();
         }
-        auto loaded = assets.load<ProcessMaterial>(emitter.process_material);
+        auto loaded = assets.load<ProcessMaterial>(emitter.particle_rules);
         if (!loaded) {
             return loaded.error();
         }

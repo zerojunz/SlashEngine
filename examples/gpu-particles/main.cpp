@@ -2,7 +2,7 @@
 // that bursts the same way each time, snow that was already falling when the scene opened, smoke
 // that curls in turbulence, rain that lands on a ledge, fireworks, rockets that burst into
 // sparks in a sub-emitter, comets that draw trails, and fireflies that circle their emitter.
-// How each one's particles start and move is a .process_material.json file, Godot's
+// How each one's particles start and move is a .particles.json file, Godot's
 // ParticleProcessMaterial in 2D.
 //
 // This program makes the dot and streak textures, checks the particles with particles.eval as an
@@ -165,11 +165,11 @@ int main() {
     // A process material with a mistake is refused with the JSON Pointer of the bad value.
     // "slash-cli scene validate" finds the same mistake in the file before anything runs it, and
     // exports check every process material.
-    check(slash::platform::write_file("broken.process_material.json",
+    check(slash::platform::write_file("broken.particles.json",
                                       R"({"format": 1, "emission_shape": "sphear"})"));
     call(session, "component.set",
          R"({"id": "fire", "components": {"GpuEmitter2D": {"process_material":
-             "broken.process_material.json"}}})");
+             "broken.particles.json"}}})");
     call(session, "particles.eval", R"({"id": "fire"})");
     call(session, "undo", "{}");
 

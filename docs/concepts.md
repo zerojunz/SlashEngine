@@ -186,7 +186,7 @@ instance holds only its overrides, per entity, and editing the scene changes eve
 An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
 file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
 the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.process_material.json`, `.anim.json`,
+`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.particles.json`, `.anim.json`,
 `.tileset.json`, `.ttf`,
 `.otf` and `.font.json` files load out of the box, and a game can add its own types.
 
@@ -430,12 +430,12 @@ which makes rails, pipes, roads and walls from a curve. The [paths example](../e
 laps a cart round a rail over a hill.
 
 **Grid maps** are Godot's `GridMap`: a level built from blocks placed in a 3D grid of cells.
-A **mesh library** (a `.meshlib.json` file) holds the blocks by name, each a mesh with the
+A **mesh library** (a `.blocks.json` file) holds the blocks by name, each a mesh with the
 shapes it collides as and the navigation mesh it is walked on, and the BlockMap3D writes which
 block is in each cell, and which of 24 ways it is turned, as rows of short keys, floor by
 floor, like a tile map. Cells are drawn and collide in blocks of cells called **octants**, and
 each cell's navigation mesh joins its neighbors', so laying out a level is writing a few rows
-of text, and changing it is `gridmap.set`. The [BlockMap3D example](../examples/gridmap/) lays out
+of text, and changing it is `blockmap.set`. The [BlockMap3D example](../examples/gridmap/) lays out
 a room with a ramp up to a platform.
 
 **Terrains** follow the Terrain3D plugin for Godot, as Godot has none of its own: an `Terrain3D`
@@ -448,7 +448,7 @@ points, and `terrain.get` reads the height, slope and textures at points. The
 [terrain example](../examples/terrain/) makes an island and paints its slopes.
 
 **Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
-made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
+made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navmesh2d.json`
 files) that join where their edges meet, and **links** between places the regions don't join,
 such as a jump or a hatch. Paths are the cheapest way over the polygons on a path's **layers**,
 pulled tight round corners. An **agent** (`NavAgent3D`, `NavAgent2D`) finds a path

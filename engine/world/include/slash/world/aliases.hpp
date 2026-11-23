@@ -95,4 +95,46 @@ std::vector<Renamed> upgrade_settings(json::Value& project);
 // has none at old ones, else `copy`, which this fills.
 [[nodiscard]] const json::Value& current_settings(const json::Value& project, json::Value& copy);
 
+// A file suffix's old spelling and its current one (".process_material.json" is now
+// ".particles.json"). Files keep loading under either; new ones are written with the current one.
+struct SuffixAlias {
+    std::string_view old_suffix;
+    std::string_view suffix;
+};
+
+// Every renamed file suffix.
+[[nodiscard]] std::span<const SuffixAlias> suffix_aliases();
+
+// Whether `path` ends with `suffix` or with an old suffix `suffix` replaced.
+[[nodiscard]] bool has_suffix(std::string_view path, std::string_view suffix);
+
+// The suffixes a file of the kind `suffix` names may end with: `suffix`, then its old ones.
+[[nodiscard]] std::vector<std::string> suffixes_of(std::string_view suffix);
+
+// Every renamed command, as old name and current one ("csg.get" is now "solid.get").
+[[nodiscard]] std::span<const NameAlias> command_aliases();
+
+// The current name of a command, given its current or an old name; any other name as given.
+[[nodiscard]] std::string_view current_command_name(std::string_view name);
+
+// A string param's old value and its current one, for one command ("schema.get"'s kind
+// "process_material" is now "particles").
+struct ParamValueAlias {
+    std::string_view command;
+    std::string_view param;
+    std::string_view old_value;
+    std::string_view value;
+};
+
+// Every renamed param value.
+[[nodiscard]] std::span<const ParamValueAlias> param_value_aliases();
+
+// The current value of a command's string param, given its current or an old value; any other
+// value as given.
+[[nodiscard]] std::string_view current_param_value(std::string_view command, std::string_view param,
+                                                   std::string_view value);
+
+// Replaces old values of a command's top-level string params. Returns whether it replaced any.
+bool upgrade_param_values(std::string_view command, json::Value& params);
+
 } // namespace slash::world

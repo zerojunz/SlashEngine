@@ -403,25 +403,25 @@ TEST_CASE("the map is rebuilt only when what it is made of changes") {
     scene.create("bad", R"({"Transform3D": {}, "NavArea3D":
         {"navigation_mesh": "missing.navmesh.json"}})");
     scene.create("wrong", R"({"Transform3D": {}, "NavArea3D":
-        {"navigation_mesh": "a.navpoly.json"}})");
+        {"navigation_mesh": "a.navmesh2d.json"}})");
     const auto info = navigation::map_info(scene.world, navigation::Map::ThreeD);
     CHECK(info.regions == 1);
     REQUIRE(info.errors.size() == 2);
     CHECK(info.errors[0].id == "bad");
     CHECK(info.errors[0].message.starts_with("missing.navmesh.json: "));
     CHECK(info.errors[1].id == "wrong");
-    CHECK(info.errors[1].message == "a.navpoly.json: not a .navmesh.json file");
+    CHECK(info.errors[1].message == "a.navmesh2d.json: not a .navmesh.json file");
     CHECK(info.iteration_id == first + 2);
 }
 
 TEST_CASE("the 2D map is in pixels and follows Transform2D") {
     Scene scene;
-    scene.files.write("room.navpoly.json", R"({"format": 1,
+    scene.files.write("room.navmesh2d.json", R"({"format": 1,
         "vertices": [[0, 0], [64, 0], [64, 64], [0, 64]], "polygons": [[0, 1, 2, 3]]})");
     const entt::entity room = scene.create("room", R"({"Transform2D": {"position": [100, 50]},
-        "NavArea2D": {"navigation_polygon": "room.navpoly.json"}})");
+        "NavArea2D": {"navigation_polygon": "room.navmesh2d.json"}})");
     scene.create("hall", R"({"Transform2D": {"position": [164, 50]},
-        "NavArea2D": {"navigation_polygon": "room.navpoly.json"}})");
+        "NavArea2D": {"navigation_polygon": "room.navmesh2d.json"}})");
     CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).regions == 2);
     CHECK(navigation::map_info(scene.world, navigation::Map::ThreeD).regions == 0);
     const auto path = navigation::query_path(scene.world, Vec2{110, 60}, Vec2{200, 100});
@@ -441,7 +441,7 @@ TEST_CASE("the 2D map is in pixels and follows Transform2D") {
     scene.create("jump", R"({"Transform2D": {"position": [100, 50]}, "NavLink2D":
         {"start_position": [10, 10], "end_position": [10, 300]}})");
     scene.create("roof", R"({"Transform2D": {"position": [100, 340]},
-        "NavArea2D": {"navigation_polygon": "room.navpoly.json"}})");
+        "NavArea2D": {"navigation_polygon": "room.navmesh2d.json"}})");
     const auto up = navigation::query_path(scene.world, Vec2{110, 60}, Vec2{120, 380});
     CHECK(text_of(up.points) == "(110, 60) (110, 350) (120, 380)");
 }
@@ -544,7 +544,7 @@ TEST_CASE("agents' paths are saved and put back with the world") {
 TEST_CASE("scene checks find navigation files that don't load") {
     const std::map<std::string, std::string, std::less<>> files{
         {"ok.navmesh.json", std::string(kL)},
-        {"bad.navpoly.json", R"({"format": 1, "vertices": [[0, 0]], "polygons": [[0, 1, 2]]})"}};
+        {"bad.navmesh2d.json", R"({"format": 1, "vertices": [[0, 0]], "polygons": [[0, 1, 2]]})"}};
     const slash::world::FileReader reader =
         [&](std::string_view path) -> slash::Result<std::string> {
         const auto found = files.find(path);
@@ -556,18 +556,18 @@ TEST_CASE("scene checks find navigation files that don't load") {
     const auto errors = navigation::check_scene(parse(R"({"format": 1, "entities": {
         "a": {"components": {"NavArea3D": {"navigation_mesh": "ok.navmesh.json"}}},
         "b": {"components": {"NavArea3D": {"navigation_mesh": "gone.navmesh.json"}}},
-        "c": {"components": {"NavArea2D": {"navigation_polygon": "bad.navpoly.json"}}},
+        "c": {"components": {"NavArea2D": {"navigation_polygon": "bad.navmesh2d.json"}}},
         "d": {"components": {"NavArea2D": {"navigation_polygon": "ok.navmesh.json"}}}
     }})"),
                                                 reader);
     REQUIRE(errors.size() == 3);
-    CHECK(errors[0].path == "/entities/b/components/NavArea3D/navigation_mesh");
+    CHECK(errors[0].path == "/entities/b/components/NavArea3D/navmesh");
     CHECK(errors[0].message == "gone.navmesh.json: no such file");
-    CHECK(errors[1].path == "/entities/c/components/NavArea2D/navigation_polygon");
-    CHECK(errors[1].message == "bad.navpoly.json: /polygons/0/1: vertex 1 is past the last of 1 "
+    CHECK(errors[1].path == "/entities/c/components/NavArea2D/navmesh");
+    CHECK(errors[1].message == "bad.navmesh2d.json: /polygons/0/1: vertex 1 is past the last of 1 "
                                "vertices");
-    CHECK(errors[2].path == "/entities/d/components/NavArea2D/navigation_polygon");
-    CHECK(errors[2].message == "navigation polygons are .navpoly.json files");
+    CHECK(errors[2].path == "/entities/d/components/NavArea2D/navmesh");
+    CHECK(errors[2].message == "navigation polygons are .navmesh2d.json files");
 }
 
 TEST_CASE("navigation settings come from project.json's navigation_2d and navigation_3d") {
@@ -884,10 +884,10 @@ namespace {
 
 // A 2D map of one square region, 1000 pixels a side.
 void open_field(Scene& scene) {
-    scene.files.write("field.navpoly.json", R"({"format": 1,
+    scene.files.write("field.navmesh2d.json", R"({"format": 1,
         "vertices": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "polygons": [[0, 1, 2, 3]]})");
     scene.create("field", R"({"Transform2D": {}, "NavArea2D":
-        {"navigation_polygon": "field.navpoly.json"}})");
+        {"navigation_polygon": "field.navmesh2d.json"}})");
 }
 
 // A 3D map of one square region, 100 meters a side.

@@ -2090,11 +2090,11 @@ void register_navigation_components(ComponentRegistry& registry) {
     region(registry.add<NavArea2D>(),
            "Places a navigation polygon on the 2D map at the entity's Transform2D, as Godot's "
            "NavArea2D. Regions join where their edges meet.",
-           "navigation_polygon", "The .navpoly.json file.");
+           "navmesh", "The .navmesh2d.json file.");
     region(registry.add<NavArea3D>(),
            "Places a navigation mesh on the 3D map at the entity's Transform3D, as Godot's "
            "NavArea3D. Regions join where their edges meet.",
-           "navigation_mesh", "The .navmesh.json file.");
+           "navmesh", "The .navmesh.json file.");
     const auto link = [&](ComponentType& added, const std::string& doc, const std::string& unit) {
         added.set_doc(doc)
             .describe("enabled", enabled)
@@ -3380,7 +3380,7 @@ void register_particle_components(ComponentRegistry& registry) {
 
     registry.add<GpuEmitter2D>()
         .set_doc("Emits particles from the entity's Transform2D and moves them on the GPU, as "
-                 "Godot's GPUParticles2D, as its process_material file says. Emits finished "
+                 "Godot's GPUParticles2D, as its particle_rules file says. Emits finished "
                  "when a one_shot's cycle has had time to end.")
         .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a one_shot, "
                                       "which sets it back to false after one lifetime."})
@@ -3393,8 +3393,8 @@ void register_particle_components(ComponentRegistry& registry) {
                   {.doc = "ID of another GpuEmitter2D its particles start particles in, as "
                           "its process material's sub_emitter_mode says; that one then emits "
                           "only those, stepping with this one. null for none."})
-        .describe("process_material",
-                  {.doc = "Project path of a .process_material.json file: how particles start "
+        .describe("particle_rules",
+                  {.doc = "Project path of a .particles.json file: how particles start "
                           "and move. \"\" emits still white pixels."})
         .describe("texture", {.doc = "Project path of a PNG, BMP or KTX2 file each particle draws; "
                                      "\"\" draws a white pixel."})
@@ -3461,7 +3461,7 @@ void register_particle_components(ComponentRegistry& registry) {
                                 "file drawn at each particle; \"\" for none."};
     registry.add<GpuEmitter3D>()
         .set_doc("Emits particles from the entity's Transform3D and moves them on the device, as "
-                 "Godot's GPUParticles3D, as its process_material file says, drawing each draw "
+                 "Godot's GPUParticles3D, as its particle_rules file says, drawing each draw "
                  "pass's mesh at every particle; a Surface3D on the entity takes the "
                  "place of the meshes' materials. Lengths in meters. Emits finished when a "
                  "one_shot's cycle has had time to end.")
@@ -3472,8 +3472,8 @@ void register_particle_components(ComponentRegistry& registry) {
                              .min = 1,
                              .max = 1000000})
         .describe("amount_ratio", {.doc = "The share of amount it emits.", .min = 0, .max = 1})
-        .describe("process_material",
-                  {.doc = "Project path of a .process_material.json file: how particles start "
+        .describe("particle_rules",
+                  {.doc = "Project path of a .particles.json file: how particles start "
                           "and move. \"\" leaves them still at the emitter."})
         .describe("lifetime",
                   {.doc = "Seconds each particle lives and each cycle lasts.", .min = 0.001})
@@ -3981,10 +3981,10 @@ void register_network_components(ComponentRegistry& registry) {
 
 void register_gridmap_components(ComponentRegistry& registry) {
     registry.add<BlockMap3D>()
-        .set_doc("Items of a .meshlib.json mesh library in a grid of cells in the entity's space, "
+        .set_doc("Items of a .blocks.json mesh library in a grid of cells in the entity's space, "
                  "as Godot's GridMap: each cell draws its item's mesh, collides as its shapes "
                  "and, with bake_navigation, is a navigation region of its navigation mesh.")
-        .describe("mesh_library", {.doc = "Project path of a .meshlib.json file."})
+        .describe("blocks", {.doc = "Project path of a .blocks.json file."})
         .describe("cell_size", {.doc = "A cell's size in meters, as [x, y, z].", .min = 0.001})
         .describe("cell_octant_size",
                   {.doc = "Cells along each side of the blocks drawn and rebuilt together.",
@@ -4717,17 +4717,19 @@ void register_3d_components(ComponentRegistry& registry) {
         "A place a BakedLighting3D bakes a light probe, under its parent as its meshes are, as "
         "Godot's LightmapProbe: where moving meshes' light changes quickly.");
     registry.add<VoxelLighting3D>()
-        .set_doc("Light bounced around a box of the world in real time, as Godot's VoxelGI: "
-                 "voxel_gi.bake voxelizes the static MeshInstance3Ds under its entity's parent "
-                 "in the box into data, lights are injected as they change, and meshes in the box "
-                 "take ambient light and reflections from it.")
+        .set_doc(
+            "Light bounced around a box of the world in real time, as Godot's VoxelGI: "
+            "voxel_lighting.bake voxelizes the static MeshInstance3Ds under its entity's parent "
+            "in the box into data, lights are injected as they change, and meshes in the box "
+            "take ambient light and reflections from it.")
         .describe("subdiv", {.doc = "Cells along the box's longest side.",
                              .choices = {"64", "128", "256", "512"}})
         .describe("size", {.doc = "The box, centered on the entity, in its space."})
         .describe("camera_attributes",
                   {.doc = "ID of the entity whose CameraLens's exposure_multiplier "
                           "emission is baked with; \"\" for 1."})
-        .describe("data", {.doc = "Project path of the .voxelgi.json file voxel_gi.bake writes."})
+        .describe("data",
+                  {.doc = "Project path of the .voxellight.json file voxel_lighting.bake writes."})
         .describe("dynamic_range",
                   {.doc = "The brightest light the cells hold.", .min = 1, .max = 8})
         .describe("energy", {.doc = "Times the light meshes take.", .min = 0, .max = 64})

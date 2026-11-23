@@ -4,7 +4,7 @@
 
 namespace slash::command {
 
-// Adds lightmap.bake and voxel_gi.bake, over slash/scene3d/lightmap.hpp and voxel_gi.hpp.
+// Adds lightmap.bake and voxel_lighting.bake, over slash/scene3d/lightmap.hpp and voxel_gi.hpp.
 void register_lightmap_commands(Registry& registry);
 
 } // namespace slash::command

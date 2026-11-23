@@ -5,7 +5,7 @@
         "GpuEmitter2D": {
           "amount": 64,
           "lifetime": 0.8,
-          "process_material": "burst.process_material.json",
+          "particle_rules": "burst.particles.json",
           "texture": "dot.png"
         },
         "Transform2D": {}
@@ -16,7 +16,7 @@
         "GpuEmitter2D": {
           "amount": 4,
           "lifetime": 1.6,
-          "process_material": "comets.process_material.json",
+          "particle_rules": "comets.particles.json",
           "texture": "streak.png",
           "trail_enabled": true,
           "trail_lifetime": 0.4,
@@ -32,7 +32,7 @@
       "components": {
         "GpuEmitter2D": {
           "amount": 48,
-          "process_material": "fire.process_material.json",
+          "particle_rules": "fire.particles.json",
           "texture": "dot.png"
         },
         "Transform2D": {
@@ -45,7 +45,7 @@
         "GpuEmitter2D": {
           "amount": 24,
           "lifetime": 4.0,
-          "process_material": "fireflies.process_material.json",
+          "particle_rules": "fireflies.particles.json",
           "texture": "dot.png"
         },
         "Transform2D": {
@@ -73,7 +73,7 @@
         "GpuEmitter2D": {
           "amount": 40,
           "lifetime": 1.2,
-          "process_material": "rain.process_material.json",
+          "particle_rules": "rain.particles.json",
           "texture": "dot.png"
         },
         "Transform2D": {
@@ -85,7 +85,7 @@
       "components": {
         "GpuEmitter2D": {
           "amount": 4,
-          "process_material": "rockets.process_material.json",
+          "particle_rules": "rockets.particles.json",
           "sub_emitter": "burst",
           "texture": "dot.png"
         },
@@ -99,7 +99,7 @@
         "GpuEmitter2D": {
           "amount": 30,
           "lifetime": 3.0,
-          "process_material": "smoke.process_material.json",
+          "particle_rules": "smoke.particles.json",
           "texture": "dot.png"
         },
         "Transform2D": {
@@ -114,8 +114,8 @@
           "draw_order": "index",
           "fixed_rate": 0,
           "lifetime": 6.0,
+          "particle_rules": "snow.particles.json",
           "preprocess": 6.0,
-          "process_material": "snow.process_material.json",
           "texture": "dot.png"
         },
         "Transform2D": {
@@ -130,7 +130,7 @@
           "burst": 1.0,
           "lifetime": 0.6,
           "one_shot": true,
-          "process_material": "sparks.process_material.json",
+          "particle_rules": "sparks.particles.json",
           "seed": 7,
           "texture": "dot.png",
           "use_fixed_seed": true

@@ -15,7 +15,7 @@ a baked `NavigationMesh`:
 ```
 
 A guard with a `NavAgent3D` is sent to the far room, and on the 2D map a cat with a
-`NavAgent2D` crosses a yard shaped like an L ([nav/yard.navpoly.json](nav/yard.navpoly.json),
+`NavAgent2D` crosses a yard shaped like an L ([nav/yard.navmesh2d.json](nav/yard.navmesh2d.json),
 two polygons). The navigation system finds each agent's path and keeps track of where it is
 along it; [main.cpp](main.cpp) moves them with a plain C++ system that walks each one toward
 `next_path_position_3d` or `next_path_position_2d`, as a Godot script calling

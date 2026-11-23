@@ -17,7 +17,7 @@ $cli export linux --project path/to/game --test        # build, lay out and run 
 ```
 
 `slash-cli export <preset>` validates the project, its presets and every scene, prefab, texture,
-font, sound, `.frames.json`, `.material.json`, `.process_material.json`, `.audio.json` and
+font, sound, `.frames.json`, `.material.json`, `.particles.json`, `.audio.json` and
 `.bus_layout.json` file, stages them as the game's data, configures
 `export/CMakeLists.txt` with the engine sources, builds, signs and installs into
 `<project>/build/export/<preset>`. The data carries the engine's notices in

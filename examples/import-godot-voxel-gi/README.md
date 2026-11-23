@@ -15,13 +15,13 @@ over MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies.
 
 ```text
 entity.get {"components":["VoxelGI"],"id":"gi"}
-{"components":{"VoxelGI":{..., "data":"godot/main.gi_data.voxelgi.json", "energy":1.2,
+{"components":{"VoxelGI":{..., "data":"godot/main.gi_data.voxellight.json", "energy":1.2,
  "size":[6.4,3.2,6.4], "subdiv":"64", ...}},"id":"gi"}
 ```
 
 - The VoxelGI keeps its `subdiv` (Godot's `0` is `"64"`) and `size`, and the data gives its
   `energy` and the other settings.
-- The cells become `main.gi_data.voxelgi.json`, the file `voxel_gi.bake` writes, named after
+- The cells become `main.gi_data.voxellight.json`, the file `voxel_lighting.bake` writes, named after
   the `.res` file. Data with no cells, or cells that don't make a VoxelGI's, would be reported.
 - The quality setting becomes `rendering.voxel_lighting.quality` in
   `project.json`: `"high"`.

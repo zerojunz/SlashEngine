@@ -283,7 +283,7 @@ rendering on top.
       explosiveness, local coordinates and draw orders. Seeded by entity ID, so the same scene
       makes the same particles on every platform, and `particles.eval` checks them without a
       screenshot
-- [x] GPU particles, as Godot's `GPUParticles2D`: `.process_material.json` files with Godot's
+- [x] GPU particles, as Godot's `GPUParticles2D`: `.particles.json` files with Godot's
       `ParticleProcessMaterial` properties, stepped as Godot's node and particles storage step
       them (emission cycles, `fixed_fps` with interpolation, preprocess, one-shots with a
       `finished` event) and run by a compute shader on Metal, Direct3D 12 and Vulkan, for many
@@ -651,14 +651,14 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         over the static meshes and at `LightProbe3D`s, traced with the lightmap, joined into
         Delaunay tetrahedra with a BSP tree, and drawn on every device as moving meshes'
         ambient light
-  - [x] VoxelLighting3D, as Godot 4.6's: static meshes voxelized into an octree by `voxel_gi.bake`,
+  - [x] VoxelLighting3D, as Godot 4.6's: static meshes voxelized into an octree by `voxel_lighting.bake`,
         lights injected into its cells on the CPU as they change (shadows, two bounces,
         propagation up the octree), and cones traced for ambient light and reflections on
         every Forward+ device
   - [x] Moving meshes lighting VoxelGIs, as Godot's dynamic objects: plotted into the cells'
         light from six sides each frame they move, lit by the same lights
   - [x] VoxelGIs imported from Godot scenes: their settings, camera attributes and baked cells
-        (`.tscn`, `.tres` or `.res`) as `.voxelgi.json` files, and the cones setting
+        (`.tscn`, `.tres` or `.res`) as `.voxellight.json` files, and the cones setting
 - [x] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
       and changeable while a game runs; a `render::Upscaler` interface lets a game add DLSS, XeSS
@@ -799,7 +799,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Bone attachments, as Godot's `BoneAttachment3D`: entities that follow a bone after the
         animations and IK, carrying what hangs under them
 - [x] Navigation in 2D and 3D, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`
-  - [x] Navigation meshes and polygons (`.navmesh.json`, `.navpoly.json`), regions, links,
+  - [x] Navigation meshes and polygons (`.navmesh.json`, `.navmesh2d.json`), regions, links,
         layers, edge connections and agents' paths, as Godot's own A* over polygons;
         `navigation.path`, `navigation.closest`, `navigation.random`, `navigation.map` and
         `navigation.agent`
@@ -818,14 +818,14 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Level geometry and terrain
   - [x] CSG shapes on Manifold, as Godot 4.6's: boxes, spheres, cylinders and cones, tori,
         polygons pushed or spun, meshes and combiners; drawn, colliding and baked into
-        navigation meshes, with `csg.get`
+        navigation meshes, with `solid.get`
   - [x] `Spline2D`, `Spline3D`, `SplineFollower2D`, `SplineFollower3D` and `SolidExtrusion3D`'s path mode, as
         Godot's: curves baked with up vectors and tilt, followers placed each tick, and
         `path.get`
   - [x] `BlockMap3D` and `MeshLibrary` for grid-based tile placement, as Godot 4.6's: items of a
-        `.meshlib.json` library in cells written as rows of legend keys, turned Godot's 24
-        ways, drawn and colliding by octant, navigation regions per cell, with `gridmap.set`,
-        `gridmap.get` and the cell a ray hits
+        `.blocks.json` library in cells written as rows of legend keys, turned Godot's 24
+        ways, drawn and colliding by octant, navigation regions per cell, with `blockmap.set`,
+        `blockmap.get` and the cell a ray hits
   - [x] Heightmap terrain with splat materials and LOD, as the Terrain3D plugin for Godot:
         `Terrain3D` heights from 16-bit `.height.png` files, drawn in chunks by its quad tree
         with seams stitched, four textures by splat map, a color map with holes, colliding as a
