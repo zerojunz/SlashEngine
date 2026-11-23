@@ -3035,6 +3035,10 @@ the same either way.
 - **`tiling`** (default `true`) makes filters, warps and seamless noise wrap across the edges,
   so the texture repeats without seams.
 - **Outputs** are `color` (the node's RGBA) or `gray` (its red in every channel).
+- **`expect`** holds ranges the outputs should keep, which
+  [`texture.check`](commands.md#texturecheck) checks: keys are `"<output>.<measure>"`, each a
+  `[min, max]` range from 0 to 1 for `value`, `r`, `g`, `b`, `a`, `low`, `high` and `contrast`,
+  or `true` or `false` for `tiles`.
 
 | Ops | What they make |
 | --- | --- |

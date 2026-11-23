@@ -62,7 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
-| Textures | [`texture.generate`](#texturegenerate) |
+| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
 | Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest), [`foliage.sway`](#foliagesway) |
@@ -628,6 +628,83 @@ at `/output` with the outputs there are, and an unknown parameter at `/parameter
 
 ```json
 {"path": "textures/wall.texture.json", "output": "normal", "out": "build/wall_normal.png"}
+```
+
+### texture.inspect
+
+Describes a [texture graph](scene-format.md#texture-graphs) as text, so an agent sees how it is
+built without reading every node: its size and `tiling`, the files it `extends`, each parameter's
+`value` (with its `expression`, if any) and the nodes that read it (`read_by`), each node's `op`,
+the nodes it `reads` and the parameters it uses, each output with every node it `needs` in the
+order they bake, the nodes no output needs (`unused`) and its `expect`. Bakes nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.texture.json` graph file |
+| `texture` | object | | A graph document, described without a file |
+
+Give `path` or `texture`, not both. Needs: `read`. From
+[examples/texture-graph-tools](../../examples/texture-graph-tools/):
+
+```json
+{"path": "textures/wall.texture.json"}
+```
+
+```json
+{"height":32,"nodes":{"bricks":{"op":"bricks","parameters":["across","mortar","rows"]},"color":{"op":"gradient_map","reads":["soft"]},...},"outputs":[{"as":"color","name":"albedo","needs":["bricks","grain","height","soft","color"],"node":"color"},...],"parameters":{"across":{"expression":"=rows / 2","read_by":["bricks"],"value":2.0},...},"path":"textures/wall.texture.json","tiling":true,"width":64}
+```
+
+### texture.edit
+
+Changes a texture graph file by a JSON Merge Patch (RFC 7396: objects merge, `null` removes,
+anything else, arrays included, replaces) and returns what changed as JSON Pointers and each
+output measured, with no pixels. Each measure is from 0 to 1: `value` (the mean luminance), `r`,
+`g`, `b` and `a` (each channel's mean), `low` and `high` (the darkest and brightest luminance),
+`contrast` (the luminance's standard deviation) and `tiles` (whether the step across its edges
+is no larger than the largest step between neighboring columns or rows inside it). A file that
+doesn't exist is made, with `format` and `"type": "graph"` filled in. The result must be a graph
+that checks and bakes, or nothing is written; errors are at their JSON Pointer under `/patch`.
+Undo puts the file back, and `dry_run` returns the same reply and writes nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.texture.json` graph file |
+| `patch` | object | | The merge patch |
+| `measure` | boolean | `true` | Whether to bake and measure the outputs |
+
+Needs: `edit` and `filesystem`. From
+[examples/texture-graph-tools](../../examples/texture-graph-tools/):
+
+```json
+{"path": "textures/wall.texture.json", "patch": {"parameters": {"mortar": 0.12}, "expect": {"albedo.value": [0.3, 0.45], "albedo.tiles": true, "height.contrast": [0.15, 1]}}}
+```
+
+```json
+{"changed":["/expect","/parameters/mortar"],"outputs":{"albedo":{"a":1,"b":0.214,"contrast":0.014,"g":0.257,"high":0.31,"low":0.253,"r":0.358,"tiles":true,"value":0.276},...},"path":"textures/wall.texture.json"}
+```
+
+A misspelled input fails with the closest node, as
+`/patch/nodes/soft/input: the graph it makes, at /nodes/soft/input: "heigth" isn't a node (did you mean "height"?)`.
+
+### texture.check
+
+Checks texture graphs: each one validates and bakes, keeps the ranges in its `expect`, and its
+first output, the texture its bare path names, keeps the storyboard's
+[palettes and budgets](storyboard-format.md) that cover it. `expect` keys are
+`"<output>.<measure>"`, each a `[min, max]` range or, for `tiles`, `true` or `false`; an unknown
+output or measure is an error with the closest name. With no `paths` it checks every graph in the
+project outside `build/`. [`test.run`](#testrun) and `slash-cli project validate` run it with the
+project's other checks.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `paths` | array of strings | | The graph files to check |
+
+Needs: `read`. Returns `checked`, the number of graphs, and `errors`, each with its `file`,
+JSON `path` and `message`:
+
+```json
+{"checked":1,"errors":[{"file":"textures/wall.texture.json","message":"\"albedo\"'s value is 0.276, outside [0.3, 0.45]","path":"/expect/albedo.value"},{"file":"textures/wall.texture.json","message":"is 64x32 pixels; budget/walls allows 32 on a side","path":""}]}
 ```
 
 ## Scatter
@@ -6048,6 +6125,7 @@ Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
 [`soundtrack.check`](#soundtrackcheck) where the soundtrack's commands are registered (as in
 `slash-cli` and `slash-mcp`) and adds its errors, runs [`l10n.check`](#l10ncheck) on a project
 that lists translations and adds its errors, runs [`quest.check`](#questcheck) and adds its
+errors, runs [`texture.check`](#texturecheck) on the project's texture graphs and adds its
 errors, runs [`style.check`](#stylecheck) and adds a
 failure at the reference's entry for each frame that drifted from its look, and, where the session may, runs
 [`asset.check`](#assetcheck) on the files the project took from the asset library, which

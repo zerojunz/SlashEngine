@@ -1,0 +1,10 @@
+{
+  "entries": {
+    "budget/walls": {
+      "links": ["textures"],
+      "name": "Walls",
+      "texture_size": 32
+    }
+  },
+  "format": 1
+}
