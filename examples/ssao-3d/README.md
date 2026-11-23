@@ -1,14 +1,14 @@
 # SSAO 3D
 
 A room's corners darkened by screen-space ambient occlusion, as Godot 4.6's SSAO in its Forward+
-renderer, the default `rendering.rendering_method`. [main.scene.json](main.scene.json) is a room
+renderer, the default `rendering.renderer`. [main.scene.json](main.scene.json) is a room
 seen through a `Camera3D` in a 320x180 window: a floor, a back wall and a side wall, a brown crate
 against the back wall and a small blue box on the open floor, lit by warm ambient light and a dim
 sun.
 
 The `Environment3D`'s `ssao_enabled` turns SSAO on with Godot's defaults: occlusion from
 within `ssao_radius` 1 meter of each pixel, at `ssao_intensity` 2. [project.json](project.json)
-sets `rendering.environment.ssao`, as Godot's project settings: `high` quality, which takes more
+sets `rendering.ssao`, as Godot's project settings: `high` quality, which takes more
 samples than the default `medium` and reads depth further out at lower resolutions.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

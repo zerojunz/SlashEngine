@@ -15,9 +15,9 @@ Status: current · Updated: 2026-11-20
 SDFGI lights a scene with no baking. Lights, meshes and the camera can all move.
 
 Around the camera sit **cascades**, each a box of `cascade_size` cells a side (128, as Godot's).
-The first cascade's cells are `sdfgi_min_cell_size` meters across, and each next one's are
+The first cascade's cells are `field_lighting_min_cell_size` meters across, and each next one's are
 twice as large, so it reaches twice as far. Heights count `y_scale` times as much (Godot's
-`sdfgi_y_scale`: 2, 1.5 or 1), so cascades reach less far up and down than across. Each frame:
+`field_lighting_y_scale`: 2, 1.5 or 1), so cascades reach less far up and down than across. Each frame:
 
 1. **The cascades follow the camera.** A cascade moves once the camera is more than half a probe
    spacing from its centre, by whole probe spacings (8 cells at 128), as Godot's `sdfgi_update`.
@@ -35,7 +35,7 @@ twice as large, so it reaches twice as far. Heights count `y_scale` times as muc
    (squared distances, three passes of lower envelopes of parabolas), and the root is rounded
    up in whole numbers too. Each empty cell next to a solid one names the nearest of them, the
    first in `MODE_STORE`'s order, whose light it takes.
-   With `sdfgi_use_occlusion`, each probe also floods out through the empty cells within a probe
+   With `field_lighting_use_occlusion`, each probe also floods out through the empty cells within a probe
    spacing of it, a step of Manhattan distance at a time, to say how much of each cell it sees:
    solid cells take their empty neighbors' on the sides they face, and empty cells next to solid
    ones see it by how many of those face it (`sdfgi_preprocess.glsl`'s `MODE_OCCLUSION`). The
@@ -43,7 +43,7 @@ twice as large, so it reaches twice as far. Heights count `y_scale` times as muc
    and averages round half up in whole numbers.
 4. **The solid cells' light.** Each light is traced through the distance field from the cell, with
    Godot's bias, and lights the sides the cell faces by how much they face it, times its albedo
-   (`sdfgi_direct_light.glsl`). Emission and `sdfgi_bounce_feedback` of the probes' light from
+   (`sdfgi_direct_light.glsl`). Emission and `field_lighting_bounce_feedback` of the probes' light from
    the frame before go in too, which makes more than one bounce. A `frames_to_update_light` share
    of the cells is lit a frame, by cell index (all of them after a cascade is made again), and
    the empty cells that name one take its light after it. The light is stored
@@ -52,7 +52,7 @@ twice as large, so it reaches twice as far. Heights count `y_scale` times as muc
 5. **The probes trace rays.** A probe sits every 16th of a cascade (17 a side). Each frame each
    traces `ray_count` rays, spread by Vogel's spiral and turned each frame, through the cascades'
    fields: a ray that hits takes the cell's light toward it; one that leaves the last cascade takes
-   the sky's light (`sdfgi_read_sky_light`). Each probe keeps 16 spherical harmonics coefficients
+   the sky's light (`field_lighting_read_sky_light`). Each probe keeps 16 spherical harmonics coefficients
    over `frames_to_converge` frames as integers with 10 bits under the point, and their average,
    and stores octahedral maps of its irradiance and radiance, 6 texels a side with a border, as
    Godot's lightprobe texture (`sdfgi_integrate.glsl`).
@@ -107,7 +107,7 @@ with Godot's names and defaults. A frame in `forward_plus` drawn by the software
 ```
 
 Light settles over `frames_to_converge` frames (30), as Godot's, so a capture of a scene's first
-frame sees little of it. project.json's `rendering.global_illumination.sdfgi` holds Godot's
+frame sees little of it. project.json's `rendering.field_lighting` holds Godot's
 project settings of the same names, for every SDFGI a frame draws:
 
 | Setting | Default | What it does |

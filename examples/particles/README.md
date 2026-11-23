@@ -37,7 +37,7 @@ particles.eval {"id":"sparks","list":true,"max_results":2}
   values.
 - `preprocess` runs that many seconds before the first tick, so the smoke is already rising.
   `draw_order` `"lifetime"` draws the oldest first, so the newest puffs draw on top.
-- With `local_coords`, particles live in the entity's coordinates and move with it, as the
+- With `local_space`, particles live in the entity's coordinates and move with it, as the
   portal's do; otherwise they are emitted through the entity's transform and stay in the world.
 - Particles are not saved in the scene. Snapshots, undo, dry runs and failed commands leave them
   as they are.

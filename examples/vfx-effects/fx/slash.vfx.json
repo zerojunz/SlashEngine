@@ -8,7 +8,7 @@
         "Emitter2D": {
           "amount": 12,
           "color": "=color",
-          "explosiveness": 1,
+          "burst": 1,
           "initial_velocity_max": 200,
           "initial_velocity_min": 120,
           "lifetime": 0.25,
@@ -44,7 +44,7 @@
         "Widget": {
           "anchor_bottom": 1,
           "anchor_right": 1,
-          "mouse_filter": "ignore"
+          "pointer_mode": "ignore"
         }
       },
       "curves": {

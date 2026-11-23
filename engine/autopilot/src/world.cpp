@@ -985,8 +985,7 @@ Answer view3d(Look& look, const json::Value& args) {
             if (character->on_floor) {
                 const Vec3 n = normalized(character->floor_normal);
                 body["floor_slope_degrees"] =
-                    r2(std::acos(
-                           std::clamp(dot(n, normalized(character->up_direction)), -1.0F, 1.0F)) *
+                    r2(std::acos(std::clamp(dot(n, normalized(character->up)), -1.0F, 1.0F)) *
                        kDegrees);
                 const auto hit = physics3d::raycast(
                     look.world, shape.center,

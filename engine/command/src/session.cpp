@@ -76,7 +76,11 @@ json::Value read_project(const std::string& project_root) {
         return {};
     }
     auto project = json::parse(text.value());
-    return project && project.value().is_object() ? std::move(project).value() : json::Value();
+    if (!project || !project.value().is_object()) {
+        return {};
+    }
+    world::upgrade_settings(project.value());
+    return std::move(project).value();
 }
 
 // The project's physics_2d settings, or the defaults if it has none or they don't validate.
@@ -147,7 +151,7 @@ input::Map input_map(const json::Value& project) {
 }
 
 input::Settings input_settings(const json::Value& project) {
-    const json::Value* settings = project.is_object() ? project.find("input_devices") : nullptr;
+    const json::Value* settings = project.is_object() ? project.find("pointer") : nullptr;
     if (settings == nullptr || !json::validate(*settings, input::settings_schema()).empty()) {
         return {};
     }
@@ -179,8 +183,7 @@ services::Settings services_settings(const json::Value& project) {
 
 // The project's translations and locale settings, or none if they don't validate.
 l10n::Settings l10n_settings(const json::Value& project) {
-    const json::Value* settings =
-        project.is_object() ? project.find("internationalization") : nullptr;
+    const json::Value* settings = project.is_object() ? project.find("localization") : nullptr;
     if (settings == nullptr || !l10n::validate_settings(*settings, "").empty()) {
         return {};
     }
@@ -208,7 +211,7 @@ ui::Settings ui_settings(const json::Value& project) {
         settings.viewport = {static_cast<float>(width->as_double()),
                              static_cast<float>(height->as_double())};
     }
-    if (const json::Value* gui = project.is_object() ? project.find("gui") : nullptr;
+    if (const json::Value* gui = project.is_object() ? project.find("ui") : nullptr;
         gui != nullptr) {
         ui::read_settings(*gui, settings);
     }
@@ -241,44 +244,30 @@ canvas::Settings canvas_settings(const json::Value& project) {
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             settings.scaling = render::scaling_from_json(*scaling);
         }
-        if (const json::Value* method = rendering->find("rendering_method");
+        if (const json::Value* method = rendering->find("renderer");
             method != nullptr && method->is_string()) {
             settings.rendering_method = render::parse_render_method(method->as_string())
                                             .value_or(render::RenderMethod::ForwardPlus);
         }
-        if (const json::Value* shadows = rendering->find("lights_and_shadows");
-            shadows != nullptr) {
-            settings.shadows = render::shadow_settings_from_json(*shadows);
+        settings.shadows = render::shadow_settings_from_json(*rendering);
+        if (const json::Value* dof = rendering->find("depth_of_field"); dof != nullptr) {
+            settings.depth_of_field = render::depth_of_field_settings_from_json(*dof);
         }
-        if (const json::Value* camera = rendering->find("camera");
-            camera != nullptr && camera->is_object()) {
-            if (const json::Value* dof = camera->find("depth_of_field"); dof != nullptr) {
-                settings.depth_of_field = render::depth_of_field_settings_from_json(*dof);
-            }
+        if (const json::Value* ssao = rendering->find("ssao"); ssao != nullptr) {
+            settings.ssao = render::ssao_settings_from_json(*ssao);
         }
-        if (const json::Value* environment = rendering->find("environment");
-            environment != nullptr && environment->is_object()) {
-            if (const json::Value* ssao = environment->find("ssao"); ssao != nullptr) {
-                settings.ssao = render::ssao_settings_from_json(*ssao);
-            }
-            if (const json::Value* ssr = environment->find("screen_space_reflection");
-                ssr != nullptr) {
-                settings.ssr = render::ssr_settings_from_json(*ssr);
-            }
-            if (const json::Value* fog = environment->find("volumetric_fog"); fog != nullptr) {
-                settings.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
-            }
-            if (const json::Value* subsurface = environment->find("subsurface_scattering");
-                subsurface != nullptr) {
-                settings.subsurface = render::subsurface_settings_from_json(*subsurface);
-            }
+        if (const json::Value* ssr = rendering->find("ssr"); ssr != nullptr) {
+            settings.ssr = render::ssr_settings_from_json(*ssr);
+        }
+        if (const json::Value* fog = rendering->find("volumetric_fog"); fog != nullptr) {
+            settings.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
+        }
+        if (const json::Value* subsurface = rendering->find("subsurface"); subsurface != nullptr) {
+            settings.subsurface = render::subsurface_settings_from_json(*subsurface);
         }
         if (const json::Value* reflections = rendering->find("reflections");
-            reflections != nullptr && reflections->is_object()) {
-            if (const json::Value* atlas = reflections->find("reflection_atlas");
-                atlas != nullptr) {
-                settings.reflection_atlas = render::reflection_atlas_settings_from_json(*atlas);
-            }
+            reflections != nullptr) {
+            settings.reflection_atlas = render::reflection_atlas_settings_from_json(*reflections);
         }
         settings.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         settings.sdfgi = render::sdfgi_settings_from_json(*rendering);

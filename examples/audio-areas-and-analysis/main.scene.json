@@ -20,7 +20,7 @@
         },
         "Zone2D": {
           "audio_bus_name": "Cave",
-          "audio_bus_override": true
+          "bus_override": true
         }
       }
     },

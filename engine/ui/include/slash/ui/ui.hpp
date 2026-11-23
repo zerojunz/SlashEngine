@@ -84,10 +84,10 @@ struct Settings {
     bool screen_reader_active = false;
 };
 
-// Reads project.json's "gui" object into settings: theme, allow_system_fallback,
-// tooltip_delay_sec, tooltip_position_offset, drag_threshold, accessibility_support and the
-// text edit, search and shortcut timers named as Settings' fields. What is
-// missing or of the wrong type keeps its value.
+// Reads project.json's "ui" object into settings: theme, system_font_fallback,
+// tooltip_delay_seconds, tooltip_offset, drag_threshold, accessibility_support,
+// text_edit_merge_seconds, text_edit_undo_limit, type_search_ms and shortcut_flash_seconds. What
+// is missing or of the wrong type keeps its value.
 void read_settings(const json::Value& gui, Settings& settings);
 
 // Asset types "theme" (.theme.json files as Theme) and "texture" (.png, .bmp and .ktx2 files as

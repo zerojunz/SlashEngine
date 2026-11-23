@@ -1294,7 +1294,7 @@ TEST_CASE("agents play a sound into the input in place of the microphone") {
     CHECK(contains(itself.error().message, "is a microphone"));
 }
 
-TEST_CASE("a microphone needs audio.enable_input and plays only as a player's own stream") {
+TEST_CASE("a microphone needs audio.input_enabled and plays only as a player's own stream") {
     Sounds sounds;
     sounds.files.write("audio/mic.audio.json", R"({"format": 1, "microphone": {}})");
     sounds.files.write("audio/random.audio.json",
@@ -1315,7 +1315,7 @@ TEST_CASE("a microphone needs audio.enable_input and plays only as a player's ow
     CHECK_FALSE(audio::input_info(sounds.world).enabled);
     auto off = audio::set_input_stream(sounds.world, "audio/mic.audio.json");
     REQUIRE_FALSE(off.ok());
-    CHECK(contains(off.error().message, "audio.enable_input"));
+    CHECK(contains(off.error().message, "audio.input_enabled"));
 
     const entt::entity sfx =
         sounds.add("sfx", "SoundPlayer", R"({"stream": "audio/sfx.audio.json"})");
@@ -2024,13 +2024,13 @@ TEST_CASE("an Zone2D with audio_bus_override sends the 2D sounds inside it to it
     CHECK(bus_at({590.0F, 0.0F}) == "Lake");
     CHECK(bus_at({0.0F, 300.0F}) == "Sfx");
     CHECK(bus_at({-500.0F, 0.0F}) == "Sfx");
-    sounds.world.ecs().get<world::SoundPlayer2D>(hum).area_mask = 3;
+    sounds.world.ecs().get<world::SoundPlayer2D>(hum).zone_mask = 3;
     CHECK(bus_at({-500.0F, 0.0F}) == "Lake");
     // area_mask 0 ignores areas, as Godot's.
-    sounds.world.ecs().get<world::SoundPlayer2D>(hum).area_mask = 0;
+    sounds.world.ecs().get<world::SoundPlayer2D>(hum).zone_mask = 0;
     CHECK(bus_at({480.0F, 0.0F}) == "Sfx");
     // A sound that starts inside starts on the area's bus.
-    sounds.world.ecs().get<world::SoundPlayer2D>(hum).area_mask = 1;
+    sounds.world.ecs().get<world::SoundPlayer2D>(hum).zone_mask = 1;
     audio::play(sounds.world, hum);
     CHECK(bus_at({480.0F, 0.0F}) == "Cave");
     CHECK(sounds.player("hum")->voices == 1);
@@ -2141,7 +2141,7 @@ TEST_CASE("an SoundPlayer3D fades with distance as Godot's attenuation models sa
     check_frame(volume_at(1.0F), audio::db_to_linear(3.0F) * ahead(),
                 audio::db_to_linear(3.0F) * ahead());
     // At unit_size it plays at volume_db.
-    player.unit_size = 20.0F;
+    player.reference_distance = 20.0F;
     player.volume_db = audio::linear_to_db(0.5F);
     check_frame(volume_at(20.0F), 0.5F * ahead(), 0.5F * ahead());
 }
@@ -2256,7 +2256,7 @@ TEST_CASE("an SoundPlayer3D tracking doppler is higher coming and lower going") 
     // A player that doesn't track it keeps its pitch_scale.
     auto& player = sounds.world.ecs().get<world::SoundPlayer3D>(hum);
     player.doppler_tracking = "disabled";
-    player.pitch_scale = 2.0F;
+    player.pitch = 2.0F;
     CHECK(glide(ears, -1.0F, 5) == doctest::Approx(2.0F));
 }
 
@@ -2300,7 +2300,7 @@ TEST_CASE("an Zone3D sends the 3D sounds inside it to its bus, its reverb bus or
           doctest::Approx(audio::linear_to_db(0.25F * ahead())).epsilon(0.001));
 
     // A reverb bus without the bus override sends it to the reverb bus alone, as Godot's does.
-    area.audio_bus_override = false;
+    area.bus_override = false;
     info = heard();
     CHECK(info.bus == "Echo");
     check_frame(info.volume[0], 0.5F * ahead(), 0.5F * ahead());
@@ -2320,9 +2320,9 @@ TEST_CASE("an Zone3D sends the 3D sounds inside it to its bus, its reverb bus or
     CHECK(heard().bus == "Master");
     // Areas whose layer isn't in area_mask, and those it isn't in, leave its bus.
     auto& player = sounds.world.ecs().get<world::SoundPlayer3D>(hum);
-    player.area_mask = 2;
+    player.zone_mask = 2;
     CHECK(heard().bus == "Sfx");
-    player.area_mask = 1;
+    player.zone_mask = 1;
     sounds.world.ecs().get<world::Transform3D>(hum).position.z = -20.0F;
     CHECK(heard().bus == "Sfx");
 }
@@ -2856,13 +2856,13 @@ TEST_CASE("project.json's audio settings are checked") {
 
     const audio::Settings parsed = audio::parse_settings(
         parse(R"({"bus_layout": "a.bus_layout.json", "mix_rate": 48000, "output_latency": 30,
-                  "panning_strength_2d": 1, "panning_strength_3d": 2, "enable_input": true,
+                  "panning_strength_2d": 1, "panning_strength_3d": 2, "input_enabled": true,
                   "input_usage_description": "Sing to the lanterns.",
-                  "speaker_mode": "surround_51", "channel_disable_threshold_db": -72,
-                  "channel_disable_time": 0.5})"));
+                  "speaker_mode": "surround_51", "silence_threshold_db": -72,
+                  "silence_seconds": 0.5})"));
     CHECK(parsed.channel_disable_threshold_db == -72.0F);
     CHECK(parsed.channel_disable_time == 0.5);
-    CHECK(errors(R"({"channel_disable_time": 9})").front().path == "/audio/channel_disable_time");
+    CHECK(errors(R"({"silence_seconds": 9})").front().path == "/audio/silence_seconds");
     CHECK(parsed.bus_layout == "a.bus_layout.json");
     CHECK(parsed.mix_rate == 48000);
     CHECK(parsed.output_latency == 30.0F);

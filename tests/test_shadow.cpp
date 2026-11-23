@@ -392,10 +392,10 @@ TEST_CASE("devices check shadow settings and light numbers") {
 }
 
 TEST_CASE("project settings name the shadow atlases' sizes and filters") {
-    auto parsed = slash::json::parse(R"({
-        "directional_shadow": {"size": 8192, "soft_shadow_filter_quality": "hard"},
-        "positional_shadow": {"atlas_size": 1024, "soft_shadow_filter_quality": "soft_ultra"}
-    })");
+    auto parsed = slash::json::parse(R"({"shadows": {
+        "directional_size": 8192, "directional_softness": "hard",
+        "positional_atlas_size": 1024, "positional_softness": "soft_ultra"
+    }})");
     REQUIRE(parsed.ok());
     const render::ShadowSettings settings = render::shadow_settings_from_json(parsed.value());
     CHECK(settings.directional_size == 8192);
@@ -403,8 +403,8 @@ TEST_CASE("project settings name the shadow atlases' sizes and filters") {
     CHECK(settings.positional_size == 1024);
     CHECK(settings.positional_quality == render::ShadowQuality::SoftUltra);
     // What isn't valid keeps its default.
-    auto odd = slash::json::parse(R"({"directional_shadow": {"size": 1000,
-        "soft_shadow_filter_quality": "blurry"}})");
+    auto odd = slash::json::parse(R"({"shadows": {"directional_size": 1000,
+        "directional_softness": "blurry"}})");
     REQUIRE(odd.ok());
     CHECK(render::shadow_settings_from_json(odd.value()) == render::ShadowSettings{});
     CHECK(render::valid_shadow_atlas_size(256));

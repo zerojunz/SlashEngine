@@ -2490,8 +2490,8 @@ TEST_CASE("importing a Unity scene converts cameras, sprites, bodies and sounds 
     // Flipped about its pivot, its order clamped to the z_index range, filtered as its texture's
     // import settings say.
     CHECK(*hero.find("Sprite2D") ==
-          parse(R"({"texture": "unity/Assets/Art/hero.png", "flip_h": true, "z_index": 4096,
-                    "texture_filter": "nearest"})"));
+          parse(R"({"texture": "unity/Assets/Art/hero.png", "flip_h": true, "sort_order": 4096,
+                    "filter": "nearest"})"));
     // Unity's colliders meet every layer by default; bounciness is at most 1.
     CHECK(*hero.find("MovingBody2D") ==
           parse(R"({"friction": 0.2, "bounce": 1.0, "collision_mask": 4294967295})"));
@@ -2541,7 +2541,7 @@ TEST_CASE("importing a Unity scene converts cameras, sprites, bodies and sounds 
     const json::Value torch = entity(files, cave, "torch");
     CHECK(*torch.find("SoundPlayer") ==
           parse(R"({"stream": "unity/Assets/Audio/hit.loop.audio.json", "volume_db": -12.0412,
-                    "pitch_scale": 1.5})"));
+                    "pitch": 1.5})"));
     CHECK(parse(files.at("unity/Assets/Audio/hit.loop.audio.json")) ==
           parse(R"({"format": 1, "source": "unity/Assets/Audio/hit.ogg", "loop": true})"));
 
@@ -2587,7 +2587,7 @@ TEST_CASE("Unity prefab instances, nested prefabs and variants stay instances") 
     CHECK(crate_file.find("root")->as_string() == "crate");
     CHECK(entity(files, crate, "crate").find("StaticBody2D") != nullptr);
     CHECK(*entity(files, crate, "crate_sprite").find("Sprite2D") ==
-          parse(R"({"texture": "unity/Assets/Art/hero.png", "texture_filter": "nearest"})"));
+          parse(R"({"texture": "unity/Assets/Art/hero.png", "filter": "nearest"})"));
 
     // The stack holds an instance of the crate, moved up: only the overrides are written. Until
     // the game's code is built, its script's component holds the label's ID as written, so the
@@ -2617,8 +2617,8 @@ TEST_CASE("Unity prefab instances, nested prefabs and variants stay instances") 
     CHECK(nested.find("StaticBody2D") == nullptr);
     CHECK(nested.find("Collider2D") == nullptr);
     CHECK(*nested.find("Sprite2D") ==
-          parse(R"({"texture": "unity/Assets/Art/hero.png", "modulate": [0.5, 1.0, 1.0, 1.0],
-                    "texture_filter": "nearest"})"));
+          parse(R"({"texture": "unity/Assets/Art/hero.png", "tint": [0.5, 1.0, 1.0, 1.0],
+                    "filter": "nearest"})"));
     CHECK(*nested.find("Transform2D") == parse(R"({"position": [0.0, -24.0]})"));
     CHECK(entity(files, yard, "stack/crate/label").is_null());
     CHECK(entity(files, yard, "stack/crate/crate_sprite").is_null());
@@ -2976,7 +2976,7 @@ TEST_CASE("Unity tile maps become tile map layers, their sprites a tile set") {
     const json::Value& layer = *ground.find("TileLayer2D");
     CHECK(layer.find("tile_set")->as_string() == tiles);
     CHECK(*layer.find("origin") == parse("[-1, -2]"));
-    CHECK(layer.find("z_index")->as_int() == 2);
+    CHECK(layer.find("sort_order")->as_int() == 2);
     CHECK(layer.find("collision_enabled") == nullptr);
     std::map<std::pair<int, int>, std::string> cells;
     const json::Value& rows = *layer.find("rows");
@@ -3320,7 +3320,7 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     // Each Animator is an AnimationTree playing its controller's tree, with the targets bound to
     // the entities under it; the toad has no body.
     const json::Value frog_tree_player = *entity(files, frogs, "frog").find("AnimationGraph");
-    CHECK(frog_tree_player == parse(R"({"tree_root": "unity/Assets/Animations/Frog.animtree.json",
+    CHECK(frog_tree_player == parse(R"({"root": "unity/Assets/Animations/Frog.animtree.json",
         "libraries": {"": "unity/Assets/Animations/Frog.anim.json"}, "deterministic": false,
         "targets": {"Body": "body", "Body#sprite": "body"}})"));
     const json::Value toad_tree_player = *entity(files, frogs, "toad").find("AnimationGraph");
@@ -3389,7 +3389,7 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     CHECK(moved.position.y == doctest::Approx(-11.6));
     const auto& drawn = world.ecs().get<slash::world::Sprite2D>(body);
     CHECK(drawn.region == slash::Vec4{16.0F, 0.0F, 16.0F, 16.0F});
-    CHECK(drawn.modulate.w == doctest::Approx(0.7126).epsilon(0.002));
+    CHECK(drawn.tint.w == doctest::Approx(0.7126).epsilon(0.002));
     // The toad sits, moving right a unit a second.
     CHECK(world.ecs().get<slash::world::Transform2D>(world.find("toad")).position.x ==
           doctest::Approx(8.8));
@@ -3937,8 +3937,8 @@ TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints")
     json::Value hinge = entity(files, mill, "door_hinge");
     CHECK(hinge["Transform2D"]["position"] == parse("[-16.0, 0.0]"));
     json::Value& pin = hinge["PinJoint2D"];
-    CHECK(pin["node_a"].as_string() == "frame");
-    CHECK(pin["node_b"].as_string() == "door");
+    CHECK(pin["body_a"].as_string() == "frame");
+    CHECK(pin["body_b"].as_string() == "door");
     CHECK(pin["angular_limit_enabled"].as_bool());
     CHECK(pin["angular_limit_lower"].as_double() == doctest::Approx(-0.785398));
     CHECK(pin["angular_limit_upper"].as_double() == doctest::Approx(1.570796));
@@ -3948,8 +3948,8 @@ TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints")
     CHECK(spring["Transform2D"]["position"] == parse("[0.0, -64.0]"));
     CHECK(spring["Transform2D"].find("rotation") == nullptr);
     json::Value& damped = spring["SpringJoint2D"];
-    CHECK(damped["node_a"].is_null());
-    CHECK(damped["node_b"].as_string() == "weight");
+    CHECK(damped["body_a"].is_null());
+    CHECK(damped["body_b"].as_string() == "weight");
     CHECK(damped["length"].as_double() == doctest::Approx(56.0));
     CHECK(damped["rest_length"].as_double() == doctest::Approx(48.0));
     CHECK(damped["stiffness"].as_double() == doctest::Approx(157.9137));
@@ -3959,7 +3959,7 @@ TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints")
     CHECK(slider["Transform2D"]["rotation"].as_double() == doctest::Approx(-2.094395));
     CHECK(slider["TrackJoint2D"]["length"].as_double() == doctest::Approx(64.0));
     CHECK(slider["TrackJoint2D"]["initial_offset"].as_double() == doctest::Approx(16.0));
-    CHECK(entity(files, mill, "gate_hinge")["PinJoint2D"]["node_b"].as_string() == "gate");
+    CHECK(entity(files, mill, "gate_hinge")["PinJoint2D"]["body_b"].as_string() == "gate");
 
     for (const auto& [what, where] :
          std::initializer_list<std::pair<std::string_view, std::string_view>>{
@@ -4040,21 +4040,20 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(title["Widget"]["offset_bottom"].as_double() == 70.0);
     CHECK(title["Widget"].find("anchor_top") == nullptr); // 0, as Unity's top anchor of 1
     CHECK(title["Widget"]["grow_horizontal"].as_string() == "both");
-    CHECK(title["Widget"]["theme_override_fonts"] ==
-          parse(R"({"font": "unity/Assets/Fonts/Pond.ttf"})"));
-    CHECK(title["Widget"]["theme_override_constants"] == parse(R"({"outline_size": 8})"));
-    CHECK(title["Widget"]["theme_override_colors"] == parse(R"({"font_color": [1.0, 0.9, 0.2, 1.0],
+    CHECK(title["Widget"]["theme_fonts"] == parse(R"({"font": "unity/Assets/Fonts/Pond.ttf"})"));
+    CHECK(title["Widget"]["theme_constants"] == parse(R"({"outline_size": 8})"));
+    CHECK(title["Widget"]["theme_colors"] == parse(R"({"font_color": [1.0, 0.9, 0.2, 1.0],
                     "font_outline_color": [0.0, 0.0, 0.0, 1.0]})"));
     CHECK(title["Label"]["text"].as_string() == "Pond Hop");
     CHECK(title["Label"]["horizontal_alignment"].as_string() == "center");
     CHECK(title["Label"]["vertical_alignment"].as_string() == "center");
-    CHECK(title["Label"].find("autowrap_mode") == nullptr); // off, as word wrapping is
+    CHECK(title["Label"].find("wrap") == nullptr); // off, as word wrapping is
 
     // A button draws its target graphic, a sliced sprite, tinted per state; its label is
     // a Label of Unity's legacy Text in the default font.
     json::Value play = entity(files, menu, "play");
     REQUIRE(play.find("Button") != nullptr);
-    json::Value& styles = play["Widget"]["theme_override_styles"];
+    json::Value& styles = play["Widget"]["theme_styles"];
     CHECK(styles["normal"] == parse(R"({"type": "texture", "texture": "unity/Assets/UI/button.png",
         "texture_margin_left": 12.0, "texture_margin_top": 12.0, "texture_margin_right": 12.0,
         "texture_margin_bottom": 12.0})"));
@@ -4066,12 +4065,12 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(play["Widget"]["children"] == parse(R"(["text"])"));
     json::Value text = entity(files, menu, "text");
     CHECK(text["Label"]["text"].as_string() == "Play");
-    CHECK(text["Widget"]["theme_override_font_sizes"] == parse(R"({"font_size": 16})"));
-    CHECK(text["Widget"].find("theme_override_fonts") == nullptr); // Arial: the default font
+    CHECK(text["Widget"]["theme_font_sizes"] == parse(R"({"font_size": 16})"));
+    CHECK(text["Widget"].find("theme_fonts") == nullptr); // Arial: the default font
 
     // Unity's default toggle is a check box; its background and checkmark are part of it.
     json::Value sound = entity(files, menu, "sound");
-    CHECK(sound["CheckBox"]["button_pressed"].as_bool());
+    CHECK(sound["CheckBox"]["pressed"].as_bool());
     CHECK(sound["Widget"]["children"] == parse(R"(["label"])"));
     const json::Value report = parse(files.at("import/unity.json"));
     const json::Value& objects =
@@ -4083,10 +4082,10 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(volume["Slider"]["max_value"].as_double() == 10.0);
     CHECK(volume["Slider"]["value"].as_double() == 7.0);
     CHECK(volume["Slider"].find("step") == nullptr); // 1, whole numbers
-    CHECK(volume["Widget"]["theme_override_styles"]["slider"] ==
+    CHECK(volume["Widget"]["theme_styles"]["slider"] ==
           parse(R"({"type": "flat", "bg_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
                     "content_margin_top": 5.0, "content_margin_bottom": 5.0})"));
-    CHECK(volume["Widget"]["theme_override_styles"]["grabber_area"]["bg_color"] ==
+    CHECK(volume["Widget"]["theme_styles"]["grabber_area"]["bg_color"] ==
           parse("[0.2, 0.8, 0.4, 1.0]"));
     CHECK(objects.find("Canvas/Volume/Handle Slide Area/Handle")->as_string() == "volume");
 
@@ -4097,9 +4096,9 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(name["TextField"]["placeholder_text"].as_string() == "Your name");
     CHECK(name["TextField"]["max_length"].as_int() == 12);
     CHECK(name["TextField"]["caret_blink"].as_bool());
-    CHECK(name["Widget"]["theme_override_colors"]["font_placeholder_color"] ==
+    CHECK(name["Widget"]["theme_colors"]["font_placeholder_color"] ==
           parse("[0.2, 0.2, 0.2, 0.5]"));
-    CHECK(name["Widget"]["theme_override_styles"]["normal"] ==
+    CHECK(name["Widget"]["theme_styles"]["normal"] ==
           parse(R"({"type": "flat", "bg_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
                     "content_margin_left": 10.0, "content_margin_top": 7.0,
                     "content_margin_right": 10.0, "content_margin_bottom": 6.0})"));
@@ -4114,31 +4113,30 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     json::Value content = entity(files, menu, "content");
     REQUIRE(content.find("MarginBox") != nullptr);
     CHECK(content["Widget"]["children"] == parse(R"(["content_layout"])"));
-    CHECK(content["Widget"]["size_flags_horizontal"].as_string() == "expand_fill");
-    CHECK(content["Widget"]["theme_override_constants"] ==
+    CHECK(content["Widget"]["sizing_horizontal"].as_string() == "expand_fill");
+    CHECK(content["Widget"]["theme_constants"] ==
           parse(R"({"margin_left": 4, "margin_top": 4, "margin_right": 4, "margin_bottom": 4})"));
     json::Value layout = entity(files, menu, "content_layout");
     CHECK(layout["StackBox"]["vertical"].as_bool());
-    CHECK(layout["Widget"]["theme_override_constants"] == parse(R"({"separation": 2})"));
+    CHECK(layout["Widget"]["theme_constants"] == parse(R"({"separation": 2})"));
     CHECK(layout["Widget"]["children"] == parse(R"(["lily", "reed"])"));
-    CHECK(entity(files, menu, "lily")["Widget"]["custom_minimum_size"] == parse("[0.0, 24.0]"));
+    CHECK(entity(files, menu, "lily")["Widget"]["min_size"] == parse("[0.0, 24.0]"));
 
     // A grid layout group is a GridContainer of cells as big as its cell size.
     json::Value grid = entity(files, menu, "grid");
     CHECK(grid["GridBox"]["columns"].as_int() == 2);
-    CHECK(grid["Widget"]["theme_override_constants"] ==
-          parse(R"({"h_separation": 4, "v_separation": 4})"));
+    CHECK(grid["Widget"]["theme_constants"] == parse(R"({"h_separation": 4, "v_separation": 4})"));
     json::Value gem = entity(files, menu, "gem");
-    CHECK(gem["Widget"]["custom_minimum_size"] == parse("[32.0, 32.0]"));
+    CHECK(gem["Widget"]["min_size"] == parse("[32.0, 32.0]"));
     CHECK(gem["Picture"]["texture"].as_string() == "unity/Assets/UI/icon.png");
 
     // A raw image is a TextureRect, scaled; an inactive object is hidden, faded by its group.
     json::Value logo = entity(files, menu, "logo");
     CHECK(logo["Widget"]["scale"] == parse("[1.5, 1.5]"));
-    CHECK(logo["Widget"]["mouse_filter"].as_string() == "ignore");
+    CHECK(logo["Widget"]["pointer_mode"].as_string() == "ignore");
     json::Value options = entity(files, menu, "options");
     CHECK_FALSE(options["Widget"]["visible"].as_bool());
-    CHECK(options["Widget"]["modulate"] == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK(options["Widget"]["tint"] == parse("[1.0, 1.0, 1.0, 0.5]"));
     CHECK(options["ColorFill"]["color"] == parse("[0.1, 0.2, 0.3, 1.0]"));
 
     // A UI prefab is a scene of controls, which its instances extend; a canvas in the world is
@@ -4147,7 +4145,7 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     json::Value badge_root = entity(files, badge, "badge");
     CHECK(badge_root["Widget"]["offset_left"].as_double() == -20.0);
     CHECK(badge_root["Widget"]["children"] == parse(R"(["count"])"));
-    CHECK(badge_root["Widget"]["theme_override_styles"]["panel"]["bg_color"] ==
+    CHECK(badge_root["Widget"]["theme_styles"]["panel"]["bg_color"] ==
           parse("[1.0, 0.0, 0.0, 1.0]"));
     CHECK(entity(files, badge, "count")["Label"]["text"].as_string() == "3");
     const json::Value menu_scene = parse(files.at(menu));
@@ -4238,9 +4236,9 @@ TEST_CASE("Unity dropdowns become option buttons, their captions, arrows and lis
         {"text": "High", "icon": "unity/Assets/UI/icon.png"}]})"));
     CHECK(quality["Widget"].find("children") == nullptr);
     // Unity's rounded sprite draws as a flat style box.
-    CHECK(quality["Widget"]["theme_override_styles"]["normal"]["type"].as_string() == "flat");
-    CHECK(quality["Widget"]["theme_override_font_sizes"] == parse(R"({"font_size": 14})"));
-    CHECK(quality["Widget"].find("theme_override_icons") == nullptr); // Unity's arrow
+    CHECK(quality["Widget"]["theme_styles"]["normal"]["type"].as_string() == "flat");
+    CHECK(quality["Widget"]["theme_font_sizes"] == parse(R"({"font_size": 14})"));
+    CHECK(quality["Widget"].find("theme_icons") == nullptr); // Unity's arrow
     const json::Value report = parse(files.at("import/unity.json"));
     const json::Value& objects =
         *report.find("scenes")->find("Assets/Scenes/Options.unity")->find("entities");
@@ -4253,9 +4251,8 @@ TEST_CASE("Unity dropdowns become option buttons, their captions, arrows and lis
     json::Value mode = entity(files, scene, "mode");
     CHECK(mode["Dropdown"] == parse(R"({"selected": 1, "disabled": true,
         "items": [{"text": "Easy"}, {"text": "Hard"}]})"));
-    CHECK(mode["Widget"]["theme_override_icons"] ==
-          parse(R"({"arrow": "unity/Assets/UI/icon.png"})"));
-    CHECK(mode["Widget"]["theme_override_styles"]["normal"]["texture"].as_string() ==
+    CHECK(mode["Widget"]["theme_icons"] == parse(R"({"arrow": "unity/Assets/UI/icon.png"})"));
+    CHECK(mode["Widget"]["theme_styles"]["normal"]["texture"].as_string() ==
           "unity/Assets/UI/button.png");
     CHECK(objects.find("Canvas/Mode/Placeholder")->as_string() == "mode");
 
@@ -4698,7 +4695,7 @@ TEST_CASE("a Unity build imports through AssetRipper, its package scripts and sp
           parse(R"({"color": [0.0, 0.0, 1.0, 1.0]})"));
     CHECK(unsupported(full, "component Image").find("why")->as_string() ==
           "its values didn't survive the game's build: the build's scripts couldn't be read");
-    CHECK(entity(files, main_scene, "clip").find("Widget")->find("clip_contents")->as_bool());
+    CHECK(entity(files, main_scene, "clip").find("Widget")->find("clip_children")->as_bool());
     CHECK(unsupported(full, "component InputSystemUIInputModule").find("why")->as_string() ==
           "a script from a Unity package");
     CHECK(*report.find("scripts") ==
@@ -4796,10 +4793,10 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     // The Standard shader's color, texture (tiled twice, its offset from the top), smoothness and
     // HDR emission, filtered as the texture's import settings say.
     CHECK(*crate.find("Surface3D") == parse(R"({"albedo_color": [0.8, 0.6, 0.4, 1.0],
-                    "albedo_texture": "unity/Assets/Art/wood.png", "uv1_scale": [2.0, 2.0, 1.0],
-                    "uv1_offset": [0.0, -1.0, 0.0], "roughness": 0.8, "emission_enabled": true,
+                    "albedo_texture": "unity/Assets/Art/wood.png", "uv_scale": [2.0, 2.0, 1.0],
+                    "uv_offset": [0.0, -1.0, 0.0], "roughness": 0.8, "emission_enabled": true,
                     "emission": [1.0, 0.5, 0.0, 1.0], "emission_energy_multiplier": 2.0,
-                    "texture_filter": "nearest_with_mipmaps"})"));
+                    "filter": "nearest_with_mipmaps"})"));
     // Unity's default friction, its colliders meeting every layer, frozen rotations as locks.
     CHECK(*crate.find("RigidBody3D") ==
           parse(R"({"mass": 2.0, "linear_damp": 0.1, "angular_damp": 0.05, "friction": 0.6,
@@ -4853,7 +4850,7 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     CHECK(*mirror.find("ReflectionProbe") ==
           parse(R"({"update_mode": "always", "size": [8.0, 4.0, 6.0],
                     "origin_offset": [1.0, -1.0, 0.0], "intensity": 0.5, "blend_distance": 0.5,
-                    "max_distance": 50.0, "box_projection": true, "cull_mask": 1,
+                    "max_distance": 50.0, "box_projection": true, "layer_filter": 1,
                     "ambient_mode": "disabled"})"));
 
     // A plane's mesh collider is its two triangles, solid from both sides; a collider with no
@@ -4881,7 +4878,7 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
                     "position": [0.0, 0.9, 0.0]})"));
     CHECK(*player.find("SoundPlayer3D") ==
           parse(R"({"stream": "unity/Assets/Audio/steps.ogg", "autoplay": true,
-                    "unit_size": 2.0, "max_db": 0.0, "max_distance": 30.0})"));
+                    "reference_distance": 2.0, "max_volume_db": 0.0, "max_distance": 30.0})"));
 
     // A model instance draws its file whole, with the material the instance puts in place of its
     // own; what is under its top object stays under it. A trigger with no body is an Area3D.
@@ -5367,7 +5364,7 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
     // at each, with both blended there.
     const json::Value fire = entity(files, bonfire, "fire");
     CHECK(*fire.find("Emitter3D") == parse(R"({
-        "amount": 20, "lifetime": 2.0, "local_coords": true, "emission_shape": "ring",
+        "amount": 20, "lifetime": 2.0, "local_space": true, "emission_shape": "ring",
         "emission_ring_height": 0.0, "emission_ring_radius": 0.3, "direction": [0.0, 0.0, 1.0],
         "spread": 25.0, "gravity": [0.0, 0.0, 0.0], "initial_velocity_min": 5.0,
         "initial_velocity_max": 5.0, "scale_amount_curve": [[0.0, 1.0], [1.0, 0.2]],
@@ -5378,9 +5375,9 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
     // A billboard of Unity's default particle material, its soft dot drawn by the import.
     CHECK(*fire.find("QuadGeometry") == parse("{}"));
     CHECK(*fire.find("Surface3D") == parse(R"({
-        "transparency": "alpha", "shading_mode": "unshaded", "vertex_color_use_as_albedo": true,
+        "transparency": "alpha", "shading": "unshaded", "vertex_color_use_as_albedo": true,
         "albedo_texture": "unity/Assets/particles/Default-Particle.png",
-        "billboard_mode": "particles", "billboard_keep_scale": true})"));
+        "billboard": "particles", "billboard_keep_scale": true})"));
     REQUIRE(files.contains("unity/Assets/particles/Default-Particle.png"));
     CHECK(*fire.find("Transform3D") ==
           parse(R"({"position": [-2.0, 0.0, 0.0], "rotation": [-1.570796, 0.0, 0.0]})"));
@@ -5392,7 +5389,7 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
     const json::Value& spark = *sparks.find("Emitter3D");
     for (const auto& [field, value] : json::Object(parse(R"({
             "amount": 30, "lifetime_randomness": 0.5, "one_shot": true,
-            "explosiveness": 1.0, "seed": 1234, "emission_shape": "sphere_surface",
+            "burst": 1.0, "seed": 1234, "emission_shape": "sphere_surface",
             "emission_sphere_radius": 0.1, "spread": 180.0, "gravity": [0.0, -9.81, 0.0],
             "initial_velocity_min": 2.0, "initial_velocity_max": 4.0, "scale_amount_min": 0.1,
             "scale_amount_max": 0.1, "draw_order": "view_depth",
@@ -5429,8 +5426,8 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
         "anim_speed_min": 2.0, "anim_speed_max": 2.0, "cast_shadow": "off"})"));
     CHECK(*smoke.find("Surface3D") == parse(R"({
         "albedo_color": [0.5, 0.5, 0.5, 0.8], "roughness": 0.5, "transparency": "alpha",
-        "shading_mode": "unshaded",
-        "billboard_mode": "fixed_y", "billboard_keep_scale": true,
+        "shading": "unshaded",
+        "billboard": "fixed_y", "billboard_keep_scale": true,
         "vertex_color_use_as_albedo": true, "particles_anim_h_frames": 2,
         "particles_anim_v_frames": 2, "particles_anim_loop": true})"));
 
@@ -5934,7 +5931,7 @@ TEST_CASE("Unity humanoid clips retarget through the Avatars, and root motion le
           parse(R"({"format": 1, "root": {"type": "Animation", "animation": "Bend"}})"));
     const json::Value leg = entity(files, scene, "leg");
     CHECK(*leg.find("AnimationGraph") ==
-          parse(R"({"tree_root": "unity/Assets/Animations/Walker.animtree.json",
+          parse(R"({"root": "unity/Assets/Animations/Walker.animtree.json",
                     "libraries": {"": "unity/Assets/Animations/Walker.anim.json"},
                     "deterministic": false, "root_motion_track": "Root"})"));
     CHECK(leg.find("Animator") == nullptr);

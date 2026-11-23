@@ -398,9 +398,9 @@ project.import {"source":"unreal"}
         },
         "QuadGeometry": {},
         "Surface3D": {
+          "billboard": "particles",
           "billboard_keep_scale": true,
-          "billboard_mode": "particles",
-          "shading_mode": "unshaded",
+          "shading": "unshaded",
           "transparency": "alpha",
           "vertex_color_use_as_albedo": true
         },
@@ -453,7 +453,7 @@ project.import {"source":"unreal"}
           "libraries": {
             "": "unreal/Content/Characters/ABP_Guard.anim.json"
           },
-          "tree_root": "unreal/Content/Characters/ABP_Guard.animtree.json"
+          "root": "unreal/Content/Characters/ABP_Guard.animtree.json"
         },
         "Model3D": {
           "mesh": "unreal/Content/Characters/SK_Hero.glb"
@@ -596,8 +596,8 @@ project.import {"source":"unreal"}
         "SoundPlayer3D": {
           "autoplay": true,
           "max_distance": 24.0,
+          "reference_distance": 4.0,
           "stream": "unreal/Content/Audio/Wind.audio.json",
-          "unit_size": 4.0,
           "volume_db": -6.0206
         },
         "Transform3D": {
@@ -1043,6 +1043,7 @@ world.query {"include":["AnimationTree"],"omit_defaults":true,"with":["Animation
               "weight": 1.0
             }
           ],
+          "root": "unreal/Content/Characters/ABP_Guard.animtree.json",
           "state": {
             "Idle/current_delta": 0.016666666666666666,
             "Idle/current_length": 2.0,
@@ -1054,8 +1055,7 @@ world.query {"include":["AnimationTree"],"omit_defaults":true,"with":["Animation
               "current": "Idle",
               "playing": true
             }
-          },
-          "tree_root": "unreal/Content/Characters/ABP_Guard.animtree.json"
+          }
         }
       },
       "id": "guard"

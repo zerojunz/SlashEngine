@@ -7,7 +7,7 @@ a crate, a pillar and a ball, seen through a `Camera3D` in a 160x90 window:
   four cascades, sharper near the camera, so the pillar and the crate cast long shadows.
 - `lamp` is an orange `PointLight3D` with `shadow_enabled`. Its shadow map is a cube around it, so
   the ball shades the ground in front of it.
-- [project.json](project.json) sets `rendering.lights_and_shadows`: a 2048-texel atlas for the
+- [project.json](project.json) sets `rendering.shadows`: a 2048-texel atlas for the
   sun's cascades with soft edges, and a 1024-texel atlas with hard edges for the lamp.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

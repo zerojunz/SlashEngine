@@ -10,7 +10,7 @@ mouse button and motion, screen touch and drag, gamepad button and motion, actio
 runs repeat. Gameplay code asks about actions: `is_action_pressed`, `is_action_just_pressed`
 (the tick it changed; a press and release in one tick count as both), `get_action_strength`,
 `get_axis` and `get_vector`, as Godot's, and `input::map(world)` rebinds them. `project.json`'s
-`input` adds actions over Godot's `ui_*` ones (`Map::with_defaults`) and `input_devices` sets
+`input` adds actions over Godot's `ui_*` ones (`Map::with_defaults`) and `pointer` sets
 touch and mouse emulation. Matching follows Godot's `action_match` (`src/event.cpp`); the state
 follows `Input::_parse_input_event_impl` (`src/state.cpp`). `input::SdlReader` (`src/sdl.cpp`)
 turns SDL's events into input events: games call it from `Game::handle_event` and the platform's

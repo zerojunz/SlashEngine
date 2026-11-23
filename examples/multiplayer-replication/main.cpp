@@ -223,10 +223,10 @@ int main() {
                [&] { return position_of(*alice.world, "bullet1") == "200, 200"; });
     std::printf("  it flies on the server, and alice sees it at %s\n",
                 position_of(*alice.world, "bullet1").c_str());
-    server.world->ecs().get<world::Sprite2D>(server.world->find("bullet1")).modulate = {1.0F, 0.0F,
-                                                                                        0.0F, 1.0F};
+    server.world->ecs().get<world::Sprite2D>(server.world->find("bullet1")).tint = {1.0F, 0.0F,
+                                                                                    0.0F, 1.0F};
     step_until({&server, &alice, &bob}, [&] {
-        return bob.world->ecs().get<world::Sprite2D>(bob.world->find("bullet1")).modulate.y == 0.0F;
+        return bob.world->ecs().get<world::Sprite2D>(bob.world->find("bullet1")).tint.y == 0.0F;
     });
     std::printf("  it hits and turns red; the change reaches bob reliably\n");
 

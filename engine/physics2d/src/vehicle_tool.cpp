@@ -270,8 +270,8 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
         const entt::entity groove_entity = create_named(world, name + "_groove");
         ecs.emplace<world::Transform2D>(groove_entity, mount);
         ecs.emplace<world::TrackJoint2D>(groove_entity,
-                                         world::TrackJoint2D{.node_a = entity,
-                                                             .node_b = wheel,
+                                         world::TrackJoint2D{.body_a = entity,
+                                                             .body_b = wheel,
                                                              .disable_collision = true,
                                                              .length = rest + (2.0F * travel),
                                                              .initial_offset = rest + travel});
@@ -287,8 +287,8 @@ std::vector<entt::entity> keep_wheels(world::World& world, entt::entity entity,
         const entt::entity spring_entity = create_named(world, name + "_spring");
         ecs.emplace<world::Transform2D>(spring_entity, mount);
         ecs.emplace<world::SpringJoint2D>(
-            spring_entity, world::SpringJoint2D{.node_a = entity,
-                                                .node_b = wheel,
+            spring_entity, world::SpringJoint2D{.body_a = entity,
+                                                .body_b = wheel,
                                                 .disable_collision = true,
                                                 .length = rest + travel,
                                                 .rest_length = rest + travel + compression,

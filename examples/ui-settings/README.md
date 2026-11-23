@@ -23,7 +23,7 @@ events.read {"subscription":"events_1"}
   radio buttons, and clicking High turns Medium off.
 - Their icons are theme items (`icons/checked`, `icons/unchecked` and the rest), Godot's
   default icons drawn by the engine (`builtin:toggle_on`); `ui.theme` says where each comes
-  from, and a theme or `theme_override_icons` can name a PNG instead.
+  from, and a theme or `theme_icons` can name a PNG instead.
 - A click on a slider moves the grabber's middle to the pointer and starts a drag; the drag
   moves it with the pointer, and letting go emits `drag_ended` with whether the value changed.
   With focus, the arrow keys (or a gamepad, repeating while held) step it by `step`, and Home

@@ -176,20 +176,20 @@ void apply_sampler(const cgltf_sampler* sampler, world::Surface3D& standard) {
     }
     switch (sampler->min_filter) {
     case cgltf_filter_type_nearest:
-        standard.texture_filter = "nearest";
+        standard.filter = "nearest";
         break;
     case cgltf_filter_type_linear:
-        standard.texture_filter = "linear";
+        standard.filter = "linear";
         break;
     case cgltf_filter_type_nearest_mipmap_nearest:
     case cgltf_filter_type_nearest_mipmap_linear:
-        standard.texture_filter = "nearest_with_mipmaps";
+        standard.filter = "nearest_with_mipmaps";
         break;
     default:
-        standard.texture_filter = "linear_with_mipmaps";
+        standard.filter = "linear_with_mipmaps";
         break;
     }
-    standard.texture_repeat =
+    standard.repeat =
         sampler->wrap_s == cgltf_wrap_mode_repeat && sampler->wrap_t == cgltf_wrap_mode_repeat;
 }
 
@@ -208,15 +208,15 @@ ModelMaterial material_of(const cgltf_data& data, std::size_t index) {
         in.name != nullptr && *in.name != '\0' ? in.name : "material_" + std::to_string(index);
     world::Surface3D& standard = out.standard;
     if (in.unlit != 0) {
-        standard.shading_mode = "unshaded";
+        standard.shading = "unshaded";
     }
     if (in.has_emissive_strength != 0) {
         standard.emission_energy_multiplier = in.emissive_strength.emissive_strength;
     }
     const auto uv_transform = [&](const cgltf_texture_view& view) {
         if (view.has_transform != 0) {
-            standard.uv1_offset = {view.transform.offset[0], view.transform.offset[1], 0.0F};
-            standard.uv1_scale = {view.transform.scale[0], view.transform.scale[1], 1.0F};
+            standard.uv_offset = {view.transform.offset[0], view.transform.offset[1], 0.0F};
+            standard.uv_scale = {view.transform.scale[0], view.transform.scale[1], 1.0F};
         }
     };
     if (in.has_pbr_metallic_roughness != 0) {

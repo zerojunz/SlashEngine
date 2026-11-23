@@ -481,11 +481,11 @@ std::vector<Face> polygon_faces(const world::SolidExtrusion3D& polygon, const st
     std::optional<world::Curve3D> curve;
     if (along_path) {
         if (!node.path) {
-            problems.push_back({entity, path + "/path_node", node.path_error});
+            problems.push_back({entity, path + "/path", node.path_error});
             return faces;
         }
         if (node.path->points.size() < 2) {
-            problems.push_back({entity, path + "/path_node",
+            problems.push_back({entity, path + "/path",
                                 "names a Spline3D with fewer than 2 points: give it more"});
             return faces;
         }
@@ -1230,19 +1230,19 @@ CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::enti
     }
     if (const auto* polygon = std::get_if<world::SolidExtrusion3D>(&shape);
         polygon != nullptr && polygon->mode == "path") {
-        const auto* path = world.valid(polygon->path_node)
-                               ? ecs.try_get<const world::Spline3D>(polygon->path_node)
+        const auto* path = world.valid(polygon->path)
+                               ? ecs.try_get<const world::Spline3D>(polygon->path)
                                : nullptr;
-        if (polygon->path_node == entt::null) {
+        if (polygon->path == entt::null) {
             node.path_error = "names no entity: name the entity with the Spline3D to push the "
                               "polygon along";
         } else if (path == nullptr) {
-            node.path_error = "\"" + std::string(world.id_of(polygon->path_node)) +
+            node.path_error = "\"" + std::string(world.id_of(polygon->path)) +
                               "\" has no Spline3D: give it one, or name another entity";
         } else {
             node.path = *path;
             if (!polygon->path_local) {
-                node.path_place = tree.global(polygon->path_node);
+                node.path_place = tree.global(polygon->path);
             }
         }
     }

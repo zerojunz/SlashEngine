@@ -82,7 +82,7 @@ std::string mo_file(const std::vector<std::pair<std::string, std::string>>& entr
     return out + original_table + translation_table + strings;
 }
 
-// A session on a project with these files, project.json's "internationalization" and a scene.
+// A session on a project with these files, project.json's "localization" and a scene.
 struct Project {
     std::filesystem::path root;
     world::ComponentRegistry components;
@@ -95,9 +95,9 @@ struct Project {
         std::filesystem::remove_all(root);
         std::filesystem::create_directories(root);
         write("project.json", R"({"format": 1, "name": "Menu", "main_scene": "main.scene.json",
-                                  "gui": {"allow_system_fallback": false},
+                                  "ui": {"system_font_fallback": false},
                                   "window": {"width": 320, "height": 180},
-                                  "internationalization": )" +
+                                  "localization": )" +
                                   std::string(settings) + "}");
         for (const auto& [file, text] : files) {
             write(file, text);
@@ -410,7 +410,7 @@ TEST_CASE("pseudolocalization makes text as Godot's") {
 }
 
 TEST_CASE("controls show their text translated in the game's locale") {
-    Project project("controls", R"({"locale": {"translations": ["menu.csv"]}})",
+    Project project("controls", R"({"translations": ["menu.csv"]})",
                     {{"menu.csv", std::string(kMenuCsv)}},
                     R"({
         "menu": {"components": {"StackBox": {"vertical": true},
@@ -468,7 +468,7 @@ TEST_CASE("controls show their text translated in the game's locale") {
 }
 
 TEST_CASE("the locale comes from the project, the player and the fallback") {
-    Project tested("tested", R"({"locale": {"translations": ["menu.csv"], "test": "fr"}})",
+    Project tested("tested", R"({"translations": ["menu.csv"], "test": "fr"})",
                    {{"menu.csv", std::string(kMenuCsv)}},
                    R"({"play": {"components": {"Widget": {}, "Label": {"text": "Play"}}}})");
     CHECK(l10n::locale(tested.world()) == "fr");
@@ -507,8 +507,7 @@ TEST_CASE("lookups take the best locale, then the fallback, then the source") {
     // Written in Japanese and translated into English, the fallback.
     const std::string japanese = "keys,en\nはじめる,Start\n";
     Project project("fallback",
-                    R"({"locale": {"translations": ["es.csv", "en.csv", "ja.csv"],
-                                   "fallback": "en"}})",
+                    R"({"translations": ["es.csv", "en.csv", "ja.csv"], "fallback": "en"})",
                     {{"es.csv", spanish}, {"en.csv", english}, {"ja.csv", japanese}}, "{}");
     world::World& world = project.world();
     CHECK(compact(json::Value(json::Array{"es", "es_AR", "en"})) ==
@@ -534,8 +533,8 @@ TEST_CASE("plural lookups and pseudolocalization in a session") {
                            "msgstr[0] \"%d moneta\"\nmsgstr[1] \"%d monety\"\n"
                            "msgstr[2] \"%d monet\"\n";
     Project project("plurals",
-                    R"({"locale": {"translations": ["pl.po"], "test": "pl"},
-                        "pseudolocalization": {"use_pseudolocalization": true}})",
+                    R"({"translations": ["pl.po"], "test": "pl",
+                        "pseudo": {"enabled": true}})",
                     {{"pl.po", po}},
                     R"({"title": {"components": {"Widget": {}, "Label": {"text": "Start"}}}})");
     world::World& world = project.world();
@@ -567,12 +566,11 @@ TEST_CASE("layout direction follows Godot's root and forced settings") {
         return controls[0].find("rect")->as_array()[0].as_double() >
                controls[1].find("rect")->as_array()[0].as_double();
     };
-    Project rtl("rtl", R"({"rendering": {"root_node_layout_direction": "rtl"}})", {}, scene);
+    Project rtl("rtl", R"({"layout_direction": "rtl"})", {}, scene);
     CHECK(first_on_right(rtl));
     CHECK(l10n::is_layout_rtl(rtl.world(), "inherited", nullptr));
     CHECK_FALSE(l10n::is_layout_rtl(rtl.world(), "ltr", nullptr));
-    Project forced("forced", R"({"rendering": {"force_right_to_left_layout_direction": true}})", {},
-                   scene);
+    Project forced("forced", R"({"force_right_to_left": true})", {}, scene);
     CHECK(first_on_right(forced));
     CHECK(l10n::is_layout_rtl(forced.world(), "application_locale", nullptr));
     CHECK_FALSE(l10n::is_layout_rtl(forced.world(), "ltr", nullptr));
@@ -589,22 +587,21 @@ TEST_CASE("layout direction follows Godot's root and forced settings") {
     CHECK(l10n::is_layout_rtl(world, "rtl", &parent));
 }
 
-TEST_CASE("internationalization settings validate and translation files report problems") {
-    auto errors = l10n::validate_settings(parse(R"({"locale": {"fallback": 3},
-                  "rendering": {"root_node_layout_direction": "rtl_please"}})"),
-                                          "/internationalization");
+TEST_CASE("localization settings validate and translation files report problems") {
+    auto errors = l10n::validate_settings(
+        parse(R"({"fallback": 3, "layout_direction": "rtl_please"})"), "/localization");
     REQUIRE(errors.size() == 2);
-    CHECK(errors[0].path == "/internationalization/locale/fallback");
-    CHECK(errors[1].path == "/internationalization/rendering/root_node_layout_direction");
+    CHECK(errors[0].path == "/localization/fallback");
+    CHECK(errors[1].path == "/localization/layout_direction");
     errors = l10n::validate_settings(
-        parse(R"({"locale": {"translations": ["menu.txt", "../out.csv", "ok.mo"]}})"), "/i");
+        parse(R"({"translations": ["menu.txt", "../out.csv", "ok.mo"]})"), "/i");
     REQUIRE(errors.size() == 2);
-    CHECK(errors[0].path == "/i/locale/translations/0");
-    CHECK(errors[1].path == "/i/locale/translations/1");
-    const l10n::Settings parsed = l10n::parse_settings(
-        parse(R"({"locale": {"translations": ["a.po"], "fallback": "de", "test": "fr"},
-                  "pseudolocalization": {"use_pseudolocalization": true, "expansion_ratio": 0.3},
-                  "rendering": {"root_node_layout_direction": "system_locale"}})"));
+    CHECK(errors[0].path == "/i/translations/0");
+    CHECK(errors[1].path == "/i/translations/1");
+    const l10n::Settings parsed =
+        l10n::parse_settings(parse(R"({"translations": ["a.po"], "fallback": "de", "test": "fr",
+                  "pseudo": {"enabled": true, "expansion_ratio": 0.3},
+                  "layout_direction": "system_locale"})"));
     CHECK(parsed.translations == std::vector<std::string>{"a.po"});
     CHECK(parsed.fallback == "de");
     CHECK(parsed.test == "fr");
@@ -612,7 +609,7 @@ TEST_CASE("internationalization settings validate and translation files report p
     CHECK(parsed.pseudolocalization.expansion_ratio == doctest::Approx(0.3));
     CHECK(parsed.root_node_layout_direction == l10n::RootDirection::SystemLocale);
 
-    Project project("problems", R"({"locale": {"translations": ["bad.csv", "gone.po"]}})",
+    Project project("problems", R"({"translations": ["bad.csv", "gone.po"]})",
                     {{"bad.csv", "keys,fr,french\nA,B,C\n"}}, "{}");
     command::Reply reply = project.call("l10n.state", "{}");
     REQUIRE(reply.ok);
@@ -624,7 +621,7 @@ TEST_CASE("internationalization settings validate and translation files report p
 }
 
 TEST_CASE("l10n.set_locale switches the game's language") {
-    Project project("set", R"({"locale": {"translations": ["menu.csv"]}})",
+    Project project("set", R"({"translations": ["menu.csv"]})",
                     {{"menu.csv", std::string(kMenuCsv)}},
                     R"({"play": {"components": {"Widget": {}, "Label": {"text": "Play"}}}})");
     REQUIRE(project.call("events.subscribe", R"({"kinds": ["translation_changed"]})").ok);
@@ -657,7 +654,7 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
         "msgid \"Play\"\n"
         "msgstr \"Graj\"\n";
     Project project(
-        "extract", R"({"locale": {"translations": ["menu.csv", "pl.po"]}})",
+        "extract", R"({"translations": ["menu.csv", "pl.po"]})",
         {{"menu.csv", "keys,fr\nPlay,Jouer\n"},
          {"pl.po", std::string(kPo)},
          {"hud.prefab.json",
@@ -681,7 +678,7 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
     // A project's code is in gameplay.sources.
     project.write("project.json", R"({"format": 1, "name": "Menu",
         "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
-        "internationalization": {"locale": {"translations": ["menu.csv", "pl.po"]}}})");
+        "localization": {"translations": ["menu.csv", "pl.po"]}})");
 
     command::Reply reply = project.call("l10n.extract", R"({"list": true})");
     REQUIRE_MESSAGE(reply.ok, reply.message);
@@ -752,7 +749,7 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
 
 TEST_CASE("l10n.check finds placeholders, missing messages and text that doesn't fit") {
     Project project(
-        "check", R"({"locale": {"translations": ["menu.csv"]}})",
+        "check", R"({"translations": ["menu.csv"]})",
         {{"menu.csv", "keys,fr,de\n"
                       "Play,Jouer à ce jeu maintenant,Spielen\n"
                       "%d of %s,%s sur %d,%d von %s\n"
@@ -770,8 +767,8 @@ TEST_CASE("l10n.check finds placeholders, missing messages and text that doesn't
                                  "}\n");
     project.write("project.json", R"({"format": 1, "name": "Menu",
         "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
-        "gui": {"allow_system_fallback": false},
-        "internationalization": {"locale": {"translations": ["menu.csv"]}}})");
+        "ui": {"system_font_fallback": false},
+        "localization": {"translations": ["menu.csv"]}})");
 
     command::Reply reply = project.call("l10n.check", "{}");
     REQUIRE_MESSAGE(reply.ok, reply.message);
@@ -819,9 +816,8 @@ TEST_CASE("l10n.check finds placeholders, missing messages and text that doesn't
     // Pseudolocalized, as the project's settings make it: twice as long, "Play" no longer fits.
     project.write("project.json", R"({"format": 1, "name": "Menu",
         "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
-        "gui": {"allow_system_fallback": false},
-        "internationalization": {"locale": {"translations": ["menu.csv"]},
-                                 "pseudolocalization": {"expansion_ratio": 1.0}}})");
+        "ui": {"system_font_fallback": false},
+        "localization": {"translations": ["menu.csv"], "pseudo": {"expansion_ratio": 1.0}}})");
     reply = project.call("l10n.check", R"({"locales": ["de"], "pseudolocalization": true})");
     REQUIRE_MESSAGE(reply.ok, reply.message);
     REQUIRE(reply.value.find("errors") != nullptr);

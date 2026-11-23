@@ -25,7 +25,7 @@ are the same on every platform. `examples/physics-3d` has every kind of body.
 Joints are Godot's `PinJoint3D`, `HingeJoint3D`, `SlideJoint3D`, `ConeJoint3D` and
 `SixAxisJoint3D` as components on an entity of their own, built into Jolt constraints as
 Godot's `JoltJoint3D` subclasses build them (`src/joints.cpp`): made at the entity's
-`Transform3D` between `node_a` and `node_b` (a missing one is the world), made again when that
+`Transform3D` between `body_a` and `body_b` (a missing one is the world), made again when that
 transform or the bodies change and rebuilt in place for other changes. `WheeledBody3D` on a
 rigid body rolls it on the `Wheel3D` entities among its children, with Godot's
 `WheeledBody3D` code ported line for line in `src/vehicle.cpp`: its inputs go to the wheels
@@ -296,7 +296,7 @@ targets by test drives, the unwritten recipe handed to each drive's session thro
 Physics materials and fields make one simulation, after Unreal's Chaos. A
 `.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`
 with Chaos's density, strength and surface; `$cli schema physics_material`) is named by a
-body's `physics_material_override`; each space reads it through the world's assets
+body's `physics_material`; each space reads it through the world's assets
 (`Space::material`, kept by version) and gives the body its computed friction and bounce
 (Box2D takes no negative values, so 2D keeps rough and absorbent in the shapes'
 `userMaterialId` for `combine_friction` and `combine_bounce`), its mass by density times its

@@ -541,7 +541,7 @@ A **scroll container** (`ScrollBox`) shows its children through its rect, **scro
 with a **scroll bar** on each side they don't fit; the wheel, dragging the bars and a finger
 scroll it, and with `follow_focus` it scrolls a control that gets focus into view. A
 `ScrollBar` also works on its own, holding a value like a slider whose grabber is a page of the
-range long. Controls **clip** their children to their rect when `clip_contents` is on, as a
+range long. Controls **clip** their children to their rect when `clip_children` is on, as a
 scroll container always does: what is cut off neither draws nor takes clicks, and `ui.layout`
 and `frame.summary` say what shows. The [UI scrolling example](../examples/ui-scrolling/) is a
 quest log.
@@ -575,7 +575,7 @@ The [text languages example](../examples/text-languages/) is a menu in Arabic la
 left, with Hebrew, Japanese and Chinese text.
 
 How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
-come as fast as the **V-Sync mode** lets them (`window.vsync_mode`: wait for each refresh, present
+come as fast as the **V-Sync mode** lets them (`window.vsync`: wait for each refresh, present
 at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by default). So
 a 60 Hz world on a 120 Hz display runs a tick every other frame, and the frames in between draw each
 sprite part of the way from where it was before the last tick to where it is
@@ -819,7 +819,7 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Canonical form | The one way a scene is written: sorted keys, two-space indent, defaults left out |
 | Capability | A permission a session grants: `read`, `edit`, `run`, `filesystem` or `build` |
 | Check box | A toggle button drawn with a box beside its text (`CheckBox`), or a switch (`ToggleSwitch`); in a button group, a radio button |
-| Clip | Cutting a control's children off at its rect, in drawing and for the pointer (`clip_contents`, and every `ScrollBox`) |
+| Clip | Cutting a control's children off at its rect, in drawing and for the pointer (`clip_children`, and every `ScrollBox`) |
 | Command | A named action with a params schema, capabilities and an effect |
 | Command registry | The list of commands every front end is generated from |
 | Component | A reflected C++ struct of data attached to an entity |
@@ -884,7 +884,7 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | System | Code that updates components every tick, in order of priority |
 | Terrain | A kind of ground in a tile set, such as grass or water, whose tiles autotiling connects |
 | Test | A scene and command calls with what their replies must hold, in a `.test.json` file, which `test.run` runs headless |
-| Theme | A `.theme.json` file of theme items by control type, used by a control and everything in it, or by the whole game (`gui.theme`) |
+| Theme | A `.theme.json` file of theme items by control type, used by a control and everything in it, or by the whole game (`ui.theme`) |
 | Theme item | A named color, constant, font, font size, icon or style box a control draws with, set by its `theme_override_*` fields or a theme |
 | Tick | One fixed simulation step, 1/60 s by default |
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |

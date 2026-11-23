@@ -303,7 +303,7 @@ double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cyc
     if (s.randomness > 0.0F) {
         phase += std::clamp(s.randomness, 0.0F, 1.0F) * random(seed, cycle, slot, kPhase) / amount;
     }
-    phase *= 1.0F - std::clamp(s.explosiveness, 0.0F, 1.0F);
+    phase *= 1.0F - std::clamp(s.burst, 0.0F, 1.0F);
     return static_cast<double>(phase) * settings.lifetime;
 }
 
@@ -312,7 +312,7 @@ public:
     Simulation(const Settings& settings, const world::Transform2D& transform, std::uint32_t seed,
                Vec2 wind, const world::PhysicsFields2D* fields, double time)
         : settings_(settings), s_(*settings.component), transform_(transform), seed_(seed),
-          origin_(s_.local_coords ? Vec2{} : transform.position), wind_(wind),
+          origin_(s_.local_space ? Vec2{} : transform.position), wind_(wind),
           fields_(fields != nullptr && !fields->empty() ? fields : nullptr),
           place_(world::affine(transform)), to_local_(place_.inverse()), time_(time) {}
 
@@ -461,7 +461,7 @@ private:
                 tint = multiply(tint, s_.emission_colors[at]);
             }
         }
-        if (!s_.local_coords) {
+        if (!s_.local_space) {
             position = to_world(transform_, position, true);
             velocity = to_world(transform_, velocity, false);
         }
@@ -487,8 +487,8 @@ private:
         if (fields_ != nullptr) {
             // Physics fields with particles on push each particle where it is, as a kilogram.
             const Vec2 push = fields_->particle_force(
-                s_.local_coords ? place_.apply(p.position) : p.position, seed_, time_);
-            force = force + (s_.local_coords ? to_local_.apply(push) - to_local_.apply({}) : push);
+                s_.local_space ? place_.apply(p.position) : p.position, seed_, time_);
+            force = force + (s_.local_space ? to_local_.apply(push) - to_local_.apply({}) : push);
         }
         const float linear =
             value(s_.linear_accel_min, s_.linear_accel_max, kLinear, settings_.linear_accel);
@@ -638,7 +638,7 @@ struct ParticleSystem {
             Vec2 wind;
             if (component.wind_influence > 0.0F && !field.empty()) {
                 wind = field.at(transform.position, wind_time) * component.wind_influence;
-                if (component.local_coords) {
+                if (component.local_space) {
                     const world::Affine2D back = tree.global_affine(entity).inverse();
                     wind = back.apply(wind) - back.apply({});
                 }
@@ -741,7 +741,7 @@ struct ParticleSystem {
         world.pool().parallel_for(runs.size(), [&](std::size_t r) {
             Run& run = runs[r];
             const world::ParticleSimulation& s = run.stages.settings;
-            const bool local = run.component->local_coords;
+            const bool local = run.component->local_space;
             const world::Affine2D back = run.place.inverse();
             const auto to_world = [&](Vec3f p) {
                 const Vec2 at{p.x, p.y};
@@ -869,7 +869,7 @@ struct ParticleSystem {
             const world::ParticleEventRule& rule = stages.settings.events[event.rule];
             Vec2 position{event.position.x, event.position.y};
             Vec2 velocity{event.velocity.x, event.velocity.y};
-            if (component.local_coords) {
+            if (component.local_space) {
                 position = place.apply(position);
                 velocity = place.apply(velocity) - place.apply({});
             }
@@ -910,7 +910,7 @@ struct ParticleSystem {
                 const Vec3f push = world::sim_direction(u, 0.0F, true) * rule.speed;
                 Vec2 start = position;
                 Vec2 moving = (velocity * rule.inherit_velocity) + Vec2{push.x, push.y};
-                if (settings->local_coords) {
+                if (settings->local_space) {
                     start = back.apply(start);
                     moving = back.apply(moving) - back.apply({});
                 }
@@ -939,7 +939,7 @@ struct ParticleSystem {
 } // namespace
 
 Vec2 world_position(const Emitter2D& settings, const world::Transform2D& transform, Vec2 position) {
-    return settings.local_coords ? to_world(transform, position, true) : position;
+    return settings.local_space ? to_world(transform, position, true) : position;
 }
 
 std::uint32_t particle_seed(std::string_view id, int seed) {

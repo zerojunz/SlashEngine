@@ -23,7 +23,7 @@ would. [expected.txt](expected.txt) holds its output.
   entities with no body of their own, as a Godot body takes its Collider3D children.
 - The belt's `constant_linear_velocity` carries what touches it without moving the belt, as
   Godot's: the parcel rides it to the far end and drops onto the floor. The parcel has
-  `contact_monitor`, so it reports `body_entered` when it lands on the belt and on the floor.
+  `report_contacts`, so it reports `body_entered` when it lands on the belt and on the floor.
 - `take_coins` asks `physics3d::contacts` what each coin touches, as Godot's
   `get_overlapping_bodies`. Areas also emit `body_entered` and `body_exited` events.
 - `physics.raycast`, `physics.overlap`, `physics.contacts` and `physics.gravity` are the 2D

@@ -4,16 +4,8 @@
   "name": "Subsurface Scattering",
   "rendering": {
     "clear_color": [0.0, 0.0, 0.0, 1.0],
-    "environment": {
-      "subsurface_scattering": {
-        "quality": "high",
-        "scale": 0.08
-      }
-    }
+    "subsurface": {"quality": "high", "scale": 0.08}
   },
   "version": "1.0.0",
-  "window": {
-    "height": 90,
-    "width": 160
-  }
+  "window": {"height": 90, "width": 160}
 }

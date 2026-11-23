@@ -16,7 +16,7 @@ played together, or interactive clips that switch by its transitions when a play
 moves on. Generators and polyphonic streams, as Godot's, are what gameplay code pushes frames to
 or starts sounds on, through `audio::stream_playback` (`generator()`, `polyphonic()`). A
 microphone stream plays the server's input, which records only with project.json's
-`audio.enable_input`: each tick the audio system pushes the tick's frames from an
+`audio.input_enabled`: each tick the audio system pushes the tick's frames from an
 `audio::InputDevice` (`audio::SdlInput` in a window, silence headless) or the sound
 `audio.input` plays in its place, before mixing. Exports of such games ask for the microphone
 (`export/CMakeLists.txt`'s `SLASH_GAME_MICROPHONE`).
@@ -32,7 +32,7 @@ reach a bus's analyzer, capture buffer and recorder from C++. A `.bus_layout.jso
 `Listener3D` are components, played by the
 `audio` system (priority 1200, last), which mixes each tick's share of frames, so the same ticks
 make the same sound, and hands them to a sink: `audio::SdlOutput` in a window, nowhere headless.
-An `Zone2D` with `audio_bus_override` sends the 2D players inside it whose `area_mask` it
+An `Zone2D` with `bus_override` sends the 2D players inside it whose `zone_mask` it
 matches to its `audio_bus_name`, as Godot's `_get_actual_bus`. A 3D player fades by Godot's
 attenuation models, pans, is muffled by a high shelf with distance and outside its emission
 angle, shifts pitch with the Doppler effect (velocity tracked by ticks) and follows an `Zone3D`'s

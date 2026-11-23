@@ -26,7 +26,7 @@ global transform, its parent and its draw order, and everything that places thin
 is its own to the bit, so flat scenes behave as before. A `top_level` entity keeps its parent
 (`parent`) but is placed in the world (`transform_parent` is null) and draws after the rest of its
 tree, as Godot's top-level items; `canvas::inherited` stops its parents' `z_index` and tint there,
-and at a `z_as_relative` that is off. `check_tree` backs `scene validate`, and a session fails
+and at a `sort_order_relative` that is off. `check_tree` backs `scene validate`, and a session fails
 any command that would give a child two parents or make it its own ancestor.
 `entity.destroy` takes children with it. A body takes the shapes of its children that have no
 body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot's

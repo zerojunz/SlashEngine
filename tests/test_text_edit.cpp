@@ -447,11 +447,11 @@ TEST_CASE("undo and redo step through typing, which merges until the typist paus
     CHECK(f.text("notes") == "fresh\ntext");
 }
 
-TEST_CASE("project.json's gui object sets how long typing merges and how many steps undo keeps") {
+TEST_CASE("project.json's ui object sets how long typing merges and how many steps undo keeps") {
     ui::Settings read;
-    ui::read_settings(parse(R"({"text_edit_idle_detect_sec": 0.5,
-        "text_edit_undo_stack_max_size": 2, "incremental_search_max_interval_msec": 500,
-        "button_shortcut_feedback_highlight_time": 0.0})"),
+    ui::read_settings(parse(R"({"text_edit_merge_seconds": 0.5,
+        "text_edit_undo_limit": 2, "type_search_ms": 500,
+        "shortcut_flash_seconds": 0.0})"),
                       read);
     CHECK(read.text_edit_idle_detect_sec == 0.5);
     CHECK(read.text_edit_undo_stack_max_size == 2);

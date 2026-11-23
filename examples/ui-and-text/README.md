@@ -22,16 +22,16 @@ ui.layout {"ids":["hint"]}
   project's `window` size.
 - `children` lists the controls placed in a control's rect, drawn over it in that order. A child
   can be listed by one parent only.
-- A control is at least big enough for its content: a label's text, or `custom_minimum_size`.
+- A control is at least big enough for its content: a label's text, or `min_size`.
   When it is bigger than its anchors and offsets make it, `grow_horizontal` and `grow_vertical`
   say which way it grows. The hint and the sign have zero-width rects at the right edge and grow
   `begin`, to the left, so they end where their right edges are.
 - `Label` draws text in the rect. With `autowrap_mode` `word` the body wraps to the panel's
   width less its margins. The quest also wraps, but `max_lines_visible` 1 shows one line, and
-  `text_overrun_behavior` `trim_ellipsis` ends it with `…` because there is more.
+  `overflow` `trim_ellipsis` ends it with `…` because there is more.
 - A label's font, size, colors, outline and shadow are theme items, set with the control's
-  `theme_override_colors`, `theme_override_constants`, `theme_override_fonts` and
-  `theme_override_font_sizes`. Names a label doesn't have are reported with the closest one, as
+  `theme_colors`, `theme_constants`, `theme_fonts` and
+  `theme_font_sizes`. Names a label doesn't have are reported with the closest one, as
   above.
 - Fonts are `.ttf` and `.otf` files, or `.font.json` files that name one with settings. The
   title's [fonts/title.font.json](fonts/title.font.json) draws from multichannel signed distance

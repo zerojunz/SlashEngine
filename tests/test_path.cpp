@@ -542,18 +542,18 @@ TEST_CASE("SolidExtrusion3D's path mode pushes its polygon along a Spline3D, as 
     CHECK(near(mesh->max, {10.5F, 0.5F, 0.5F}, 0.1F));
 
     // What can't be pushed along a path.
-    polygon.path_node = entt::null;
+    polygon.path = entt::null;
     mesh = scene.mesh(beam);
     REQUIRE(mesh->problems.size() >= 1);
-    CHECK(mesh->problems[0].path == "/components/SolidExtrusion3D/path_node");
+    CHECK(mesh->problems[0].path == "/components/SolidExtrusion3D/path");
     CHECK(mesh->problems[0].message ==
           "names no entity: name the entity with the Spline3D to push the polygon along");
-    polygon.path_node = scene.create("post", R"({"Transform3D": {}})");
+    polygon.path = scene.create("post", R"({"Transform3D": {}})");
     mesh = scene.mesh(beam);
     REQUIRE(mesh->problems.size() >= 1);
     CHECK(mesh->problems[0].message ==
           "\"post\" has no Spline3D: give it one, or name another entity");
-    polygon.path_node = rail;
+    polygon.path = rail;
     path.points.resize(1);
     mesh = scene.mesh(beam);
     REQUIRE(mesh->problems.size() >= 1);

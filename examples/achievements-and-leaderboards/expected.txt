@@ -11,7 +11,7 @@ ui.press {"id":"finish_lap"}
 step {"ticks":2}
 {"tick":4,"ticks":2}
 entity.get {"components":["Label"],"id":"status"}
-{"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"Unlocked first_finish","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
+{"components":{"Label":{"clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"overflow":"no_trimming","text":"Unlocked first_finish","text_direction":"auto","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping","wrap":"off"}},"id":"status"}
 services.test {"increment":{"achievement":"ten_laps","steps":8},"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]}}
 {"test":{"accept_sign_in":true,"error":"the payment was declined","fill":true,"games_ticks":1,"load_ticks":1,"outcome":"purchased","player":"Player","prices":{},"purchase_ticks":1,"scores":{"best_lap":[{"name":"Ana","score":61000},{"name":"Bo","score":66500}]},"show_ticks":1,"tracking":"authorized","watch_to_end":true},"tick":4}
 ui.press {"id":"finish_lap"}
@@ -19,13 +19,13 @@ ui.press {"id":"finish_lap"}
 step {"ticks":2}
 {"tick":6,"ticks":2}
 entity.get {"components":["Label"],"id":"status"}
-{"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"Unlocked ten_laps","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
+{"components":{"Label":{"clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"overflow":"no_trimming","text":"Unlocked ten_laps","text_direction":"auto","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping","wrap":"off"}},"id":"status"}
 ui.press {"id":"best_laps"}
 {"tick":6}
 step {"ticks":2}
 {"tick":8,"ticks":2}
 entity.get {"components":["Label"],"id":"status"}
-{"components":{"Label":{"autowrap_mode":"off","clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"text":"1. Ana 61.0 s, 2. Player 62.5 s, 3. Bo 66.5 s","text_direction":"auto","text_overrun_behavior":"no_trimming","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping"}},"id":"status"}
+{"components":{"Label":{"clip_text":false,"ellipsis_char":"…","horizontal_alignment":"left","language":"","lines_skipped":0,"max_lines_visible":-1,"overflow":"no_trimming","text":"1. Ana 61.0 s, 2. Player 62.5 s, 3. Bo 66.5 s","text_direction":"auto","uppercase":false,"vertical_alignment":"top","visible_characters":-1,"visible_characters_behavior":"chars_before_shaping","wrap":"off"}},"id":"status"}
 events.read {"subscription":"events_1"}
 {"dropped":0,"events":[{"id":"first_finish","kind":"achievement_unlocked","seq":1,"tick":3},{"id":"ten_laps","kind":"achievement_unlocked","seq":2,"tick":5},{"data":{"collection":"global","entries":[{"name":"Ana","player":"rival-1","rank":1,"score":61000},{"name":"Player","player":"test-player","rank":2,"score":62500},{"name":"Bo","player":"rival-2","rank":3,"score":66500}],"player":{"name":"Player","player":"test-player","rank":2,"score":62500},"time":"all_time","total":3},"id":"best_lap","kind":"scores_loaded","seq":3,"tick":7}],"more":false}
 ui.press {"id":"trophies"}

@@ -24,14 +24,14 @@ constexpr std::string_view kPanel = R"({
   "entities": {
     "panel": {"components": {
       "Widget": {"children": ["rows"], "offset_left": 8, "offset_top": 8,
-                  "theme_override_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
+                  "theme_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
                                                       "content_margin": 8,
                                                       "corner_radius": 4}}},
       "PanelBox": {}}},
     "rows": {"components": {
       "StackBox": {"vertical": true},
       "Widget": {"children": ["stats", "counts", "hover", "buttons"],
-                  "theme_override_constants": {"separation": 4}}}},
+                  "theme_constants": {"separation": 4}}}},
     "stats": {"components": {"Label": {}}},
     "counts": {"components": {"Label": {}}},
     "hover": {"components": {"Widget": {"visible": false}, "Label": {}}},
@@ -41,7 +41,7 @@ constexpr std::string_view kPanel = R"({
     "play": {"components": {"Button": {"text": "Pause"}, "Widget": {"focus_mode": "none"}}},
     "step": {"components": {"Button": {"text": "Step", "disabled": true},
                             "Widget": {"focus_mode": "none"}}},
-    "shapes": {"components": {"Button": {"text": "Shapes", "toggle_mode": true},
+    "shapes": {"components": {"Button": {"text": "Shapes", "toggles": true},
                               "Widget": {"focus_mode": "none"}}}
   }
 })";
@@ -95,7 +95,7 @@ void Overlay::set_visible(bool visible) {
 
 void Overlay::set_collisions(bool collisions) {
     collisions_ = collisions;
-    world_.ecs().get<world::Button>(world_.find("shapes")).button_pressed = collisions;
+    world_.ecs().get<world::Button>(world_.find("shapes")).pressed = collisions;
 }
 
 bool Overlay::on_panel(Vec2 point) const {
@@ -165,7 +165,7 @@ void Overlay::sync_buttons(bool playing) {
     auto& ecs = world_.ecs();
     ecs.get<world::Button>(world_.find("play")).text = playing ? "Pause" : "Play";
     ecs.get<world::Button>(world_.find("step")).disabled = playing;
-    ecs.get<world::Button>(world_.find("shapes")).button_pressed = collisions_;
+    ecs.get<world::Button>(world_.find("shapes")).pressed = collisions_;
 }
 
 void Overlay::update(command::Session& session, const FrameStats& frames,
@@ -195,7 +195,7 @@ void Overlay::update(command::Session& session, const FrameStats& frames,
         run("step", params);
     }
     if (ui::was_pressed(world_, world_.find("shapes"))) {
-        collisions_ = world_.ecs().get<world::Button>(world_.find("shapes")).button_pressed;
+        collisions_ = world_.ecs().get<world::Button>(world_.find("shapes")).pressed;
     }
     sync_buttons(session.playing());
 

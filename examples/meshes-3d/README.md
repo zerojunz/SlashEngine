@@ -19,7 +19,7 @@ shows; [expected.txt](expected.txt) holds the output.
   Front faces wind clockwise as the camera sees them; `cull` hides back faces by default.
 - `Material3D` is Godot's `StandardMaterial3D`: albedo, metallic, roughness, specular, emission,
   a normal map and textures for each, `unshaded`, `transparency` (`Alpha` blends, after the
-  opaque meshes and farthest first; `AlphaScissor` cuts), `cull` and `uv1_scale`/`uv1_offset`.
+  opaque meshes and farthest first; `AlphaScissor` cuts), `cull` and `uv_scale`/`uv_offset`.
 - A frame's `Scene3D` holds up to 64 lights, each Godot's `DirectionalLight3D`, `PointLight3D` or
   `SpotLight3D` with its color, energy, range, attenuation, spot angle and cull mask, and the
   ambient light. A mesh draw's `layers` choose which lights reach it.

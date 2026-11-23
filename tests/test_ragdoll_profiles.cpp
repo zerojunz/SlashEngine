@@ -405,9 +405,9 @@ TEST_CASE("ragdoll.generate makes a 2D profile of a cut-out's tree and a Ragdoll
     engine.steps(30);
     const auto& ecs = engine.session->world().ecs();
     REQUIRE(ecs.all_of<world::RigidBody2D, world::Collider2D>(engine.find("arm")));
-    CHECK(ecs.get<const world::RigidBody2D>(engine.find("arm")).freeze);
+    CHECK(ecs.get<const world::RigidBody2D>(engine.find("arm")).frozen);
     REQUIRE((engine.find("arm_joint") != entt::null));
-    CHECK(ecs.get<const world::PinJoint2D>(engine.find("arm_joint")).node_a ==
+    CHECK(ecs.get<const world::PinJoint2D>(engine.find("arm_joint")).body_a ==
           engine.find("chest"));
     CHECK((engine.find("pelvis_joint") == entt::null));
     CHECK(project.at("hand").x == doctest::Approx(210.0F));

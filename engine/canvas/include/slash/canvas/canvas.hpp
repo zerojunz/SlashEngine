@@ -567,31 +567,31 @@ struct Settings {
     double tick_seconds = 1.0 / 60.0;
     // rendering.scaling: the size the world draws at and how it scales to the screen.
     render::Scaling scaling;
-    // rendering.rendering_method: how 3D meshes are lit.
+    // rendering.renderer: how 3D meshes are lit.
     render::RenderMethod rendering_method = render::RenderMethod::ForwardPlus;
-    // rendering.lights_and_shadows: the 3D shadow atlases.
+    // rendering.shadows: the 3D shadow atlases.
     render::ShadowSettings shadows;
-    // rendering.camera.depth_of_field: depth of field's blur.
+    // rendering.depth_of_field: depth of field's blur.
     render::DepthOfFieldSettings depth_of_field{};
-    // rendering.environment.ssao: screen-space ambient occlusion's quality.
+    // rendering.ssao: screen-space ambient occlusion's quality.
     render::SsaoSettings ssao{};
-    // rendering.environment.screen_space_reflection: screen-space reflections' resolution.
+    // rendering.ssr: screen-space reflections' resolution.
     render::SsrSettings ssr{};
-    // rendering.environment.volumetric_fog: volumetric fog's froxels.
+    // rendering.volumetric_fog: volumetric fog's froxels.
     render::VolumetricFogSettings volumetric_fog{};
-    // rendering.environment.subsurface_scattering: subsurface scattering's quality and width.
+    // rendering.subsurface: subsurface scattering's quality and width.
     render::SubsurfaceSettings subsurface{};
-    // rendering.reflections.reflection_atlas: the size and number of reflection probes' cubes.
+    // rendering.reflections: the size and number of reflection probes' cubes.
     render::ReflectionAtlasSettings reflection_atlas{};
-    // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs' narrower cones.
+    // rendering.voxel_lighting.quality "high": VoxelGIs' narrower cones.
     bool voxel_gi_high_quality = false;
-    // rendering.global_illumination.sdfgi: SDFGI's probe rays and how fast it follows changes.
+    // rendering.field_lighting: SDFGI's probe rays and how fast it follows changes.
     render::SdfgiSettings sdfgi{};
-    // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world.
+    // rendering.anti_aliasing.taa: temporal antialiasing of the 3D world.
     bool use_taa = false;
     // rendering.textures.decals.filter: how decals' textures are sampled.
     render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
-    // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a model's coarser LODs may
+    // rendering.lod.threshold_pixels: how many pixels a model's coarser LODs may
     // be off by.
     float mesh_lod_threshold = 1.0F;
     // rendering.virtual_geometry: how virtualized surfaces' cluster pages stream.
@@ -603,10 +603,10 @@ struct Settings {
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3
     // frame generation (CanvasOptions::generate).
     bool frame_generation = false;
-    // rendering.reflections.sky_reflections.ggx_samples: the samples the sky's radiance and
+    // rendering.reflections.sky_samples: the samples the sky's radiance and
     // reflection probes are blurred with.
     std::uint32_t ggx_samples = 32;
-    // rendering.lightmapping.probe_capture.update_speed: how fast moving meshes' light from light
+    // rendering.lightmaps.probe_capture.update_speed: how fast moving meshes' light from light
     // probes follows them, a share a second.
     double probe_update_speed = 15.0;
 };

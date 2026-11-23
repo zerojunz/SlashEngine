@@ -6,9 +6,9 @@ SlashEngine has as a research spike on the CPU ([docs](../../docs/reference/sdfg
 ceiling, a white floor and back wall, a red wall on the left, a green wall on the right and a white
 block, lit by a sun from above the right wall and a dim blue ambient light, seen through a
 `Camera3D` in a 320x180 window. Its `Environment3D` turns SDFGI on with one cascade of
-0.15-meter cells, 19.2 meters across, around the camera, with `sdfgi_use_occlusion` on so probes
+0.15-meter cells, 19.2 meters across, around the camera, with `field_lighting_use_occlusion` on so probes
 outside the walls don't light the room through them, and [project.json](project.json)'s
-`rendering.global_illumination.sdfgi` has each probe trace 16 rays a frame and average 20 frames,
+`rendering.field_lighting` has each probe trace 16 rays a frame and average 20 frames,
 as Godot's project settings of those names.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
@@ -32,7 +32,7 @@ frame.capture {"points":[[60,150],[175,100],[250,140],[160,40]],"frames":30,"pat
   sun's bounce.
 - `component.set` paints the red wall blue, and 30 frames later the floor beside it is bluer.
   Nothing was baked: the cells are made again from the frame's meshes when they change.
-- With `sdfgi_enabled` off, the room has its ambient light again.
+- With `field_lighting_enabled` off, the room has its ambient light again.
 
 Only the software device draws SDFGI for now; run as a game on a GPU, the room is lit by the
 ambient light.

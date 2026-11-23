@@ -1,7 +1,7 @@
 # Glow 3D
 
 Glow from colors brighter than white, as Godot 4.6's Forward+ renderer makes it, which is the
-default `rendering.rendering_method`. [main.scene.json](main.scene.json) is a wall on a street at
+default `rendering.renderer`. [main.scene.json](main.scene.json) is a wall on a street at
 night with two neon signs, seen through a `Camera3D` in a 320x180 window. The pink sign's
 `emission_energy_multiplier` is 6 and the cyan one's 4, so they shine six and four times white.
 

@@ -7,7 +7,7 @@
       "components": {
         "Emitter2D": {
           "amount": 4,
-          "explosiveness": 1,
+          "burst": 1,
           "lifetime": 0.4
         }
       },

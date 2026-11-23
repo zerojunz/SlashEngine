@@ -776,13 +776,13 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("main_scene")->as_string() == "godot/scenes/level.scene.json");
     CHECK(settings.find("window")->find("width")->as_int() == 640);
     CHECK(settings.find("window")->find("height")->as_int() == 360);
-    CHECK(settings.find("window")->find("vsync_mode")->as_string() == "adaptive");
+    CHECK(settings.find("window")->find("vsync")->as_string() == "adaptive");
     CHECK(settings.find("window")->find("linux_display_driver")->as_string() == "wayland");
     CHECK(settings.find("max_fps")->as_int() == 120);
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");
     CHECK(settings.find("rendering")->find("driver")->as_string() == "opengl");
-    CHECK(settings.find("rendering")->find("rendering_method")->as_string() == "gl_compatibility");
+    CHECK(settings.find("rendering")->find("renderer")->as_string() == "gl_compatibility");
     CHECK_FALSE(settings.find("rendering")->find("fallback_to_opengl")->as_bool());
     CHECK(settings.find("physics_2d")->find("gravity")->as_double() == 490.0);
     CHECK(settings.find("physics_2d")->find("linear_damp")->as_double() == 0.5);
@@ -801,17 +801,16 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(unsupported(report, "input binding").find("why")->as_string() ==
           "InputEventScreenTouch bindings");
     CHECK(!unsupported(report, "setting display/window/stretch/mode").is_null());
-    CHECK(settings.find("gui")->find("theme")->as_string() == "godot/ui/theme.theme.json");
-    CHECK(settings.find("gui")->find("tooltip_delay_sec")->as_double() == 0.25);
-    CHECK(settings.find("gui")->find("text_edit_idle_detect_sec")->as_double() == 1.5);
-    CHECK(settings.find("gui")->find("incremental_search_max_interval_msec")->as_int() == 800);
-    CHECK(settings.find("gui")->find("button_shortcut_feedback_highlight_time")->as_double() ==
-          0.0);
-    CHECK(settings.find("gui")->find("text_edit_undo_stack_max_size")->as_int() == 64);
+    CHECK(settings.find("ui")->find("theme")->as_string() == "godot/ui/theme.theme.json");
+    CHECK(settings.find("ui")->find("tooltip_delay_seconds")->as_double() == 0.25);
+    CHECK(settings.find("ui")->find("text_edit_merge_seconds")->as_double() == 1.5);
+    CHECK(settings.find("ui")->find("type_search_ms")->as_int() == 800);
+    CHECK(settings.find("ui")->find("shortcut_flash_seconds")->as_double() == 0.0);
+    CHECK(settings.find("ui")->find("text_edit_undo_limit")->as_int() == 64);
     CHECK(*settings.find("audio") ==
           parse(R"({"bus_layout": "godot/default_bus_layout.bus_layout.json",
-                     "mix_rate": 48000, "panning_strength_2d": 0.8, "enable_input": true,
-                     "channel_disable_threshold_db": -80.0, "channel_disable_time": 0.5})"));
+                     "mix_rate": 48000, "panning_strength_2d": 0.8, "input_enabled": true,
+                     "silence_threshold_db": -80.0, "silence_seconds": 0.5})"));
     CHECK(unsupported(report, "file type .gdshader").find("where")->as_string() ==
           "shaders/glow.gdshader");
     // Godot's own folders and add-ons stay out.
@@ -888,16 +887,16 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(sprite.find("Sprite2D")->find("flip_h")->as_bool());
     CHECK(sprite.find("Sprite2D")->find("texture")->as_string() == "godot/art/enemy.png");
     CHECK(*sprite.find("Sprite2D")->find("region") == parse("[0.0, 0.0, 16.0, 16.0]"));
-    CHECK(sprite.find("Sprite2D")->find("texture_filter")->as_string() == "nearest");
-    CHECK(*sprite.find("Sprite2D")->find("modulate") == parse("[1.0, 0.5, 0.5, 0.5]"));
+    CHECK(sprite.find("Sprite2D")->find("filter")->as_string() == "nearest");
+    CHECK(*sprite.find("Sprite2D")->find("tint") == parse("[1.0, 0.5, 0.5, 0.5]"));
     CHECK(entity(files, level, "enemy2/sprite").find("Sprite2D")->find("flip_h") == nullptr);
     CHECK(entity(files, level, "enemy/shape").find("Collider2D")->find("shape")->as_string() ==
           "circle");
 
     // Node paths become entity IDs.
     const json::Value pin = entity(files, level, "pin");
-    CHECK(pin.find("PinJoint2D")->find("node_a")->as_string() == "floor");
-    CHECK(pin.find("PinJoint2D")->find("node_b")->as_string() == "enemy");
+    CHECK(pin.find("PinJoint2D")->find("body_a")->as_string() == "floor");
+    CHECK(pin.find("PinJoint2D")->find("body_b")->as_string() == "enemy");
 
     // Resources inside fields: occluders, curves and color ramps.
     CHECK(*entity(files, level, "crate").find("Occluder2D") ==
@@ -922,25 +921,22 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(*menu.find("StackBox") == parse(R"({"alignment": "center", "vertical": true})"));
     CHECK(menu.find("Widget")->find("anchor_right")->as_double() == 1.0);
     CHECK(menu.find("Widget")->find("grow_horizontal")->as_string() == "both");
-    CHECK(menu.find("Widget")->find("theme_override_constants")->find("separation")->as_int() == 8);
+    CHECK(menu.find("Widget")->find("theme_constants")->find("separation")->as_int() == 8);
     CHECK(*menu.find("Widget")->find("children") ==
           parse(R"(["title", "play", "volume", "items"])"));
     const json::Value title = entity(files, level, "title");
-    CHECK(title.find("Widget")->find("size_flags_horizontal")->as_string() == "expand_fill");
-    CHECK(title.find("Widget")->find("size_flags_vertical")->as_string() == "shrink_center");
-    CHECK(title.find("Widget")->find("mouse_filter")->as_string() == "ignore");
+    CHECK(title.find("Widget")->find("sizing_horizontal")->as_string() == "expand_fill");
+    CHECK(title.find("Widget")->find("sizing_vertical")->as_string() == "shrink_center");
+    CHECK(title.find("Widget")->find("pointer_mode")->as_string() == "ignore");
     CHECK(title.find("Label")->find("horizontal_alignment")->as_string() == "center");
-    CHECK(title.find("Widget")->find("theme_override_font_sizes")->find("font_size")->as_int() ==
-          20);
-    CHECK(
-        title.find("Widget")->find("theme_override_constants")->find("shadow_offset_y")->as_int() ==
-        3);
+    CHECK(title.find("Widget")->find("theme_font_sizes")->find("font_size")->as_int() == 20);
+    CHECK(title.find("Widget")->find("theme_constants")->find("shadow_offset_y")->as_int() == 3);
     const json::Value play = entity(files, level, "play");
     CHECK(play.find("Widget")->find("focus_mode")->as_string() == "all");
     CHECK(play.find("Widget")->find("tooltip_text")->as_string() == "Start a new game");
     CHECK(*play.find("Button")->find("button_mask") == parse(R"(["left", "right"])"));
     CHECK(play.find("Button")->find("alignment") == nullptr); // fill has no equivalent
-    CHECK(*play.find("Widget")->find("theme_override_styles")->find("normal") ==
+    CHECK(*play.find("Widget")->find("theme_styles")->find("normal") ==
           parse(R"({"type": "flat", "bg_color": [0.1, 0.1, 0.2, 0.9],
                     "corner_radius_top_left": 6, "border_width_bottom": 2})"));
     CHECK(*entity(files, level, "volume").find("Slider") ==
@@ -1026,7 +1022,7 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     // A TileMapLayer's cells, with an alternative tile and a cell flipped and transposed.
     const json::Value tiles = entity(files, level, "tiles");
     CHECK(tiles.find("TileLayer2D")->find("tile_set")->as_string() == tileset);
-    CHECK(*tiles.find("TileLayer2D")->find("modulate") == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK(*tiles.find("TileLayer2D")->find("tint") == parse("[1.0, 1.0, 1.0, 0.5]"));
     CHECK(cells_of(files, *tiles.find("TileLayer2D")) ==
           std::map<std::string, std::string>{{"0,0", "tiles:0,0"},
                                              {"1,0", "tiles:1,0"},
@@ -1040,8 +1036,8 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     CHECK(cells_of(files, *entity(files, level, "old_ground").find("TileLayer2D")) ==
           std::map<std::string, std::string>{{"0,0", "tiles:0,0"}, {"2,1", "tiles:2,0"}});
     const json::Value top = entity(files, level, "old_top");
-    CHECK(top.find("TileLayer2D")->find("z_index")->as_int() == 2);
-    CHECK(*top.find("TileLayer2D")->find("modulate") == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK(top.find("TileLayer2D")->find("sort_order")->as_int() == 2);
+    CHECK(*top.find("TileLayer2D")->find("tint") == parse("[1.0, 1.0, 1.0, 0.5]"));
     CHECK_FALSE(top.find("TileLayer2D")->find("navigation_enabled")->as_bool());
     CHECK(entity(files, level, "old_ground").find("TileLayer2D")->find("navigation_enabled") ==
           nullptr);
@@ -1385,7 +1381,7 @@ position = Vector2(64, 0)
     CHECK(*entity(files, house, "room1").find("Transform2D")->find("children") ==
           parse(R"(["room1/room_ground", "room1/room_top"])"));
     CHECK(entry(files, house, "room1/room_top") ==
-          parse(R"({"components": {"TileLayer2D": {"modulate": [1.0, 0.0, 0.0, 1.0]}}})"));
+          parse(R"({"components": {"TileLayer2D": {"tint": [1.0, 0.0, 0.0, 1.0]}}})"));
     CHECK(parse(files.at(house)).find("entities")->find("room2/room_top") == nullptr);
     CHECK(cells_of(files, *entity(files, house, "room2/room_top").find("TileLayer2D")) ==
           std::map<std::string, std::string>{{"0,1", "tiles:1,0"}});
@@ -1793,11 +1789,11 @@ safe_margin = 0.5
     const std::string level = "godot/level.scene.json";
     REQUIRE(files.contains(level));
     CHECK(*entity(files, level, "planet").find("Zone2D") == parse(R"({
-        "priority": 2, "gravity_space_override": "replace", "gravity_point": true,
+        "priority": 2, "gravity_mode": "replace", "gravity_point": true,
         "gravity_point_unit_distance": 64.0, "gravity_point_center": [0.0, 0.0],
         "gravity_direction": [0.0, 0.0], "gravity": 400.0,
-        "linear_damp_space_override": "combine", "linear_damp": 0.5,
-        "angular_damp_space_override": "replace_combine", "angular_damp": 3.0})"));
+        "linear_damp_mode": "combine", "linear_damp": 0.5,
+        "angular_damp_mode": "replace_combine", "angular_damp": 3.0})"));
     CHECK(*entity(files, level, "belt").find("StaticBody2D") ==
           parse(R"({"constant_linear_velocity": [60.0, 0.0], "constant_angular_velocity": 0.5})"));
     CHECK(*entity(files, level, "lift").find("MovingBody2D") ==
@@ -2193,8 +2189,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     const json::Value wall = entity(files, level, "wall");
     CHECK(*wall.find("BoxGeometry") == parse(R"({"size": [4.0, 2.0, 0.5]})"));
     CHECK(*wall.find("Model3D") == parse(R"({"cast_shadow": "double_sided",
-        "gi_mode": "dynamic", "gi_lightmap_texel_scale": 2.0, "lod_bias": 3.0,
-        "ignore_occlusion_culling": true})"));
+        "lighting_mode": "dynamic", "lightmap_texel_scale": 2.0, "lod_bias": 3.0,
+        "skip_occlusion": true})"));
     // Occluders keep their shapes (a quad, the default, is left out); a QuadOccluder3D's size is a
     // Vector2.
     CHECK(*entity(files, level, "wall_occluder").find("Occluder3D") ==
@@ -2203,8 +2199,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
           parse(R"({"shape": "polygon", "polygon": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]})"));
     CHECK(*wall.find("Surface3D") == parse(R"({
         "transparency": "alpha_hash", "alpha_hash_scale": 1.5,
-        "albedo_color": [0.8, 0.4, 0.2, 1.0], "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
-        "uv1_scale": [2.0, 2.0, 1.0], "rim_enabled": true, "rim_tint": 0.25})"));
+        "albedo_color": [0.8, 0.4, 0.2, 1.0], "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "filter": "nearest",
+        "uv_scale": [2.0, 2.0, 1.0], "rim_enabled": true, "rim_tint": 0.25})"));
     const json::Value ball = entity(files, level, "ball");
     CHECK(*ball.find("SphereGeometry") == parse(R"({"radius": 0.25, "height": 0.5})"));
     CHECK(*ball.find("Surface3D") == parse(R"({
@@ -2218,7 +2214,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*cart.find("Model3D") == parse(R"({"mesh": "godot/models/cart.gltf"})"));
     CHECK(*cart.find("Transform3D") ==
           parse(R"({"position": [-4.0, 0.0, 0.0], "children": ["hitbox"]})"));
-    CHECK(*entity(files, level, "hitbox").find("Zone3D") == parse(R"({"monitorable": false})"));
+    CHECK(*entity(files, level, "hitbox").find("Zone3D") == parse(R"({"detectable": false})"));
     CHECK(entity(files, level, "blob").find("ArrayMesh") == nullptr);
 
     // Cameras, lights and the environment with its sky.
@@ -2266,7 +2262,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
 
     // Bodies and their shapes.
     CHECK(*entity(files, level, "crate").find("RigidBody3D") == parse(R"({
-        "mass": 5.0, "friction": 0.3, "bounce": 0.5, "freeze_mode": "kinematic",
+        "mass": 5.0, "friction": 0.3, "bounce": 0.5, "frozen_mode": "kinematic",
         "linear_damp_mode": "replace"})"));
     CHECK(*entity(files, level, "shape").find("Collider3D") ==
           parse(R"({"size": [1.0, 2.0, 1.0]})"));
@@ -2276,9 +2272,9 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*entity(files, level, "floor").find("Collider3D") ==
           parse(R"({"shape": "world_boundary", "plane": [0.0, 1.0, 0.0, -2.0]})"));
     CHECK(*entity(files, level, "hero").find("CharacterMover3D") ==
-          parse(R"({"motion_mode": "floating", "floor_max_angle": 0.5})"));
+          parse(R"({"movement": "floating", "floor_max_angle": 0.5})"));
     CHECK(*entity(files, level, "hum").find("SoundPlayer3D") == parse(R"({
-        "attenuation_model": "logarithmic", "unit_size": 4.0, "autoplay": true,
+        "attenuation_model": "logarithmic", "reference_distance": 4.0, "autoplay": true,
         "doppler_tracking": "physics_step"})"));
     // A 3D node that doesn't convert still places what is under it.
     CHECK(*entity(files, level, "sparks").find("Transform3D") ==
@@ -2287,30 +2283,29 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     const json::Value project_file = parse(files.at("project.json"));
     CHECK(*project_file.find("physics_3d") == parse(R"({
         "gravity": 12.0, "gravity_vector": [0.0, -1.0, 0.0], "linear_damp": 0.2,
-        "areas_detect_static_bodies": true, "velocity_steps": 16, "recovery_amount": 0.5,
+        "zones_detect_static_bodies": true, "velocity_steps": 16, "recovery_amount": 0.5,
         "max_angular_velocity": 31.4159})"));
     CHECK(project_file.find("audio")->find("panning_strength_3d")->as_double() == 0.75);
-    CHECK(*project_file.find("rendering")->find("camera") == parse(R"({"depth_of_field": {
-        "depth_of_field_bokeh_shape": "circle", "depth_of_field_bokeh_quality": "high",
-        "depth_of_field_use_jitter": true}})"));
-    CHECK(*project_file.find("rendering")->find("environment") == parse(R"({"ssao": {
-        "quality": "high", "half_size": false, "blur_passes": 3, "fadeout_to": 200.0},
-        "screen_space_reflection": {"half_size": false},
-        "subsurface_scattering": {"quality": "high", "scale": 0.1}})"));
-    CHECK(*project_file.find("rendering")->find("reflections") ==
-          parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16},
-        "sky_reflections": {"ggx_samples": 16}})"));
-    CHECK(*project_file.find("rendering")->find("lightmapping") ==
+    const json::Value& rendering = *project_file.find("rendering");
+    CHECK(*rendering.find("depth_of_field") ==
+          parse(R"({"bokeh_shape": "circle", "bokeh_quality": "high", "jitter": true})"));
+    CHECK(*rendering.find("ssao") == parse(R"({"quality": "high", "half_size": false,
+        "blur_passes": 3, "fadeout_to": 200.0})"));
+    CHECK(*rendering.find("ssr") == parse(R"({"half_size": false})"));
+    CHECK(*rendering.find("subsurface") == parse(R"({"quality": "high", "scale": 0.1})"));
+    CHECK(rendering.find("environment") == nullptr);
+    CHECK(rendering.find("camera") == nullptr);
+    CHECK(*rendering.find("reflections") ==
+          parse(R"({"probe_size": 512, "probe_count": 16, "sky_samples": 16})"));
+    CHECK(*rendering.find("lightmaps") ==
           parse(R"({"bake_quality": {"high_quality_ray_count": 1024},
         "bake_performance": {"region_size": 256}, "probe_capture": {"update_speed": 5.0}})"));
-    CHECK(*project_file.find("rendering")->find("anti_aliasing") ==
-          parse(R"({"quality": {"use_taa": true}})"));
-    CHECK(*project_file.find("rendering")->find("mesh_lod") ==
-          parse(R"({"lod_change": {"threshold_pixels": 2.5}})"));
-    CHECK(*project_file.find("rendering")->find("occlusion_culling") ==
-          parse(R"({"use_occlusion_culling": true, "occlusion_rays_per_thread": 256})"));
-    CHECK(*project_file.find("rendering")->find("scaling") ==
-          parse(R"({"mode": "fsr2", "scale": 0.67, "fsr_sharpness": 0.5})"));
+    CHECK(*rendering.find("anti_aliasing") == parse(R"({"taa": true})"));
+    CHECK(*rendering.find("lod") == parse(R"({"threshold_pixels": 2.5})"));
+    CHECK(*rendering.find("occlusion_culling") ==
+          parse(R"({"enabled": true, "rays_per_thread": 256})"));
+    CHECK(*rendering.find("scaling") ==
+          parse(R"({"mode": "fsr2", "scale": 0.67, "sharpness": 0.5})"));
 
     const json::Value& report = plan.report;
     const auto why = [&](std::string_view what) {
@@ -2708,7 +2703,7 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
           parse(R"({"progress": 2.0, "rotation_mode": "oriented", "loop": false})"));
     CHECK(*entity(files, level, "rail").find("SolidExtrusion3D") == parse(R"({
         "polygon": [[0.0, 0.0], [0.0, 0.2], [0.2, 0.2], [0.2, 0.0]], "mode": "path",
-        "path_node": "track", "path_interval_type": "subdivide", "path_rotation": "path"})"));
+        "path": "track", "path_interval_type": "subdivide", "path_rotation": "path"})"));
 
     // Grid maps: Godot's cells, x and y in one number and z in the next, become floors of keys
     // for the library's items, turned items keep their orientation, and the physics material
@@ -2742,10 +2737,10 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
 
     // Joints take Godot's parameters under SlashEngine's names; vehicles weigh Godot's 40 kg.
     CHECK(*entity(files, level, "hinge").find("HingeJoint3D") == parse(R"({
-        "node_a": "post", "node_b": "gate", "angular_limit_enabled": true,
+        "body_a": "post", "body_b": "gate", "angular_limit_enabled": true,
         "angular_limit_upper": 1.2, "motor_enabled": true, "motor_target_velocity": 2.0})"));
     CHECK(*entity(files, level, "hitch").find("SixAxisJoint3D") == parse(R"({
-        "node_a": "gate", "linear_x": {"limit_upper": 0.5},
+        "body_a": "gate", "linear_x": {"limit_upper": 0.5},
         "angular_y": {"spring_enabled": true, "spring_stiffness": 20.0},
         "angular_z": {"motor_enabled": true, "motor_target_velocity": 1.5}})"));
     CHECK(*entity(files, level, "slide").find("SlideJoint3D") ==
@@ -3239,9 +3234,11 @@ data = SubResource("broken")
 
     // Godot's cones.
     const json::Value project_file = parse(files.at("project.json"));
-    CHECK(*project_file.find("rendering")->find("global_illumination") ==
-          parse(R"({"voxel_gi": {"quality": "high"},
-                    "sdfgi": {"probe_ray_count": 32, "frames_to_update_lights": 1}})"));
+    const json::Value& rendering = *project_file.find("rendering");
+    CHECK(*rendering.find("voxel_lighting") == parse(R"({"quality": "high"})"));
+    CHECK(*rendering.find("field_lighting") ==
+          parse(R"({"probe_ray_count": 32, "frames_to_update_lights": 1})"));
+    CHECK(rendering.find("global_illumination") == nullptr);
     fs::remove_all(project);
 }
 
@@ -3297,9 +3294,9 @@ texture_albedo = ExtResource("1_paint")
     CHECK(*entity(files, street, "paint").find("Decal") == parse(R"({
         "size": [4.0, 1.0, 2.0], "texture_albedo": "godot/art/paint.png",
         "texture_normal": "godot/art/bumps.png", "emission_energy": 2.0,
-        "modulate": [1.0, 0.5, 0.5, 1.0], "albedo_mix": 0.75, "normal_fade": 0.25,
+        "tint": [1.0, 0.5, 0.5, 1.0], "albedo_mix": 0.75, "normal_fade": 0.25,
         "upper_fade": 0.1, "lower_fade": 0.2, "distance_fade_enabled": true,
-        "distance_fade_begin": 30.0, "distance_fade_length": 5.0, "cull_mask": 1048573,
+        "distance_fade_begin": 30.0, "distance_fade_length": 5.0, "layer_filter": 1048573,
         "sorting_offset": 1.5})"));
     // Godot 4.0's extents were half the size.
     CHECK(*entity(files, street, "old").find("Decal") == parse(R"({
@@ -3405,9 +3402,9 @@ top_level = true
     CHECK(*entity(files, level, "flare").find("Transform2D") ==
           parse(R"({"position": [40.0, 10.0], "top_level": true})"));
     CHECK(*entity(files, level, "wake").find("Sprite2D") ==
-          parse(R"({"z_index": -1, "z_as_relative": false})"));
+          parse(R"({"sort_order": -1, "sort_order_relative": false})"));
     CHECK(*entity(files, level, "hud").find("Widget") ==
-          parse(R"({"children": ["tip"], "z_as_relative": false})"));
+          parse(R"({"children": ["tip"], "sort_order_relative": false})"));
     CHECK(*entity(files, level, "tip").find("Widget") == parse(R"({"top_level": true})"));
     for (const json::Value& item : plan.report.find("unsupported")->as_array()) {
         const std::string& what = item.find("what")->as_string();
@@ -3584,8 +3581,8 @@ trail_section_subdivisions = 2
     CHECK(*entity(files, level, "fire").find("GpuEmitter2D") == parse(R"({
         "amount": 32, "process_material": "godot/level_particle_process_material_1.process_material.json",
         "texture": "godot/spark.png", "lifetime": 0.8, "use_fixed_seed": true,
-        "seed": -294967296, "draw_order": "index", "collision_base_size": 3.0, "hframes": 4,
-        "vframes": 2, "anim_loop": true, "sub_emitter": "smoke"})"));
+        "seed": -294967296, "draw_order": "index", "collision_size": 3.0, "columns": 4,
+        "rows": 2, "anim_loop": true, "sub_emitter": "smoke"})"));
     CHECK(*entity(files, level, "smoke").find("GpuEmitter2D") ==
           parse(R"({"process_material": "godot/smoke.process_material.json",
                     "trail_enabled": true, "trail_lifetime": 0.5, "trail_sections": 12,
@@ -4351,7 +4348,7 @@ TEST_CASE("importing Godot AnimationTrees writes their trees and plays them wher
     // gives the model, goes on the entity that draws the model, whose nodes it poses. Its
     // parameters keep what callers set and leave what the tree keeps as it plays.
     CHECK(*entry(files, hero, "arm").find("components")->find("AnimationGraph") == parse(R"({
-        "tree_root": "godot/trees/moves.animtree.json",
+        "root": "godot/trees/moves.animtree.json",
         "libraries": {"": "godot/models/arm.glb"}, "active": false,
         "root_motion_track": "Upper", "root_motion_local": true, "audio_max_polyphony": 128,
         "parameters": {"aim/blend_position": [0.25, 0.5], "layer/add_amount": 1.5,
@@ -4417,7 +4414,7 @@ TEST_CASE("importing Godot AnimationTrees writes their trees and plays them wher
 
     // A tree with libraries of its own plays them from its root node, with their targets.
     CHECK(*entry(files, hero, "glow_tree").find("components")->find("AnimationGraph") ==
-          parse(R"({"tree_root": "godot/hero_glow_tree.animtree.json",
+          parse(R"({"root": "godot/hero_glow_tree.animtree.json",
                     "libraries": {"": "godot/hero_animation_library_lamp.anim.json"},
                     "targets": {"Lamp": "lamp"}, "deterministic": false,
                     "parameters": {"machine/conditions/dark": true, "mix/blend_amount": 0.5}})"));
@@ -4680,7 +4677,7 @@ parameters/mix/blend_amount = 0.5
     CHECK(entity(files, stage, "arm") == parse(R"({
         "Animator": {"animation": "wave", "library": "godot/stage_animation_library_stage.anim.json",
                             "targets": {"Box": "box"}},
-        "AnimationGraph": {"tree_root": "godot/stage_mover_tree.animtree.json",
+        "AnimationGraph": {"root": "godot/stage_mover_tree.animtree.json",
                           "libraries": {"": "godot/stage_animation_library_stage.anim.json"},
                           "targets": {"Box": "box"}, "root_motion_track": "Upper"},
         "Model3D": {"mesh": "godot/models/arm.glb"}, "Transform3D": {}})"));
@@ -4724,7 +4721,7 @@ parameters/mix/blend_amount = 0.5
     // bones by their nodes, and a 3D node by the Transform3D tracks its tracks became.
     const std::string hand = "godot/hand.scene.json";
     CHECK(*entity(files, hand, "arm").find("AnimationGraph") ==
-          parse(R"({"tree_root": "godot/hand_hand_tree.animtree.json",
+          parse(R"({"root": "godot/hand_hand_tree.animtree.json",
                     "libraries": {"": "godot/hand_animation_library_hand.anim.json"},
                     "targets": {"Lamp": "lamp"}, "parameters": {"mix/blend_amount": 0.5}})"));
     REQUIRE(files.contains("godot/hand_hand_tree.animtree.json"));
@@ -5069,7 +5066,7 @@ bone_name = "Hand"
           parse(R"({"bone_name": "Head_Top"})"));
     CHECK(*entity(files, scene, "hat").find("Transform3D") == parse(R"({"children": ["brim"]})"));
     CHECK(*entity(files, scene, "holder").find("BoneSocket3D") ==
-          parse(R"({"bone_name": "Leg_L", "external_skeleton": "body"})"));
+          parse(R"({"bone_name": "Leg_L", "skeleton_entity": "body"})"));
 
     // Modifiers anywhere but under a model's Skeleton3D, and modifiers SlashEngine hasn't, are
     // reported.
@@ -5668,7 +5665,7 @@ material_overlay = SubResource("glow")
                        {"offset": 1.0, "color": [0.5, 0.1, 0.0, 0.0]}]})"));
     CHECK(*fire.find("QuadGeometry") == parse(R"({"size": [0.4, 0.4]})"));
     const json::Value& glow = *fire.find("Surface3D");
-    CHECK(glow.find("billboard_mode")->as_string() == "particles");
+    CHECK(glow.find("billboard")->as_string() == "particles");
     CHECK(glow.find("billboard_keep_scale")->as_bool());
     CHECK(glow.find("particles_anim_h_frames")->as_int() == 4);
     CHECK(glow.find("particles_anim_v_frames")->as_int() == 2);
@@ -5682,7 +5679,7 @@ material_overlay = SubResource("glow")
         "cast_shadow": "off", "emission_shape": "box", "emission_box_extents": [4.0, 0.5, 4.0],
         "particle_flag_rotate_y": true})"));
     CHECK(*snow.find("BoxGeometry") == parse(R"({"size": [0.05, 0.05, 0.05]})"));
-    CHECK(snow.find("Surface3D")->find("billboard_mode")->as_string() == "particles");
+    CHECK(snow.find("Surface3D")->find("billboard")->as_string() == "particles");
     const json::Value overlay = unsupported(plan.report, "CPUParticles3D.material_overlay");
     CHECK(overlay.find("where")->as_string() == "camp.tscn: Snow");
     fs::remove_all(project);
@@ -5880,14 +5877,14 @@ heightfield_mask = 3
     const json::Value& emitter = *rain.find("GpuEmitter3D");
     CHECK(emitter.find("amount")->as_int() == 256);
     CHECK(emitter.find("seed")->as_int() == 7);
-    CHECK(emitter.find("fixed_fps")->as_int() == 60);
+    CHECK(emitter.find("fixed_rate")->as_int() == 60);
     CHECK(emitter.find("draw_order")->as_string() == "view_depth");
     CHECK(emitter.find("transform_align")->as_string() == "y_to_velocity");
-    CHECK(emitter.find("draw_passes")->as_int() == 2);
+    CHECK(emitter.find("mesh_count")->as_int() == 2);
     CHECK(*emitter.find("visibility_aabb_position") == parse("[-5.0, -6.0, -4.0]"));
     CHECK(*emitter.find("visibility_aabb_size") == parse("[10.0, 8.0, 8.0]"));
     CHECK(*rain.find("QuadGeometry") == parse(R"({"size": [0.02, 0.3]})"));
-    CHECK(rain.find("Surface3D")->find("billboard_mode")->as_string() == "particles");
+    CHECK(rain.find("Surface3D")->find("billboard")->as_string() == "particles");
     // A primitive mesh on a later pass and a trail are reported.
     CHECK(unsupported(plan.report, "GPUParticles3D.draw_pass_2") != nullptr);
     CHECK(unsupported(plan.report, "GPUParticles3D.trail_enabled") != nullptr);
@@ -5917,7 +5914,7 @@ heightfield_mask = 3
     CHECK(*entity(files, storm, "push").find("ParticleAttractorBox3D") ==
           parse(R"({"directionality": 0.75, "size": [2.0, 1.0, 2.0]})"));
     CHECK(*entity(files, storm, "wind").find("ParticleFlowField3D") ==
-          parse(R"({"cull_mask": 2, "strength": 3.0, "size": [8.0, 4.0, 8.0],
+          parse(R"({"layer_filter": 2, "strength": 3.0, "size": [8.0, 4.0, 8.0],
                     "texture": "godot/wind.png", "slices_horizontal": 2, "slices_vertical": 4})"));
     CHECK(*entity(files, storm, "umbrella").find("ParticleColliderSphere3D") ==
           parse(R"({"radius": 0.8})"));
@@ -5977,12 +5974,10 @@ delimiter=1
     const json::Value settings = parse(files_of(plan).at("project.json"));
     CHECK(slash::runtime::validate_project(settings).empty());
     // The CSV file stands for both of its compiled translations, listed once.
-    CHECK(*settings.find("internationalization") == parse(R"({
-        "locale": {"translations": ["godot/text/menu.csv", "godot/text/pl.po"],
-                   "fallback": "fr", "test": "pl"},
-        "pseudolocalization": {"use_pseudolocalization": true, "expansion_ratio": 0.25,
-                               "prefix": "<"},
-        "rendering": {"root_node_layout_direction": "rtl"}})"));
+    CHECK(*settings.find("localization") == parse(R"({
+        "translations": ["godot/text/menu.csv", "godot/text/pl.po"], "fallback": "fr",
+        "test": "pl", "pseudo": {"enabled": true, "expansion_ratio": 0.25, "prefix": "<"},
+        "layout_direction": "rtl"})"));
     const json::Value& report = plan.report;
     CHECK(unsupported(report, "compiled translation").find("where")->as_string() ==
           "res://text/old.de.translation");

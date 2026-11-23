@@ -628,38 +628,31 @@ json::Value action_json(const Action& action) {
 }
 
 json::Value settings_schema() {
-    json::Value pointing;
-    pointing["type"] = "object";
-    pointing["description"] = "How touches and the mouse stand in for each other.";
-    pointing["properties"]["emulate_mouse_from_touch"]["type"] = "boolean";
-    pointing["properties"]["emulate_mouse_from_touch"]["default"] = true;
-    pointing["properties"]["emulate_mouse_from_touch"]["description"] =
-        "A touch also clicks the left mouse button, and dragging moves the mouse.";
-    pointing["properties"]["emulate_touch_from_mouse"]["type"] = "boolean";
-    pointing["properties"]["emulate_touch_from_mouse"]["default"] = false;
-    pointing["properties"]["emulate_touch_from_mouse"]["description"] =
-        "A left click also touches the screen, and dragging with it drags a finger.";
-    pointing["additionalProperties"] = false;
-
     json::Value schema;
     schema["type"] = "object";
-    schema["description"] = "Input device settings, as Godot's input_devices.";
-    schema["properties"]["pointing"] = std::move(pointing);
+    schema["description"] = "How touches and the mouse stand in for each other.";
+    schema["properties"]["mouse_from_touch"]["type"] = "boolean";
+    schema["properties"]["mouse_from_touch"]["default"] = true;
+    schema["properties"]["mouse_from_touch"]["description"] =
+        "A touch also clicks the left mouse button, and dragging moves the mouse.";
+    schema["properties"]["touch_from_mouse"]["type"] = "boolean";
+    schema["properties"]["touch_from_mouse"]["default"] = false;
+    schema["properties"]["touch_from_mouse"]["description"] =
+        "A left click also touches the screen, and dragging with it drags a finger.";
     schema["additionalProperties"] = false;
     return schema;
 }
 
 Settings parse_settings(const json::Value& doc) {
     Settings settings;
-    const json::Value* pointing = doc.is_object() ? doc.find("pointing") : nullptr;
-    if (pointing == nullptr || !pointing->is_object()) {
+    if (!doc.is_object()) {
         return settings;
     }
-    if (const json::Value* value = pointing->find("emulate_mouse_from_touch");
+    if (const json::Value* value = doc.find("mouse_from_touch");
         value != nullptr && value->is_bool()) {
         settings.emulate_mouse_from_touch = value->as_bool();
     }
-    if (const json::Value* value = pointing->find("emulate_touch_from_mouse");
+    if (const json::Value* value = doc.find("touch_from_mouse");
         value != nullptr && value->is_bool()) {
         settings.emulate_touch_from_mouse = value->as_bool();
     }

@@ -38,7 +38,7 @@
       "components": {
         "Button": {
           "text": "Sound",
-          "toggle_mode": true
+          "toggles": true
         },
         "Widget": {
           "offset_bottom": 32.0,

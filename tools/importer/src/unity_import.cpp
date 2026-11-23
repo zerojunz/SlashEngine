@@ -11007,8 +11007,14 @@ private:
             if (type == nullptr || !fields.is_object() || !type->defaults().is_object()) {
                 continue;
             }
+            // The fields hold Unity's converted values under their old names, which
+            // world::upgrade_scene makes current as the scene is written.
+            std::set<std::string, std::less<>> given;
+            for (const auto& [field, value] : fields.as_object()) {
+                given.emplace(world::current_field_name(type->name(), field));
+            }
             for (const auto& [field, value] : type->defaults().as_object()) {
-                if (fields.find(field) == nullptr) {
+                if (!given.contains(field)) {
                     fields[field] = value;
                 }
             }
@@ -14742,6 +14748,8 @@ private:
                 sources->as_array().emplace_back(skeletons().folder());
             }
         }
+        // Settings converted to their old places go to their current ones.
+        world::upgrade_settings(project);
         // Keep only what validates, so a bad setting can't stop the rest.
         for (int pass = 0; pass < 32; ++pass) {
             const auto errors = runtime::validate_project(project);

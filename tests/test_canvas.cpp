@@ -202,7 +202,7 @@ TEST_CASE("Flipbook2D plays its animation on the entity's Sprite2D") {
     scene.world.step(0.05);
     REQUIRE(scene.world.ecs().all_of<world::Sprite2D>(hero)); // added for it
     CHECK(scene.sprite(hero).texture == "hero.png");
-    CHECK(scene.sprite(hero).hframes == 4);
+    CHECK(scene.sprite(hero).columns == 4);
     CHECK(scene.sprite(hero).frame == 0);
     CHECK(scene.player(hero).frame_progress == doctest::Approx(0.5));
     scene.world.step(0.05);
@@ -234,7 +234,7 @@ TEST_CASE("Flipbook2D plays its animation on the entity's Sprite2D") {
     CHECK(scene.player(hero).frame == 1);
     CHECK(scene.player(hero).frame_progress == doctest::Approx(1.0));
     CHECK(scene.sprite(hero).texture == "jump_1.png");
-    CHECK(scene.sprite(hero).hframes == 1);
+    CHECK(scene.sprite(hero).columns == 1);
     REQUIRE(events.size() == 2); // entity.created, then the finish
     CHECK(events.back().kind == "animation_finished");
     CHECK(events.back().id == "hero");
@@ -276,13 +276,13 @@ TEST_CASE("sprite_quad places a sprite's frame like Godot's Sprite2D") {
     CHECK(quad.value()[4].u == doctest::Approx(1.0F));
 
     // The third frame of a 2x2 sheet, uncentered, offset, flipped and tinted.
-    sprite.hframes = 2;
-    sprite.vframes = 2;
+    sprite.columns = 2;
+    sprite.rows = 2;
     sprite.frame = 2;
     sprite.centered = false;
     sprite.offset = {1.0F, 2.0F};
     sprite.flip_h = true;
-    sprite.modulate = {1.0F, 0.5F, 0.0F, 1.0F};
+    sprite.tint = {1.0F, 0.5F, 0.0F, 1.0F};
     quad = canvas::sprite_quad(sprite, at, 32, 16);
     REQUIRE(quad.ok());
     CHECK(quad.value()[0].x == doctest::Approx(101.0F));
@@ -298,7 +298,7 @@ TEST_CASE("sprite_quad places a sprite's frame like Godot's Sprite2D") {
     // A region, then frames inside it.
     sprite = {};
     sprite.region = {8.0F, 0.0F, 16.0F, 8.0F};
-    sprite.hframes = 2;
+    sprite.columns = 2;
     sprite.frame = 1;
     sprite.centered = false;
     quad = canvas::sprite_quad(sprite, {}, 32, 16);
@@ -321,8 +321,8 @@ TEST_CASE("sprite_quad places a sprite's frame like Godot's Sprite2D") {
     CHECK(quad.value()[2].x == doctest::Approx(-4.0F));
 
     sprite.frame = 4;
-    sprite.hframes = 2;
-    sprite.vframes = 2;
+    sprite.columns = 2;
+    sprite.rows = 2;
     CHECK(canvas::sprite_quad(sprite, {}, 4, 4).error().message ==
           "frame 4 is outside the sheet's 4 frames, numbered from 0");
     sprite = {};
@@ -528,7 +528,7 @@ TEST_CASE("Sprite2D texture_filter takes only known names") {
     world::SchemaBuilder builder;
     (void)components.find("Sprite2D")->schema(builder);
     const json::Value& definition = builder.definition("Sprite2D");
-    CHECK(*definition.find("properties")->find("texture_filter")->find("enum") ==
+    CHECK(*definition.find("properties")->find("filter")->find("enum") ==
           parse(R"(["inherit", "linear", "nearest"])"));
 }
 
@@ -1100,10 +1100,10 @@ TEST_CASE("collect_lighting gathers lights, the ambient color and shadow rows, a
     lighting = canvas::collect_lighting(scene.world, images, {}, problems);
     CHECK(lighting.lights[0].light.shadow_row == 0);
     occluder.cull_mode = "disabled";
-    occluder.occluder_light_mask = 2; // the lights' shadow_item_cull_mask is 1
+    occluder.light_layers = 2; // the lights' shadow_item_cull_mask is 1
     lighting = canvas::collect_lighting(scene.world, images, {}, problems);
     CHECK(lighting.shadow_rows == 0);
-    occluder.occluder_light_mask = 1;
+    occluder.light_layers = 1;
 
     // The cache gives the same rows, and casts again when an occluder moves.
     canvas::ShadowCache cache;
@@ -1258,7 +1258,7 @@ TEST_CASE("lights shade sprites on the software device and a GPU, as their masks
         CHECK(near(pixel(image.value(), 20, 24), {128, 128, 128, 255})); // not on the light's mask
 
         // A wall just under the lamp shadows everything below it.
-        scene.world.ecs().get<world::Sprite2D>(masked).light_mask = 1;
+        scene.world.ecs().get<world::Sprite2D>(masked).light_layers = 1;
         scene.create("wall", R"({"Transform2D": {"position": [24, 17]}, "Occluder2D": {
                              "polygon": [[-16, 0], [16, 0]], "closed": false}})");
         REQUIRE(renderer.draw(scene.world, options).ok());

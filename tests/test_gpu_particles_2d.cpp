@@ -350,7 +350,7 @@ TEST_CASE("a GpuEmitter2D steps its cycle as Godot's particles storage does") {
     CHECK(kept.steps.size() <= 18);
 
     // fixed_fps 0 steps once a tick, by the tick times speed_scale.
-    scene.emitter(fountain).fixed_fps = 0;
+    scene.emitter(fountain).fixed_rate = 0;
     scene.emitter(fountain).speed_scale = 2.0F;
     scene.step();
     kept = scene.steps(fountain);
@@ -368,7 +368,7 @@ TEST_CASE("a GpuEmitter2D steps its cycle as Godot's particles storage does") {
     CHECK(kept.steps.front().time == doctest::Approx(kept.steps.front().delta));
 
     // In local coordinates particles start in the emitter's own space.
-    scene.emitter(fountain).local_coords = true;
+    scene.emitter(fountain).local_space = true;
     scene.step();
     CHECK(scene.steps(fountain).steps.back().emission ==
           std::array<float, 6>{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F});
@@ -1059,7 +1059,7 @@ TEST_CASE("a GpuEmitter2D with trails keeps copies that step 60 times a second")
     // trail_lifetime of them; fixed_fps 0 steps 60 times a second, as Godot's.
     world::GpuEmitter2D& settings = scene.emitter(comet);
     settings.trail_enabled = true;
-    settings.fixed_fps = 0;
+    settings.fixed_rate = 0;
     scene.step();
     canvas::ParticleSteps kept = scene.steps(comet);
     CHECK(kept.trail == 9);
@@ -1068,7 +1068,7 @@ TEST_CASE("a GpuEmitter2D with trails keeps copies that step 60 times a second")
     CHECK(kept.steps.front().delta == doctest::Approx(1.0 / 60.0));
     CHECK(kept.steps.front().trail_steps == 18); // 0.3 s
     settings.trail_lifetime = 0.5F;
-    settings.fixed_fps = 24;
+    settings.fixed_rate = 24;
     scene.step(5);
     kept = scene.steps(comet);
     CHECK(kept.steps.back().delta == doctest::Approx(1.0 / 24.0));

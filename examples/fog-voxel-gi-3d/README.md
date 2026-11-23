@@ -23,4 +23,4 @@ the fog: the red wall, high on the back wall, lower on the back wall and the flo
   the meshes keep theirs: (0.68, 0.22, 0.19) and (0.61, 0.58, 0.55).
 
 The fog takes the light of the first eight VoxelGIs in the view whose boxes hold a froxel.
-Volumetric fog and VoxelGIs draw only in Forward+, the default `rendering.rendering_method`.
+Volumetric fog and VoxelGIs draw only in Forward+, the default `rendering.renderer`.

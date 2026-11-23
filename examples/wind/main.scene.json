@@ -1,1 +1,143 @@
-{"entities": {"banner": {"components": {"Model3D": {}, "PlaneGeometry": {"size": [1, 1], "subdivide_depth": 1, "subdivide_width": 1}, "SoftBody3D": {"drag_coefficient": 0.6, "pinned_points": [{"point": 0}, {"point": 3}, {"point": 6}]}, "Transform3D": {"position": [1.4, 1.2, 0], "rotation": [0, 0, 1.5707964]}}}, "breeze": {"components": {"Transform3D": {"rotation": [0, -1.5707964, 0]}, "WindSource3D": {"strength": 3}}}, "camera": {"components": {"Camera3D": {"current": true}, "Transform3D": {"position": [0, 1.4, 4.2], "rotation": [-0.25, 0, 0]}}}, "environment": {"components": {"Environment3D": {"ambient_light_color": [0.6, 0.65, 0.8, 1], "ambient_light_energy": 0.5, "ambient_light_source": "color", "background_color": [0.45, 0.6, 0.85, 1], "background_mode": "color"}}}, "fan": {"components": {"Transform3D": {"position": [-2.5, 0.3, 1]}, "WindSource3D": {"point_wind": true, "radius": 3, "strength": 4}}}, "grass": {"components": {"Model3D": {"material_override": "grass.material.json"}, "QuadGeometry": {"size": [0.4, 1.2]}, "Transform3D": {"position": [-0.8, 0.6, 0.5]}}}, "ground": {"components": {"Model3D": {}, "PlaneGeometry": {"size": [40, 40]}, "Surface3D": {"albedo_color": [0.35, 0.5, 0.3, 1]}, "Transform3D": {}}}, "leaves": {"components": {"Emitter3D": {"amount": 12, "gravity": [0, -1, 0], "initial_velocity_max": 0.2, "lifetime": 4, "wind_influence": 0.8}, "Transform3D": {"position": [-1.5, 2.5, 0]}}}, "sun": {"components": {"SunLight3D": {}, "Transform3D": {"rotation": [-0.55, 2.7, 0]}}}, "petals": {"components": {"Emitter2D": {"amount": 8, "gravity": [0, 20], "initial_velocity_max": 10, "lifetime": 3, "wind_influence": 0.5}, "Transform2D": {"position": [20, 20]}}}, "draft": {"components": {"Transform2D": {}, "WindSource2D": {"strength": 120}}}}, "format": 1}
+{
+  "entities": {
+    "banner": {
+      "components": {
+        "Model3D": {},
+        "PlaneGeometry": {
+          "size": [1.0, 1.0],
+          "subdivide_depth": 1,
+          "subdivide_width": 1
+        },
+        "SoftBody3D": {
+          "drag_coefficient": 0.6,
+          "pinned_points": [
+            {},
+            {
+              "point": 3
+            },
+            {
+              "point": 6
+            }
+          ]
+        },
+        "Transform3D": {
+          "position": [1.4, 1.2, 0.0],
+          "rotation": [0.0, 0.0, 1.5707964]
+        }
+      }
+    },
+    "breeze": {
+      "components": {
+        "Transform3D": {
+          "rotation": [0.0, -1.5707964, 0.0]
+        },
+        "WindSource3D": {
+          "strength": 3.0
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 1.4, 4.2],
+          "rotation": [-0.25, 0.0, 0.0]
+        }
+      }
+    },
+    "draft": {
+      "components": {
+        "Transform2D": {},
+        "WindSource2D": {
+          "strength": 120.0
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "Environment3D": {
+          "ambient_light_color": [0.6, 0.65, 0.8, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.45, 0.6, 0.85, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "fan": {
+      "components": {
+        "Transform3D": {
+          "position": [-2.5, 0.3, 1.0]
+        },
+        "WindSource3D": {
+          "point_wind": true,
+          "radius": 3.0,
+          "strength": 4.0
+        }
+      }
+    },
+    "grass": {
+      "components": {
+        "Model3D": {
+          "material": "grass.material.json"
+        },
+        "QuadGeometry": {
+          "size": [0.4, 1.2]
+        },
+        "Transform3D": {
+          "position": [-0.8, 0.6, 0.5]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "Model3D": {},
+        "PlaneGeometry": {
+          "size": [40.0, 40.0]
+        },
+        "Surface3D": {
+          "albedo_color": [0.35, 0.5, 0.3, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "leaves": {
+      "components": {
+        "Emitter3D": {
+          "amount": 12,
+          "gravity": [0.0, -1.0, 0.0],
+          "initial_velocity_max": 0.2,
+          "lifetime": 4.0,
+          "wind_influence": 0.8
+        },
+        "Transform3D": {
+          "position": [-1.5, 2.5, 0.0]
+        }
+      }
+    },
+    "petals": {
+      "components": {
+        "Emitter2D": {
+          "gravity": [0.0, 20.0],
+          "initial_velocity_max": 10.0,
+          "lifetime": 3.0,
+          "wind_influence": 0.5
+        },
+        "Transform2D": {
+          "position": [20.0, 20.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "SunLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.55, 2.7, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

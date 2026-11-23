@@ -93,8 +93,8 @@ void Space::apply_fields(world::World& world, const world::Tree2D& tree, float s
             body->anchored = false;
             const auto& rigid = world.ecs().get<world::RigidBody2D>(entity);
             b2BodyType type = b2_dynamicBody;
-            if (rigid.freeze) {
-                type = rigid.freeze_mode == "kinematic" ? b2_kinematicBody : b2_staticBody;
+            if (rigid.frozen) {
+                type = rigid.frozen_mode == "kinematic" ? b2_kinematicBody : b2_staticBody;
             }
             body->rigid_key.type = type;
             if (type != b2_kinematicBody) {

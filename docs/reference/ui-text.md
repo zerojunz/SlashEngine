@@ -20,21 +20,21 @@ there. A run shapes with the font, then the clusters it lacks with its `.font.js
 `LayoutOptions::language` and script), then with fonts installed on the machine
 (`platform::system_fonts_for`: CoreText, DirectWrite, fontconfig loaded with `dlopen`, Android's
 font list; none on the web), counted in `TextLayout::system` and turned off by
-`gui.allow_system_fallback`. Tests and examples that print text layout turn them off so their
+`ui.system_font_fallback`. Tests and examples that print text layout turn them off so their
 output is the same on every machine, and make the fonts they need with `text::box_font` (a
 TrueType font of box glyphs) rather than committing font files. `Widget.layout_direction`
 mirrors layout as Godot's `is_layout_rtl`; `examples/text-languages` is a menu in Arabic.
 
 `engine/ui` is UI, as Godot's Control nodes. `Control` places a rect in its parent's (the
 entity listed in a `Control`'s `children`, or the viewport) by anchors, offsets and grow
-directions, turned and scaled around `pivot_offset`; `Label`, `ColorFill`, `Panel`,
+directions, turned and scaled around `pivot`; `Label`, `ColorFill`, `Panel`,
 `Picture`, `NineSlice` and `ProgressBar` draw in it. A container component (`HBoxContainer`,
 `GridBox`, `FlowBox`, `MarginBox`, `CenterBox`, `PanelBox` and the
 rest) places the control's children instead of their anchors. `ui::layout` (`src/layout.cpp`)
 follows Godot's `Control`, `Label` and container code, line for line where it can: minimum
 sizes, size flags and stretch ratios, wrapping, `max_lines_visible`, trimming and alignment.
 Theme items come from `theme_override_*` fields, then `.theme.json` themes (`src/theme.cpp`; a
-control's own and its parents' `Widget.theme`, then the project's `gui.theme`; `$cli schema
+control's own and its parents' `Widget.theme`, then the project's `ui.theme`; `$cli schema
 theme`), then `ui::default_theme`, Godot's defaults; `ui.theme` says which one each item came
 from. Style boxes (`src/style.cpp`) are Godot's `StyleBoxFlat` and `StyleBoxTexture`.
 `ui::draw_calls` (`src/draw.cpp`) turns a layout into triangles, drawing flat style boxes as
@@ -49,7 +49,7 @@ every control's rect, lines and problems, `text.measure` sizes text, and `ui::ch
 
 Buttons and focus are Godot's `BaseButton`, `Button`, `ImageButton` and the GUI half of its
 `Viewport`. The `gui` system (`src/gui.cpp`, priority -900, right after `input`) sends each
-tick's `input::events` to controls: hover by `mouse_filter` (`update_mouse_over`), mouse focus
+tick's `input::events` to controls: hover by `pointer_mode` (`update_mouse_over`), mouse focus
 and clicks, touches per finger, then keys, gamepads and actions to the control with focus and
 the `ui_*` actions that move focus (`find_next_valid_focus`, `focus_neighbor` with Godot's legacy
 score), then shortcuts. It keeps its state by entity ID in the world's context, so only controls
@@ -71,7 +71,7 @@ draws in code from the same shapes (`ui::builtin_icon`, `builtin:` paths, which
 
 `ScrollBar` and `ScrollBox` are Godot's. Layout places a container's children and bars as
 `ScrollContainer::_reposition_children` and `_update_scrollbars` do and records each one's
-`ui::ScrollView` in `Layout::scrolls`; a control under a clip (`clip_contents`, every scroll
+`ui::ScrollView` in `Layout::scrolls`; a control under a clip (`clip_children`, every scroll
 container) gets a `Placed::clip`, which drawing cuts its triangles to and hit tests honor. In
 `src/gui.cpp`, `bar_input` follows `ScrollBar::gui_input` and `scroll_input`
 `ScrollContainer::gui_input` (the wheel, and touch drags with a deadzone and inertia); a
@@ -148,7 +148,7 @@ field's placeholder), values, checked states, ranges, flags, bounds, actions and
 controls from `Control`'s `accessibility_*` fields, with open popup menus and their items.
 `ui::accessibility_action` runs the actions Godot's controls add (click, focus, increment,
 set_value, scrolling), `ui::accessibility_problems` its accessibility warnings, and
-`ui.accessibility` and `ui.accessibility_action` serve them. `gui.accessibility_support` says when
+`ui.accessibility` and `ui.accessibility_action` serve them. `ui.accessibility_support` says when
 controls serve a screen reader (`ui::accessibility_enabled`), and while they do `focus_mode`
 `"accessibility"` (`MenuButton`'s and `ScrollBar`'s) takes focus. `engine/accessibility` hands
 the tree to the system's screen reader as Godot's `AccessibilityDriverAccessKit`, through

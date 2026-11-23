@@ -935,8 +935,8 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         drawer.set_canvas(placed.canvas);
         if (placed.visible && world.valid(placed.entity)) {
             const auto* control = ecs.try_get<world::Widget>(placed.entity);
-            const Vec4 tint = times(
-                placed.modulate, (control != nullptr ? *control : kDefaultControl).self_modulate);
+            const Vec4 tint =
+                times(placed.modulate, (control != nullptr ? *control : kDefaultControl).own_tint);
             const Rect bounds{0.0F, 0.0F, static_cast<float>(placed.size.x),
                               static_cast<float>(placed.size.y)};
             const std::size_t calls_before = list.calls.size();

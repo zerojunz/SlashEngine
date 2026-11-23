@@ -144,7 +144,7 @@ rendering on top.
       and tint; physics, lights, particles and sound use global transforms; loops and second
       parents are refused; `entity.destroy` takes children along
   - [x] A body's shapes in child entities, as Godot's `CollisionShape2D` nodes
-  - [x] `top_level` and `z_as_relative` off, on Node2D entities and controls
+  - [x] `top_level` and `sort_order_relative` off, on Node2D entities and controls
 - [x] Asset handles with reference counting and hot reload, and an `asset.list` command
 - [x] Storyboard: the game's style, world, story, design rules, names, decisions and open work
       as typed files in the project, so every agent works from the same facts
@@ -321,7 +321,7 @@ rendering on top.
       gamepads with `value_changed`, `drag_started` and `drag_ended`, and theme icons with
       Godot's default ones drawn by the engine (`builtin:` names)
 - [x] Scrolling, as Godot's: `HScrollBar`, `VScrollBar` and `ScrollBox` dragged, clicked
-      and scrolled by the wheel, touch and focus, with `clip_contents`; `ui.layout` and
+      and scrolled by the wheel, touch and focus, with `clip_children`; `ui.layout` and
       `frame.summary` report scrolls and what a clip cuts off
 - [x] Drop-down lists and menus, as Godot's: `Dropdown`, `MenuButton` and `PopupList`
       picked by clicks, held clicks, taps, the arrow keys and typing, menu bars that switch on
@@ -597,7 +597,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Forward+'s clustered lights, as Godot's: 8 directional and 512 omni and spot lights
         sorted into screen tiles and depth slices on the CPU, read from storage buffers on
         Vulkan, Metal, Direct3D 12 and WebGPU and by the software device's twin;
-        `rendering.rendering_method` picks `forward_plus` or `gl_compatibility`, which the
+        `rendering.renderer` picks `forward_plus` or `gl_compatibility`, which the
         OpenGL drivers always draw
   - [x] 3D nodes in scenes, as Godot's: `Transform3D` trees, `Model3D` with Godot's
         eight primitive meshes, `Surface3D`, `Camera3D`, `SunLight3D`,
@@ -609,7 +609,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         lighting: compiled into the mesh shader's Compatibility, Forward+ and prepass stages for
         Vulkan, Metal, Direct3D 12, WebGPU and OpenGL and run by the software device on 2x2
         quads; `.material.json` files with `"shader_type": "spatial"` and Godot's render
-        modes, drawn through `Model3D.material_override`
+        modes, drawn through `Model3D.material`
   - [x] `vertex()` moves a mesh's corners (Godot's built-ins in the mesh's space, or the
         world's with `world_vertex_coords`), in the motion prepass with the frame before's
         place and time, and the shadow pass reads the shader: its `vertex()`, and its
@@ -635,10 +635,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         device
   - [x] SSAO, as Godot 4.6's Forward+: a normal prepass and Intel's ASSAO passes at every
         quality (deinterleaved depth, adaptive samples at ultra, edge-aware blur), set by
-        `Environment3D` and `rendering.environment.ssao`, on every Forward+ device
+        `Environment3D` and `rendering.ssao`, on every Forward+ device
   - [x] SSR, as Godot 4.6's Forward+: a Hi-Z trace reading the frame before, blurred levels
         by roughness and a resolve at half size, set by `Environment3D` and
-        `rendering.environment.screen_space_reflection`, on every Forward+ device
+        `rendering.ssr`, on every Forward+ device
 - [x] Baked lightmaps and probe-based global illumination
   - [x] Reflection probes, as Godot 4.6's Forward+ `ReflectionProbe`: cubes captured into one
         atlas, box projection, blending where probes overlap and their ambient modes, on every
@@ -764,7 +764,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
           cull pairs them
     - [x] Collision shapes (sphere, box, SDF, height field)
       - [x] Spheres and boxes, with rigid and hide-on-contact collision and
-            `collision_base_size`
+            `collision_size`
       - [x] Signed distance fields baked by `particles.bake_sdf` and height fields drawn from
             above, following the camera
     - [x] Godot's `GPUParticles3D` nodes and 3D process materials imported, with their
@@ -1004,7 +1004,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] A `video.encode` command, so agents turn captured frames into cutscenes
 - [x] Accessibility through AccessKit
   - [x] Godot 4.5's accessibility tree from controls (roles, names, values, states, actions,
-        related controls, open menus), `focus_mode` `accessibility`, `gui.accessibility_support`,
+        related controls, open menus), `focus_mode` `accessibility`, `ui.accessibility_support`,
         `ui.accessibility` and `ui.accessibility_action`
   - [x] The platform backend on Windows, macOS and Linux: AccessKit's adapters hand the tree to
         Narrator, VoiceOver and Orca, built by cargo from accesskit-c's pinned crates
@@ -1119,7 +1119,7 @@ launch rows and the after-launch features above.
   software rasterizer remain
 - Fully dynamic global illumination at Lumen quality, after probe GI ships. Spike: Godot 4.6's
   SDFGI ported to the CPU (cascades of distance fields that follow the camera, lit cells and
-  probes with spherical harmonics history), behind `Environment3D.sdfgi_enabled` on the
+  probes with spherical harmonics history), behind `Environment3D.field_lighting_enabled` on the
   software device ([sdfgi.md](reference/sdfgi.md)), its cascades scrolling and its probes
   occluded by walls, its cells, field, light and probes kept as GPU-ready words with every sum
   and rounding in whole numbers, and run in compute shaders on Vulkan, Metal, Direct3D 12 and
@@ -1625,7 +1625,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: Godot's `SoftBody3D` on Jolt, with pins, attachments and pressure |
 | Destruction | Fracture and debris on Jolt | After launch | Done: Voronoi fracture of `Destructible3D` bodies, impact breaking, debris lifetimes and `physics.break` |
 | Virtualized geometry | Meshlet rendering research | Research | Research: cluster hierarchies cut per camera on the CPU (`Model3D.virtualized`) |
-| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU, the GPU device and WebGPU (`Environment3D.sdfgi_enabled`) |
+| Fully dynamic GI at UE quality | Research after probe GI ships | Research | Research: Godot's SDFGI on the CPU, the GPU device and WebGPU (`Environment3D.field_lighting_enabled`) |
 | Digital humans | Research; out of scope for releases | Research | Research |
 
 ## Agent efficiency

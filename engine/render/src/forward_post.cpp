@@ -1114,10 +1114,9 @@ DepthOfFieldSettings depth_of_field_settings_from_json(const json::Value& value)
             }
         }
     };
-    pick("depth_of_field_bokeh_shape", kBokehShapeNames, out.bokeh_shape);
-    pick("depth_of_field_bokeh_quality", kBokehQualityNames, out.bokeh_quality);
-    if (const json::Value* found = value.find("depth_of_field_use_jitter");
-        found != nullptr && found->is_bool()) {
+    pick("bokeh_shape", kBokehShapeNames, out.bokeh_shape);
+    pick("bokeh_quality", kBokehQualityNames, out.bokeh_quality);
+    if (const json::Value* found = value.find("jitter"); found != nullptr && found->is_bool()) {
         out.use_jitter = found->as_bool();
     }
     return out;

@@ -307,7 +307,7 @@ struct LightmapCaptureSource {
 [[nodiscard]] std::optional<LightmapSh>
 lightmap_capture(std::span<const LightmapCaptureSource> lightmaps, std::array<float, 3> center);
 
-// Godot's rendering/lightmapping project settings (project.json's rendering.lightmapping): the
+// Godot's rendering/lightmapping project settings (project.json's rendering.lightmaps): the
 // rays a texel and a probe trace at each BakedLighting3D quality (low, medium, high, ultra), how
 // bakes split their rays and texels into passes, and how fast moving meshes' light from probes
 // follows them.
@@ -326,7 +326,7 @@ struct LightmappingSettings {
 // "max_rays_per_probe_pass", "region_size"}, "probe_capture": {"update_speed"}}, by Godot's names.
 // What is missing or out of range keeps its default.
 [[nodiscard]] LightmappingSettings lightmapping_settings(const json::Value& rendering);
-// The JSON Schema of rendering.lightmapping.
+// The JSON Schema of rendering.lightmaps.
 [[nodiscard]] json::Value lightmapping_schema();
 
 // The images and models a bake reads materials from, by project path.

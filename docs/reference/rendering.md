@@ -108,7 +108,7 @@ a sway.
 
 A material with `"shader_type": "spatial"` is Godot's spatial shader: its `fragment()` gives a
 mesh's surface (`ALBEDO`, `ROUGHNESS`, `NORMAL_MAP`, `EMISSION`, `ALPHA` and the rest, Godot's
-built-ins in view space), and `Model3D.material_override` draws it (`Renderer::override_material`
+built-ins in view space), and `Model3D.material` draws it (`Renderer::override_material`
 in `engine/scene3d/src/scene3d.cpp`, through the `ShaderMaterialSource` `CanvasRenderer` gives it).
 The compiler puts the game's code, as `game_surface`, before `shaders/mesh.hlsl` with
 `GAME_SHADER` defined, and compiles that file's Compatibility, Forward+ and prepass fragment
@@ -216,7 +216,7 @@ Apple's software OpenGL renderer takes minutes compiling the mesh shader with it
 
 Subsurface scattering is Godot 4.6's Forward+ screen-space blur (`Material3D::subsurface`, from
 `Surface3D`'s `subsurf_scatter_*`; project.json's
-`rendering.environment.subsurface_scattering`, `render::SubsurfaceSettings`). `src/subsurface.hpp`
+`rendering.subsurface`, `render::SubsurfaceSettings`). `src/subsurface.hpp`
 holds what devices share (`uses_subsurface`, `draws_subsurface`, the uniforms) and the CPU twin of
 `shaders/subsurface.hlsl`'s two passes (`run_subsurface_pass`, `run_subsurface`, Jimenez's
 kernels as Godot's `subsurface_scattering.glsl`). After the opaque meshes, each device draws the
@@ -251,7 +251,7 @@ casts (`ShadowsOnly` casts without being drawn). At `end_frame` each device asks
 to slices of the view as Godot's `RendererSceneCull` fits them, in its share of the directional
 atlas, and an omni light's six cube faces or a spot light's one view in tiles of the positional
 atlas. It draws each pass with `shaders/shadow.hlsl` into a depth atlas
-(`Scene3D::shadows`, from `rendering.lights_and_shadows`), then the forward pass samples them
+(`Scene3D::shadows`, from `rendering.shadows`), then the forward pass samples them
 with a comparison sampler in `mesh.hlsl`, filtered by the soft shadow quality. `shadow_vertex`
 and `ShadowAtlas::compare` are the CPU twins, and `tests/test_shadow.cpp` holds every device to
 the software device's pixels. `Model3D.cast_shadow` and the lights' `shadow_*` fields
@@ -284,7 +284,7 @@ measure over. `auto_exposure_metering`'s `"log_average"` (SlashEngine's own, `au
 Unreal meters, which the Unreal importer sets. `examples/auto-exposure-3d` walks out of a tunnel.
 
 Depth of field is Godot 4.6's too: `CameraLens`'s `dof_blur_*` fields set
-`PostProcess::dof_*`, and project.json's `rendering.camera.depth_of_field` the bokeh shape,
+`PostProcess::dof_*`, and project.json's `rendering.depth_of_field` the bokeh shape,
 quality and jitter (`render::DepthOfFieldSettings`). Forward+ devices keep the depth buffer and
 run `forward_post.hlsl`'s depth of field passes before glow, as `dof_plan` lists them: blur sizes
 from depth, the box, hexagon or circle blur, and the composite into the world. `run_dof_size_pass`,
@@ -292,7 +292,7 @@ from depth, the box, hexagon or circle blur, and the composite into the world. `
 racks focus across a garden.
 
 SSAO is Godot 4.6's Forward+ SSAO (Intel's ASSAO): `Environment3D`'s `ssao_*` fields set
-`Scene3D::ssao` (`render::Ssao3D`), and project.json's `rendering.environment.ssao` its quality,
+`Scene3D::ssao` (`render::Ssao3D`), and project.json's `rendering.ssao` its quality,
 size, blur and fade (`render::SsaoSettings`). Forward+ devices draw the opaque meshes' depth and
 normals in a prepass (`mesh_normal.hlsl`), then `ssao.hlsl`'s passes as `ssao_plan` lists them
 (`src/ssao.hpp`): linear depth in four deinterleaved slices, the gather (ultra's base pass,
@@ -303,7 +303,7 @@ with every pass in it. `mesh.hlsl` applies the result as Godot's scene shader do
 corners.
 
 SSR is Godot 4.6's Forward+ screen-space reflections: `Environment3D`'s `ssr_*` fields set
-`Scene3D::ssr` (`render::Ssr3D`), and project.json's `rendering.environment.screen_space_reflection`
+`Scene3D::ssr` (`render::Ssr3D`), and project.json's `rendering.ssr`
 its size (`render::SsrSettings`). After the same prepass, Forward+ devices run `ssr.hlsl`'s passes
 as `ssr_plan` lists them (`src/ssr.hpp`): the depth (halved at half size) and a Hi-Z pyramid, the
 trace (`ssr_trace.hlsl`, the same file with two targets) reading the frame before, the filtered
@@ -315,7 +315,7 @@ polished floor.
 
 Reflection probes are Godot 4.6's Forward+ `ReflectionProbe`. `scene3d::Renderer::reflect` sorts
 a frame's probes largest first, gives each a cube of one atlas (a texture made with
-`TextureDesc::cubes`, sized by project.json's `rendering.reflections.reflection_atlas`) and draws
+`TextureDesc::cubes`, sized by project.json's `rendering.reflections`) and draws
 a probe's six faces as frames whose `Scene3D::capture` (`render::ProbeCapture`) names the cube and
 face, with `probe_face_view` and `probe_face_projection`. At the end of a capture's sixth face the
 device filters the cube's levels with `radiance.hlsl`, as it does the sky's. `Scene3D::reflections`
@@ -378,7 +378,7 @@ tracer's scene (`path_surface_at`, summed in fixed point) with an exact distance
 integer Euclidean distance transform; `SdfgiCascade` keeps cells, field, light, occlusion and
 probes as the 32-bit words a GPU's buffers hold, and every step that sums or rounds does so in
 whole numbers, so a compute shader can make the same bits) (and, with
-`sdfgi_use_occlusion`, `make_sdfgi_occlusion`'s flood from each probe), lights the cells
+`field_lighting_use_occlusion`, `make_sdfgi_occlusion`'s flood from each probe), lights the cells
 through it and has the probes trace their rays into spherical harmonics history, then
 `run_sdfgi` (`gi.glsl`'s `sdfgi_process`) gives each pixel its ambient light and reflections as
 `MeshMaps::sdfgi`, which `shade_mesh` puts under VoxelGIs' light. The GPU device (Vulkan, Metal,
@@ -388,7 +388,7 @@ sums each draw's triangles into the cells with atomic adds, `shaders/sdfgi.hlsl`
 steps as passes, and `sdfgi_gather.hlsl` writes the screen texture's layers 5 and 6, which
 `mesh.hlsl` reads when `scene_voxel_gi.z` is set; a change to the CPU twin goes in the shaders
 too. OpenGL draws without it.
-project.json's `rendering.global_illumination.sdfgi` (`render::SdfgiSettings`) sets every frame's
+project.json's `rendering.field_lighting` (`render::SdfgiSettings`) sets every frame's
 probe rays and how fast it follows changes.
 `examples/sdfgi-3d` lights a room with it.
 
@@ -444,7 +444,7 @@ in view. `examples/lighting-check` fixes a flood light and a lamp out of view. `
 (same file) scales lights toward a mean brightness, a clipping limit and per-light shares,
 learning from each step how brightness follows energy and bisecting once it has seen too dark
 and too bright, with one undo step. Physical light units are Godot's
-(`rendering.lights_and_shadows.use_physical_light_units`, `scene3d::physical_light_units`):
+(`rendering.physical_light_units`, `scene3d::physical_light_units`):
 `render::color_temperature` and the unit factors (`engine/render/src/light_units.cpp`, built
 with `-ffp-contract=off`) tint and scale lights in `light_base` (`engine/scene3d/src/scene3d.cpp`)
 and in the lightmap and VoxelLighting3D bakes, with the background's and emission's nits and the
@@ -525,7 +525,7 @@ Metal and Direct3D 12 to the software device, `tests/test_ray_records.cpp` the M
 their GLSL and the DXIL to its HLSL, `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
 `examples/ray-traced-reflections-3d` a hall's floor and `examples/ray-traced-gi-3d` a room's walls.
 
-TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
+TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter
 (`taa_jitter`, Halton bases 2 and 3 over 16 frames, `jittered`), the mesh passes' camera with the
 frame before's (`taa_camera_uniforms`) and the resolve's CPU twin, `run_taa`. `scene3d::Renderer`
@@ -623,7 +623,7 @@ those past it. Compatibility draws none. `examples/decals-3d` paints a street.
 
 Volumetric fog is Godot 4.6's Forward+ `volumetric_fog_*` (`render::VolumetricFog3D`,
 `Scene3D::volumetric_fog`, from `Environment3D`; the volume's size from project.json's
-`rendering.environment.volumetric_fog`). `src/volumetric_fog.hpp` holds what devices share: the
+`rendering.volumetric_fog`). `src/volumetric_fog.hpp` holds what devices share: the
 froxel volume's size as Godot's `_update_volumetric_fog` (`fog_volume_size`), the uniforms and
 the CPU twins of `shaders/volumetric_fog.hlsl`'s compute passes (`run_volumetric_fog`: each
 froxel's density and light from the lights, their shadows, the clusters and the sky's radiance,
@@ -805,7 +805,7 @@ in their rest pose, and lightmapped meshes' LODs made again from their unwrap.
 every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
 `scene3d::Renderer::pick_lods` picks each draw's LOD as Godot's `_fill_render_list` and
 `mesh_surface_get_lod` do (`pick_lod`), by `Model3D.lod_bias` and project.json's
-`rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
+`rendering.lod.threshold_pixels`; shadow maps draw the camera's LODs and
 reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
 
 The camera's mesh draws are culled by the view on the GPU and drawn as instances, as Unity's
@@ -929,7 +929,7 @@ frame; `world::Curve2D` and `Curve3D` sample it. The `path_follow` system (prior
 animations and before physics; added by `canvas::install`) wraps each follower's `progress` and
 places it on its parent's curve, turned as its `rotates` or `rotation_mode` says, so an
 `Animator` track on `progress` moves it. `SolidExtrusion3D`'s `"path"` mode pushes its
-polygon along the `Spline3D` its `path_node` names, as Godot's `MODE_PATH`. `path.get` samples a
+polygon along the `Spline3D` its `path` names, as Godot's `MODE_PATH`. `path.get` samples a
 curve and finds its nearest point, `check_paths` (run from `check_meshes`) reports followers
 whose parent has no path, and `examples/paths` laps a cart round a rail.
 
@@ -996,7 +996,7 @@ software Vulkan (`mesa-vulkan-drivers`), OpenGL and OpenGL ES (`libgl1`, `libgle
 `libegl-mesa0`, `libgl1-mesa-dri`) run them with no GPU, and `SDL_VIDEO_DRIVER=offscreen` draws
 the windowed path on them too. CI sets `SLASH_EXPECT_GPU=1` on Linux so they fail there instead of skipping.
 
-V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `project.json`,
+V-Sync and the frame cap follow Godot: `window.vsync` and `max_fps` in `project.json`,
 `--vsync` and `--max-fps` on `slash-cli run`, and `display.set` while a served game runs
 (`display.list` and `perf.stats` too; `engine/command/src/live.cpp`). `platform::Loop` paces
 windowed frames to the cap, never headless ones, and `Loop::interpolation()` gives the fraction

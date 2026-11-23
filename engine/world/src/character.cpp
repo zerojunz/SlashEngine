@@ -401,7 +401,7 @@ void run_character(World& world, entt::entity entity, CutoutState& state) {
         polygon.polygons.clear();
         polygon.vertex_colors.clear();
         polygon.color = {1.0F, 1.0F, 1.0F, 1.0F};
-        polygon.z_index = bone.z_index;
+        polygon.sort_order = bone.z_index;
         for (const CutoutShape& shape : bone.shapes) {
             std::vector<int> indices;
             for (const Vec2 point : shape.points) {

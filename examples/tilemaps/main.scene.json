@@ -3,7 +3,7 @@
     "ground": {
       "components": {
         "TileLayer2D": {
-          "texture_filter": "nearest",
+          "filter": "nearest",
           "tile_set": "ground.tileset.json"
         }
       }

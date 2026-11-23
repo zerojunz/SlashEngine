@@ -5,6 +5,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -120,13 +121,13 @@ json::Value scaling_schema() {
                              "UI, as Godot's scaling_3d settings.";
     scaling["properties"]["mode"] = std::move(mode);
     scaling["properties"]["scale"] = std::move(scale);
-    scaling["properties"]["fsr_sharpness"] = std::move(sharpness);
+    scaling["properties"]["sharpness"] = std::move(sharpness);
     scaling["properties"]["upscaler"] = std::move(upscaler);
     return scaling;
 }
 
-// rendering.camera, as Godot's rendering/camera settings: depth of field's blur.
-json::Value camera_schema() {
+// rendering.depth_of_field: depth of field's blur.
+json::Value depth_of_field_schema() {
     const render::DepthOfFieldSettings defaults;
     const auto choice = [](const auto& names, std::size_t default_index, std::string description) {
         json::Array choices;
@@ -148,24 +149,20 @@ json::Value camera_schema() {
     dof["type"] = "object";
     dof["additionalProperties"] = false;
     dof["description"] = "Depth of field's blur, for every camera's CameraLens.";
-    dof["properties"]["depth_of_field_bokeh_shape"] =
+    dof["properties"]["bokeh_shape"] =
         choice(render::kBokehShapeNames, static_cast<std::size_t>(defaults.bokeh_shape),
                "The blur's shape: box is fastest, then hexagon, then circle.");
-    dof["properties"]["depth_of_field_bokeh_quality"] =
+    dof["properties"]["bokeh_quality"] =
         choice(render::kBokehQualityNames, static_cast<std::size_t>(defaults.bokeh_quality),
                "How many samples the blur takes: very_low and low blur at half size.");
-    dof["properties"]["depth_of_field_use_jitter"] = std::move(jitter);
-    json::Value out;
-    out["type"] = "object";
-    out["additionalProperties"] = false;
-    out["description"] = "3D cameras, as Godot's rendering/camera settings.";
-    out["properties"]["depth_of_field"] = std::move(dof);
-    return out;
+    dof["properties"]["jitter"] = std::move(jitter);
+    return dof;
 }
 
-// rendering.environment, as Godot's rendering/environment settings: screen-space ambient
-// occlusion's quality and screen-space reflections' resolution.
-json::Value environment_schema() {
+// rendering.ssao, ssr, volumetric_fog and subsurface, as the properties of an object: screen-space
+// ambient occlusion's quality, screen-space reflections' resolution, the fog's froxels and
+// subsurface scattering's blur.
+json::Value effects_schema() {
     const render::SsaoSettings defaults;
     const auto number = [](double value, double min, double max, std::string description) {
         json::Value out;
@@ -214,7 +211,6 @@ json::Value environment_schema() {
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "3D environments, as Godot's rendering/environment settings.";
     out["properties"]["ssao"] = std::move(ssao);
     json::Value ssr_half_size;
     ssr_half_size["type"] = "boolean";
@@ -226,7 +222,7 @@ json::Value environment_schema() {
     ssr["additionalProperties"] = false;
     ssr["description"] = "Screen-space reflections, for every Environment3D with ssr_enabled.";
     ssr["properties"]["half_size"] = std::move(ssr_half_size);
-    out["properties"]["screen_space_reflection"] = std::move(ssr);
+    out["properties"]["ssr"] = std::move(ssr);
     const render::VolumetricFogSettings fog_defaults;
     const auto froxels = [](std::uint32_t value, std::string_view description) {
         json::Value size;
@@ -284,11 +280,11 @@ json::Value environment_schema() {
                                          "the screen.");
     subsurface["properties"]["depth_scale"] =
         share(subsurface_defaults.depth_scale, "How much the blur narrows with distance.");
-    out["properties"]["subsurface_scattering"] = std::move(subsurface);
+    out["properties"]["subsurface"] = std::move(subsurface);
     return out;
 }
 
-// rendering.reflections, as Godot's rendering/reflections settings.
+// rendering.reflections.
 json::Value reflections_schema() {
     const render::ReflectionAtlasSettings defaults;
     json::Value size;
@@ -302,17 +298,12 @@ json::Value reflections_schema() {
     count["maximum"] = 4096;
     count["default"] = static_cast<std::int64_t>(defaults.reflection_count);
     count["description"] = "How many probes a frame reflects at most (42 are drawn at most).";
-    json::Value atlas;
-    atlas["type"] = "object";
-    atlas["additionalProperties"] = false;
-    atlas["description"] = "Reflection probes' cubes, as Godot's reflection_atlas.";
-    atlas["properties"]["reflection_size"] = std::move(size);
-    atlas["properties"]["reflection_count"] = std::move(count);
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "Reflections, as Godot's rendering/reflections settings.";
-    out["properties"]["reflection_atlas"] = std::move(atlas);
+    out["description"] = "Reflection probes' cubes and the sky's reflections.";
+    out["properties"]["probe_size"] = std::move(size);
+    out["properties"]["probe_count"] = std::move(count);
     json::Value ggx;
     ggx["type"] = "integer";
     ggx["minimum"] = 1;
@@ -321,16 +312,11 @@ json::Value reflections_schema() {
     ggx["description"] =
         "GGX samples the sky's radiance and reflection probes are blurred with: fewer are faster "
         "to filter, more are smoother on rough surfaces.";
-    json::Value sky;
-    sky["type"] = "object";
-    sky["additionalProperties"] = false;
-    sky["description"] = "The sky's reflections, as Godot's sky_reflections.";
-    sky["properties"]["ggx_samples"] = std::move(ggx);
-    out["properties"]["sky_reflections"] = std::move(sky);
+    out["properties"]["sky_samples"] = std::move(ggx);
     return out;
 }
 
-// rendering.global_illumination, as Godot's rendering/global_illumination settings.
+// rendering.voxel_lighting and field_lighting, as the properties of an object.
 json::Value global_illumination_schema() {
     json::Value quality;
     quality["enum"] = json::Array{"low", "high"};
@@ -344,8 +330,7 @@ json::Value global_illumination_schema() {
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "Global illumination, as Godot's rendering/global_illumination settings.";
-    out["properties"]["voxel_gi"] = std::move(voxel_gi);
+    out["properties"]["voxel_lighting"] = std::move(voxel_gi);
     const render::SdfgiSettings sdfgi_defaults;
     const auto choice = [](json::Array choices, std::uint32_t value, std::string_view description) {
         json::Value field;
@@ -369,11 +354,11 @@ json::Value global_illumination_schema() {
         choice(json::Array{1, 2, 4, 8, 16}, sdfgi_defaults.frames_to_update_lights,
                "Frames over which the cells' light is updated: fewer to follow lights sooner, at "
                "more cost a frame.");
-    out["properties"]["sdfgi"] = std::move(sdfgi);
+    out["properties"]["field_lighting"] = std::move(sdfgi);
     return out;
 }
 
-// rendering.anti_aliasing, as Godot's rendering/anti_aliasing settings.
+// rendering.anti_aliasing.
 json::Value anti_aliasing_schema() {
     json::Value use_taa;
     use_taa["type"] = "boolean";
@@ -381,15 +366,11 @@ json::Value anti_aliasing_schema() {
     use_taa["description"] =
         "Temporal antialiasing of the 3D world in Forward+: each frame is drawn with the camera "
         "moved within a pixel and blended with the frames before it.";
-    json::Value quality;
-    quality["type"] = "object";
-    quality["additionalProperties"] = false;
-    quality["properties"]["use_taa"] = std::move(use_taa);
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "Antialiasing, as Godot's rendering/anti_aliasing settings.";
-    out["properties"]["quality"] = std::move(quality);
+    out["description"] = "Antialiasing.";
+    out["properties"]["taa"] = std::move(use_taa);
     return out;
 }
 
@@ -418,8 +399,8 @@ json::Value virtual_geometry_schema() {
     return out;
 }
 
-// rendering.mesh_lod, as Godot's rendering/mesh_lod settings.
-json::Value mesh_lod_schema() {
+// rendering.lod: when coarser LODs of models' surfaces draw.
+json::Value lod_schema() {
     json::Value threshold;
     threshold["type"] = "number";
     threshold["minimum"] = 0;
@@ -427,15 +408,11 @@ json::Value mesh_lod_schema() {
     threshold["description"] =
         "How many pixels a coarser LOD of a model's surface may be off by where it is drawn: "
         "higher draws coarser LODs nearer. 0 draws every mesh in full.";
-    json::Value lod_change;
-    lod_change["type"] = "object";
-    lod_change["additionalProperties"] = false;
-    lod_change["properties"]["threshold_pixels"] = std::move(threshold);
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "Mesh LODs, as Godot's rendering/mesh_lod settings.";
-    out["properties"]["lod_change"] = std::move(lod_change);
+    out["description"] = "Mesh LODs.";
+    out["properties"]["threshold_pixels"] = std::move(threshold);
     return out;
 }
 
@@ -554,64 +531,65 @@ json::Value occlusion_culling_schema() {
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] = "Occlusion culling, as Godot's rendering/occlusion_culling settings.";
-    out["properties"]["use_occlusion_culling"] = std::move(use);
-    out["properties"]["occlusion_rays_per_thread"] = std::move(rays);
+    out["description"] = "Occlusion culling.";
+    out["properties"]["enabled"] = std::move(use);
+    out["properties"]["rays_per_thread"] = std::move(rays);
     out["properties"]["jitter_projection"] = std::move(jitter);
     return out;
 }
 
-// rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
-json::Value lights_and_shadows_schema() {
+// rendering.shadows: the 3D shadow atlases.
+json::Value shadows_schema() {
     const render::ShadowSettings defaults;
     json::Array qualities;
     for (const std::string_view name : render::kShadowQualityNames) {
         qualities.emplace_back(std::string(name));
     }
-    const auto atlas = [&](std::string_view size_key, std::uint32_t size,
-                           render::ShadowQuality quality, std::string description) {
-        json::Value texels;
-        texels["type"] = "integer";
-        texels["minimum"] = 256;
-        texels["maximum"] = 16384;
-        texels["default"] = size;
-        texels["description"] =
-            "The atlas's width and height in texels, a power of two; devices draw it at most as "
-            "large as their largest texture.";
-        json::Value filter;
-        filter["enum"] = qualities;
-        filter["default"] =
-            std::string(render::kShadowQualityNames.at(static_cast<std::size_t>(quality)));
-        filter["description"] =
-            "How shadow edges are filtered: hard takes one sample, the soft ones more.";
+    const auto texels = [](std::uint32_t size, std::string description) {
         json::Value out;
-        out["type"] = "object";
-        out["additionalProperties"] = false;
-        out["description"] = std::move(description);
-        out["properties"][std::string(size_key)] = std::move(texels);
-        out["properties"]["soft_shadow_filter_quality"] = std::move(filter);
+        out["type"] = "integer";
+        out["minimum"] = 256;
+        out["maximum"] = 16384;
+        out["default"] = size;
+        out["description"] = std::move(description) +
+                             ", in texels across, a power of two; devices draw it at most as "
+                             "large as their largest texture.";
+        return out;
+    };
+    const auto softness = [&](render::ShadowQuality quality, std::string description) {
+        json::Value out;
+        out["enum"] = qualities;
+        out["default"] =
+            std::string(render::kShadowQualityNames.at(static_cast<std::size_t>(quality)));
+        out["description"] =
+            std::move(description) + " are filtered: hard takes one sample, the soft ones more.";
         return out;
     };
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
-    out["description"] =
-        "The 3D shadow maps and light units, as Godot's lights_and_shadows settings.";
-    out["properties"]["directional_shadow"] =
-        atlas("size", defaults.directional_size, defaults.directional_quality,
-              "The atlas directional lights' shadow cascades share.");
-    out["properties"]["positional_shadow"] =
-        atlas("atlas_size", defaults.positional_size, defaults.positional_quality,
-              "The atlas omni and spot lights' shadow maps share.");
+    out["description"] = "The 3D shadow maps.";
+    out["properties"]["directional_size"] =
+        texels(defaults.directional_size, "The atlas directional lights' shadow cascades share");
+    out["properties"]["directional_softness"] =
+        softness(defaults.directional_quality, "How directional lights' shadow edges");
+    out["properties"]["positional_atlas_size"] =
+        texels(defaults.positional_size, "The atlas omni and spot lights' shadow maps share");
+    out["properties"]["positional_softness"] =
+        softness(defaults.positional_quality, "How omni and spot lights' shadow edges");
+    return out;
+}
+
+// rendering.physical_light_units.
+json::Value physical_light_units_schema() {
     json::Value units;
     units["type"] = "boolean";
     units["default"] = false;
     units["description"] =
         "Lights shine by their light_intensity_lux and light_intensity_lumens, tinted by their "
         "light_temperature, and backgrounds and emission by their nits, scaled by the camera's "
-        "exposure_sensitivity, as Godot's physical light units.";
-    out["properties"]["use_physical_light_units"] = std::move(units);
-    return out;
+        "exposure_sensitivity.";
+    return units;
 }
 
 } // namespace
@@ -664,7 +642,7 @@ json::Value project_schema() {
         "How frames wait for the display: enabled waits for each refresh; disabled presents at "
         "once and may tear; mailbox shows the newest frame each refresh; adaptive waits unless "
         "a frame is late. Unsupported modes fall back to enabled.";
-    window["properties"]["vsync_mode"] = std::move(vsync_mode);
+    window["properties"]["vsync"] = std::move(vsync_mode);
     json::Value linux_display_driver;
     linux_display_driver["enum"] = json::Array{"x11", "wayland"};
     linux_display_driver["default"] = Project{}.linux_display_driver;
@@ -726,7 +704,7 @@ json::Value project_schema() {
         "How 3D meshes are lit, as Godot's rendering_method: forward_plus sorts up to 8 "
         "directional and 512 omni and spot lights into clusters of the screen; gl_compatibility "
         "shades every pixel with the first 64 lights, as the OpenGL drivers always do.";
-    rendering["properties"]["rendering_method"] = std::move(method);
+    rendering["properties"]["renderer"] = std::move(method);
     json::Value texture_filter;
     texture_filter["enum"] = json::Array{"linear", "nearest"};
     texture_filter["default"] = Project{}.texture_filter;
@@ -742,14 +720,21 @@ json::Value project_schema() {
         "display refreshes faster than the game ticks.";
     rendering["properties"]["interpolation"] = std::move(interpolation);
     rendering["properties"]["scaling"] = scaling_schema();
-    rendering["properties"]["lights_and_shadows"] = lights_and_shadows_schema();
-    rendering["properties"]["camera"] = camera_schema();
-    rendering["properties"]["environment"] = environment_schema();
+    rendering["properties"]["shadows"] = shadows_schema();
+    rendering["properties"]["physical_light_units"] = physical_light_units_schema();
+    rendering["properties"]["depth_of_field"] = depth_of_field_schema();
+    json::Value effects = effects_schema();
+    for (auto& [name, effect] : effects["properties"].as_object()) {
+        rendering["properties"][name] = std::move(effect);
+    }
     rendering["properties"]["reflections"] = reflections_schema();
-    rendering["properties"]["global_illumination"] = global_illumination_schema();
-    rendering["properties"]["lightmapping"] = scene3d::lightmapping_schema();
+    json::Value lighting_settings = global_illumination_schema();
+    for (auto& [name, lighting] : lighting_settings["properties"].as_object()) {
+        rendering["properties"][name] = std::move(lighting);
+    }
+    rendering["properties"]["lightmaps"] = scene3d::lightmapping_schema();
     rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
-    rendering["properties"]["mesh_lod"] = mesh_lod_schema();
+    rendering["properties"]["lod"] = lod_schema();
     rendering["properties"]["virtual_geometry"] = virtual_geometry_schema();
     rendering["properties"]["occlusion_culling"] = occlusion_culling_schema();
     rendering["properties"]["ray_tracing"] = ray_tracing_schema();
@@ -840,16 +825,16 @@ json::Value project_schema() {
     gui["description"] = "UI settings.";
     gui["properties"]["theme"] =
         string_property("A .theme.json file every control uses after its own and its parents' "
-                        "themes, before Godot's default theme, e.g. \"ui/game.theme.json\".");
-    gui["properties"]["allow_system_fallback"]["type"] = "boolean";
-    gui["properties"]["allow_system_fallback"]["default"] = true;
-    gui["properties"]["allow_system_fallback"]["description"] =
+                        "themes, before the default theme, e.g. \"ui/game.theme.json\".");
+    gui["properties"]["system_font_fallback"]["type"] = "boolean";
+    gui["properties"]["system_font_fallback"]["default"] = true;
+    gui["properties"]["system_font_fallback"]["description"] =
         "Use fonts installed on the machine for characters the project's fonts lack. Off, text "
         "lays out the same everywhere, as on the web, which has none.";
-    gui["properties"]["tooltip_delay_sec"]["type"] = "number";
-    gui["properties"]["tooltip_delay_sec"]["minimum"] = 0;
-    gui["properties"]["tooltip_delay_sec"]["default"] = 0.5;
-    gui["properties"]["tooltip_delay_sec"]["description"] =
+    gui["properties"]["tooltip_delay_seconds"]["type"] = "number";
+    gui["properties"]["tooltip_delay_seconds"]["minimum"] = 0;
+    gui["properties"]["tooltip_delay_seconds"]["default"] = 0.5;
+    gui["properties"]["tooltip_delay_seconds"]["description"] =
         "Seconds the mouse rests on a control before its tooltip_text shows.";
     json::Value offset;
     offset["type"] = "array";
@@ -858,7 +843,7 @@ json::Value project_schema() {
     offset["maxItems"] = 2;
     offset["default"] = json::Array{10, 10};
     offset["description"] = "Where a tooltip shows from the pointer, [x, y] pixels.";
-    gui["properties"]["tooltip_position_offset"] = std::move(offset);
+    gui["properties"]["tooltip_offset"] = std::move(offset);
     gui["properties"]["drag_threshold"]["type"] = "integer";
     gui["properties"]["drag_threshold"]["minimum"] = 0;
     gui["properties"]["drag_threshold"]["default"] = 10;
@@ -877,25 +862,25 @@ json::Value project_schema() {
         }
         field["description"] = std::move(description);
     };
-    timer("text_edit_idle_detect_sec", "number", 0, 3,
+    timer("text_edit_merge_seconds", "number", 0, 3,
           "Seconds after the last edit before typing in a TextArea starts a new undo step.");
-    timer("text_edit_undo_stack_max_size", "integer", 1, 1024, "The undo steps a TextArea keeps.");
-    timer("incremental_search_max_interval_msec", "integer", 0, 2000,
+    timer("text_edit_undo_limit", "integer", 1, 1024, "The undo steps a TextArea keeps.");
+    timer("type_search_ms", "integer", 0, 2000,
           "Milliseconds between the letters typed to search a popup menu's items.");
-    timer("button_shortcut_feedback_highlight_time", "number", 0, 0.2,
+    timer("shortcut_flash_seconds", "number", 0, 0.2,
           "Seconds a button pressed by its shortcut shows pressed.");
     gui["properties"]["accessibility_support"]["enum"] = json::Array{"auto", "always", "disabled"};
     gui["properties"]["accessibility_support"]["default"] = "auto";
     gui["properties"]["accessibility_support"]["description"] =
-        "When controls serve a screen reader, as Godot's accessibility/general/"
-        "accessibility_support: while one is in use (auto), always, or never (disabled). "
+        "When controls serve a screen reader: while one is in use (auto), always, or never "
+        "(disabled). "
         "Serving one, controls with focus_mode accessibility take focus.";
-    properties["gui"] = std::move(gui);
+    properties["ui"] = std::move(gui);
     properties["input"] = input::map_schema();
-    properties["input_devices"] = input::settings_schema();
+    properties["pointer"] = input::settings_schema();
     properties["audio"] = audio::settings_schema();
     properties["services"] = services::settings_schema();
-    properties["internationalization"] = l10n::settings_schema();
+    properties["localization"] = l10n::settings_schema();
     properties["xr"] = xr::settings_schema();
     json::Value gameplay;
     gameplay["type"] = "object";
@@ -958,7 +943,10 @@ json::Value project_schema() {
     return schema;
 }
 
-std::vector<json::ValidationError> validate_project(const json::Value& project) {
+std::vector<json::ValidationError> validate_project(const json::Value& given) {
+    // Settings at their old places are checked where they are now.
+    json::Value upgraded;
+    const json::Value& project = world::current_settings(given, upgraded);
     std::vector<json::ValidationError> errors = json::validate(project, project_schema());
     if (!errors.empty()) {
         return errors;
@@ -984,14 +972,14 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
         errors.push_back({"/icon", "expected a path inside the project folder, separated by '/', "
                                    "with no \".\" or \"..\" parts"});
     }
-    if (const json::Value* gui = project.find("gui"); gui != nullptr) {
+    if (const json::Value* gui = project.find("ui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme");
             theme != nullptr && !theme->as_string().empty()) {
             if (!is_project_path(theme->as_string())) {
-                errors.push_back({"/gui/theme", "expected a path inside the project folder, "
-                                                "separated by '/', with no \".\" or \"..\" parts"});
+                errors.push_back({"/ui/theme", "expected a path inside the project folder, "
+                                               "separated by '/', with no \".\" or \"..\" parts"});
             } else if (!theme->as_string().ends_with(".theme.json")) {
-                errors.push_back({"/gui/theme", "expected a .theme.json file"});
+                errors.push_back({"/ui/theme", "expected a .theme.json file"});
             }
         }
     }
@@ -1028,17 +1016,12 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
                                   "render::add_upscaler names upscalers"});
             }
         }
-        if (const json::Value* shadows = rendering->find("lights_and_shadows");
-            shadows != nullptr) {
-            const std::array<std::pair<std::string_view, std::string_view>, 2> atlases{
-                {{"directional_shadow", "size"}, {"positional_shadow", "atlas_size"}}};
-            for (const auto& [atlas, key] : atlases) {
-                const json::Value* settings = shadows->find(atlas);
-                const json::Value* size = settings != nullptr ? settings->find(key) : nullptr;
+        if (const json::Value* shadows = rendering->find("shadows"); shadows != nullptr) {
+            for (const std::string_view key : {"directional_size", "positional_atlas_size"}) {
+                const json::Value* size = shadows->find(key);
                 if (size != nullptr &&
                     !render::valid_shadow_atlas_size(static_cast<std::uint32_t>(size->as_int()))) {
-                    errors.push_back({"/rendering/lights_and_shadows/" + std::string(atlas) + "/" +
-                                          std::string(key),
+                    errors.push_back({"/rendering/shadows/" + std::string(key),
                                       "expected a power of two from 256 to 16384"});
                 }
             }
@@ -1092,8 +1075,8 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
         errors.insert(errors.end(), std::make_move_iterator(found.begin()),
                       std::make_move_iterator(found.end()));
     }
-    if (const json::Value* settings = project.find("internationalization"); settings != nullptr) {
-        auto found = l10n::validate_settings(*settings, "/internationalization");
+    if (const json::Value* settings = project.find("localization"); settings != nullptr) {
+        auto found = l10n::validate_settings(*settings, "/localization");
         errors.insert(errors.end(), std::make_move_iterator(found.begin()),
                       std::make_move_iterator(found.end()));
     }
@@ -1105,7 +1088,9 @@ std::vector<json::ValidationError> validate_project(const json::Value& project) 
     return errors;
 }
 
-Result<Project> parse_project(const json::Value& project) {
+Result<Project> parse_project(const json::Value& given) {
+    json::Value upgraded;
+    const json::Value& project = world::current_settings(given, upgraded);
     if (const auto errors = validate_project(project); !errors.empty()) {
         const json::ValidationError& first = errors.front();
         return make_error(ErrorCode::InvalidArgument,
@@ -1135,7 +1120,7 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* height = window->find("height"); height != nullptr) {
             out.window_height = static_cast<int>(height->as_int());
         }
-        if (const json::Value* vsync = window->find("vsync_mode"); vsync != nullptr) {
+        if (const json::Value* vsync = window->find("vsync"); vsync != nullptr) {
             out.vsync_mode = vsync->as_string();
         }
         if (const json::Value* driver = window->find("linux_display_driver"); driver != nullptr) {
@@ -1162,7 +1147,7 @@ Result<Project> parse_project(const json::Value& project) {
             fallback != nullptr) {
             out.fallback_to_opengl = fallback->as_bool();
         }
-        if (const json::Value* method = rendering->find("rendering_method"); method != nullptr) {
+        if (const json::Value* method = rendering->find("renderer"); method != nullptr) {
             out.rendering_method = render::parse_render_method(method->as_string())
                                        .value_or(render::RenderMethod::ForwardPlus);
         }
@@ -1176,38 +1161,25 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             out.scaling = render::scaling_from_json(*scaling);
         }
-        if (const json::Value* shadows = rendering->find("lights_and_shadows");
-            shadows != nullptr) {
-            out.shadows = render::shadow_settings_from_json(*shadows);
+        out.shadows = render::shadow_settings_from_json(*rendering);
+        if (const json::Value* dof = rendering->find("depth_of_field"); dof != nullptr) {
+            out.depth_of_field = render::depth_of_field_settings_from_json(*dof);
         }
-        if (const json::Value* camera = rendering->find("camera"); camera != nullptr) {
-            if (const json::Value* dof = camera->find("depth_of_field"); dof != nullptr) {
-                out.depth_of_field = render::depth_of_field_settings_from_json(*dof);
-            }
+        if (const json::Value* ssao = rendering->find("ssao"); ssao != nullptr) {
+            out.ssao = render::ssao_settings_from_json(*ssao);
         }
-        if (const json::Value* environment = rendering->find("environment");
-            environment != nullptr) {
-            if (const json::Value* ssao = environment->find("ssao"); ssao != nullptr) {
-                out.ssao = render::ssao_settings_from_json(*ssao);
-            }
-            if (const json::Value* ssr = environment->find("screen_space_reflection");
-                ssr != nullptr) {
-                out.ssr = render::ssr_settings_from_json(*ssr);
-            }
-            if (const json::Value* fog = environment->find("volumetric_fog"); fog != nullptr) {
-                out.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
-            }
-            if (const json::Value* subsurface = environment->find("subsurface_scattering");
-                subsurface != nullptr) {
-                out.subsurface = render::subsurface_settings_from_json(*subsurface);
-            }
+        if (const json::Value* ssr = rendering->find("ssr"); ssr != nullptr) {
+            out.ssr = render::ssr_settings_from_json(*ssr);
+        }
+        if (const json::Value* fog = rendering->find("volumetric_fog"); fog != nullptr) {
+            out.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
+        }
+        if (const json::Value* subsurface = rendering->find("subsurface"); subsurface != nullptr) {
+            out.subsurface = render::subsurface_settings_from_json(*subsurface);
         }
         if (const json::Value* reflections = rendering->find("reflections");
-            reflections != nullptr && reflections->is_object()) {
-            if (const json::Value* atlas = reflections->find("reflection_atlas");
-                atlas != nullptr) {
-                out.reflection_atlas = render::reflection_atlas_settings_from_json(*atlas);
-            }
+            reflections != nullptr) {
+            out.reflection_atlas = render::reflection_atlas_settings_from_json(*reflections);
         }
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         out.sdfgi = render::sdfgi_settings_from_json(*rendering);
@@ -1243,20 +1215,20 @@ Result<Project> parse_project(const json::Value& project) {
     if (const json::Value* map = project.find("navigation_3d"); map != nullptr) {
         out.navigation.map_3d = navigation::parse_settings(navigation::Map::ThreeD, *map);
     }
-    if (const json::Value* gui = project.find("gui"); gui != nullptr) {
+    if (const json::Value* gui = project.find("ui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme"); theme != nullptr) {
             out.gui_theme = theme->as_string();
         }
-        if (const json::Value* system = gui->find("allow_system_fallback"); system != nullptr) {
+        if (const json::Value* system = gui->find("system_font_fallback"); system != nullptr) {
             out.allow_system_fallback = system->as_bool();
         }
-        if (const json::Value* delay = gui->find("tooltip_delay_sec"); delay != nullptr) {
+        if (const json::Value* delay = gui->find("tooltip_delay_seconds"); delay != nullptr) {
             out.tooltip_delay_sec = delay->as_double();
         }
         if (const json::Value* support = gui->find("accessibility_support"); support != nullptr) {
             out.accessibility_support = support->as_string();
         }
-        if (const json::Value* offset = gui->find("tooltip_position_offset"); offset != nullptr) {
+        if (const json::Value* offset = gui->find("tooltip_offset"); offset != nullptr) {
             out.tooltip_position_offset = {static_cast<float>(offset->as_array()[0].as_double()),
                                            static_cast<float>(offset->as_array()[1].as_double())};
         }
@@ -1279,7 +1251,7 @@ Result<Project> parse_project(const json::Value& project) {
         }
         out.input = std::move(map).value();
     }
-    if (const json::Value* devices = project.find("input_devices"); devices != nullptr) {
+    if (const json::Value* devices = project.find("pointer"); devices != nullptr) {
         out.input_devices = input::parse_settings(*devices);
     }
     if (const json::Value* audio = project.find("audio"); audio != nullptr) {
@@ -1288,7 +1260,7 @@ Result<Project> parse_project(const json::Value& project) {
     if (const json::Value* services = project.find("services"); services != nullptr) {
         out.services = services::parse_settings(*services);
     }
-    if (const json::Value* settings = project.find("internationalization"); settings != nullptr) {
+    if (const json::Value* settings = project.find("localization"); settings != nullptr) {
         out.internationalization = l10n::parse_settings(*settings);
     }
     if (const json::Value* settings = project.find("xr"); settings != nullptr) {

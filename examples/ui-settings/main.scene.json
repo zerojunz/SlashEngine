@@ -9,7 +9,7 @@
           "vertical": true
         },
         "Widget": {
-          "size_flags_vertical": "expand_fill"
+          "sizing_vertical": "expand_fill"
         }
       }
     },
@@ -20,7 +20,7 @@
         },
         "Widget": {
           "children": ["fullscreen", "subtitles", "quality", "vsync", "volume_row"],
-          "size_flags_horizontal": "expand_fill"
+          "sizing_horizontal": "expand_fill"
         }
       }
     },
@@ -54,7 +54,7 @@
       "components": {
         "CheckBox": {
           "button_group": "quality",
-          "button_pressed": true,
+          "pressed": true,
           "text": "Medium"
         },
         "Widget": {}
@@ -83,7 +83,7 @@
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["row"],
-          "theme_override_constants": {
+          "theme_constants": {
             "margin_bottom": 8,
             "margin_left": 8,
             "margin_right": 8,
@@ -95,7 +95,7 @@
     "subtitles": {
       "components": {
         "CheckBox": {
-          "button_pressed": true,
+          "pressed": true,
           "text": "Subtitles"
         },
         "Widget": {}
@@ -110,8 +110,8 @@
           "value": 80.0
         },
         "Widget": {
-          "size_flags_horizontal": "expand_fill",
-          "size_flags_vertical": "shrink_center"
+          "sizing_horizontal": "expand_fill",
+          "sizing_vertical": "shrink_center"
         }
       }
     },
@@ -134,7 +134,7 @@
     "vsync": {
       "components": {
         "ToggleSwitch": {
-          "button_pressed": true,
+          "pressed": true,
           "text": "V-Sync"
         },
         "Widget": {}

@@ -229,7 +229,7 @@ TEST_CASE("TalkBack's actions run on the controls they name") {
 
     CHECK(s.get("volume", "Slider").find("value")->as_double() == doctest::Approx(20.0));
     CHECK(s.get("name", "TextField").find("text")->as_string() == "Ada");
-    CHECK(s.get("news", "CheckBox").find("button_pressed")->as_bool() == false);
+    CHECK(s.get("news", "CheckBox").find("pressed")->as_bool() == false);
     CHECK(s.get("log", "ScrollBox").find("scroll_vertical")->as_double() > 0.0);
 }
 
@@ -293,6 +293,6 @@ TEST_CASE("Nodes become UIAccessibilityElements, and VoiceOver's gestures reques
     }
     s.ok("step", R"({"ticks": 1})");
     CHECK(s.get("volume", "Slider").find("value")->as_double() == doctest::Approx(45.0));
-    CHECK(s.get("news", "CheckBox").find("button_pressed")->as_bool() == false);
+    CHECK(s.get("news", "CheckBox").find("pressed")->as_bool() == false);
     CHECK(s.get("log", "ScrollBox").find("scroll_vertical")->as_double() > 0.0);
 }

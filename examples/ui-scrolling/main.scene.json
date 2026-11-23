@@ -33,7 +33,7 @@
         "Panel": {},
         "Widget": {
           "children": ["island"],
-          "clip_contents": true,
+          "clip_children": true,
           "offset_bottom": 100.0,
           "offset_left": 184.0,
           "offset_right": 312.0,
@@ -128,7 +128,7 @@
         },
         "Widget": {
           "children": ["quest_1", "quest_2", "quest_3", "quest_4", "quest_5", "quest_6", "quest_7", "quest_8", "quest_9", "quest_10"],
-          "size_flags_horizontal": "expand_fill"
+          "sizing_horizontal": "expand_fill"
         }
       }
     },

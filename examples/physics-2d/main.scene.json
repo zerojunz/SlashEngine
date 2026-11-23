@@ -112,7 +112,7 @@
     "lamp_pin": {
       "components": {
         "PinJoint2D": {
-          "node_b": "lamp"
+          "body_b": "lamp"
         },
         "Transform2D": {
           "position": [60.0, 30.0]

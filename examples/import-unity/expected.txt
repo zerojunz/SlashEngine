@@ -247,7 +247,7 @@ project.import {"source":"unity"}
           "offset_left": 8.0,
           "offset_right": 104.0,
           "offset_top": 8.0,
-          "theme_override_constants": {
+          "theme_constants": {
             "separation": 4
           }
         }
@@ -256,22 +256,22 @@ project.import {"source":"unity"}
     "count": {
       "components": {
         "Label": {
-          "autowrap_mode": "word_smart",
           "text": "0",
-          "vertical_alignment": "center"
+          "vertical_alignment": "center",
+          "wrap": "word_smart"
         },
         "Widget": {
-          "custom_minimum_size": [64.0, 24.0],
           "grow_horizontal": "both",
           "grow_vertical": "both",
+          "min_size": [64.0, 24.0],
           "offset_bottom": 24.0,
           "offset_left": 20.0,
           "offset_right": 84.0,
-          "size_flags_vertical": "shrink_center",
-          "theme_override_colors": {
+          "sizing_vertical": "shrink_center",
+          "theme_colors": {
             "font_color": [1.0, 1.0, 1.0, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 18
           }
         }
@@ -354,9 +354,9 @@ project.import {"source":"unity"}
     "hat_sprite": {
       "components": {
         "Sprite2D": {
-          "modulate": [0.9, 0.2, 0.2, 1.0],
+          "sort_order": 1001,
           "texture": "unity/Assets/Sprites/hat.png",
-          "z_index": 1001
+          "tint": [0.9, 0.2, 0.2, 1.0]
         },
         "Transform2D": {
           "scale": [0.5, 0.5]
@@ -366,11 +366,11 @@ project.import {"source":"unity"}
     "hint": {
       "components": {
         "Label": {
-          "autowrap_mode": "word_smart",
           "clip_text": true,
           "horizontal_alignment": "center",
           "text": "Arrows to move, Space to hop",
-          "vertical_alignment": "bottom"
+          "vertical_alignment": "bottom",
+          "wrap": "word_smart"
         },
         "Widget": {
           "anchor_bottom": 1.0,
@@ -383,15 +383,15 @@ project.import {"source":"unity"}
           "offset_left": -150.0,
           "offset_right": 150.0,
           "offset_top": -32.0,
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [1.0, 1.0, 1.0, 1.0],
             "font_shadow_color": [0.0, 0.0, 0.0, 0.5]
           },
-          "theme_override_constants": {
+          "theme_constants": {
             "shadow_offset_x": 1,
             "shadow_offset_y": 1
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 14
           }
         }
@@ -406,25 +406,25 @@ project.import {"source":"unity"}
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "children": ["coins", "pause", "hint"],
-          "z_index": 10
+          "sort_order": 10
         }
       }
     },
     "icon": {
       "components": {
         "NineSlice": {
-          "region_rect": [0.0, 0.0, 16.0, 16.0],
+          "region": [0.0, 0.0, 16.0, 16.0],
           "texture": "unity/Assets/Sprites/coins.png"
         },
         "Widget": {
-          "custom_minimum_size": [16.0, 16.0],
           "grow_horizontal": "both",
           "grow_vertical": "both",
-          "mouse_filter": "pass",
+          "min_size": [16.0, 16.0],
           "offset_bottom": 20.0,
           "offset_right": 16.0,
           "offset_top": 4.0,
-          "size_flags_vertical": "shrink_center"
+          "pointer_mode": "pass",
+          "sizing_vertical": "shrink_center"
         }
       }
     },
@@ -460,7 +460,7 @@ project.import {"source":"unity"}
           "angular_limit_enabled": true,
           "angular_limit_lower": -1.047198,
           "angular_limit_upper": 1.047198,
-          "node_b": "lantern"
+          "body_b": "lantern"
         },
         "Transform2D": {
           "position": [-24.0, -24.0]
@@ -484,8 +484,8 @@ project.import {"source":"unity"}
         },
         "Sprite2D": {
           "offset": [0.0, -8.0],
-          "texture": "unity/Assets/Sprites/lily_pad.png",
-          "z_index": -1
+          "sort_order": -1,
+          "texture": "unity/Assets/Sprites/lily_pad.png"
         },
         "StaticBody2D": {
           "collision_mask": 4294967295,
@@ -532,7 +532,7 @@ project.import {"source":"unity"}
           "offset_left": -40.0,
           "offset_right": -8.0,
           "offset_top": 8.0,
-          "theme_override_styles": {
+          "theme_styles": {
             "disabled": {
               "bg_color": [0.7843, 0.7843, 0.7843, 0.4016],
               "corner_radius": 3,
@@ -570,9 +570,9 @@ project.import {"source":"unity"}
     "sky": {
       "components": {
         "Sprite2D": {
-          "texture": "unity/Assets/Sprites/sky.png",
-          "texture_filter": "linear",
-          "z_index": -1000
+          "filter": "linear",
+          "sort_order": -1000,
+          "texture": "unity/Assets/Sprites/sky.png"
         },
         "Transform2D": {}
       }
@@ -580,21 +580,21 @@ project.import {"source":"unity"}
     "text": {
       "components": {
         "Label": {
-          "autowrap_mode": "word_smart",
           "clip_text": true,
           "horizontal_alignment": "center",
           "text": "II",
-          "vertical_alignment": "center"
+          "vertical_alignment": "center",
+          "wrap": "word_smart"
         },
         "Widget": {
           "anchor_bottom": 1.0,
           "anchor_right": 1.0,
           "grow_horizontal": "both",
           "grow_vertical": "both",
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [0.1961, 0.1961, 0.1961, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 16
           }
         }
@@ -627,11 +627,11 @@ project.import {"source":"unity"}
           "libraries": {
             "": "unity/Assets/Animations/Frog.anim.json"
           },
+          "root": "unity/Assets/Animations/Frog.animtree.json",
           "targets": {
             "#sprite": "frog_sprite",
             "Feet": "feet"
-          },
-          "tree_root": "unity/Assets/Animations/Frog.animtree.json"
+          }
         },
         "Collider2D": {
           "height": 32.0,
@@ -666,8 +666,8 @@ project.import {"source":"unity"}
       "components": {
         "Sprite2D": {
           "offset": [0.0, -8.0],
-          "texture": "unity/Assets/Sprites/frog.png",
-          "z_index": 1000
+          "sort_order": 1000,
+          "texture": "unity/Assets/Sprites/frog.png"
         },
         "Transform2D": {}
       }
@@ -685,8 +685,8 @@ project.import {"source":"unity"}
           "value": 5
         },
         "Sprite2D": {
-          "modulate": [1.0, 1.0, 0.5, 1.0],
-          "region": [16.0, 16.0, 16.0, 16.0]
+          "region": [16.0, 16.0, 16.0, 16.0],
+          "tint": [1.0, 1.0, 0.5, 1.0]
         }
       },
       "extends": "unity/Assets/Prefabs/Coin.scene.json"
@@ -1230,8 +1230,8 @@ entity.get {"components":["Sprite2D"],"id":"frog/frog_sprite","omit_defaults":tr
   "components": {
     "Sprite2D": {
       "offset": [0.0, -8.0],
-      "texture": "unity/Assets/Sprites/frog_blink.png",
-      "z_index": 1000
+      "sort_order": 1000,
+      "texture": "unity/Assets/Sprites/frog_blink.png"
     }
   },
   "global": {

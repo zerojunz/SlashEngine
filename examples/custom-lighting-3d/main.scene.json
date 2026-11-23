@@ -72,7 +72,7 @@
     "toon": {
       "components": {
         "Model3D": {
-          "material_override": "toon.material.json"
+          "material": "toon.material.json"
         },
         "SphereGeometry": {},
         "Transform3D": {

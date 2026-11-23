@@ -15,7 +15,7 @@ frame.summary {"ids":["boat","mast","flag","cannon","rock"]}
 {"drawn":[{"id":"boat","kind":"Sprite2D","rect":[135.3,109.4,49.4,21.3],"shown":0.8},{"id":"mast","kind":"Sprite2D","rect":[156.3,89.6,6.7,23.9]},{"id":"flag","kind":"Sprite2D","rect":[161.8,90,11,7.9]},{"id":"cannon","kind":"Sprite2D","rect":[173,112.6,12.6,6.3]},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]}],"viewport":[320,180]}
 -- the boat's z_index lifts its children over the rock too
 component.set {"components":{"Sprite2D":{"z_index":1}},"id":"boat"}
-{"changed":{"Sprite2D":{"z_index":1}},"id":"boat"}
+{"changed":{"Sprite2D":{"sort_order":1}},"id":"boat"}
 frame.summary {"ids":["boat","mast","flag","cannon","rock"]}
 {"drawn":[{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16],"shown":0.57},{"id":"boat","kind":"Sprite2D","rect":[135.3,109.4,49.4,21.3],"shown":0.99},{"id":"mast","kind":"Sprite2D","rect":[156.3,89.6,6.7,23.9]},{"id":"flag","kind":"Sprite2D","rect":[161.8,90,11,7.9]},{"id":"cannon","kind":"Sprite2D","rect":[173,112.6,12.6,6.3]}],"viewport":[320,180]}
 -- the deck is the boat's shape: a ray down finds the boat where it is now
@@ -39,7 +39,7 @@ frame.summary {"ids":["boat","cannon","shot","rock"]}
 {"drawn":[{"id":"shot","kind":"Sprite2D","rect":[196,96,8,8]},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]},{"id":"boat","kind":"Sprite2D","rect":[86,114,48,12],"shown":0.99},{"id":"cannon","kind":"Sprite2D","rect":[121.7,107.8,12.6,8.4]}],"viewport":[320,180]}
 -- the cannon's z_index of -1, not added to the boat's, puts it under the boat and the rock
 component.set {"components":{"Sprite2D":{"z_as_relative":false,"z_index":-1}},"id":"cannon"}
-{"changed":{"Sprite2D":{"z_as_relative":false,"z_index":-1}},"id":"cannon"}
+{"changed":{"Sprite2D":{"sort_order":-1,"sort_order_relative":false}},"id":"cannon"}
 frame.summary {"ids":["boat","cannon","rock"]}
 {"drawn":[{"id":"cannon","kind":"Sprite2D","rect":[121.7,107.8,12.6,8.4],"shown":0.88},{"id":"rock","kind":"Sprite2D","rect":[138,102,16,16]},{"id":"boat","kind":"Sprite2D","rect":[86,114,48,12]}],"viewport":[320,180]}
 -- each child has one parent and is never its own ancestor

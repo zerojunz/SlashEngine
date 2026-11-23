@@ -237,9 +237,9 @@ struct Gui {
     [[nodiscard]] bool pressed(std::string_view id) const {
         const entt::entity entity = world.find(id);
         if (const auto* option = world.ecs().try_get<world::Dropdown>(entity)) {
-            return option->button_pressed;
+            return option->pressed;
         }
-        return world.ecs().get<world::MenuButton>(entity).button_pressed;
+        return world.ecs().get<world::MenuButton>(entity).pressed;
     }
     [[nodiscard]] int selected(std::string_view id = "size") const {
         return world.ecs().get<world::Dropdown>(world.find(id)).selected;

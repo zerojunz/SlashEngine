@@ -118,23 +118,23 @@ public:
 
     Vec4 color(const std::string& name, std::string* from = nullptr) const {
         return find(
-            &ThemeItems::colors, name, control_->theme_override_colors,
+            &ThemeItems::colors, name, control_->theme_colors,
             [](const Theme& /*theme*/) { return std::optional<Vec4>(); },
             Vec4{0.0F, 0.0F, 0.0F, 1.0F}, from);
     }
     int constant(const std::string& name, std::string* from = nullptr) const {
         return find(
-            &ThemeItems::constants, name, control_->theme_override_constants,
+            &ThemeItems::constants, name, control_->theme_constants,
             [](const Theme& /*theme*/) { return std::optional<int>(); }, 0, from);
     }
     std::string font(const std::string& name, std::string* from = nullptr) const {
         return find(
-            &ThemeItems::fonts, name, control_->theme_override_fonts,
+            &ThemeItems::fonts, name, control_->theme_fonts,
             [](const Theme& theme) { return theme.default_font; }, std::string(), from);
     }
     int font_size(const std::string& name, std::string* from = nullptr) const {
         return find(
-            &ThemeItems::font_sizes, name, control_->theme_override_font_sizes,
+            &ThemeItems::font_sizes, name, control_->theme_font_sizes,
             [](const Theme& theme) {
                 return theme.default_font_size > 0 ? std::optional<int>(theme.default_font_size)
                                                    : std::nullopt;
@@ -143,14 +143,14 @@ public:
     }
     std::string icon(const std::string& name, std::string* from = nullptr) const {
         return find(
-            &ThemeItems::icons, name, control_->theme_override_icons,
+            &ThemeItems::icons, name, control_->theme_icons,
             [](const Theme& /*theme*/) { return std::optional<std::string>(); }, std::string(),
             from);
     }
     // Whether an override, a theme or the default theme has a style box, as Godot's
     // has_theme_stylebox: Button's hover_pressed only when a theme gives one, CheckBox's always.
     [[nodiscard]] bool has_style(const std::string& name) const {
-        if (control_->theme_override_styles.contains(name)) {
+        if (control_->theme_styles.contains(name)) {
             return true;
         }
         for (const ThemeLink* link = themes_; link != nullptr; link = link->parent) {
@@ -170,8 +170,8 @@ public:
     StyleBox style(const std::string& name, std::string* from = nullptr) const {
         // An override that isn't a style box is left out; check() reports it.
         std::map<std::string, StyleBox, std::less<>> overrides;
-        if (const auto found = control_->theme_override_styles.find(name);
-            found != control_->theme_override_styles.end()) {
+        if (const auto found = control_->theme_styles.find(name);
+            found != control_->theme_styles.end()) {
             if (auto parsed = parse_style_box(found->second); parsed) {
                 overrides.emplace(name, std::move(parsed).value());
             }
@@ -266,9 +266,8 @@ LabelWork start_label(const world::Label& label, const Resolver& theme, bool rtl
     work.label = &label;
     work.direction = text_direction(label.text_direction, rtl);
     work.language = label.language;
-    work.autowrap = text::parse_autowrap(label.autowrap_mode).value_or(text::Autowrap::Off);
-    work.overrun =
-        text::parse_overrun(label.text_overrun_behavior).value_or(text::Overrun::NoTrimming);
+    work.autowrap = text::parse_autowrap(label.wrap).value_or(text::Autowrap::Off);
+    work.overrun = text::parse_overrun(label.overflow).value_or(text::Overrun::NoTrimming);
     work.line_spacing = theme.constant("line_spacing");
     work.paragraph_spacing = theme.constant("paragraph_spacing");
     LabelText& out = work.out;
@@ -614,9 +613,8 @@ ButtonWork start_button(const world::Button& button, const Resolver& theme, Draw
     LabelWork& text = work.text;
     text.direction = text_direction(button.text_direction, rtl);
     text.language = button.language;
-    text.autowrap = text::parse_autowrap(button.autowrap_mode).value_or(text::Autowrap::Off);
-    text.overrun =
-        text::parse_overrun(button.text_overrun_behavior).value_or(text::Overrun::NoTrimming);
+    text.autowrap = text::parse_autowrap(button.wrap).value_or(text::Autowrap::Off);
+    text.overrun = text::parse_overrun(button.overflow).value_or(text::Overrun::NoTrimming);
     text.line_spacing = theme.constant("line_spacing");
     LabelText& out = text.out;
     out.font = theme.font("font");
@@ -774,7 +772,7 @@ Transform local_transform(const world::Widget& control, Vec2 position) {
                 .b = static_cast<float>(cs.y * control.scale.x),
                 .c = static_cast<float>(-cs.y * control.scale.y),
                 .d = static_cast<float>(cs.x * control.scale.y)};
-    const Vec2 pivot = control.pivot_offset;
+    const Vec2 pivot = control.pivot;
     t.tx = position.x + pivot.x - ((t.a * pivot.x) + (t.c * pivot.y));
     t.ty = position.y + pivot.y - ((t.b * pivot.x) + (t.d * pivot.y));
     return t;
@@ -2042,10 +2040,10 @@ struct Builder {
                 in_line = 0;
             }
             line_height = std::max(line_height, cross);
-            const Flags flags = flags_of(vertical ? child.control->size_flags_vertical
-                                                  : child.control->size_flags_horizontal);
+            const Flags flags = flags_of(vertical ? child.control->sizing_vertical
+                                                  : child.control->sizing_horizontal);
             if (flags.expand) {
-                stretch_total += child.control->size_flags_stretch_ratio;
+                stretch_total += child.control->stretch_ratio;
             }
             ofs_main += main;
             ++in_line;
@@ -2181,7 +2179,7 @@ struct Builder {
         if (!size) {
             size = node.hint;
         }
-        Vec2 minimum = max(node.control->custom_minimum_size, container_minimum(node, size));
+        Vec2 minimum = max(node.control->min_size, container_minimum(node, size));
         if (node.label) {
             LabelWork& work = *node.label;
             if (work.autowrap != text::Autowrap::Off) {
@@ -2277,7 +2275,7 @@ struct Builder {
                 max(minimum, work.slider->vertical ? Vec2{std::max(track.x, grabber.x), track.y}
                                                    : Vec2{track.x, std::max(track.y, grabber.y)});
         }
-        if (node.texture_button != nullptr && !node.texture_button->ignore_texture_size) {
+        if (node.texture_button != nullptr && !node.texture_button->ignore_image_size) {
             // TextureButton::get_minimum_size: the normal texture's size, else the pressed
             // one's, else the hover one's.
             for (std::size_t i = 0; i < 3; ++i) {
@@ -2289,9 +2287,8 @@ struct Builder {
         }
         if (node.nine_patch != nullptr) {
             const world::NineSlice& patch = *node.nine_patch;
-            minimum = max(minimum,
-                          {static_cast<float>(patch.patch_margin_left + patch.patch_margin_right),
-                           static_cast<float>(patch.patch_margin_top + patch.patch_margin_bottom)});
+            minimum = max(minimum, {static_cast<float>(patch.border_left + patch.border_right),
+                                    static_cast<float>(patch.border_top + patch.border_bottom)});
         }
         return minimum;
     }
@@ -2303,8 +2300,8 @@ struct Builder {
     // in a container laid out right to left.
     void fit(std::size_t kid, Rect rect, bool rtl) {
         Node& child = nodes[kid];
-        const Flags h = flags_of(child.control->size_flags_horizontal);
-        const Flags v = flags_of(child.control->size_flags_vertical);
+        const Flags h = flags_of(child.control->sizing_horizontal);
+        const Flags v = flags_of(child.control->sizing_vertical);
         Rect r = rect;
         if (!h.fill) {
             r.size.x = child.minimum.x;
@@ -2345,12 +2342,12 @@ struct Builder {
             const Node& child = nodes[kid];
             const int min_size =
                 static_cast<int>(std::ceil(vertical ? child.minimum.y : child.minimum.x));
-            const Flags flags = flags_of(vertical ? child.control->size_flags_vertical
-                                                  : child.control->size_flags_horizontal);
+            const Flags flags = flags_of(vertical ? child.control->sizing_vertical
+                                                  : child.control->sizing_horizontal);
             const Item item{.kid = kid,
                             .min_size = min_size,
                             .final_size = min_size,
-                            .stretch_ratio = child.control->size_flags_stretch_ratio,
+                            .stretch_ratio = child.control->stretch_ratio,
                             .will_stretch = flags.expand};
             if (item.will_stretch) {
                 stretch_space += min_size;
@@ -2456,10 +2453,10 @@ struct Builder {
             const auto h = static_cast<int>(std::ceil(child.minimum.y));
             col_minw[col] = col_minw.contains(col) ? std::max(col_minw[col], w) : w;
             row_minh[row] = row_minh.contains(row) ? std::max(row_minh[row], h) : h;
-            if (flags_of(child.control->size_flags_horizontal).expand) {
+            if (flags_of(child.control->sizing_horizontal).expand) {
                 col_expanded.insert(col);
             }
-            if (flags_of(child.control->size_flags_vertical).expand) {
+            if (flags_of(child.control->sizing_vertical).expand) {
                 row_expanded.insert(row);
             }
         }
@@ -2609,8 +2606,8 @@ struct Builder {
         const int cross_sep = vertical ? node.h_separation : node.v_separation;
         const int alignment = alignment_of(node.flow->alignment);
         const auto main_flags = [&](const Node& child) {
-            return flags_of(vertical ? child.control->size_flags_vertical
-                                     : child.control->size_flags_horizontal);
+            return flags_of(vertical ? child.control->sizing_vertical
+                                     : child.control->sizing_horizontal);
         };
         const std::vector<std::size_t> kids = sorted(node);
         std::vector<int> stretch(kids.size(), 0);
@@ -2634,16 +2631,15 @@ struct Builder {
                 float total = 0.0F;
                 for (std::size_t j = i; j < end; ++j) {
                     if (main_flags(nodes[kids[j]]).expand) {
-                        total += nodes[kids[j]].control->size_flags_stretch_ratio;
+                        total += nodes[kids[j]].control->stretch_ratio;
                     }
                 }
                 int used = 0;
                 for (std::size_t j = i; j < end && total > 0.0F; ++j) {
                     const Node& each = nodes[kids[j]];
                     if (main_flags(each).expand) {
-                        stretch[j] =
-                            static_cast<int>(static_cast<float>(line.stretch_avail) *
-                                             each.control->size_flags_stretch_ratio / total);
+                        stretch[j] = static_cast<int>(static_cast<float>(line.stretch_avail) *
+                                                      each.control->stretch_ratio / total);
                         used += stretch[j];
                     }
                 }
@@ -2659,8 +2655,8 @@ struct Builder {
             }
             auto main = static_cast<int>(vertical ? child.minimum.y : child.minimum.x);
             auto cross = static_cast<int>(vertical ? child.minimum.x : child.minimum.y);
-            const Flags cross_flags = flags_of(vertical ? child.control->size_flags_horizontal
-                                                        : child.control->size_flags_vertical);
+            const Flags cross_flags = flags_of(vertical ? child.control->sizing_horizontal
+                                                        : child.control->sizing_vertical);
             if (cross_flags.fill || cross_flags.shrink != 0) {
                 cross = line.min_line_height;
             }
@@ -2847,10 +2843,10 @@ struct Builder {
             const Node& child = nodes[kid];
             const Vec2 m = child.minimum;
             Rect r{{-scrolled.x, -scrolled.y}, m};
-            if (flags_of(child.control->size_flags_horizontal).expand) {
+            if (flags_of(child.control->sizing_horizontal).expand) {
                 r.size.x = std::max(room.x, m.x);
             }
-            if (flags_of(child.control->size_flags_vertical).expand) {
+            if (flags_of(child.control->sizing_vertical).expand) {
                 r.size.y = std::max(room.y, m.y);
             }
             r.position = {std::floor(r.position.x + offset.x), std::floor(r.position.y + offset.y)};
@@ -2945,16 +2941,17 @@ struct Builder {
         placed.visible = (control.visible || previewing) &&
                          (up != nullptr ? up->placed.visible : canvas_visible(node.canvas));
         placed.modulate =
-            parent != nullptr ? times(parent->placed.modulate, control.modulate) : control.modulate;
-        placed.z = std::clamp(
-            control.z_index + (parent != nullptr && control.z_as_relative ? parent->placed.z : 0),
-            -kMaxZ, kMaxZ);
-        placed.texture_filter = control.texture_filter != "inherit" || parent == nullptr
-                                    ? control.texture_filter
+            parent != nullptr ? times(parent->placed.modulate, control.tint) : control.tint;
+        placed.z = std::clamp(control.sort_order + (parent != nullptr && control.sort_order_relative
+                                                        ? parent->placed.z
+                                                        : 0),
+                              -kMaxZ, kMaxZ);
+        placed.texture_filter = control.filter != "inherit" || parent == nullptr
+                                    ? control.filter
                                     : parent->placed.texture_filter;
         // The clip it draws in, as RendererCanvasCull finds each item's final_clip_rect: its
         // parent's, cut to its own rect on screen when it clips, rounded to whole pixels.
-        placed.clips = control.clip_contents || node.kind == Kind::Scroll;
+        placed.clips = control.clip_children || node.kind == Kind::Scroll;
         placed.translate = node.translate;
         placed.clip = parent != nullptr ? parent->placed.clip : std::nullopt;
         if (placed.clips) {
@@ -3159,14 +3156,13 @@ struct Builder {
                     .texture_size = *node.patch_texture_size};
             box.style.type = StyleBox::Type::Texture;
             box.style.texture = patch.texture;
-            box.style.region_rect = patch.region_rect;
-            box.style.texture_margin = {static_cast<float>(patch.patch_margin_left),
-                                        static_cast<float>(patch.patch_margin_top),
-                                        static_cast<float>(patch.patch_margin_right),
-                                        static_cast<float>(patch.patch_margin_bottom)};
-            box.style.draw_center = patch.draw_center;
-            box.style.axis_stretch_horizontal = stretch_of(patch.axis_stretch_horizontal);
-            box.style.axis_stretch_vertical = stretch_of(patch.axis_stretch_vertical);
+            box.style.region_rect = patch.region;
+            box.style.texture_margin = {
+                static_cast<float>(patch.border_left), static_cast<float>(patch.border_top),
+                static_cast<float>(patch.border_right), static_cast<float>(patch.border_bottom)};
+            box.style.draw_center = patch.fill_center;
+            box.style.axis_stretch_horizontal = stretch_of(patch.stretch_horizontal);
+            box.style.axis_stretch_vertical = stretch_of(patch.stretch_vertical);
             boxes.push_back(std::move(box));
         }
         if (node.bar != nullptr) {
