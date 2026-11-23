@@ -31,7 +31,8 @@ inline constexpr std::array<std::string_view, 5> kMaterialTextureFields{
 [[nodiscard]] json::Value standard_material_schema();
 
 // Every error in a material file, each at its JSON Pointer; none for one that reads as written.
-[[nodiscard]] std::vector<json::ValidationError> validate_standard_material(const json::Value& given);
+[[nodiscard]] std::vector<json::ValidationError>
+validate_standard_material(const json::Value& given);
 
 // The material a file holds. Fails with the first error validate_standard_material finds.
 [[nodiscard]] Result<world::Surface3D> parse_standard_material(const json::Value& doc);
