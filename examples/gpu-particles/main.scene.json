@@ -112,7 +112,7 @@
         "GpuEmitter2D": {
           "amount": 40,
           "draw_order": "index",
-          "fixed_fps": 0,
+          "fixed_rate": 0,
           "lifetime": 6.0,
           "preprocess": 6.0,
           "process_material": "snow.process_material.json",
@@ -127,7 +127,7 @@
       "components": {
         "GpuEmitter2D": {
           "amount": 24,
-          "explosiveness": 1.0,
+          "burst": 1.0,
           "lifetime": 0.6,
           "one_shot": true,
           "process_material": "sparks.process_material.json",

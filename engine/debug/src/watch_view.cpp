@@ -24,13 +24,13 @@ constexpr std::string_view kBar = R"({
   "format": 1,
   "entities": {
     "bar": {"components": {
-      "Widget": {"children": ["status"], "anchor_right": 1, "mouse_filter": "ignore",
-                  "theme_override_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
+      "Widget": {"children": ["status"], "anchor_right": 1, "pointer_mode": "ignore",
+                  "theme_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
                                                       "content_margin": 6}}},
       "PanelBox": {}}},
     "status": {"components": {
-      "Widget": {"mouse_filter": "ignore"},
-      "Label": {"text_overrun_behavior": "trim_ellipsis"}}}
+      "Widget": {"pointer_mode": "ignore"},
+      "Label": {"overflow": "trim_ellipsis"}}}
   }
 })";
 
@@ -303,11 +303,11 @@ void WatchView::lay_out(Vec2 viewport) {
         const entt::entity box = world_.create(box_id).value();
         const entt::entity name = world_.create(name_id).value();
         world::Widget box_control;
-        box_control.mouse_filter = "ignore";
+        box_control.pointer_mode = "ignore";
         registry.emplace<world::Widget>(box, box_control);
         registry.emplace<world::Panel>(box);
         world::Widget name_control;
-        name_control.mouse_filter = "ignore";
+        name_control.pointer_mode = "ignore";
         registry.emplace<world::Widget>(name, name_control);
         registry.emplace<world::Label>(name);
         ++shown_;
@@ -329,17 +329,17 @@ void WatchView::lay_out(Vec2 viewport) {
         box.offset_top = outline.y;
         box.offset_right = outline.x + outline.width;
         box.offset_bottom = outline.y + outline.height;
-        box.modulate = {1.0F, 1.0F, 1.0F, outline.alpha};
-        box.theme_override_styles["panel"] = outline_style(color);
+        box.tint = {1.0F, 1.0F, 1.0F, outline.alpha};
+        box.theme_styles["panel"] = outline_style(color);
         // The name sits on the box's top edge, inside the window.
         name.visible = true;
         name.offset_left = std::max(outline.x, 0.0F);
         name.offset_top = std::max(outline.y - 18.0F, 0.0F);
         name.offset_right = name.offset_left;
         name.offset_bottom = name.offset_top;
-        name.modulate = {1.0F, 1.0F, 1.0F, outline.alpha};
-        name.theme_override_styles["normal"] = name_style(color);
-        name.theme_override_font_sizes["font_size"] = 12;
+        name.tint = {1.0F, 1.0F, 1.0F, outline.alpha};
+        name.theme_styles["normal"] = name_style(color);
+        name.theme_font_sizes["font_size"] = 12;
         registry.get<world::Label>(name_entity).text = outline.id;
     }
 }

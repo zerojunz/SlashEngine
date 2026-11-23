@@ -170,7 +170,7 @@ struct LightHit {
 [[nodiscard]] std::array<float, 3> tint_by_temperature(const std::array<float, 3>& color,
                                                        float kelvin);
 
-// Godot's physical light units, from rendering.lights_and_shadows.use_physical_light_units: what
+// Godot's physical light units, from rendering.physical_light_units: what
 // a light's energy is multiplied by, over the energy without them. Godot lights a directional
 // light with energy times lux, and an omni or spot light with energy times lumens over 4 pi or
 // pi, where without units it takes energy times pi.

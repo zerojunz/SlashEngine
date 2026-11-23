@@ -10,6 +10,7 @@
 #include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/components.hpp"
 
 #include <memory>
@@ -58,7 +59,7 @@ Reply unknown_entity(const world::World& world, std::string_view id, std::string
     return param_error(code::kNotFound, path, message);
 }
 
-// The project's rendering.lightmapping: the rays each quality traces and how bakes split them.
+// The project's rendering.lightmaps: the rays each quality traces and how bakes split them.
 scene3d::LightmappingSettings project_lightmapping(Session& session) {
     auto text = session.read_project_file("project.json");
     if (!text) {
@@ -72,6 +73,7 @@ scene3d::LightmappingSettings project_lightmapping(Session& session) {
     if (!project || !project.value().is_object()) {
         return {};
     }
+    world::upgrade_settings(project.value());
     const json::Value* rendering = project.value().find("rendering");
     return rendering != nullptr ? scene3d::lightmapping_settings(*rendering)
                                 : scene3d::LightmappingSettings{};

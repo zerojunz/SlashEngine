@@ -14,7 +14,7 @@ physics.gravity {"ids":["hero","rock_below","probe"]}
 ```
 
 - An `Zone2D` changes gravity and damping for the bodies inside it through its
-  `gravity_space_override`, `linear_damp_space_override` and `angular_damp_space_override`:
+  `gravity_mode`, `linear_damp_mode` and `angular_damp_mode`:
   `combine` adds its value, `replace` sets it and ignores areas of lower priority and the
   project's, and `combine_replace` and `replace_combine` mix the two, as in Godot. Areas apply
   from the highest `priority` down. Here `space` replaces gravity with none, and `planet_pull`,

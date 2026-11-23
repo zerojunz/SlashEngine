@@ -128,7 +128,7 @@
           "size": [0.6, 0.6, 0.6]
         },
         "RigidBody3D": {
-          "contact_monitor": true
+          "report_contacts": true
         },
         "Transform3D": {
           "position": [16.0, 0.6, -3.0]

@@ -207,7 +207,7 @@ struct Gui {
         return over != entt::null ? std::string(world.id_of(over)) : std::string();
     }
     [[nodiscard]] bool pressed(std::string_view id) const {
-        return world.ecs().get<world::Button>(world.find(id)).button_pressed;
+        return world.ecs().get<world::Button>(world.find(id)).pressed;
     }
 
     text::Fonts& fonts() { return *ui::fonts(world); }
@@ -672,7 +672,7 @@ TEST_CASE("check finds wrong shortcuts, groups on buttons that don't toggle and 
               "ok/components/Button/shortcut/2/pressed: an action shortcut has only \"type\" and "
               "\"action\"",
               "ok/components/Button/button_group: button groups are for toggle buttons; set "
-              "toggle_mode too",
+              "toggles too",
               "ok/components/Label: a button draws its own text; give it to the button, or put the "
               "Label in a child",
               "ok/components/Widget/focus_next: names no control"});

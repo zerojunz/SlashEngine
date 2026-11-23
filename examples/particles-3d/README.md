@@ -23,7 +23,7 @@ particles.eval {"id":"fountain","list":true,"max_results":2}
   `sphere_surface`, `box`, `points`, `directed_points` and `ring` with its axis, height and cone
   angle), `spread` is a cone round `direction` that `flatness` squashes, and `gravity` is a
   vector in meters per second squared.
-- The fire's material has `billboard_mode` `"particles"`, so each quad faces the camera and
+- The fire's material has `billboard` `"particles"`, so each quad faces the camera and
   turns by its particle's `angle`; `"enabled"` faces the camera and `"fixed_y"` turns only about
   y. `particles_anim_h_frames` and `particles_anim_v_frames` play a sprite sheet over each
   particle's life. With `vertex_color_use_as_albedo`, `color` and `color_ramp` color it.

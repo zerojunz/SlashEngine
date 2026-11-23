@@ -413,7 +413,7 @@ json::Value schema(bool list_ops) {
     properties["collision_use_scale"]["type"] = "boolean";
     properties["collision_use_scale"]["default"] = false;
     properties["collision_use_scale"]["description"] =
-        "Multiply the emitter's collision_base_size by each particle's scale.";
+        "Multiply the emitter's collision_size by each particle's scale.";
     json::Array sub_modes;
     for (const auto& [name, value] : kSubEmitterModes) {
         sub_modes.emplace_back(std::string(name));

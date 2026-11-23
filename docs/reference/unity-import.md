@@ -426,7 +426,7 @@ the middle. A turned or scaled rect turns and scales about its pivot (`pivot_off
 | `Text`, `TextMeshProUGUI` | `Label`: text, alignment, wrapping, overflow and uppercase, with the font, size, color and line spacing as theme overrides. A TextMesh Pro font asset draws with its source font file, Unity's built-in Arial with the default font |
 | `Outline`, `Shadow` on text | `font_outline_color` and `outline_size` (Godot strokes a quarter of it each side, so four times the distance), `font_shadow_color` and `shadow_offset_x`, `shadow_offset_y` |
 | `Button` | `Button`, its target graphic's color tint or sprite swap as its `normal`, `hover`, `pressed`, `hover_pressed`, `disabled` and `focus` style boxes; a button whose graphic is another object's is `flat` |
-| `Toggle` | `CheckBox` when it is Unity's default toggle (the built-in background and checkmark), else a `Button` with `toggle_mode`; `button_pressed` from Is On, `button_group` from its `ToggleGroup` |
+| `Toggle` | `CheckBox` when it is Unity's default toggle (the built-in background and checkmark), else a `Button` with `toggle_mode`; `pressed` from Is On, `button_group` from its `ToggleGroup` |
 | `Slider` | `Slider`: range, value, whole numbers as `step`, and `vertical`. Its background is the `slider` style and its fill the `grabber_area` style, as thick as the background, and a handle sprite the `grabber` icon |
 | `Scrollbar` | `ScrollBar`, its size as `page` and its handle the `grabber` styles |
 | `InputField`, `TMP_InputField` | `LineEdit` (`TextEdit` for Multi Line Newline): text, placeholder, character limit, password, keyboard type and caret blink, the text's font and colors, and the text area's insets as the style boxes' content margins |
@@ -715,7 +715,7 @@ turned or scaled probe, whose box turns with its object as Godot's does but isn'
 | Time: Fixed Timestep | `tick_hz` |
 | Physics 2D: Gravity | `physics_2d.gravity` and `gravity_vector` |
 | Physics: Gravity (when a scene converts in 3D) | `physics_3d.gravity` and `gravity_vector`, mirrored in x |
-| Quality: the current level's VSync Count | `window.vsync_mode` |
+| Quality: the current level's VSync Count | `window.vsync` |
 | The main audio mixer | `audio.bus_layout` (see [audio mixers](#audio-mixers)) |
 | Input Manager axes and Input System actions | `input` (see [input](#input)) |
 

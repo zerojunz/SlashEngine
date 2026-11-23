@@ -222,8 +222,8 @@ TEST_CASE("physics.cache records a 3D fall as an animation that plays it back th
     CHECK(replayed.position.x == doctest::Approx(fallen.position.x).epsilon(0.01));
     const auto& body = project.session->world().ecs().get<const world::RigidBody3D>(
         project.session->world().find("crate"));
-    CHECK(body.freeze);
-    CHECK(body.freeze_mode == "kinematic");
+    CHECK(body.frozen);
+    CHECK(body.frozen_mode == "kinematic");
 
     project.ok("physics.cache", R"({"record": []})");
     CHECK(*project.ok("physics.cache", R"({"stop": true})").find("recording") == parse("[]"));

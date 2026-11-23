@@ -7,7 +7,7 @@ hangs a lamp from a `PinJoint3D` and a bell from a `ConeJoint3D`, puts a door on
 `component.set`, and prints where everything got to. [expected.txt](expected.txt) holds its
 output.
 
-- A joint is an entity with a joint component and a `Transform3D`. `node_a` and `node_b` name the
+- A joint is an entity with a joint component and a `Transform3D`. `body_a` and `body_b` name the
   bodies it holds; a missing one is the world, so the lamp's cord and the bell's mount hold them
   up. The joint is made where its `Transform3D` puts it, in its own axes: a hinge turns about its
   z axis, a slider moves along its x axis and a cone twist swings around its x axis. The door's

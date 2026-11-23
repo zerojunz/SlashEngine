@@ -17,7 +17,7 @@ entt::entity attachment_skeleton(const world::World& world, const world::Tree3D&
                                  entt::entity attachment) {
     const auto& c = world.ecs().get<const world::BoneSocket3D>(attachment);
     const entt::entity skeleton =
-        c.external_skeleton != entt::null ? c.external_skeleton : tree.parent(attachment);
+        c.skeleton_entity != entt::null ? c.skeleton_entity : tree.parent(attachment);
     return skeleton != entt::null && world.valid(skeleton) ? skeleton : entt::null;
 }
 
@@ -119,14 +119,14 @@ check_attachments(const world::World& world,
         if (instance == nullptr || instance->mesh.empty()) {
             out.push_back(
                 {entity,
-                 c.external_skeleton != entt::null ? "/components/BoneSocket3D/external_skeleton"
-                                                   : "/components/BoneSocket3D",
-                 c.external_skeleton != entt::null
+                 c.skeleton_entity != entt::null ? "/components/BoneSocket3D/skeleton_entity"
+                                                 : "/components/BoneSocket3D",
+                 c.skeleton_entity != entt::null
                      ? "follows an entity that draws no model file: name the entity whose "
                        "Model3D draws the model"
                      : "follows a bone, but its Transform3D parent draws no model file: put it "
                        "in the Transform3D children of the Model3D's entity, or name "
-                       "that entity in external_skeleton"});
+                       "that entity in skeleton_entity"});
             continue;
         }
         const Model* model = model_of ? model_of(skeleton) : nullptr;

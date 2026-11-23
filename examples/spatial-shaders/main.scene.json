@@ -2,54 +2,86 @@
   "entities": {
     "camera": {
       "components": {
-        "Camera3D": {"current": true},
-        "Transform3D": {"position": [0, 1.4, 4.2], "rotation": [-0.25, 0, 0]}
+        "Camera3D": {
+          "current": true
+        },
+        "Transform3D": {
+          "position": [0.0, 1.4, 4.2],
+          "rotation": [-0.25, 0.0, 0.0]
+        }
       }
     },
     "crystal": {
       "components": {
         "BoxGeometry": {},
-        "Model3D": {"material_override": "crystal.material.json"},
-        "Transform3D": {"position": [-1.2, 0.5, 0], "rotation": [0, 0.6, 0]}
+        "Model3D": {
+          "material": "crystal.material.json"
+        },
+        "Transform3D": {
+          "position": [-1.2, 0.5, 0.0],
+          "rotation": [0.0, 0.6, 0.0]
+        }
       }
     },
     "environment": {
       "components": {
         "Environment3D": {
-          "ambient_light_color": [0.5, 0.55, 0.7, 1],
+          "ambient_light_color": [0.5, 0.55, 0.7, 1.0],
           "ambient_light_energy": 0.4,
           "ambient_light_source": "color",
-          "background_color": [0.05, 0.06, 0.1, 1],
+          "background_color": [0.05, 0.06, 0.1, 1.0],
           "background_mode": "color"
         }
       }
     },
     "fence": {
       "components": {
-        "Model3D": {"material_override": "fence.material.json"},
-        "QuadGeometry": {"size": [1.6, 0.8]},
-        "Transform3D": {"position": [1.2, 0.4, 0.3], "rotation": [0, -0.4, 0]}
+        "Model3D": {
+          "material": "fence.material.json"
+        },
+        "QuadGeometry": {
+          "size": [1.6, 0.8]
+        },
+        "Transform3D": {
+          "position": [1.2, 0.4, 0.3],
+          "rotation": [0.0, -0.4, 0.0]
+        }
       }
     },
     "glass": {
       "components": {
-        "Model3D": {"material_override": "glass.material.json"},
-        "SphereGeometry": {"height": 0.8, "radius": 0.4},
-        "Transform3D": {"position": [0, 0.4, 1]}
+        "Model3D": {
+          "material": "glass.material.json"
+        },
+        "SphereGeometry": {
+          "height": 0.8,
+          "radius": 0.4
+        },
+        "Transform3D": {
+          "position": [0.0, 0.4, 1.0]
+        }
       }
     },
     "ground": {
       "components": {
         "Model3D": {},
-        "PlaneGeometry": {"size": [40, 40]},
-        "Surface3D": {"albedo_color": [0.35, 0.5, 0.3, 1]},
+        "PlaneGeometry": {
+          "size": [40.0, 40.0]
+        },
+        "Surface3D": {
+          "albedo_color": [0.35, 0.5, 0.3, 1.0]
+        },
         "Transform3D": {}
       }
     },
     "sun": {
       "components": {
-        "SunLight3D": {"shadow_enabled": true},
-        "Transform3D": {"rotation": [-0.55, 2.7, 0]}
+        "SunLight3D": {
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "rotation": [-0.55, 2.7, 0.0]
+        }
       }
     }
   },

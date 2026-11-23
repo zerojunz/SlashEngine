@@ -1406,8 +1406,8 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
 void run_look_at(const Run& run, const Modifier& m, std::vector<NodePose>& pose) {
     const auto& c = run.world->ecs().get<const world::BoneLookAt3D>(m.entity);
     detail::LookAtPlaces places;
-    places.target = run.where(c.target_node);
-    places.origin_external = run.where(c.origin_external_node);
+    places.target = run.where(c.target);
+    places.origin_external = run.where(c.origin_entity);
     const std::string key = chain_key(*run.world, run.entity, m, 0);
     if (run.pass == Pass::Step) {
         run.seen->insert(key);
@@ -1719,13 +1719,12 @@ std::vector<ModifierProblem> check_modifiers(const world::World& world, entt::en
             if (c.origin_from == "specific_bone") {
                 (void)bone("/origin_bone", c.origin_bone);
             } else if (c.origin_from == "external_node") {
-                entity_field("/origin_external_node", c.origin_external_node,
+                entity_field("/origin_entity", c.origin_entity,
                              "names no entity: name the entity it looks from");
             }
             choice("/transition_type", c.transition_type, kTransitions);
             choice("/ease_type", c.ease_type, kEases);
-            entity_field("/target_node", c.target_node,
-                         "names no target: name the entity it looks at");
+            entity_field("/target", c.target, "names no target: name the entity it looks at");
             continue;
         }
         if (m.kind == Kind::CopyTransform) {

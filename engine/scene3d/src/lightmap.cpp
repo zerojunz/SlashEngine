@@ -460,13 +460,13 @@ struct MaterialImages {
 // rather than scatter light). With physical light units (units), emission shines by its nits.
 void set_material(LightmapMesh::Surface& surface, const world::Surface3D& standard,
                   const MaterialImages& images, bool units = false) {
-    const bool nearest = standard.texture_filter.starts_with("nearest");
+    const bool nearest = standard.filter.starts_with("nearest");
     const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
-    const bool repeat = standard.texture_repeat;
+    const bool repeat = standard.repeat;
     const auto sample = [filter, repeat, standard](const render::Image& image,
                                                    const LightmapPoint& at) {
-        const float u = (at.uv[0] * standard.uv1_scale.x) + standard.uv1_offset.x;
-        const float v = (at.uv[1] * standard.uv1_scale.y) + standard.uv1_offset.y;
+        const float u = (at.uv[0] * standard.uv_scale.x) + standard.uv_offset.x;
+        const float v = (at.uv[1] * standard.uv_scale.y) + standard.uv_offset.y;
         return render::sample_image(image, filter, repeat, u, v);
     };
     surface.cull = cull_of(standard.cull_mode);
@@ -595,7 +595,7 @@ public:
         const auto& ecs = world_.ecs();
         for (const entt::entity entity : made<world::Model3D>(world_)) {
             const auto& instance = ecs.get<const world::Model3D>(entity);
-            if (instance.gi_mode != "static" || !tree_.visible(entity) ||
+            if (instance.lighting_mode != "static" || !tree_.visible(entity) ||
                 !under(tree_, entity, scope)) {
                 continue;
             }
@@ -633,7 +633,7 @@ public:
             mesh.transform = place;
             mesh.vertices = std::move(data.value().vertices);
             mesh.indices = std::move(data.value().indices);
-            mesh.texel_scale = instance.gi_lightmap_texel_scale;
+            mesh.texel_scale = instance.lightmap_texel_scale;
             LightmapMesh::Surface surface;
             if (standard != nullptr && override_images) {
                 set_material(surface, *standard, *override_images, physical_light_units(world_));
@@ -686,7 +686,7 @@ private:
                 out_.problems.push_back(
                     {entity, field,
                      "part " + std::to_string(p) + " (\"" + part.node +
-                         "\") has a skin, which moves it, so it isn't baked: set gi_mode to "
+                         "\") has a skin, which moves it, so it isn't baked: set lighting_mode to "
                          "\"dynamic\" or bake a mesh without one"});
                 continue;
             }
@@ -695,7 +695,7 @@ private:
             mesh.entity = id;
             mesh.part = static_cast<std::uint32_t>(p);
             mesh.transform = place * part.transform;
-            mesh.texel_scale = instance.gi_lightmap_texel_scale;
+            mesh.texel_scale = instance.lightmap_texel_scale;
             for (const ModelSurface& surface : from.surfaces) {
                 const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
                 LightmapMesh::Surface made;
@@ -1097,7 +1097,7 @@ constexpr std::uint32_t kMaxBakeRays = 65536;
 
 LightmappingSettings lightmapping_settings(const json::Value& rendering) {
     LightmappingSettings out;
-    const json::Value* found = rendering.is_object() ? rendering.find("lightmapping") : nullptr;
+    const json::Value* found = rendering.is_object() ? rendering.find("lightmaps") : nullptr;
     if (found == nullptr || !found->is_object()) {
         return out;
     }

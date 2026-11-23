@@ -291,7 +291,7 @@ double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cyc
     if (s.randomness > 0.0F) {
         phase += std::clamp(s.randomness, 0.0F, 1.0F) * random(seed, cycle, slot, kPhase) / amount;
     }
-    phase *= 1.0F - std::clamp(s.explosiveness, 0.0F, 1.0F);
+    phase *= 1.0F - std::clamp(s.burst, 0.0F, 1.0F);
     return static_cast<double>(phase) * settings.lifetime;
 }
 
@@ -300,7 +300,7 @@ public:
     Simulation(const Settings& settings, const Affine3D& transform, std::uint32_t seed, Vec3 wind,
                const world::PhysicsFields3D* fields, double time)
         : settings_(settings), s_(*settings.component), transform_(transform), seed_(seed),
-          origin_(s_.local_coords ? Vec3{} : transform.origin), wind_(wind),
+          origin_(s_.local_space ? Vec3{} : transform.origin), wind_(wind),
           fields_(fields != nullptr && !fields->empty() ? fields : nullptr),
           to_local_(transform.inverse()), time_(time) {}
 
@@ -518,7 +518,7 @@ private:
         slot.tint = sample(settings_.color_initial_ramp, slot.random.at(kInitialColor));
         Vec3 velocity = start_velocity(slot);
         const Vec3 position = start_position(slot, velocity);
-        if (s_.local_coords) {
+        if (s_.local_space) {
             p.transform.origin = position;
         } else {
             // As Godot, it starts with the entity's basis, which its flags may turn later.
@@ -555,8 +555,8 @@ private:
         if (fields_ != nullptr) {
             // Physics fields with particles on push each particle where it is, as a kilogram.
             const Vec3 push = fields_->particle_force(
-                s_.local_coords ? transform_.apply(position) : position, seed_, time_);
-            force = force + (s_.local_coords ? to_local_.basis(push) : push);
+                s_.local_space ? transform_.apply(position) : position, seed_, time_);
+            force = force + (s_.local_space ? to_local_.basis(push) : push);
         }
         const float linear =
             value(s_.linear_accel_min, s_.linear_accel_max, kLinear, settings_.linear_accel);
@@ -766,7 +766,7 @@ struct ParticleSystem3D {
             Vec3 wind;
             if (component.wind_influence > 0.0F && !field.empty()) {
                 wind = field.at(transform.origin, wind_time) * component.wind_influence;
-                if (component.local_coords) {
+                if (component.local_space) {
                     wind = transform.inverse().basis(wind);
                 }
             }
@@ -874,7 +874,7 @@ struct ParticleSystem3D {
         world.pool().parallel_for(runs.size(), [&](std::size_t r) {
             Run& run = runs[r];
             const world::ParticleSimulation& s = run.stages.settings;
-            const bool local = run.component->local_coords;
+            const bool local = run.component->local_space;
             const Affine3D& place = run.transform;
             const Affine3D back = place.inverse();
             const auto to_world = [&](Vec3f p) { return local ? place.apply(p) : Vec3(p); };
@@ -1028,7 +1028,7 @@ struct ParticleSystem3D {
             const world::ParticleEventRule& rule = stages.settings.events[event.rule];
             Vec3 position = event.position;
             Vec3 velocity = event.velocity;
-            if (component.local_coords) {
+            if (component.local_space) {
                 position = transform.apply(position);
                 velocity = transform.basis(velocity);
             }
@@ -1071,7 +1071,7 @@ struct ParticleSystem3D {
                 const Vec3 push = world::sim_direction(u, v, flat) * rule.speed;
                 Vec3 start = position;
                 Vec3 moving = (velocity * rule.inherit_velocity) + push;
-                if (settings->local_coords) {
+                if (settings->local_space) {
                     start = back.apply(start);
                     moving = back.basis(moving);
                 }

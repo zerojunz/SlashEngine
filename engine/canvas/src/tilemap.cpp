@@ -2,6 +2,7 @@
 
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/core/text.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/legend.hpp"
 
 #include <algorithm>
@@ -2408,8 +2409,10 @@ Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set, std::span<co
     return changed;
 }
 
-std::vector<json::ValidationError> check_tile_layers(const json::Value& doc,
+std::vector<json::ValidationError> check_tile_layers(const json::Value& as_written,
                                                      const world::FileReader& reader) {
+    json::Value current;
+    const json::Value& doc = world::current_names(as_written, current);
     std::vector<json::ValidationError> errors;
     if (!reader) {
         return errors;

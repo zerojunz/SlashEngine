@@ -118,8 +118,8 @@ struct AnimationState {
             const SpriteFrame& frame =
                 found->second.frames.at(static_cast<std::size_t>(player.frame));
             sprite.texture = frame.texture;
-            sprite.hframes = frame.hframes;
-            sprite.vframes = frame.vframes;
+            sprite.columns = frame.hframes;
+            sprite.rows = frame.vframes;
             sprite.frame = frame.frame;
             sprite.region = {};
         }

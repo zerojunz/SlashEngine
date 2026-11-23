@@ -1,12 +1,10 @@
 {
   "format": 1,
   "gameplay": {"sources": ["src"]},
-  "gui": {"allow_system_fallback": false},
-  "internationalization": {
-    "locale": {"translations": ["translations/menu.csv", "translations/pl.po"]}
-  },
+  "localization": {"translations": ["translations/menu.csv", "translations/pl.po"]},
   "main_scene": "main.scene.json",
   "name": "Localization",
+  "ui": {"system_font_fallback": false},
   "version": "0.1.0",
   "window": {"height": 180, "width": 320}
 }

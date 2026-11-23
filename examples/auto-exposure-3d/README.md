@@ -1,7 +1,7 @@
 # Auto exposure 3D
 
 Eyes adjusting to light, as Godot 4.6's auto exposure in its Forward+ renderer, the default
-`rendering.rendering_method`. [main.scene.json](main.scene.json) is a tunnel lit by a torch, with
+`rendering.renderer`. [main.scene.json](main.scene.json) is a tunnel lit by a torch, with
 daylight at its far end, seen through a `Camera3D` in a 320x180 window. The daylight is a wall
 whose `emission_energy_multiplier` is 6, so it shines six times its color, and a lamp just inside
 the mouth lights the last of the tunnel.

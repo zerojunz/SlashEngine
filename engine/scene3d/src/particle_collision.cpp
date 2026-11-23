@@ -732,7 +732,7 @@ ParticleDepthView particle_depth_view(const world::World& world, const world::Tr
         out.half_width = keep_width ? tangent : tangent * aspect;
     }
     out.depths.assign(std::size_t{out.width} * out.height, std::numeric_limits<float>::infinity());
-    const Gather gather{.mask = camera.cull_mask,
+    const Gather gather{.mask = camera.layer_filter,
                         .scope = entt::null,
                         .built_by_layer = false,
                         .opaque_only = true,

@@ -58,7 +58,7 @@
       "arguments": {
         "components": {
           "Label": {
-            "autowrap_mode": "word_smart"
+            "wrap": "word_smart"
           }
         },
         "id": "score"

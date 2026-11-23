@@ -224,7 +224,7 @@ TEST_CASE("physics settings set gravity and damping") {
     const json::Value schema = physics3d::settings_schema();
     const physics3d::Settings parsed = physics3d::parse_settings(
         json::parse(R"({"gravity": 3, "gravity_vector": [0, 0, -1], "linear_damp": 0.5,
-                        "areas_detect_static_bodies": true})")
+                        "zones_detect_static_bodies": true})")
             .value());
     CHECK(json::validate(json::parse(R"({"gravity": 3, "gravity_vector": [0, 0, -1]})").value(),
                          schema)
@@ -343,7 +343,7 @@ TEST_CASE("an area reports bodies and areas entering and leaving") {
 
     // An area that isn't monitorable is not seen by others.
     physics.events.clear();
-    physics.get<world::Zone3D>("sensor").monitorable = false;
+    physics.get<world::Zone3D>("sensor").detectable = false;
     physics.step();
     CHECK(physics.event_list() == Ids{R"(area_exited zone {"area":"sensor"})"});
 
@@ -363,7 +363,7 @@ TEST_CASE("contact_monitor reports the bodies a rigid body touches") {
     Physics physics;
     physics.floor();
     physics.crate("crate", {0.0F, 1.0F, 0.0F});
-    physics.get<world::RigidBody3D>("crate").contact_monitor = true;
+    physics.get<world::RigidBody3D>("crate").report_contacts = true;
     physics.step(60);
     CHECK(physics.event_list() == Ids{R"(body_entered crate {"body":"floor"})"});
     CHECK(physics.ids(physics3d::contacts(physics.world, physics.world.find("crate")).bodies) ==
@@ -429,7 +429,7 @@ TEST_CASE("a floating character slides along walls and has no floor") {
     physics.block("wall", {1.0F, -5.0F, -5.0F}, {2.0F, 5.0F, 5.0F});
     const entt::entity diver = physics.add("diver", {0.0F, 0.0F, 0.0F});
     auto& character = physics.world.ecs().emplace<world::CharacterMover3D>(diver);
-    character.motion_mode = "floating";
+    character.movement = "floating";
     character.velocity = {2.0F, 0.0F, 2.0F};
     physics.world.ecs().emplace<world::Collider3D>(diver, sphere_shape(0.5F));
     physics.step(60);
@@ -560,7 +560,7 @@ TEST_CASE("raycast finds the first hit and follows masks, areas and exclusions")
     physics.floor();
     physics.crate("near", {0.0F, 0.5F, 2.0F});
     physics.get<world::RigidBody3D>("near").collision_layer = 2;
-    physics.get<world::RigidBody3D>("near").freeze = true;
+    physics.get<world::RigidBody3D>("near").frozen = true;
     const entt::entity zone = physics.add("zone", {0.0F, 0.5F, 4.0F});
     physics.world.ecs().emplace<world::Zone3D>(zone);
     physics.world.ecs().emplace<world::Collider3D>(zone, box_shape({1.0F, 1.0F, 1.0F}));
@@ -603,8 +603,8 @@ TEST_CASE("overlap_point and overlap_shape find what is there") {
     physics.floor();
     physics.crate("a", {0.0F, 0.5F, 0.0F});
     physics.crate("b", {3.0F, 0.5F, 0.0F});
-    physics.get<world::RigidBody3D>("a").freeze = true;
-    physics.get<world::RigidBody3D>("b").freeze = true;
+    physics.get<world::RigidBody3D>("a").frozen = true;
+    physics.get<world::RigidBody3D>("b").frozen = true;
     CHECK(physics.ids(physics3d::overlap_point(physics.world, {0.1F, 0.4F, 0.1F})) == Ids{"a"});
     CHECK(physics.ids(physics3d::overlap_point(physics.world, {0.0F, -0.5F, 0.0F})) ==
           Ids{"floor"});
@@ -647,7 +647,7 @@ TEST_CASE("impulses, forces, freezing and removing bodies") {
           doctest::Approx(1.0F).epsilon(0.02));
 
     // Frozen, it stays where it is.
-    physics.get<world::RigidBody3D>("crate").freeze = true;
+    physics.get<world::RigidBody3D>("crate").frozen = true;
     const Vec3 frozen = physics.position("crate");
     physics.step(10);
     CHECK(physics.position("crate") == frozen);
@@ -710,17 +710,17 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     Physics physics;
     const entt::entity low = physics.add("low", {});
     auto& low_area = physics.world.ecs().emplace<world::Zone3D>(low);
-    low_area.gravity_space_override = "replace";
+    low_area.gravity_mode = "replace";
     low_area.gravity_direction = {1.0F, 0.0F, 0.0F};
     low_area.gravity = 4.0F;
     physics.world.ecs().emplace<world::Collider3D>(low, box_shape({10.0F, 10.0F, 10.0F}));
     const entt::entity high = physics.add("high", {});
     auto& high_area = physics.world.ecs().emplace<world::Zone3D>(high);
     high_area.priority = 1;
-    high_area.gravity_space_override = "combine";
+    high_area.gravity_mode = "combine";
     high_area.gravity_direction = {0.0F, 0.0F, 1.0F};
     high_area.gravity = 1.0F;
-    high_area.linear_damp_space_override = "replace";
+    high_area.linear_damp_mode = "replace";
     high_area.linear_damp = 2.0F;
     physics.world.ecs().emplace<world::Collider3D>(high, box_shape({10.0F, 10.0F, 10.0F}));
     physics.crate("crate", {});
@@ -759,7 +759,7 @@ TEST_CASE("3D physics reports its memory") {
     physics.floor();
     physics.crate("crate", {0.0F, 2.0F, 0.0F});
     const entt::entity pin = physics.add("pin", {0.0F, 3.0F, 0.0F});
-    physics.world.ecs().emplace<world::PinJoint3D>(pin).node_a = physics.world.find("crate");
+    physics.world.ecs().emplace<world::PinJoint3D>(pin).body_a = physics.world.find("crate");
     physics.step();
     const auto parts = physics.world.memory();
     const auto found = std::find_if(parts.begin(), parts.end(), [](const world::MemoryPart& part) {
@@ -791,7 +791,7 @@ TEST_CASE("a pin joint swings a body from the world and holds two bodies togethe
     // A pendulum: a ball a meter from a pin that holds it to the world.
     const entt::entity ball = physics.crate("ball", {1.0F, 0.0F, 0.0F}, 0.2F);
     const entt::entity pin = physics.add("pin", {});
-    physics.world.ecs().emplace<world::PinJoint3D>(pin).node_a = ball;
+    physics.world.ecs().emplace<world::PinJoint3D>(pin).body_a = ball;
     physics.step(30);
     CHECK(physics.position("ball").y < -0.5F);
     CHECK(distance(physics.position("ball"), {}) == doctest::Approx(1.0F).epsilon(0.02));
@@ -804,8 +804,8 @@ TEST_CASE("a pin joint swings a body from the world and holds two bodies togethe
     const entt::entity b = weightless_physics.crate("b", {1.0F, 0.0F, 0.0F}, 0.5F);
     auto& joint = weightless_physics.world.ecs().emplace<world::PinJoint3D>(
         weightless_physics.add("joint", {}));
-    joint.node_a = a;
-    joint.node_b = b;
+    joint.body_a = a;
+    joint.body_b = b;
     weightless_physics.step();
     physics3d::apply_impulse(weightless_physics.world, a, {1.0F, 0.0F, 0.0F});
     weightless_physics.step(60);
@@ -823,7 +823,7 @@ TEST_CASE("a hinge turns about its z axis within its limits, and its motor drive
         const entt::entity hinge = physics.add("hinge", {});
         physics.get<world::Transform3D>("hinge").rotation.x = -std::numbers::pi_v<float> / 2.0F;
         auto& joint = physics.world.ecs().emplace<world::HingeJoint3D>(hinge);
-        joint.node_a = slab;
+        joint.body_a = slab;
         return &joint;
     };
     {
@@ -873,7 +873,7 @@ TEST_CASE("a slider moves a body along its x axis within its limits and keeps it
     Physics physics(weightless(false));
     const entt::entity crate = physics.crate("crate", {});
     auto& joint = physics.world.ecs().emplace<world::SlideJoint3D>(physics.add("slider", {}));
-    joint.node_a = crate;
+    joint.body_a = crate;
     physics.step();
     physics3d::apply_impulse(physics.world, crate, {0.5F, 0.5F, 0.5F}, {0.0F, 0.5F, 0.0F});
     physics.step(30);
@@ -894,7 +894,7 @@ TEST_CASE("a cone twist joint keeps a hanging body's swing within its span") {
     const entt::entity cone = physics.add("cone", {});
     physics.get<world::Transform3D>("cone").rotation.z = -std::numbers::pi_v<float> / 2.0F;
     auto& joint = physics.world.ecs().emplace<world::ConeJoint3D>(cone);
-    joint.node_a = weight;
+    joint.body_a = weight;
     joint.swing_span = 0.3F;
     physics.step();
     physics3d::apply_impulse(physics.world, weight, {1.5F, 0.0F, 0.0F});
@@ -915,8 +915,8 @@ TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives
         const entt::entity a = physics.crate("a", {0.0F, 0.0F, 0.0F}, 0.5F);
         const entt::entity b = physics.crate("b", {1.0F, 0.0F, 0.0F}, 0.5F);
         auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("weld", {}));
-        joint.node_a = a;
-        joint.node_b = b;
+        joint.body_a = a;
+        joint.body_b = b;
         physics.step();
         physics3d::apply_impulse(physics.world, a, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.25F});
         physics.step(60);
@@ -932,7 +932,7 @@ TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives
         Physics physics;
         const entt::entity crate = physics.crate("crate", {});
         auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("rail", {}));
-        joint.node_a = crate;
+        joint.body_a = crate;
         joint.linear_y.limit_enabled = false;
         physics.step(30,
                      [&] { physics.get<world::RigidBody3D>("crate").linear_velocity.x += 0.1F; });
@@ -944,7 +944,7 @@ TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives
         Physics physics(weightless(false));
         const entt::entity crate = physics.crate("crate", {});
         auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("drive", {}));
-        joint.node_a = crate;
+        joint.body_a = crate;
         joint.linear_x.limit_enabled = false;
         joint.linear_x.motor_enabled = true;
         joint.linear_x.motor_target_velocity = 1.5F;
@@ -962,8 +962,8 @@ TEST_CASE("jointed bodies pass through each other unless the joint lets them col
         const entt::entity b = physics.crate("b", {0.5F, 0.0F, 0.0F});
         // A joint that only keeps them from turning.
         auto& joint = physics.world.ecs().emplace<world::SixAxisJoint3D>(physics.add("joint", {}));
-        joint.node_a = a;
-        joint.node_b = b;
+        joint.body_a = a;
+        joint.body_b = b;
         joint.exclude_nodes_from_collision = exclude;
         joint.linear_x.limit_enabled = false;
         joint.linear_y.limit_enabled = false;
@@ -981,7 +981,7 @@ TEST_CASE("a joint is made again when its transform or bodies change, and goes w
     const entt::entity second = physics.crate("second", {3.0F, 5.0F, 0.0F}, 0.5F);
     // Pinned at its center, the first stays where it is while the second falls.
     const entt::entity pin = physics.add("pin", {0.0F, 5.0F, 0.0F});
-    physics.world.ecs().emplace<world::PinJoint3D>(pin).node_a = first;
+    physics.world.ecs().emplace<world::PinJoint3D>(pin).body_a = first;
     physics.step(30);
     CHECK(physics.position("first").y == doctest::Approx(5.0F).epsilon(0.01));
     CHECK(physics.position("second").y < 4.5F);
@@ -989,7 +989,7 @@ TEST_CASE("a joint is made again when its transform or bodies change, and goes w
     // Moved to the second and naming it, the pin holds the second where it is now.
     const float held = physics.position("second").y;
     physics.get<world::Transform3D>("pin").position = physics.position("second");
-    physics.get<world::PinJoint3D>("pin").node_a = second;
+    physics.get<world::PinJoint3D>("pin").body_a = second;
     physics.step(30);
     CHECK(physics.position("second").y == doctest::Approx(held).epsilon(0.01));
     CHECK(physics.position("first").y < 4.5F);

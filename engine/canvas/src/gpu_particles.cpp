@@ -264,7 +264,7 @@ std::uint32_t trail_of(const GpuEmitter2D& settings) {
 // The steps a second an emitter takes, 0 for one a tick: fixed_fps, or 60 for trails, as
 // Godot's particles storage.
 int fixed_fps_of(const GpuEmitter2D& settings) {
-    const int fixed_fps = std::clamp(settings.fixed_fps, 0, 1000);
+    const int fixed_fps = std::clamp(settings.fixed_rate, 0, 1000);
     return fixed_fps == 0 && settings.trail_enabled ? 60 : fixed_fps;
 }
 
@@ -296,9 +296,8 @@ void set_emitting(Emitter& e, const GpuEmitter2D& settings, bool emitting, bool 
             e.time = 0.0;
             e.canceled = false;
             e.emission_time = lifetime_of(settings);
-            e.active_time =
-                lifetime_of(settings) *
-                (2.0 - std::clamp(static_cast<double>(settings.explosiveness), 0.0, 1.0));
+            e.active_time = lifetime_of(settings) *
+                            (2.0 - std::clamp(static_cast<double>(settings.burst), 0.0, 1.0));
             // Godot's docs say this starts a new cycle once the last one's particles are gone,
             // but its storage carries on with its phase until it has been idle 1.2 lifetimes,
             // so a burst set off from "finished" may emit nothing there. The storage starts
@@ -367,7 +366,7 @@ public:
             ++e.cycle;
         }
         render::ParticleStep step;
-        if (!s_.local_coords) {
+        if (!s_.local_space) {
             step.emission = matrix_of(transform_);
         }
         step.emitter_velocity = to_float(velocity_);
@@ -377,7 +376,7 @@ public:
         e.phase = new_phase;
         step.delta = static_cast<float>(delta);
         step.lifetime = static_cast<float>(lifetime_of(s_));
-        step.explosiveness = std::clamp(s_.explosiveness, 0.0F, 1.0F);
+        step.explosiveness = std::clamp(s_.burst, 0.0F, 1.0F);
         step.randomness = std::clamp(s_.randomness, 0.0F, 1.0F);
         step.amount_ratio = std::clamp(s_.amount_ratio, 0.0F, 1.0F);
         step.interp_to_end = std::clamp(s_.interp_to_end, 0.0F, 1.0F);
@@ -385,7 +384,7 @@ public:
         step.time = static_cast<float>(e.particle_time);
         step.cycle = e.cycle;
         step.seed = seed_;
-        step.fractional_delta = s_.fract_delta;
+        step.fractional_delta = s_.smooth_emission;
         step.trail_steps = trail_steps_of(s_);
         if (collision_ != nullptr && !collision_->shapes.empty()) {
             step.shape_first = e.add_shapes(collision_->shapes);
@@ -431,7 +430,7 @@ public:
             ++e.cycle;
         }
         render::ParticleStep step;
-        if (!settings.local_coords) {
+        if (!settings.local_space) {
             step.emission = sub.emission;
         }
         step.emitter_velocity = to_float(sub.velocity);
@@ -441,7 +440,7 @@ public:
         e.phase = new_phase;
         step.delta = static_cast<float>(own);
         step.lifetime = static_cast<float>(lifetime_of(settings));
-        step.explosiveness = std::clamp(settings.explosiveness, 0.0F, 1.0F);
+        step.explosiveness = std::clamp(settings.burst, 0.0F, 1.0F);
         step.randomness = std::clamp(settings.randomness, 0.0F, 1.0F);
         step.amount_ratio = std::clamp(settings.amount_ratio, 0.0F, 1.0F);
         step.interp_to_end = std::clamp(settings.interp_to_end, 0.0F, 1.0F);
@@ -449,7 +448,7 @@ public:
         step.time = static_cast<float>(e.particle_time);
         step.cycle = e.cycle;
         step.seed = sub.seed;
-        step.fractional_delta = settings.fract_delta;
+        step.fractional_delta = settings.smooth_emission;
         // A sub-emitter steps as its root does, so its trail spans its own seconds' worth.
         step.trail_steps = 1;
         if (settings.trail_enabled && own > 0.0) {
@@ -633,7 +632,7 @@ public:
         // move with it.
         const std::size_t canvas = canvases_->of(entity);
         world::Affine2D to = to_world_[canvas];
-        if (settings.local_coords) {
+        if (settings.local_space) {
             to = to * world::affine(global);
         }
         const float determinant = (to.x.x * to.y.y) - (to.y.x * to.x.y);
@@ -648,7 +647,7 @@ public:
         out.from_shapes = {static_cast<float>(back.x.x), static_cast<float>(back.x.y),
                            static_cast<float>(back.y.x), static_cast<float>(back.y.y)};
         // GPUParticles2D::_update_collision_size: half the texture's average side, a radius.
-        out.size = std::max(settings.collision_base_size, 0.0F);
+        out.size = std::max(settings.collision_size, 0.0F);
         if (!settings.texture.empty()) {
             if (const auto image = assets_->load<render::Image>(settings.texture); image) {
                 out.size *= static_cast<float>(image.value()->width + image.value()->height) / 4.0F;

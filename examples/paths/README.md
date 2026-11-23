@@ -20,7 +20,7 @@ the curve, turned to face the way it goes (`"rotation_mode": "oriented"`). Nothi
 an `Animator` playing [cart.anim.json](cart.anim.json), whose one track runs
 `SplineFollower3D/progress` up by 4 meters a second; the `path_follow` system wraps it round the
 loop and puts the cart there each tick. The rail is a `SolidExtrusion3D` whose `mode` is `"path"`:
-its polygon, a flat bar under the curve, is pushed along the track named by `path_node`, a ring
+its polygon, a flat bar under the curve, is pushed along the track named by `path`, a ring
 every `path_interval` meters, and `path_joined` closes it into a loop.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
@@ -38,4 +38,4 @@ every `path_interval` meters, and `path_joined` closes it into a loop.
   `path.get` with `global` gives a point of the patrol in the world's space.
 
 `slash-cli scene validate` reports followers that aren't children of a path, and a rail whose
-`path_node` names no path.
+`path` names no path.

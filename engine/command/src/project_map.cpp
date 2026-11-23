@@ -11,6 +11,7 @@
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/world.hpp"
 
@@ -161,6 +162,7 @@ public:
             if (const std::optional<std::string>& contents = text.value(); contents) {
                 if (auto parsed = json::parse(*contents); parsed && parsed.value().is_object()) {
                     project_ = std::move(parsed).value();
+                    world::upgrade_settings(project_);
                 }
             }
         }

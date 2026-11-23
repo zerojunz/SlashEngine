@@ -6,6 +6,7 @@
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/render/image.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/scene.hpp"
 
 #include <algorithm>
@@ -73,7 +74,7 @@ void check_names(std::vector<Problem>& problems, const std::string& id, std::str
             continue;
         }
         std::string message = known_items.subject + " no ";
-        message += field.substr(std::string_view("theme_override_").size());
+        message += field.substr(std::string_view("theme_").size());
         message += " item \"" + name + "\"";
         if (const std::string_view hint = closest_match(name, names); !hint.empty()) {
             message += "; did you mean \"" + std::string(hint) + "\"?";
@@ -220,15 +221,15 @@ void read_settings(const json::Value& gui, Settings& settings) {
     if (const json::Value* theme = gui.find("theme"); theme != nullptr && theme->is_string()) {
         settings.theme = theme->as_string();
     }
-    if (const json::Value* system = gui.find("allow_system_fallback");
+    if (const json::Value* system = gui.find("system_font_fallback");
         system != nullptr && system->is_bool()) {
         settings.allow_system_fallback = system->as_bool();
     }
-    if (const json::Value* delay = gui.find("tooltip_delay_sec");
+    if (const json::Value* delay = gui.find("tooltip_delay_seconds");
         delay != nullptr && delay->is_number()) {
         settings.tooltip_delay_sec = delay->as_double();
     }
-    if (const json::Value* offset = gui.find("tooltip_position_offset");
+    if (const json::Value* offset = gui.find("tooltip_offset");
         offset != nullptr && offset->is_array() && offset->size() == 2 &&
         offset->as_array()[0].is_number() && offset->as_array()[1].is_number()) {
         settings.tooltip_position_offset = {static_cast<float>(offset->as_array()[0].as_double()),
@@ -244,12 +245,10 @@ void read_settings(const json::Value& gui, Settings& settings) {
             field = static_cast<std::remove_reference_t<decltype(field)>>(value->as_double());
         }
     };
-    number("text_edit_idle_detect_sec", 0.0, settings.text_edit_idle_detect_sec);
-    number("text_edit_undo_stack_max_size", 1.0, settings.text_edit_undo_stack_max_size);
-    number("incremental_search_max_interval_msec", 0.0,
-           settings.incremental_search_max_interval_msec);
-    number("button_shortcut_feedback_highlight_time", 0.0,
-           settings.button_shortcut_feedback_highlight_time);
+    number("text_edit_merge_seconds", 0.0, settings.text_edit_idle_detect_sec);
+    number("text_edit_undo_limit", 1.0, settings.text_edit_undo_stack_max_size);
+    number("type_search_ms", 0.0, settings.incremental_search_max_interval_msec);
+    number("shortcut_flash_seconds", 0.0, settings.button_shortcut_feedback_highlight_time);
     if (const json::Value* support = gui.find("accessibility_support");
         support != nullptr && support->is_string()) {
         settings.accessibility_support = support->as_string();
@@ -361,9 +360,9 @@ std::vector<std::string_view> control_classes(const world::World& world, entt::e
 
 std::string_view mouse_filter_name(const world::World& world, entt::entity entity) {
     const auto* control = world.ecs().try_get<world::Widget>(entity);
-    if (control != nullptr && !control->mouse_filter.empty()) {
-        if (control->mouse_filter == "ignore" || control->mouse_filter == "pass") {
-            return control->mouse_filter;
+    if (control != nullptr && !control->pointer_mode.empty()) {
+        if (control->pointer_mode == "ignore" || control->pointer_mode == "pass") {
+            return control->pointer_mode;
         }
         return "stop";
     }
@@ -707,21 +706,20 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
             continue;
         }
         const Known known = known_items(control_classes(world, entity));
-        check_names(problems, id, "theme_override_colors", control->theme_override_colors, known,
+        check_names(problems, id, "theme_colors", control->theme_colors, known,
                     [](const ThemeItems& t) -> const auto& { return t.colors; });
-        check_names(problems, id, "theme_override_constants", control->theme_override_constants,
-                    known, [](const ThemeItems& t) -> const auto& { return t.constants; });
-        check_names(problems, id, "theme_override_fonts", control->theme_override_fonts, known,
+        check_names(problems, id, "theme_constants", control->theme_constants, known,
+                    [](const ThemeItems& t) -> const auto& { return t.constants; });
+        check_names(problems, id, "theme_fonts", control->theme_fonts, known,
                     [](const ThemeItems& t) -> const auto& { return t.fonts; });
-        check_names(problems, id, "theme_override_font_sizes", control->theme_override_font_sizes,
-                    known, [](const ThemeItems& t) -> const auto& { return t.font_sizes; });
-        check_names(problems, id, "theme_override_icons", control->theme_override_icons, known,
+        check_names(problems, id, "theme_font_sizes", control->theme_font_sizes, known,
+                    [](const ThemeItems& t) -> const auto& { return t.font_sizes; });
+        check_names(problems, id, "theme_icons", control->theme_icons, known,
                     [](const ThemeItems& t) -> const auto& { return t.icons; });
-        check_names(problems, id, "theme_override_styles", control->theme_override_styles, known,
+        check_names(problems, id, "theme_styles", control->theme_styles, known,
                     [](const ThemeItems& t) -> const auto& { return t.styles; });
-        for (const auto& [name, path] : control->theme_override_icons) {
-            const std::string at =
-                "/components/Widget/theme_override_icons/" + json::pointer_escape(name);
+        for (const auto& [name, path] : control->theme_icons) {
+            const std::string at = "/components/Widget/theme_icons/" + json::pointer_escape(name);
             if (std::string error = icon_path_error(path); !error.empty()) {
                 problems.push_back({.id = id, .path = at, .message = std::move(error)});
                 continue;
@@ -738,22 +736,21 @@ std::vector<Problem> check(const world::World& world, text::Fonts& fonts) {
                 problems.push_back({.id = id, .path = at, .message = error->second});
             }
         }
-        for (const auto& [name, path] : control->theme_override_fonts) {
+        for (const auto& [name, path] : control->theme_fonts) {
             auto error = font_errors.find(path);
             if (error == font_errors.end()) {
                 auto loaded = fonts.metrics(path, text::kDefaultFontSize);
                 error = font_errors.emplace(path, loaded ? "" : loaded.error().message).first;
             }
             if (!error->second.empty()) {
-                problems.push_back({.id = id,
-                                    .path = "/components/Widget/theme_override_fonts/" +
-                                            json::pointer_escape(name),
-                                    .message = error->second});
+                problems.push_back(
+                    {.id = id,
+                     .path = "/components/Widget/theme_fonts/" + json::pointer_escape(name),
+                     .message = error->second});
             }
         }
-        for (const auto& [name, doc] : control->theme_override_styles) {
-            const std::string at =
-                "/components/Widget/theme_override_styles/" + json::pointer_escape(name);
+        for (const auto& [name, doc] : control->theme_styles) {
+            const std::string at = "/components/Widget/theme_styles/" + json::pointer_escape(name);
             const std::vector<json::ValidationError> errors = validate_style_box(doc);
             for (const json::ValidationError& error : errors) {
                 problems.push_back({.id = id, .path = at + error.path, .message = error.message});
@@ -802,9 +799,10 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
     Settings project;
     const auto project_file =
         reader ? reader("project.json") : Result<std::string>(make_error(ErrorCode::NotFound, ""));
-    const auto parsed = project_file ? json::parse(project_file.value())
-                                     : Result<json::Value>(project_file.error());
+    auto parsed = project_file ? json::parse(project_file.value())
+                               : Result<json::Value>(project_file.error());
     if (parsed && parsed.value().is_object()) {
+        world::upgrade_settings(parsed.value());
         const json::Value& doc = parsed.value();
         const json::Value* window = doc.find("window");
         const json::Value* width =
@@ -816,7 +814,7 @@ std::vector<json::ValidationError> check_scene(const world::ComponentRegistry& c
             project.viewport = {static_cast<float>(width->as_double()),
                                 static_cast<float>(height->as_double())};
         }
-        if (const json::Value* gui = doc.find("gui"); gui != nullptr) {
+        if (const json::Value* gui = doc.find("ui"); gui != nullptr) {
             read_settings(*gui, project);
         }
     }

@@ -17,7 +17,7 @@
     "ball": {
       "components": {
         "Model3D": {
-          "gi_mode": "dynamic"
+          "lighting_mode": "dynamic"
         },
         "SphereGeometry": {
           "height": 0.8,

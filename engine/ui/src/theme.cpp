@@ -622,7 +622,7 @@ json::Value theme_schema() {
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine theme";
     schema["description"] = "Theme items by control type, as Godot's Theme. A control uses its "
-                            "theme_override_* items, then its own and its parents' themes, the "
+                            "theme_* items, then its own and its parents' themes, the "
                             "project's theme and the default theme.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;

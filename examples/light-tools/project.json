@@ -9,12 +9,10 @@
       0,
       1
     ],
-    "lights_and_shadows": {
-      "positional_shadow": {
-        "atlas_size": 1024,
-        "soft_shadow_filter_quality": "hard"
-      },
-      "use_physical_light_units": true
+    "physical_light_units": true,
+    "shadows": {
+      "positional_atlas_size": 1024,
+      "positional_softness": "hard"
     }
   },
   "version": "1.0.0",

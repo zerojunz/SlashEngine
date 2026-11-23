@@ -16,8 +16,8 @@
     "cloud": {
       "components": {
         "Sprite2D": {
-          "texture": "cloud.png",
-          "z_index": -1
+          "sort_order": -1,
+          "texture": "cloud.png"
         },
         "Transform2D": {
           "position": [40.0, 30.0]
@@ -60,8 +60,8 @@
       "components": {
         "Sprite2D": {
           "centered": false,
-          "texture": "hills.png",
-          "z_index": -1
+          "sort_order": -1,
+          "texture": "hills.png"
         },
         "Transform2D": {
           "position": [0.0, 120.0]

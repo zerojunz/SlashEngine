@@ -12,9 +12,9 @@
           ]
         },
         "Sprite2D": {
+          "filter": "nearest",
           "normal_texture": "crate_n.png",
-          "texture": "crate.png",
-          "texture_filter": "nearest"
+          "texture": "crate.png"
         },
         "Transform2D": {
           "position": [160.0, 90.0]
@@ -32,9 +32,9 @@
       "components": {
         "Sprite2D": {
           "centered": false,
-          "texture": "stone.png",
-          "texture_filter": "nearest",
-          "z_index": -1
+          "filter": "nearest",
+          "sort_order": -1,
+          "texture": "stone.png"
         },
         "Transform2D": {
           "scale": [10.0, 6.0]
@@ -44,8 +44,8 @@
     "hero": {
       "components": {
         "Sprite2D": {
-          "texture": "hero.png",
-          "texture_filter": "nearest"
+          "filter": "nearest",
+          "texture": "hero.png"
         },
         "Transform2D": {
           "position": [60.0, 120.0]
@@ -67,9 +67,9 @@
     "sign": {
       "components": {
         "Sprite2D": {
+          "filter": "nearest",
           "material": "neon.material.json",
-          "texture": "sign.png",
-          "texture_filter": "nearest"
+          "texture": "sign.png"
         },
         "Transform2D": {
           "position": [260.0, 40.0]

@@ -282,7 +282,7 @@ TEST_CASE("CheckBox and ToggleSwitch are toggle buttons with Button's fields") {
         const world::ComponentType* type = components.find(name);
         REQUIRE(type != nullptr);
         // Godot's CheckBox and ToggleSwitch set toggle_mode and align their text left.
-        CHECK(compact(*type->defaults().find("toggle_mode")) == "true");
+        CHECK(compact(*type->defaults().find("toggles")) == "true");
         CHECK(compact(*type->defaults().find("alignment")) == "\"left\"");
         CHECK(type->defaults().size() == components.find("Button")->defaults().size());
     }
@@ -291,10 +291,10 @@ TEST_CASE("CheckBox and ToggleSwitch are toggle buttons with Button's fields") {
     const entt::entity box = world.create("box").value();
     std::string path;
     REQUIRE(components.find("CheckBox")
-                ->assign(world, box, parse(R"({"text": "Sound", "button_pressed": true})"), path)
+                ->assign(world, box, parse(R"({"text": "Sound", "pressed": true})"), path)
                 .ok());
     CHECK(compact(components.find("CheckBox")->save(world, box)) ==
-          R"({"button_pressed":true,"text":"Sound"})");
+          R"({"pressed":true,"text":"Sound"})");
     CHECK(ui::control_class(world, box) == "CheckBox");
 }
 
@@ -315,7 +315,7 @@ TEST_CASE("a check box draws its box before its text, and a click toggles it") {
     CHECK(gui.send({click(10, 10, true), click(10, 10, false)}) ==
           "mouse_entered sound, focus_entered sound, button_down sound, toggled sound on, "
           "pressed sound, button_up sound");
-    CHECK(gui.world.ecs().get<world::CheckBox>(gui.world.find("sound")).button_pressed);
+    CHECK(gui.world.ecs().get<world::CheckBox>(gui.world.find("sound")).pressed);
     CHECK(gui.boxes("sound") == "builtin:checked " + numbers({4, y, 16, 16}));
     CHECK(ui::draw_mode_name(ui::draw_mode(gui.world, gui.world.find("sound"))) == "hover_pressed");
 
@@ -397,11 +397,11 @@ TEST_CASE("theme icons come from overrides, then themes, then the built-in ones"
                "unchecked": "ui/missing.png"})");
     const std::vector<std::string> lines = problem_lines(ui::check(gui.world, gui.fonts()));
     CHECK(lines == std::vector<std::string>{
-                       "d/components/Widget/theme_override_icons/chekced: CheckBox has no icons "
+                       "d/components/Widget/theme_icons/chekced: CheckBox has no icons "
                        "item \"chekced\"; did you mean \"checked\"?",
-                       "d/components/Widget/theme_override_icons/checked: \"chekced\" isn't a "
+                       "d/components/Widget/theme_icons/checked: \"chekced\" isn't a "
                        "built-in icon; did you mean \"checked\"?",
-                       "d/components/Widget/theme_override_icons/unchecked: asset "
+                       "d/components/Widget/theme_icons/unchecked: asset "
                        "\"ui/missing.png\" could not be read: no such file",
                    });
 }

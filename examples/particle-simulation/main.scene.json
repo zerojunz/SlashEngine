@@ -7,7 +7,7 @@
         },
         "GpuEmitter3D": {
           "amount": 48,
-          "explosiveness": 1.0,
+          "burst": 1.0,
           "lifetime": 8.0,
           "process_material": "bees.process_material.json"
         },
@@ -56,8 +56,8 @@
       "components": {
         "Emitter3D": {
           "amount": 40,
+          "burst": 1.0,
           "emission_shape": "sphere",
-          "explosiveness": 1.0,
           "gravity": [0.0, 0.0, 0.0],
           "initial_velocity_max": 0.6,
           "initial_velocity_min": 0.2,
@@ -202,7 +202,7 @@
       "components": {
         "Emitter2D": {
           "amount": 24,
-          "explosiveness": 1.0,
+          "burst": 1.0,
           "gravity": [0.0, 0.0],
           "initial_velocity_max": 30.0,
           "initial_velocity_min": 10.0,

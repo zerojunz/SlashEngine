@@ -32,7 +32,7 @@ class World;
 namespace slash::l10n {
 
 // A fake translation that shows untranslated, clipped or right-to-left-unready text before any
-// real translation exists, as Godot's internationalization/pseudolocalization settings.
+// real translation exists (project.json's localization.pseudo).
 struct Pseudolocalization {
     bool use_pseudolocalization = false; // pseudolocalize every lookup
     bool replace_with_accents = true;    // "Start" -> "Ŝŧáŕŧ"
@@ -46,14 +46,13 @@ struct Pseudolocalization {
     bool skip_placeholders = true; // %s, %d and the rest are left as they are
 };
 
-// What a control at the root takes as its layout direction when it inherits, as Godot's
-// internationalization/rendering/root_node_layout_direction.
+// What a control at the root takes as its layout direction when it inherits (project.json's
+// localization.layout_direction).
 enum class RootDirection : std::uint8_t { ApplicationLocale, Ltr, Rtl, SystemLocale };
 
-// project.json's "internationalization", as Godot's internationalization settings.
+// project.json's "localization".
 struct Settings {
-    // Translation files (.csv, .po and .mo) by project path, as Godot's
-    // internationalization/locale/translations.
+    // Translation files (.csv, .po and .mo) by project path.
     std::vector<std::string> translations;
     // The locale to look in when the world's has no translation of a message.
     std::string fallback = "en";
@@ -67,10 +66,10 @@ struct Settings {
 };
 
 [[nodiscard]] json::Value settings_schema();
-// Every error in project.json's "internationalization", each with its JSON Pointer under at.
+// Every error in project.json's "localization", each with its JSON Pointer under at.
 [[nodiscard]] std::vector<json::ValidationError> validate_settings(const json::Value& settings,
                                                                    std::string_view at);
-// The settings in a valid "internationalization" object.
+// The settings in a valid "localization" object.
 [[nodiscard]] Settings parse_settings(const json::Value& settings);
 [[nodiscard]] std::string_view direction_name(RootDirection direction);
 

@@ -265,7 +265,7 @@ layer: `Ground` in `Level` is `level_ground`.
 A `Theme` becomes a [`.theme.json` file](scene-format.md#themes): its `default_font`,
 `default_font_size`, each type's `base_type` and its colors, constants, font sizes, fonts,
 icons and style boxes, which take the same form as `theme_override_styles`. The project's
-`gui/theme/custom` becomes `gui.theme`, and a control's `theme` names the file.
+`gui/theme/custom` becomes `ui.theme`, and a control's `theme` names the file.
 
 An `AudioBusLayout` becomes a [`.bus_layout.json` file](scene-format.md#bus-layouts): each bus's
 name, volume, solo, mute, bypass and send, and its effects in order, each with its settings and
@@ -628,50 +628,50 @@ on its top.
 | `application/run/main_scene` | `main_scene`, the scene's `.scene.json`; with none, the first scene by path |
 | `application/run/max_fps` | `max_fps` |
 | `display/window/size/viewport_width`, `viewport_height` | `window.width`, `window.height` |
-| `display/window/vsync/vsync_mode` | `window.vsync_mode` |
+| `display/window/vsync/vsync_mode` | `window.vsync` |
 | `display/display_server/driver.linuxbsd` | `window.linux_display_driver` when it is `wayland` |
 | `physics/common/physics_ticks_per_second` | `tick_hz` |
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
 | `physics/2d/sleep_threshold_linear` | `physics_2d.sleep_velocity_threshold` |
 | `physics/3d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_3d` |
-| `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` | `physics_3d.areas_detect_static_bodies` |
+| `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` | `physics_3d.zones_detect_static_bodies` |
 | `physics/jolt_physics_3d/simulation/*`, `collisions/*` and `limits/*` | `physics_3d.<the same name>`, angles in radians as `project.godot` keeps them |
 | `physics/jolt_physics_3d/motion_queries/recovery_iterations`, `recovery_amount`, `use_enhanced_internal_edge_removal` | `physics_3d.recovery_iterations`, `recovery_amount`, `motion_use_enhanced_internal_edge_removal` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |
 | `rendering/textures/canvas_textures/default_texture_filter` | `rendering.texture_filter` |
-| `rendering/renderer/rendering_method` | `rendering.rendering_method` `gl_compatibility` and `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es`; Forward+ and Mobile draw as `forward_plus` |
+| `rendering/renderer/rendering_method` | `rendering.renderer` `gl_compatibility` and `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es`; Forward+ and Mobile draw as `forward_plus` |
 | `rendering/rendering_device/fallback_to_opengl3` | `rendering.fallback_to_opengl` |
-| `rendering/camera/depth_of_field/*` | `rendering.camera.depth_of_field` |
-| `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.environment.ssao` |
-| `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
-| `rendering/environment/volumetric_fog/volume_size`, `volume_depth`, `use_filter` | `rendering.environment.volumetric_fog` |
-| `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
-| `rendering/reflections/sky_reflections/ggx_samples` | `rendering.reflections.sky_reflections.ggx_samples`, held to 1 to 32 |
-| `rendering/lightmapping/bake_quality/*`, `bake_performance/max_rays_per_pass`, `max_rays_per_probe_pass`, `region_size`, `probe_capture/update_speed` | `rendering.lightmapping` |
+| `rendering/camera/depth_of_field/*` | `rendering.depth_of_field`: `bokeh_shape`, `bokeh_quality` and `jitter` |
+| `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.ssao` |
+| `rendering/environment/screen_space_reflection/half_size` | `rendering.ssr` |
+| `rendering/environment/volumetric_fog/volume_size`, `volume_depth`, `use_filter` | `rendering.volumetric_fog` |
+| `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.probe_size` and `probe_count`; a size that isn't a power of two from 32 to 2048 is reported |
+| `rendering/reflections/sky_reflections/ggx_samples` | `rendering.reflections.sky_samples`, held to 1 to 32 |
+| `rendering/lightmapping/bake_quality/*`, `bake_performance/max_rays_per_pass`, `max_rays_per_probe_pass`, `region_size`, `probe_capture/update_speed` | `rendering.lightmaps` |
 | `rendering/textures/decals/filter` | `rendering.textures.decals.filter`: `0` is `"nearest"`, `1` `"linear"` and so on to `5`, `"linear_mipmaps_anisotropic"` |
-| `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |
-| `rendering/global_illumination/sdfgi/probe_ray_count`, `frames_to_converge`, `frames_to_update_lights` | `rendering.global_illumination.sdfgi`'s settings of the same names, Godot's enum indices made the numbers they stand for |
-| `rendering/anti_aliasing/quality/use_taa` | `rendering.anti_aliasing.quality.use_taa` |
-| `rendering/mesh_lod/lod_change/threshold_pixels` | `rendering.mesh_lod.lod_change.threshold_pixels` |
-| `rendering/occlusion_culling/use_occlusion_culling`, `occlusion_rays_per_thread`, `jitter_projection` | `rendering.occlusion_culling` |
-| `rendering/scaling_3d/mode`, `scale`, `fsr_sharpness` | `rendering.scaling`: `bilinear`, `fsr`, `fsr2`, `metalfx_spatial` or `metalfx_temporal`, by Godot's mode number |
-| `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
-| `gui/timers/tooltip_delay_sec`, `text_edit_idle_detect_sec`, `incremental_search_max_interval_msec`, `button_shortcut_feedback_highlight_time` | `gui.` the same names |
-| `gui/common/text_edit_undo_stack_max_size` | `gui.text_edit_undo_stack_max_size` |
+| `rendering/global_illumination/voxel_gi/quality` | `rendering.voxel_lighting.quality`: `0` is `"low"`, `1` is `"high"` |
+| `rendering/global_illumination/sdfgi/probe_ray_count`, `frames_to_converge`, `frames_to_update_lights` | `rendering.field_lighting`'s settings of the same names, Godot's enum indices made the numbers they stand for |
+| `rendering/anti_aliasing/quality/use_taa` | `rendering.anti_aliasing.taa` |
+| `rendering/mesh_lod/lod_change/threshold_pixels` | `rendering.lod.threshold_pixels` |
+| `rendering/occlusion_culling/use_occlusion_culling`, `occlusion_rays_per_thread`, `jitter_projection` | `rendering.occlusion_culling`: `enabled`, `rays_per_thread` and `jitter_projection` |
+| `rendering/scaling_3d/mode`, `scale`, `fsr_sharpness` (as `sharpness`) | `rendering.scaling`: `bilinear`, `fsr`, `fsr2`, `metalfx_spatial` or `metalfx_temporal`, by Godot's mode number |
+| `gui/theme/custom` | `ui.theme`, the theme's `.theme.json` file |
+| `gui/timers/tooltip_delay_sec`, `text_edit_idle_detect_sec`, `incremental_search_max_interval_msec`, `button_shortcut_feedback_highlight_time` | `ui.tooltip_delay_seconds`, `text_edit_merge_seconds`, `type_search_ms` and `shortcut_flash_seconds` |
+| `gui/common/text_edit_undo_stack_max_size` | `ui.text_edit_undo_limit` |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |
 | `audio/general/2d_panning_strength` | `audio.panning_strength_2d` |
 | `audio/general/3d_panning_strength` | `audio.panning_strength_3d` |
-| `audio/buses/channel_disable_threshold_db`, `channel_disable_time` | `audio.` the same names, held to -80 to 0 dB and 0 to 5 seconds |
-| `audio/driver/enable_input` | `audio.enable_input` |
+| `audio/buses/channel_disable_threshold_db`, `channel_disable_time` | `audio.silence_threshold_db` and `silence_seconds`, held to -80 to 0 dB and 0 to 5 seconds |
+| `audio/driver/enable_input` | `audio.input_enabled` |
 | `xr/openxr/enabled`, `form_factor`, `view_configuration`, `reference_space`, `environment_blend_mode` | `xr.openxr`'s fields of the same names |
 | `xr/shaders/enabled` | `xr.shaders.enabled` |
 | `[input]` | `input` |
-| `internationalization/locale/translations` | `internationalization.locale.translations`: `.po` and `.mo` files as they are, and a CSV file once for the `.translation` files Godot compiled it into (by its `.import` file, else by name); a compiled one with no CSV source, a file that isn't there and a CSV `delimiter` other than commas are reported |
-| `internationalization/locale/fallback`, `locale/test` | `internationalization.locale.fallback`, `test` |
-| `internationalization/pseudolocalization/*` | `internationalization.pseudolocalization`, by the same names |
-| `internationalization/rendering/root_node_layout_direction` | `internationalization.rendering.root_node_layout_direction`: `0` is `"application_locale"`, `1` `"ltr"`, `2` `"rtl"`, `3` `"system_locale"` |
-| `internationalization/rendering/force_right_to_left_layout_direction` | `internationalization.rendering.force_right_to_left_layout_direction` |
+| `internationalization/locale/translations` | `localization.translations`: `.po` and `.mo` files as they are, and a CSV file once for the `.translation` files Godot compiled it into (by its `.import` file, else by name); a compiled one with no CSV source, a file that isn't there and a CSV `delimiter` other than commas are reported |
+| `internationalization/locale/fallback`, `locale/test` | `localization.fallback`, `test` |
+| `internationalization/pseudolocalization/*` | `localization.pseudo`: `use_pseudolocalization` as `enabled`, the rest by the same names |
+| `internationalization/rendering/root_node_layout_direction` | `localization.layout_direction`: `0` is `"application_locale"`, `1` `"ltr"`, `2` `"rtl"`, `3` `"system_locale"` |
+| `internationalization/rendering/force_right_to_left_layout_direction` | `localization.force_right_to_left` |
 
 Each input action keeps its deadzone and its keys (`physical_keycode` as `physical_key`,
 `keycode` as `key`, by Godot's key names, with modifiers), mouse buttons, gamepad buttons and

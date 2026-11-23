@@ -46,11 +46,11 @@ bool same_place(const Transform3D& a, const Transform3D& b) {
 }
 
 entt::entity node_a_of(const JointKey& key) {
-    return std::visit([](const auto& joint) { return joint.node_a; }, key);
+    return std::visit([](const auto& joint) { return joint.body_a; }, key);
 }
 
 entt::entity node_b_of(const JointKey& key) {
-    return std::visit([](const auto& joint) { return joint.node_b; }, key);
+    return std::visit([](const auto& joint) { return joint.body_b; }, key);
 }
 
 bool excludes(const JointKey& key) {

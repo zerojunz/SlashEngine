@@ -167,12 +167,12 @@ Image draw_room(RenderDevice& device, const Room& room) {
 } // namespace
 
 TEST_CASE("reflection atlas settings come from project.json's rendering.reflections") {
-    auto parsed = slash::json::parse(R"({"reflection_size": 512, "reflection_count": 8})");
+    auto parsed = slash::json::parse(R"({"probe_size": 512, "probe_count": 8})");
     REQUIRE(parsed.ok());
     CHECK(render::reflection_atlas_settings_from_json(parsed.value()) ==
           render::ReflectionAtlasSettings{.reflection_size = 512, .reflection_count = 8});
     // What is missing or not valid keeps its default: sizes are powers of two from 32 to 2048.
-    auto wrong = slash::json::parse(R"({"reflection_size": 300, "reflection_count": 0})");
+    auto wrong = slash::json::parse(R"({"probe_size": 300, "probe_count": 0})");
     REQUIRE(wrong.ok());
     CHECK(render::reflection_atlas_settings_from_json(wrong.value()) ==
           render::ReflectionAtlasSettings{});

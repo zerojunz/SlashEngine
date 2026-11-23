@@ -8,7 +8,7 @@
           "amount": "=round(4 + 20 * strength)",
           "color": [1, 0.9, 0.5, 1],
           "direction": [0, 1, 0],
-          "explosiveness": 1,
+          "burst": 1,
           "initial_velocity_max": 6,
           "initial_velocity_min": 3,
           "lifetime": 0.25,

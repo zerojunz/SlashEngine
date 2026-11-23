@@ -246,7 +246,7 @@ json::Value settings_schema() {
     properties["gravity_vector"] = std::move(gravity_vector);
     properties["linear_damp"] = std::move(linear_damp);
     properties["angular_damp"] = std::move(angular_damp);
-    properties["areas_detect_static_bodies"] = std::move(detect_static);
+    properties["zones_detect_static_bodies"] = std::move(detect_static);
     json::Value substeps;
     substeps["type"] = "integer";
     substeps["minimum"] = 1;
@@ -306,7 +306,7 @@ Settings parse_settings(const json::Value& settings) {
                               static_cast<float>(xyz.at(1).as_double()),
                               static_cast<float>(xyz.at(2).as_double())};
     }
-    if (const json::Value* detect = settings.find("areas_detect_static_bodies");
+    if (const json::Value* detect = settings.find("zones_detect_static_bodies");
         detect != nullptr) {
         out.areas_detect_static_bodies = detect->as_bool();
     }

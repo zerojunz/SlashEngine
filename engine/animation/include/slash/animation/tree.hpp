@@ -265,7 +265,7 @@ struct TreeParameter {
 // value: a tree or library that doesn't load, an animation the libraries haven't, with "did you
 // mean", a root motion track no animation moves and parameters the tree hasn't. Files are read
 // through reader.
-[[nodiscard]] std::vector<json::ValidationError> check_trees(const json::Value& doc,
+[[nodiscard]] std::vector<json::ValidationError> check_trees(const json::Value& as_written,
                                                              const world::FileReader& reader);
 
 } // namespace slash::animation

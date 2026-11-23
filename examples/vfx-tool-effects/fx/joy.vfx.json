@@ -25,7 +25,7 @@
       "components": {
         "Emitter3D": {
           "amount": 12,
-          "explosiveness": 1,
+          "burst": 1,
           "lifetime": 0.6
         }
       },

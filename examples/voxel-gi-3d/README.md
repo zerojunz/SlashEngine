@@ -5,9 +5,9 @@ crate's shadowed side and the ball's underside, and the red wall tints the floor
 [main.scene.json](main.scene.json) is a floor, a red wall, a back wall, a crate and a ball seen
 through a `Camera3D` in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light.
 The `gi` entity's box covers the room at 64 cells along its longest side. `voxel_gi.bake`
-voxelizes the meshes whose `gi_mode` is `"static"`, Godot's default, once; the renderer injects
+voxelizes the meshes whose `lighting_mode` is `"static"`, Godot's default, once; the renderer injects
 the sun into the cells and traces cones through them every frame, so the bounce follows the
-lights as the game runs. The ball's `gi_mode` is `"dynamic"`, as for anything that moves: it
+lights as the game runs. The ball's `lighting_mode` is `"dynamic"`, as for anything that moves: it
 isn't voxelized, but the renderer plots it into the cells' light each frame it moves or
 changes, so it lights the room too.
 
@@ -42,5 +42,5 @@ voxel_gi.bake {"id":"gi"}
 `voxel_gi.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
 Undo removes the file it made, or puts back the one it replaced. `slash-cli scene validate`
 checks a VoxelLighting3D's `data`, and exports ship the file. VoxelGIs draw only in Forward+, the default
-`rendering.rendering_method`; `rendering.global_illumination.voxel_gi.quality` in `project.json`
+`rendering.renderer`; `rendering.voxel_lighting.quality` in `project.json`
 picks Godot's four cones or six narrower ones.

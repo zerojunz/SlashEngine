@@ -879,7 +879,7 @@ TEST_CASE("gameplay code makes textures and meshes that draw") {
     tool.generate_normals();
     slash::world::Surface3D red;
     red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
-    red.shading_mode = "unshaded";
+    red.shading = "unshaded";
     tool.set_material(red);
     slash::scene3d::Model mesh;
     REQUIRE(tool.commit(mesh).ok());
@@ -1152,7 +1152,7 @@ TEST_CASE("ModelInstances3D draws its mesh at each instance") {
     tool.generate_normals();
     slash::world::Surface3D red;
     red.albedo_color = {1.0F, 0.0F, 0.0F, 1.0F};
-    red.shading_mode = "unshaded";
+    red.shading = "unshaded";
     tool.set_material(red);
     slash::scene3d::Model mesh;
     REQUIRE(tool.commit(mesh).ok());

@@ -15,7 +15,7 @@
         },
         "Widget": {
           "children": ["laps", "status", "finish_lap", "best_laps", "trophies"],
-          "custom_minimum_size": [200.0, 0.0]
+          "min_size": [200.0, 0.0]
         }
       }
     },

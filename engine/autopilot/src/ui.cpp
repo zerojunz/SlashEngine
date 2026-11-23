@@ -168,22 +168,22 @@ json::Array ui_list(command::Session& session) {
         } else if (ecs.any_of<world::CheckBox, world::ToggleSwitch>(e)) {
             const world::Button* button = button_of(world, e);
             item["kind"] = "checkbox";
-            item["checked"] = button->button_pressed;
+            item["checked"] = button->pressed;
             label = button->text;
             enabled = !button->disabled;
         } else if (const world::Button* button = button_of(world, e); button != nullptr) {
             // A toggle button reads as a check box, as the addon's kind_of.
-            const bool toggle = button->toggle_mode && !ecs.all_of<world::MenuButton>(e);
+            const bool toggle = button->toggles && !ecs.all_of<world::MenuButton>(e);
             item["kind"] = toggle ? "checkbox" : "button";
             if (toggle) {
-                item["checked"] = button->button_pressed;
+                item["checked"] = button->pressed;
             }
             label = button->text;
             enabled = !button->disabled;
         } else if (const auto* texture = ecs.try_get<world::ImageButton>(e); texture != nullptr) {
-            item["kind"] = texture->toggle_mode ? "checkbox" : "button";
-            if (texture->toggle_mode) {
-                item["checked"] = texture->button_pressed;
+            item["kind"] = texture->toggles ? "checkbox" : "button";
+            if (texture->toggles) {
+                item["checked"] = texture->pressed;
             }
             enabled = !texture->disabled;
         } else if (const auto* slider = ecs.try_get<world::Slider>(e); slider != nullptr) {

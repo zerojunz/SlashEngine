@@ -17,7 +17,7 @@
         },
         "Widget": {
           "children": ["title", "name", "password", "age", "status"],
-          "custom_minimum_size": [240.0, 0.0],
+          "min_size": [240.0, 0.0],
           "offset_left": 40.0,
           "offset_top": 16.0
         }

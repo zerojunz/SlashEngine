@@ -1322,7 +1322,7 @@ TEST_CASE("Model3D's material_override draws a spatial material or a Surface3D")
     };
     const std::array<int, 3> plain = draw();
     auto& instance = scene.world.ecs().get<world::Model3D>(box);
-    instance.material_override = "materials/paint.material.json";
+    instance.material = "materials/paint.material.json";
     const std::array<int, 3> painted = draw();
     CHECK(painted[1] > painted[0] + 60);
     CHECK(painted[1] > painted[2] + 60);
@@ -1334,22 +1334,22 @@ TEST_CASE("Model3D's material_override draws a spatial material or a Surface3D")
     CHECK(repainted[0] > repainted[1] + 60);
     CHECK(repainted[0] > painted[0]);
     instance.material_params.clear();
-    instance.material_override = "materials/red.standard_material.json";
+    instance.material = "materials/red.standard_material.json";
     CHECK(draw() == std::array<int, 3>{255, 0, 0});
     CHECK(scene3d::check_meshes(scene.world).empty());
 
     // A canvas material and a missing file are problems scene validate reports.
-    instance.material_override = "materials/flat.material.json";
+    instance.material = "materials/flat.material.json";
     std::vector<scene3d::Problem> problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 1);
-    CHECK(problems[0].path == "/components/Model3D/material_override");
+    CHECK(problems[0].path == "/components/Model3D/material");
     CHECK(problems[0].message == "\"materials/flat.material.json\" is a canvas material; a mesh "
                                  "takes one with \"shader_type\": \"spatial\"");
-    instance.material_override = "materials/gone.material.json";
+    instance.material = "materials/gone.material.json";
     problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 1);
     CHECK(problems[0].message.starts_with("\"materials/gone.material.json\" could not be read"));
-    instance.material_override = "materials/paint.png";
+    instance.material = "materials/paint.png";
     problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 1);
     CHECK(problems[0].message.starts_with("expected a .material.json"));

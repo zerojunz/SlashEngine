@@ -441,8 +441,8 @@ void set_loose(world::World& world, entt::entity entity, float lifetime) {
     if (piece == nullptr) {
         return;
     }
-    if (auto* rigid = ecs.try_get<world::RigidBody3D>(entity); rigid != nullptr && rigid->freeze) {
-        rigid->freeze = false;
+    if (auto* rigid = ecs.try_get<world::RigidBody3D>(entity); rigid != nullptr && rigid->frozen) {
+        rigid->frozen = false;
         rigid->sleeping = false;
         if (piece->lifetime <= 0.0F) {
             piece->lifetime = lifetime;
@@ -494,7 +494,7 @@ void show_state(world::World& world, entt::entity entity, const world::DamagePro
     if (auto* instance = ecs.try_get<world::Model3D>(entity);
         instance != nullptr && after != nullptr) {
         if (!after->material.empty()) {
-            instance->material_override = after->material;
+            instance->material = after->material;
         }
         if (!after->mesh.empty() && !ecs.all_of<FracturePiece3D>(entity)) {
             instance->mesh = after->mesh;
@@ -603,16 +603,16 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
         base.collision_mask = fixed->collision_mask;
         base.friction = fixed->friction;
         base.bounce = fixed->bounce;
-        base.physics_material_override = fixed->physics_material_override;
+        base.physics_material = fixed->physics_material;
     }
     if (profile != nullptr && (rigid == nullptr || own_piece != nullptr)) {
         // A profile's density weighs what has no mass of its own, and every piece of a piece.
         mass = static_cast<float>(volume) * volume_scale(place.scale) * profile->density;
     }
-    const bool standing = rigid == nullptr || (own_piece != nullptr && rigid->freeze);
+    const bool standing = rigid == nullptr || (own_piece != nullptr && rigid->frozen);
     const bool connected = profile != nullptr && profile->connected && standing;
-    base.freeze = false;
-    base.freeze_mode = "static";
+    base.frozen = false;
+    base.frozen_mode = "static";
     base.sleeping = false;
     base.inertia = {};
     base.lock_rotation = false;
@@ -715,8 +715,8 @@ Result<std::vector<entt::entity>> break_body(world::World& world, entt::entity e
             }
         }
         body.angular_velocity = angular;
-        body.freeze = !loose[i];
-        if (body.freeze) {
+        body.frozen = !loose[i];
+        if (body.frozen) {
             body.linear_velocity = {};
             body.angular_velocity = {};
         }
@@ -900,7 +900,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
     particles.amount = amount;
     particles.lifetime = effect.lifetime;
     particles.one_shot = true;
-    particles.explosiveness = 1.0F;
+    particles.burst = 1.0F;
     particles.randomness = 0.5F;
     particles.lifetime_randomness = 0.3F;
     particles.seed = static_cast<int>(hash_id(world.id_of(made)) & 0x7FFFFFFFU);
@@ -940,7 +940,7 @@ std::string leave_particles(world::World& world, std::string_view body, std::str
         material.transparency = "alpha";
     }
     if (dust) {
-        material.shading_mode = "unshaded";
+        material.shading = "unshaded";
     }
     ecs.emplace<world::Surface3D>(made, std::move(material));
     ecs.emplace<world::DamageEffect>(
@@ -980,7 +980,7 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
             world::Decal look;
             look.size = {size, size, size};
             look.texture_albedo = set.decal.texture;
-            look.modulate = set.decal.modulate;
+            look.tint = set.decal.modulate;
             ecs.emplace<world::Decal>(decal, std::move(look));
             ecs.emplace<world::DamageEffect>(
                 decal,
@@ -994,7 +994,7 @@ std::vector<std::string> leave_effects(world::World& world, std::string_view bod
             world::SoundPlayer3D player;
             player.stream = set.sound.stream;
             player.volume_db = set.sound.volume_db;
-            player.pitch_scale = set.sound.pitch_scale;
+            player.pitch = set.sound.pitch_scale;
             player.bus = set.sound.bus;
             player.autoplay = true;
             player.playing = true;
@@ -1275,7 +1275,7 @@ Result<DamageReport> damage_body(world::World& world, entt::entity entity, float
         }
     } else if (piece) {
         const bool was_standing = ecs.all_of<world::RigidBody3D>(entity) &&
-                                  ecs.get<const world::RigidBody3D>(entity).freeze;
+                                  ecs.get<const world::RigidBody3D>(entity).frozen;
         set_loose(world, entity, profile->debris.lifetime);
         report.fell = was_standing;
     }
@@ -1338,7 +1338,7 @@ std::vector<std::string> settle_group(world::World& world, std::string_view grou
     std::vector<entt::entity> standing;
     for (const entt::entity entity : members) {
         const auto* rigid = ecs.try_get<const world::RigidBody3D>(entity);
-        if (rigid != nullptr && rigid->freeze) {
+        if (rigid != nullptr && rigid->frozen) {
             index.emplace(std::string(world.id_of(entity)), standing.size());
             standing.push_back(entity);
         }
@@ -1487,7 +1487,7 @@ void break_and_age(world::World& world, Space& space, float seconds) {
             const entt::entity other = world.find(link.piece);
             const auto* rigid =
                 other != entt::null ? ecs.try_get<const world::RigidBody3D>(other) : nullptr;
-            if (rigid == nullptr || !rigid->freeze) {
+            if (rigid == nullptr || !rigid->frozen) {
                 state.unsettled.insert(piece.group);
                 break;
             }

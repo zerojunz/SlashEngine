@@ -3,12 +3,12 @@
     "crate": {
       "components": {
         "Sprite2D": {
+          "filter": "nearest",
           "material": "dissolve.material.json",
           "material_params": {
             "amount": 0.5
           },
-          "texture": "crate.png",
-          "texture_filter": "nearest"
+          "texture": "crate.png"
         },
         "Transform2D": {
           "position": [24.0, 24.0]
@@ -18,9 +18,9 @@
     "flag": {
       "components": {
         "Sprite2D": {
+          "filter": "nearest",
           "material": "wave.material.json",
-          "texture": "flag.png",
-          "texture_filter": "nearest"
+          "texture": "flag.png"
         },
         "Transform2D": {
           "position": [72.0, 24.0]

@@ -98,9 +98,9 @@
       "components": {
         "SolidExtrusion3D": {
           "mode": "path",
+          "path": "track",
           "path_interval": 0.25,
           "path_joined": true,
-          "path_node": "track",
           "polygon": [
             [-0.35, -0.2],
             [0.35, -0.2],

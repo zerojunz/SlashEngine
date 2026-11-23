@@ -574,7 +574,7 @@ json::Value schema(bool list_ops) {
     properties["shader_type"]["default"] = "canvas_item";
     properties["shader_type"]["description"] =
         "What it draws, as Godot's shader_type: sprites and controls (canvas_item), meshes "
-        "(spatial, which needs a shader; Model3D's material_override names it), or a "
+        "(spatial, which needs a shader; Model3D's material names it), or a "
         "screen pass over the 3D world (compositor, which needs a shader; a .pipeline.json "
         "effect names it).";
     json::Array modes;

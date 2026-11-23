@@ -481,7 +481,7 @@ TEST_CASE("3D particles draw their mesh at each particle, colored and facing the
 
     // Without the billboard, the quads stay edge on to the camera and show nothing.
     for (const entt::entity entity : {red, blue}) {
-        scene.world.ecs().get<world::Surface3D>(entity).billboard_mode = "disabled";
+        scene.world.ecs().get<world::Surface3D>(entity).billboard = "disabled";
     }
     auto edge_target = device->create_texture({.width = 32, .height = 32, .render_target = true});
     REQUIRE(edge_target.ok());

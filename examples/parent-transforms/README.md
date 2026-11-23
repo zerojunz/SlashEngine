@@ -26,7 +26,7 @@ entity.get {"components":["Transform2D"],"id":"flag"}
   `top_level`: the shot stays where it was fired when the boat sails on. It draws after the
   rest of the boat's tree and before the rock made after the boat, and takes neither the boat's
   `z_index` nor its tint, though hiding the boat would still hide it.
-- A `z_index` with `z_as_relative` off is the whole of it, not added to the parents': the
+- A `z_index` with `sort_order_relative` off is the whole of it, not added to the parents': the
   cannon's -1 puts it under the boat and the rock whatever the boat's `z_index` is.
 - An edit that would give a child two parents or make it its own ancestor fails, with the JSON
   Pointer of the entry at fault; `slash-cli scene validate` reports the same in a file.

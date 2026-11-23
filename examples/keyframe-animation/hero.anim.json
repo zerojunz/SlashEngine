@@ -15,7 +15,7 @@
               "value": [1, 1, 1, 1]
             }
           ],
-          "path": "Sprite2D/modulate"
+          "path": "Sprite2D/tint"
         },
         {
           "keys": [

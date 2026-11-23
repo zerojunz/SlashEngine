@@ -706,17 +706,19 @@ float attenuation_db(const world::SoundPlayer3D& player, float distance) {
     };
     float att = 0.0F;
     if (player.attenuation_model == "inverse_distance") {
-        att = static_cast<float>(to_db(1.0 / ((distance / player.unit_size) + kCmpEpsilon)));
+        att =
+            static_cast<float>(to_db(1.0 / ((distance / player.reference_distance) + kCmpEpsilon)));
     } else if (player.attenuation_model == "inverse_square_distance") {
-        float d = distance / player.unit_size;
+        float d = distance / player.reference_distance;
         d *= d;
         att = static_cast<float>(to_db(1.0 / (d + kCmpEpsilon)));
     } else if (player.attenuation_model == "logarithmic") {
-        att = static_cast<float>(-20 * std::log((distance / player.unit_size) + kCmpEpsilon));
+        att = static_cast<float>(-20 *
+                                 std::log((distance / player.reference_distance) + kCmpEpsilon));
     }
     att += player.volume_db;
-    if (att > player.max_db) {
-        att = player.max_db;
+    if (att > player.max_volume_db) {
+        att = player.max_volume_db;
     }
     return att;
 }
@@ -855,14 +857,14 @@ Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area
 entt::entity overriding_area(world::World& world, const world::SoundPlayer3D& player,
                              Vec3 position) {
     constexpr std::size_t kMaxIntersectAreas = 32; // Godot's MAX_INTERSECT_AREAS
-    const physics3d::QueryFilter filter{.collision_mask = player.area_mask,
+    const physics3d::QueryFilter filter{.collision_mask = player.zone_mask,
                                         .collide_with_bodies = false,
                                         .collide_with_areas = true,
                                         .exclude = {}};
     for (const entt::entity found :
          physics3d::overlap_point(world, position, filter, kMaxIntersectAreas)) {
         const auto* area = world.ecs().try_get<world::Zone3D>(found);
-        if (area != nullptr && (area->audio_bus_override || area->reverb_bus_enabled)) {
+        if (area != nullptr && (area->bus_override || area->reverb_bus_enabled)) {
             return found;
         }
     }
@@ -891,7 +893,7 @@ void place(State& state, world::World& /*world*/, const Hearing& /*hearing*/,
         out.volume[1] = both; // the center and the LFE
     }
     out.mix.assign(1, {out.bus, out.volume});
-    out.pitch = pitch_of(player.pitch_scale);
+    out.pitch = pitch_of(player.pitch);
 }
 
 void place(State& state, world::World& world, const Hearing& hearing,
@@ -904,41 +906,41 @@ void place(State& state, world::World& world, const Hearing& hearing,
     // layer is in its area_mask and which overrides the bus, else its own bus. Godot takes the
     // areas in the physics server's order; ID order is the same on every run.
     out.bus = player.bus;
-    if (player.area_mask != 0) {
+    if (player.zone_mask != 0) {
         constexpr std::size_t kMaxIntersectAreas = 32; // Godot's MAX_INTERSECT_AREAS
-        const physics2d::QueryFilter filter{.collision_mask = player.area_mask,
+        const physics2d::QueryFilter filter{.collision_mask = player.zone_mask,
                                             .collide_with_bodies = false,
                                             .collide_with_areas = true,
                                             .exclude = {}};
         for (const entt::entity found :
              physics2d::overlap_point(world, position, filter, kMaxIntersectAreas)) {
             const auto* area = world.ecs().try_get<world::Zone2D>(found);
-            if (area != nullptr && area->audio_bus_override) {
+            if (area != nullptr && area->bus_override) {
                 out.bus = area->audio_bus_name;
                 break;
             }
         }
     }
     out.mix.assign(1, {out.bus, out.volume});
-    out.pitch = pitch_of(player.pitch_scale);
+    out.pitch = pitch_of(player.pitch);
 }
 
 // Godot's AudioStreamPlayer3D::_update_panning, for one listener.
 void place(State& state, world::World& world, const Hearing& hearing,
            const world::SoundPlayer3D& player, entt::entity entity, PlayerState& out) {
-    const float pitch_scale = pitch_of(player.pitch_scale);
+    const float pitch_scale = pitch_of(player.pitch);
     if (!out.known) {
         out.pitch = pitch_scale;
     }
     const world::Affine3D global = hearing.tree3d->global(entity);
     const Vec3 global_pos = global.origin;
-    const entt::entity area_entity = hearing.areas3d && player.area_mask != 0
+    const entt::entity area_entity = hearing.areas3d && player.zone_mask != 0
                                          ? overriding_area(world, player, global_pos)
                                          : entt::entity{entt::null};
     const world::Zone3D* area =
         area_entity != entt::null ? &world.ecs().get<world::Zone3D>(area_entity) : nullptr;
     // _get_actual_bus: where a voice starts.
-    out.bus = area != nullptr && area->audio_bus_override && !area->reverb_bus_enabled
+    out.bus = area != nullptr && area->bus_override && !area->reverb_bus_enabled
                   ? known_bus(*state.server, area->audio_bus_name)
                   : player.bus;
     out.volume = {};
@@ -1014,7 +1016,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
     };
     if (area != nullptr) {
         // As Godot's: with a reverb bus and no bus override, it plays only through the reverb.
-        if (area->audio_bus_override) {
+        if (area->bus_override) {
             set_bus(known_bus(*state.server, area->audio_bus_name), output);
         }
         if (area->reverb_bus_enabled) {
@@ -1619,13 +1621,13 @@ json::Value settings_schema() {
         number_setting("How far SoundPlayer3D sounds pan left and right, as Godot's "
                        "audio/general/3d_panning_strength.",
                        0, 4, Settings{}.panning_strength_3d);
-    properties["channel_disable_threshold_db"] =
+    properties["silence_threshold_db"] =
         number_setting("A bus's speaker pair quieter than this, in dB, for channel_disable_time "
                        "stops mixing its effects until sound comes again, as Godot's "
                        "audio/buses/channel_disable_threshold_db; reverb and delay tails ring "
                        "longer below a lower one.",
                        -80, 0, Settings{}.channel_disable_threshold_db);
-    properties["channel_disable_time"] =
+    properties["silence_seconds"] =
         number_setting("Seconds a bus's speaker pair stays below channel_disable_threshold_db "
                        "before it stops, as Godot's audio/buses/channel_disable_time.",
                        0, 5, Settings{}.channel_disable_time);
@@ -1635,9 +1637,9 @@ json::Value settings_schema() {
     properties["speaker_mode"]["description"] =
         "The speakers to mix for, as Godot's AudioServer speaker modes: auto is the output "
         "device's (stereo headless), the others fix them, so headless runs can test surround.";
-    properties["enable_input"]["type"] = "boolean";
-    properties["enable_input"]["default"] = false;
-    properties["enable_input"]["description"] =
+    properties["input_enabled"]["type"] = "boolean";
+    properties["input_enabled"]["default"] = false;
+    properties["input_enabled"]["description"] =
         "Let AudioStreamMicrophone players record, as Godot's audio/driver/enable_input; exports "
         "then ask the player for the microphone.";
     properties["input_usage_description"]["type"] = "string";
@@ -1688,17 +1690,17 @@ Settings parse_settings(const json::Value& settings) {
     if (const json::Value* panning = settings.find("panning_strength_3d"); panning != nullptr) {
         out.panning_strength_3d = static_cast<float>(panning->as_double());
     }
-    if (const json::Value* threshold = settings.find("channel_disable_threshold_db");
+    if (const json::Value* threshold = settings.find("silence_threshold_db");
         threshold != nullptr) {
         out.channel_disable_threshold_db = static_cast<float>(threshold->as_double());
     }
-    if (const json::Value* time = settings.find("channel_disable_time"); time != nullptr) {
+    if (const json::Value* time = settings.find("silence_seconds"); time != nullptr) {
         out.channel_disable_time = time->as_double();
     }
     if (const json::Value* speakers = settings.find("speaker_mode"); speakers != nullptr) {
         out.speaker_mode = parse_speaker_mode(speakers->as_string());
     }
-    if (const json::Value* input = settings.find("enable_input"); input != nullptr) {
+    if (const json::Value* input = settings.find("input_enabled"); input != nullptr) {
         out.enable_input = input->as_bool();
     }
     if (const json::Value* reason = settings.find("input_usage_description"); reason != nullptr) {
@@ -1817,7 +1819,7 @@ Result<void> set_input_stream(world::World& world, std::string_view stream) {
     }
     if (!state->settings.enable_input) {
         return make_error(ErrorCode::InvalidArgument,
-                          "microphone input is off; turn on audio.enable_input in project.json");
+                          "microphone input is off; turn on audio.input_enabled in project.json");
     }
     if (!stream.empty()) {
         auto loaded = load_stream(*state->assets, stream);

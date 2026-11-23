@@ -3,6 +3,7 @@
 #include "internal.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1457,8 +1458,10 @@ std::string track_name(const Track& track) {
     return track.path.empty() ? event_track_name(track) : value_track_name(track);
 }
 
-std::vector<json::ValidationError> check_trees(const json::Value& doc,
+std::vector<json::ValidationError> check_trees(const json::Value& as_written,
                                                const world::FileReader& reader) {
+    json::Value current;
+    const json::Value& doc = world::current_names(as_written, current);
     std::vector<json::ValidationError> errors;
     if (!reader) {
         return errors;
@@ -1487,19 +1490,19 @@ std::vector<json::ValidationError> check_trees(const json::Value& doc,
         if (component == nullptr || !component->is_object()) {
             return;
         }
-        const json::Value* root = component->find("tree_root");
+        const json::Value* root = component->find("root");
         if (root == nullptr || !root->is_string() || root->as_string().empty()) {
             return; // checked in the prefab or scene it comes from
         }
         const std::string& path = root->as_string();
         if (!path.ends_with(kTreeSuffix)) {
-            errors.push_back({at + "/tree_root", "animation trees are .animtree.json files, as "
-                                                 "\"anim/hero.animtree.json\""});
+            errors.push_back({at + "/root", "animation trees are .animtree.json files, as "
+                                            "\"anim/hero.animtree.json\""});
             return;
         }
         const Result<AnimationTreeResource>& tree = load_tree(path);
         if (!tree) {
-            errors.push_back({at + "/tree_root", path + ": " + tree.error().message});
+            errors.push_back({at + "/root", path + ": " + tree.error().message});
             return;
         }
         // The animations of its libraries, by their names in the tree.

@@ -1,7 +1,7 @@
 # Depth of field 3D
 
 A camera focusing, as Godot 4.6's depth of field in its Forward+ renderer, the default
-`rendering.rendering_method`. [main.scene.json](main.scene.json) is a garden seen through a
+`rendering.renderer`. [main.scene.json](main.scene.json) is a garden seen through a
 `Camera3D` in a 320x180 window: a yellow lantern 1.4 meters away, a red statue at 4 and a white
 fence with dark posts at 15.
 
@@ -13,7 +13,7 @@ The camera's `CameraLens` focuses on the statue, as Godot's camera `attributes` 
   `dof_blur_near_transition` 1.5 meters, so the lantern is fully blurred too.
 - `dof_blur_amount` 0.15 makes the full blur 0.15 times 64 pixels, about 10.
 
-[project.json](project.json) sets `rendering.camera.depth_of_field`, as Godot's project settings:
+[project.json](project.json) sets `rendering.depth_of_field`, as Godot's project settings:
 the hexagon bokeh shape (the default) at `medium` quality, which blurs at full size.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

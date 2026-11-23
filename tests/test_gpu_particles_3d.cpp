@@ -467,7 +467,7 @@ TEST_CASE("GpuEmitter3D draws its draw passes at its particles, culled by its vi
 
     // A second pass with no mesh draws nothing more.
     auto& settings = scene.world.ecs().get<world::GpuEmitter3D>(emitter);
-    settings.draw_passes = 2;
+    settings.mesh_count = 2;
     (void)draw();
     CHECK(renderer.meshes_drawn() == 1);
 
@@ -533,7 +533,7 @@ TEST_CASE("GpuEmitter3D pairs with the attractors its box touches, as Godot's sc
 
     // With local_coords the attractors are in the emitter's space.
     auto& settings = scene.world.ecs().get<world::GpuEmitter3D>(emitter);
-    settings.local_coords = true;
+    settings.local_space = true;
     scene.world.ecs().get<world::Transform3D>(emitter).position = {1.0F, 0.0F, 0.0F};
     scene.step();
     kept = scene3d::particle_steps_3d(scene.world, emitter);

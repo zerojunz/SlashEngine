@@ -2,54 +2,102 @@
   "entities": {
     "close": {
       "components": {
-        "Widget": {"custom_minimum_size": [16, 16]},
-        "ImageButton": {}
+        "ImageButton": {},
+        "Widget": {
+          "min_size": [16.0, 16.0]
+        }
       }
     },
     "difficulty": {
       "components": {
-        "Widget": {"accessibility_name": "Difficulty"},
-        "Dropdown": {"items": [{"text": "Easy"}, {"text": "Normal"}, {"text": "Hard"}], "selected": 1}
+        "Dropdown": {
+          "items": [
+            {
+              "text": "Easy"
+            },
+            {
+              "text": "Normal"
+            },
+            {
+              "text": "Hard"
+            }
+          ],
+          "selected": 1
+        },
+        "Widget": {
+          "accessibility_name": "Difficulty"
+        }
       }
     },
     "hint": {
       "components": {
-        "Label": {"text": "Changes apply at once"}
+        "Label": {
+          "text": "Changes apply at once"
+        }
       }
     },
     "menu": {
       "components": {
-        "StackBox": {"vertical": true},
-        "Widget": {"children": ["title", "resume", "music", "volume", "difficulty", "player", "hint", "close"], "offset_left": 10, "offset_top": 6}
+        "StackBox": {
+          "vertical": true
+        },
+        "Widget": {
+          "children": ["title", "resume", "music", "volume", "difficulty", "player", "hint", "close"],
+          "offset_left": 10.0,
+          "offset_top": 6.0
+        }
       }
     },
     "music": {
       "components": {
-        "CheckBox": {"button_pressed": true, "text": "Music"}
+        "CheckBox": {
+          "pressed": true,
+          "text": "Music"
+        }
       }
     },
     "player": {
       "components": {
-        "Widget": {"accessibility_described_by_nodes": ["hint"], "custom_minimum_size": [120, 0]},
-        "TextField": {"placeholder_text": "Your name"}
+        "TextField": {
+          "placeholder_text": "Your name"
+        },
+        "Widget": {
+          "accessibility_described_by_nodes": ["hint"],
+          "min_size": [120.0, 0.0]
+        }
       }
     },
     "resume": {
       "components": {
-        "Button": {"text": "Resume"},
-        "Widget": {"accessibility_description": "Back to the game"}
+        "Button": {
+          "text": "Resume"
+        },
+        "Widget": {
+          "accessibility_description": "Back to the game"
+        }
       }
     },
     "title": {
       "components": {
-        "Widget": {"accessibility_live": "polite"},
-        "Label": {"text": "Paused"}
+        "Label": {
+          "text": "Paused"
+        },
+        "Widget": {
+          "accessibility_live": "polite"
+        }
       }
     },
     "volume": {
       "components": {
-        "Widget": {"accessibility_labeled_by_nodes": ["title"], "accessibility_name": "Volume", "custom_minimum_size": [120, 0]},
-        "Slider": {"step": 10, "value": 50}
+        "Slider": {
+          "step": 10.0,
+          "value": 50.0
+        },
+        "Widget": {
+          "accessibility_labeled_by_nodes": ["title"],
+          "accessibility_name": "Volume",
+          "min_size": [120.0, 0.0]
+        }
       }
     }
   },

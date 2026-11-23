@@ -229,12 +229,12 @@ TEST_CASE("models draw coarser LODs further from the camera, as Godot's Forward+
     CHECK(scene.drawn() == std::array<std::size_t, 2>{1, 0});
 }
 
-TEST_CASE("project.json's mesh_lod threshold is read as Godot's") {
+TEST_CASE("project.json's lod threshold is read as Godot's") {
     const auto threshold = [](std::string_view rendering) {
         return render::mesh_lod_threshold(json::parse(rendering).value());
     };
     CHECK(threshold(R"({})") == 1.0F);
-    CHECK(threshold(R"({"mesh_lod": {"lod_change": {"threshold_pixels": 4}}})") == 4.0F);
-    CHECK(threshold(R"({"mesh_lod": {"lod_change": {"threshold_pixels": 0}}})") == 0.0F);
-    CHECK(threshold(R"({"mesh_lod": {"lod_change": {"threshold_pixels": -1}}})") == 1.0F);
+    CHECK(threshold(R"({"lod": {"threshold_pixels": 4}})") == 4.0F);
+    CHECK(threshold(R"({"lod": {"threshold_pixels": 0}})") == 0.0F);
+    CHECK(threshold(R"({"lod": {"threshold_pixels": -1}})") == 1.0F);
 }

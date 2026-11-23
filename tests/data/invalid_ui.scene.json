@@ -6,7 +6,7 @@
           "text": "Esc: resume"
         },
         "Widget": {
-          "theme_override_colors": {
+          "theme_colors": {
             "font_colour": [1.0, 1.0, 1.0, 1.0]
           }
         }

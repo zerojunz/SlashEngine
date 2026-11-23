@@ -61,11 +61,10 @@ class Mover {
 public:
     Mover(const Space& space, Body& body, world::Affine3D& transform, CharacterMover3D& character)
         : space_(&space), body_(&body), transform_(&transform), c_(&character),
-          grounded_mode_(character.motion_mode != "floating"),
-          up_(normalized(character.up_direction)), margin_(character.safe_margin),
-          floor_normal_(character.floor_normal), wall_normal_(character.wall_normal),
-          platform_velocity_(character.platform_velocity), platform_(body.platform),
-          platform_layer_(body.platform_layer) {}
+          grounded_mode_(character.movement != "floating"), up_(normalized(character.up)),
+          margin_(character.safe_margin), floor_normal_(character.floor_normal),
+          wall_normal_(character.wall_normal), platform_velocity_(character.platform_velocity),
+          platform_(body.platform), platform_layer_(body.platform_layer) {}
 
     // CharacterBody3D::move_and_slide.
     void move_and_slide(float delta) {

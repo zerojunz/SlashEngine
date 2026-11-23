@@ -99,11 +99,11 @@ public class Hopper : MonoBehaviour
           "color": [0.2, 0.8, 0.3, 1.0]
         },
         "Widget": {
-          "mouse_filter": "ignore",
           "offset_bottom": 16.0,
           "offset_left": 8.0,
           "offset_right": 72.0,
-          "offset_top": 8.0
+          "offset_top": 8.0,
+          "pointer_mode": "ignore"
         }
       }
     },

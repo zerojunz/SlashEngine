@@ -256,10 +256,10 @@ project.import {"source":"godot"}
           "offset_left": 8.0,
           "offset_right": 120.0,
           "offset_top": 6.0,
-          "theme_override_colors": {
+          "theme_colors": {
             "font_color": [1.0, 0.85, 0.2, 1.0]
           },
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 12
           }
         }
@@ -453,9 +453,6 @@ project.import {"source":"godot"}
   "gameplay": {
     "sources": ["src"]
   },
-  "gui": {
-    "theme": "godot/ui_theme.theme.json"
-  },
   "input": {
     "jump": {
       "deadzone": 0.5,
@@ -497,11 +494,9 @@ project.import {"source":"godot"}
       ]
     }
   },
-  "internationalization": {
-    "locale": {
-      "fallback": "en",
-      "translations": ["godot/text/strings.csv"]
-    }
+  "localization": {
+    "fallback": "en",
+    "translations": ["godot/text/strings.csv"]
   },
   "main_scene": "godot/main.scene.json",
   "name": "Coin Run",
@@ -511,8 +506,11 @@ project.import {"source":"godot"}
   "rendering": {
     "clear_color": [0.1, 0.12, 0.2, 1.0],
     "driver": "opengl",
-    "rendering_method": "gl_compatibility",
+    "renderer": "gl_compatibility",
     "texture_filter": "nearest"
+  },
+  "ui": {
+    "theme": "godot/ui_theme.theme.json"
   },
   "version": "0.1.0",
   "window": {

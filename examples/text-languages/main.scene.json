@@ -29,7 +29,7 @@
           "value": 30.0
         },
         "Widget": {
-          "custom_minimum_size": [0.0, 24.0]
+          "min_size": [0.0, 24.0]
         }
       }
     },
@@ -108,7 +108,7 @@
           "text": "القائمة الرئيسية"
         },
         "Widget": {
-          "theme_override_font_sizes": {
+          "theme_font_sizes": {
             "font_size": 24
           }
         }

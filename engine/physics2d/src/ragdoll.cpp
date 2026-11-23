@@ -279,11 +279,11 @@ RigidBody2D body_of(const RigidBody2D& old, const world::RagdollBone& bone,
     out.collision_mask = profile.self_collision ? profile.collision_mask
                                                 : profile.collision_mask & ~profile.collision_layer;
     out.mass = bone.mass;
-    out.physics_material_override = bone.physics_material;
+    out.physics_material = bone.physics_material;
     out.linear_damp = bone.linear_damp;
     out.angular_damp = bone.angular_damp;
-    out.freeze = frozen;
-    out.freeze_mode = "kinematic";
+    out.frozen = frozen;
+    out.frozen_mode = "kinematic";
     out.can_sleep = !frozen;
     return out;
 }
@@ -525,10 +525,10 @@ void run_ragdoll(world::World& world, entt::entity entity, Ragdoll& state, float
             body_of(old_body != nullptr ? *old_body : RigidBody2D{}, bone, p, frozen);
         if (old_body == nullptr || body.collision_layer != old_body->collision_layer ||
             body.collision_mask != old_body->collision_mask || body.mass != old_body->mass ||
-            body.physics_material_override != old_body->physics_material_override ||
+            body.physics_material != old_body->physics_material ||
             body.linear_damp != old_body->linear_damp ||
-            body.angular_damp != old_body->angular_damp || body.freeze != old_body->freeze ||
-            body.freeze_mode != old_body->freeze_mode || body.can_sleep != old_body->can_sleep) {
+            body.angular_damp != old_body->angular_damp || body.frozen != old_body->frozen ||
+            body.frozen_mode != old_body->frozen_mode || body.can_sleep != old_body->can_sleep) {
             ecs.emplace_or_replace<RigidBody2D>(part, body);
         }
         const auto* old_shape = ecs.try_get<const Collider2D>(part);
@@ -549,8 +549,8 @@ void run_ragdoll(world::World& world, entt::entity entity, Ragdoll& state, float
             continue;
         }
         PinJoint2D wanted;
-        wanted.node_a = above;
-        wanted.node_b = part;
+        wanted.body_a = above;
+        wanted.body_b = part;
         wanted.angular_limit_enabled = bone.joint == "hinge";
         wanted.angular_limit_lower = bone.lower;
         wanted.angular_limit_upper = bone.upper;
@@ -565,8 +565,8 @@ void run_ragdoll(world::World& world, entt::entity entity, Ragdoll& state, float
             ecs.emplace<Transform2D>(joint, at);
         }
         const auto* old_joint = ecs.try_get<const PinJoint2D>(joint);
-        if (old_joint == nullptr || old_joint->node_a != wanted.node_a ||
-            old_joint->node_b != wanted.node_b ||
+        if (old_joint == nullptr || old_joint->body_a != wanted.body_a ||
+            old_joint->body_b != wanted.body_b ||
             old_joint->angular_limit_enabled != wanted.angular_limit_enabled ||
             old_joint->angular_limit_lower != wanted.angular_limit_lower ||
             old_joint->angular_limit_upper != wanted.angular_limit_upper) {

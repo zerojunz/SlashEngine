@@ -216,19 +216,19 @@ Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprit
                                   std::to_string(texture_height) + " texture");
         }
     }
-    if (sprite.hframes < 1 || sprite.vframes < 1) {
+    if (sprite.columns < 1 || sprite.rows < 1) {
         return make_error(ErrorCode::InvalidArgument, "hframes and vframes must be at least 1");
     }
-    const int count = sprite.hframes * sprite.vframes;
+    const int count = sprite.columns * sprite.rows;
     if (sprite.frame < 0 || sprite.frame >= count) {
         return make_error(ErrorCode::InvalidArgument,
                           "frame " + std::to_string(sprite.frame) + " is outside the sheet's " +
                               std::to_string(count) + " frames, numbered from 0");
     }
-    const float cell_w = rw / static_cast<float>(sprite.hframes);
-    const float cell_h = rh / static_cast<float>(sprite.vframes);
-    const int column = sprite.frame % sprite.hframes;
-    const int row = sprite.frame / sprite.hframes;
+    const float cell_w = rw / static_cast<float>(sprite.columns);
+    const float cell_h = rh / static_cast<float>(sprite.rows);
+    const int column = sprite.frame % sprite.columns;
+    const int row = sprite.frame / sprite.columns;
     const float cell_x = rx + (static_cast<float>(column) * cell_w);
     const float cell_y = ry + (static_cast<float>(row) * cell_h);
 
@@ -255,8 +255,8 @@ Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprit
         transform.skew == 0.0F ? cos_r : std::cos(transform.rotation + transform.skew);
     const float sin_k =
         transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
-    const std::array<std::uint8_t, 4> rgba{to_byte(sprite.modulate.x), to_byte(sprite.modulate.y),
-                                           to_byte(sprite.modulate.z), to_byte(sprite.modulate.w)};
+    const std::array<std::uint8_t, 4> rgba{to_byte(sprite.tint.x), to_byte(sprite.tint.y),
+                                           to_byte(sprite.tint.z), to_byte(sprite.tint.w)};
     const auto corner = [&](float x, float y, float u, float v) {
         const float sx = x * transform.scale.x;
         const float sy = y * transform.scale.y;
@@ -318,13 +318,13 @@ Inherited inherited(const world::World& world, const world::Tree2D& tree, entt::
             }
         };
         if (const auto* sprite = ecs.try_get<world::Sprite2D>(up); sprite != nullptr) {
-            take(sprite->z_index, sprite->z_as_relative, sprite->visible, &sprite->modulate);
+            take(sprite->sort_order, sprite->sort_order_relative, sprite->visible, &sprite->tint);
         } else if (const auto* layer = ecs.try_get<world::TileLayer2D>(up); layer != nullptr) {
-            take(layer->z_index, layer->z_as_relative, layer->visible, &layer->modulate);
+            take(layer->sort_order, layer->sort_order_relative, layer->visible, &layer->tint);
         } else if (const auto* emitter = ecs.try_get<world::Emitter2D>(up); emitter != nullptr) {
-            take(emitter->z_index, emitter->z_as_relative, emitter->visible, nullptr);
+            take(emitter->sort_order, emitter->sort_order_relative, emitter->visible, nullptr);
         } else if (const auto* gpu = ecs.try_get<world::GpuEmitter2D>(up); gpu != nullptr) {
-            take(gpu->z_index, gpu->z_as_relative, gpu->visible, nullptr);
+            take(gpu->sort_order, gpu->sort_order_relative, gpu->visible, nullptr);
         }
         if (top_level(up)) {
             add_z = false;
@@ -1377,7 +1377,7 @@ void CanvasRenderer::gather_cloths(DrawState& state) {
         if (!cloth.visible || !from_parents.visible || !canvas_list[canvas].visible) {
             continue;
         }
-        const int z = z_index(cloth.z_index, cloth.z_as_relative, from_parents);
+        const int z = z_index(cloth.sort_order, cloth.sort_order_relative, from_parents);
         const int columns = world::cloth_columns(cloth);
         const int rows = world::cloth_rows(cloth);
         const auto count = static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows);
@@ -1398,8 +1398,8 @@ void CanvasRenderer::gather_cloths(DrawState& state) {
         const render::Image* image = nullptr;
         std::string_view path;
         if (!cloth.texture.empty()) {
-            auto texture = this->texture(
-                cloth.texture, resolve_filter(cloth.texture_filter, options.texture_filter));
+            auto texture =
+                this->texture(cloth.texture, resolve_filter(cloth.filter, options.texture_filter));
             if (!texture) {
                 warn_once(cloth.texture, texture.error().message, "texture", "cloth can't draw");
                 state.problem(entity, "/components/Cloth2D/texture", texture.error().message);
@@ -1411,7 +1411,7 @@ void CanvasRenderer::gather_cloths(DrawState& state) {
         }
         render::Material material;
         material.shading =
-            state.shading_for(render::LightMode::Normal, cloth.light_mask, z, canvas);
+            state.shading_for(render::LightMode::Normal, cloth.light_layers, z, canvas);
         const std::array<std::uint8_t, 4> rgba{to_byte(cloth.color.x * from_parents.modulate.x),
                                                to_byte(cloth.color.y * from_parents.modulate.y),
                                                to_byte(cloth.color.z * from_parents.modulate.z),
@@ -1520,8 +1520,8 @@ void CanvasRenderer::gather_hair(DrawState& state) {
         const render::Image* image = nullptr;
         std::string_view path;
         if (cards && !groom.texture.empty()) {
-            auto texture = this->texture(
-                groom.texture, resolve_filter(hair.texture_filter, options.texture_filter));
+            auto texture =
+                this->texture(groom.texture, resolve_filter(hair.filter, options.texture_filter));
             if (!texture) {
                 warn_once(groom.texture, texture.error().message, "texture", "hair can't draw");
                 state.problem(entity, "/components/Hair2D/groom", texture.error().message);
@@ -1531,12 +1531,13 @@ void CanvasRenderer::gather_hair(DrawState& state) {
             image = &texture.value()->pixels();
             path = texture.value()->path;
         }
-        const int z = z_index(hair.z_index, hair.z_as_relative, from_parents);
+        const int z = z_index(hair.sort_order, hair.sort_order_relative, from_parents);
         render::Material material;
-        material.shading = state.shading_for(render::LightMode::Normal, hair.light_mask, z, canvas);
+        material.shading =
+            state.shading_for(render::LightMode::Normal, hair.light_layers, z, canvas);
         const Vec4 tint{
-            hair.modulate.x * from_parents.modulate.x, hair.modulate.y * from_parents.modulate.y,
-            hair.modulate.z * from_parents.modulate.z, hair.modulate.w * from_parents.modulate.w};
+            hair.tint.x * from_parents.modulate.x, hair.tint.y * from_parents.modulate.y,
+            hair.tint.z * from_parents.modulate.z, hair.tint.w * from_parents.modulate.w};
         const std::size_t first = vertices.size();
         // A ribbon along points, narrowing from root to tip.
         const auto ribbon = [&](std::span<const Vec3> along, Vec4 color, real_t root_width,
@@ -1652,14 +1653,14 @@ void CanvasRenderer::gather_fluids(DrawState& state) {
             state.problem(entity, "/components/Fluid2D", texture.error().message);
             continue;
         }
-        const int z = z_index(fluid.z_index, fluid.z_as_relative, from_parents);
+        const int z = z_index(fluid.sort_order, fluid.sort_order_relative, from_parents);
         render::Material material;
         material.shading =
             state.shading_for(recipe.gas ? render::LightMode::Unshaded : render::LightMode::Normal,
-                              fluid.light_mask, z, canvas);
+                              fluid.light_layers, z, canvas);
         const Vec4 tint{
-            fluid.modulate.x * from_parents.modulate.x, fluid.modulate.y * from_parents.modulate.y,
-            fluid.modulate.z * from_parents.modulate.z, fluid.modulate.w * from_parents.modulate.w};
+            fluid.tint.x * from_parents.modulate.x, fluid.tint.y * from_parents.modulate.y,
+            fluid.tint.z * from_parents.modulate.z, fluid.tint.w * from_parents.modulate.w};
         const float half = world::fluid_draw_size(recipe) * 0.5F;
         const std::size_t first = vertices.size();
         std::size_t drawn = 0;
@@ -1881,8 +1882,8 @@ void CanvasRenderer::gather_polygons(DrawState& state) {
         std::string_view path;
         Vec2 texture_size{1.0F, 1.0F};
         if (!polygon.texture.empty()) {
-            auto texture = this->texture(
-                polygon.texture, resolve_filter(polygon.texture_filter, options.texture_filter));
+            auto texture = this->texture(polygon.texture,
+                                         resolve_filter(polygon.filter, options.texture_filter));
             if (!texture) {
                 warn_once(polygon.texture, texture.error().message, "texture",
                           "polygon can't draw");
@@ -1896,14 +1897,13 @@ void CanvasRenderer::gather_polygons(DrawState& state) {
                             static_cast<real_t>(std::max(image->height, 1U))};
         }
         const world::Affine2D place = tree.global_affine(entity);
-        const int z = z_index(polygon.z_index, polygon.z_as_relative, from_parents);
+        const int z = z_index(polygon.sort_order, polygon.sort_order_relative, from_parents);
         render::Material material;
         material.shading =
-            state.shading_for(render::LightMode::Normal, polygon.light_mask, z, canvas);
-        const Vec4 tint{polygon.modulate.x * from_parents.modulate.x,
-                        polygon.modulate.y * from_parents.modulate.y,
-                        polygon.modulate.z * from_parents.modulate.z,
-                        polygon.modulate.w * from_parents.modulate.w};
+            state.shading_for(render::LightMode::Normal, polygon.light_layers, z, canvas);
+        const Vec4 tint{
+            polygon.tint.x * from_parents.modulate.x, polygon.tint.y * from_parents.modulate.y,
+            polygon.tint.z * from_parents.modulate.z, polygon.tint.w * from_parents.modulate.w};
         // Flesh moves a character's parts' points (slash/world/flesh.hpp).
         const std::vector<Vec2>* moved = world::flesh_offsets_2d(world, entity);
         const auto corner = [&](std::size_t i) {
@@ -1992,13 +1992,12 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
         if (!foliage_wind) {
             foliage_wind.emplace(world, tree);
         }
-        const int z = z_index(foliage.z_index, foliage.z_as_relative, from_parents);
+        const int z = z_index(foliage.sort_order, foliage.sort_order_relative, from_parents);
         const world::Affine2D place = tree.global_affine(entity);
-        const std::array<std::uint8_t, 4> rgba{
-            to_byte(foliage.modulate.x * from_parents.modulate.x),
-            to_byte(foliage.modulate.y * from_parents.modulate.y),
-            to_byte(foliage.modulate.z * from_parents.modulate.z),
-            to_byte(foliage.modulate.w * from_parents.modulate.w)};
+        const std::array<std::uint8_t, 4> rgba{to_byte(foliage.tint.x * from_parents.modulate.x),
+                                               to_byte(foliage.tint.y * from_parents.modulate.y),
+                                               to_byte(foliage.tint.z * from_parents.modulate.z),
+                                               to_byte(foliage.tint.w * from_parents.modulate.w)};
         for (std::size_t g = 0; g < foliage.groups.size(); ++g) {
             const world::FoliageGroup2D& group = foliage.groups[g];
             const std::string field = "/components/Foliage2D/groups/" + std::to_string(g) + "/type";
@@ -2012,8 +2011,8 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
                 state.problem(entity, field, "is a 3D type: a Foliage2D draws 2D ones");
                 continue;
             }
-            auto texture = this->texture(
-                type->texture, resolve_filter(foliage.texture_filter, options.texture_filter));
+            auto texture = this->texture(type->texture,
+                                         resolve_filter(foliage.filter, options.texture_filter));
             if (!texture) {
                 warn_once(type->texture, texture.error().message, "texture", "foliage can't draw");
                 state.problem(entity, field, texture.error().message);
@@ -2030,7 +2029,7 @@ void CanvasRenderer::gather_foliage(DrawState& state) {
             });
             render::Material material;
             material.shading =
-                state.shading_for(render::LightMode::Normal, foliage.light_mask, z, canvas);
+                state.shading_for(render::LightMode::Normal, foliage.light_layers, z, canvas);
             const std::size_t first = vertices.size();
             for (const std::size_t i : order) {
                 const procedural::FoliagePlace2D each = procedural::foliage_place(group, i);
@@ -2117,7 +2116,7 @@ void CanvasRenderer::gather_reflections(DrawState& state) {
             !(reflection.size.x > 0.0F) || !(reflection.size.y > 0.0F)) {
             continue;
         }
-        const int z = z_index(reflection.z_index, reflection.z_as_relative, from_parents);
+        const int z = z_index(reflection.sort_order, reflection.sort_order_relative, from_parents);
         const world::Affine2D place = world::affine(state.transform_of(entity));
         const Vec2 top_left = place.apply({0.0F, 0.0F});
         const Vec2 across = place.apply({reflection.size.x, 0.0F}) - top_left;
@@ -2474,14 +2473,14 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         std::optional<world::Sprite2D> tinted;
         if (from_parents.modulate != Vec4{1.0F, 1.0F, 1.0F, 1.0F}) {
             tinted = own_sprite;
-            tinted->modulate = {own_sprite.modulate.x * from_parents.modulate.x,
-                                own_sprite.modulate.y * from_parents.modulate.y,
-                                own_sprite.modulate.z * from_parents.modulate.z,
-                                own_sprite.modulate.w * from_parents.modulate.w};
+            tinted->tint = {own_sprite.tint.x * from_parents.modulate.x,
+                            own_sprite.tint.y * from_parents.modulate.y,
+                            own_sprite.tint.z * from_parents.modulate.z,
+                            own_sprite.tint.w * from_parents.modulate.w};
         }
         const world::Sprite2D& sprite = tinted ? *tinted : own_sprite;
-        const int z = z_index(sprite.z_index, sprite.z_as_relative, from_parents);
-        const render::Filter filter = resolve_filter(sprite.texture_filter, options.texture_filter);
+        const int z = z_index(sprite.sort_order, sprite.sort_order_relative, from_parents);
+        const render::Filter filter = resolve_filter(sprite.filter, options.texture_filter);
         if (awaits_video_frame(world, sprite.texture)) {
             continue;
         }
@@ -2502,7 +2501,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, sprite.light_mask, z, canvas);
+        material.shading = shading_for(light_mode, sprite.light_layers, z, canvas);
         if (material.shading.mode != render::LightMode::Unshaded) {
             // Normal and specular maps, left out with a warning if they don't load.
             for (const auto& [path, slot, field] :
@@ -2559,14 +2558,13 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         if (!emitter.visible || !from_parents.visible || !canvas_list[canvas].visible) {
             continue;
         }
-        const int z = z_index(emitter.z_index, emitter.z_as_relative, from_parents);
+        const int z = z_index(emitter.sort_order, emitter.sort_order_relative, from_parents);
         const std::vector<Particle> live = canvas::particles(world, entity);
         if (live.empty()) {
             continue;
         }
         constexpr std::string_view kEvent = "particles can't draw";
-        const render::Filter filter =
-            resolve_filter(emitter.texture_filter, options.texture_filter);
+        const render::Filter filter = resolve_filter(emitter.filter, options.texture_filter);
         // A particle is its texture's frame, or a white pixel.
         render::TextureId texture_id = render::TextureId::None;
         const render::Image* image = nullptr;
@@ -2575,8 +2573,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         float frame_h = 1.0F;
         float sheet_w = 1.0F;
         float sheet_h = 1.0F;
-        const int hframes = std::max(emitter.hframes, 1);
-        const int vframes = std::max(emitter.vframes, 1);
+        const int hframes = std::max(emitter.columns, 1);
+        const int vframes = std::max(emitter.rows, 1);
         if (!emitter.texture.empty()) {
             auto texture = this->texture(emitter.texture, filter);
             if (!texture) {
@@ -2606,11 +2604,11 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, emitter.light_mask, z, canvas);
+        material.shading = shading_for(light_mode, emitter.light_layers, z, canvas);
         // With local_coords, particles move with the entity's transform.
         world::Transform2D local;
         if (const auto* current = ecs.try_get<world::Transform2D>(entity);
-            emitter.local_coords && current != nullptr) {
+            emitter.local_space && current != nullptr) {
             local = transform_of(entity, *current);
         }
         const auto place = [&](Vec2 point) { return world_position(emitter, local, point); };
@@ -2759,17 +2757,16 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             !canvas_list[canvas].visible) {
             continue;
         }
-        const int z = z_index(emitter.z_index, emitter.z_as_relative, from_parents);
+        const int z = z_index(emitter.sort_order, emitter.sort_order_relative, from_parents);
         const render::ParticleProcess* process = process_of(entity);
         if (process == nullptr) {
             continue;
         }
-        const render::Filter filter =
-            resolve_filter(emitter.texture_filter, options.texture_filter);
+        const render::Filter filter = resolve_filter(emitter.filter, options.texture_filter);
         // A particle is its texture's frame, or a white pixel.
         render::ParticleDraw look;
-        look.hframes = static_cast<std::uint32_t>(std::max(emitter.hframes, 1));
-        look.vframes = static_cast<std::uint32_t>(std::max(emitter.vframes, 1));
+        look.hframes = static_cast<std::uint32_t>(std::max(emitter.columns, 1));
+        look.vframes = static_cast<std::uint32_t>(std::max(emitter.rows, 1));
         render::TextureId texture_id = render::TextureId::None;
         const render::Image* image = nullptr;
         std::string_view path;
@@ -2801,7 +2798,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             }
             material = std::move(made).value();
         }
-        material.shading = shading_for(light_mode, emitter.light_mask, z, canvas);
+        material.shading = shading_for(light_mode, emitter.light_layers, z, canvas);
         const bool in_chain = chained.contains(entity);
         if (!in_chain) {
             auto job = particle_job(cached, *kept, process);
@@ -2840,7 +2837,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         // Particles in the emitter's coordinates move with it.
         world::Affine2D placed;
-        if (emitter.local_coords && ecs.all_of<world::Transform2D>(entity)) {
+        if (emitter.local_space && ecs.all_of<world::Transform2D>(entity)) {
             placed = world::affine(transform_of(entity, world::Transform2D{}));
         }
         // FrameContents gets the particles run on the CPU, as the device runs them.
@@ -2894,7 +2891,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             layer.rows.empty() || !canvas_list[canvas].visible) {
             continue;
         }
-        const int z = z_index(layer.z_index, layer.z_as_relative, from_parents);
+        const int z = z_index(layer.sort_order, layer.sort_order_relative, from_parents);
         constexpr std::string_view kEvent = "a tile map layer can't draw";
         auto set = tile_set(layer.tile_set);
         if (!set) {
@@ -2925,8 +2922,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const float sin_k =
             transform.skew == 0.0F ? sin_r : std::sin(transform.rotation + transform.skew);
         const Vec4 tint{
-            layer.modulate.x * from_parents.modulate.x, layer.modulate.y * from_parents.modulate.y,
-            layer.modulate.z * from_parents.modulate.z, layer.modulate.w * from_parents.modulate.w};
+            layer.tint.x * from_parents.modulate.x, layer.tint.y * from_parents.modulate.y,
+            layer.tint.z * from_parents.modulate.z, layer.tint.w * from_parents.modulate.w};
         std::array<std::uint8_t, 4> rgba{};
         const auto corner = [&](float x, float y, float u, float v) {
             const float sx = x * transform.scale.x;
@@ -2938,7 +2935,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 .v = v,
                 .rgba = rgba};
         };
-        const render::Filter filter = resolve_filter(layer.texture_filter, options.texture_filter);
+        const render::Filter filter = resolve_filter(layer.filter, options.texture_filter);
         // How each source's tiles are shaded: with its normal and specular maps, left out with a
         // warning if they don't load.
         std::map<const AtlasSource*, render::Material> source_materials;
@@ -2948,7 +2945,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 return found->second;
             }
             render::Shading& shading = found->second.shading;
-            shading = shading_for(render::LightMode::Normal, layer.light_mask, z, canvas);
+            shading = shading_for(render::LightMode::Normal, layer.light_layers, z, canvas);
             if (shading.mode == render::LightMode::Unshaded) {
                 return found->second;
             }

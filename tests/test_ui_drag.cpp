@@ -783,7 +783,7 @@ TEST_CASE("check finds tooltips that can't show and drag previews that can't be 
               "odd/components/DragAndDrop/drag_preview: \"thing\" isn't a control",
               "self/components/DragAndDrop/drag_preview: a control can't be its own drag preview",
               "title/components/Widget/tooltip_text: the tooltip won't show: the pointer passes "
-              "this control by; set mouse_filter to \"stop\" or \"pass\"",
+              "this control by; set pointer_mode to \"stop\" or \"pass\"",
               "thing/components/DragAndDrop: DragAndDrop works on a control; give it a Widget"});
 }
 
@@ -874,9 +874,9 @@ TEST_CASE("ui.drag, ui.tooltip and ui.layout drag controls, show tooltips and re
     CHECK(s.fails("ui.tooltip", "{}") == "/id: no entity has the id \"\"");
 }
 
-TEST_CASE("project.json's gui object sets the tooltip delay, its offset and the drag threshold") {
+TEST_CASE("project.json's ui object sets the tooltip delay, its offset and the drag threshold") {
     ui::Settings settings;
-    ui::read_settings(parse(R"({"tooltip_delay_sec": 1.5, "tooltip_position_offset": [4, 6],
+    ui::read_settings(parse(R"({"tooltip_delay_seconds": 1.5, "tooltip_offset": [4, 6],
         "drag_threshold": 3, "theme": 7})"),
                       settings);
     CHECK(settings.tooltip_delay_sec == 1.5);

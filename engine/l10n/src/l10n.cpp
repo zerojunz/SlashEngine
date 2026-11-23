@@ -317,20 +317,19 @@ json::Value settings_schema() {
     translations["description"] =
         "Translation files by project path: CSV files (a keys column, then a column per locale) "
         "and gettext .po and .mo files.";
-    json::Value locale = object("The project's translations and the locales it looks in, as "
-                                "Godot's internationalization/locale.");
-    locale["properties"]["translations"] = std::move(translations);
-    locale["properties"]["fallback"] =
+    json::Value schema = object("Translations, the locales the game looks in and how they lay "
+                                "out controls.");
+    schema["properties"]["translations"] = std::move(translations);
+    schema["properties"]["fallback"] =
         string("en", "The locale to look in when the player's has no translation of a message; "
                      "\"\" for none, so the source text shows.");
-    locale["properties"]["test"] =
+    schema["properties"]["test"] =
         string("", "A locale to run in instead of the player's, to check a translation; \"\" "
                    "for the player's.");
 
     json::Value pseudo = object("A fake translation of every message that shows untranslated, "
-                                "clipped or right-to-left-unready text, as Godot's.");
-    pseudo["properties"]["use_pseudolocalization"] =
-        boolean(false, "Pseudolocalize every message looked up.");
+                                "clipped or right-to-left-unready text.");
+    pseudo["properties"]["enabled"] = boolean(false, "Pseudolocalize every message looked up.");
     pseudo["properties"]["replace_with_accents"] =
         boolean(true, "Replace letters with accented ones: \"Start\" is \"Ŝŧáŕŧ\".");
     pseudo["properties"]["double_vowels"] =
@@ -359,18 +358,11 @@ json::Value settings_schema() {
     direction["description"] =
         "Which way controls at the root lay out when they inherit: as the game's locale writes, "
         "left to right, right to left, or as the player's machine's locale writes.";
-    json::Value rendering = object("How locales lay out controls, as Godot's "
-                                   "internationalization/rendering.");
-    rendering["properties"]["root_node_layout_direction"] = std::move(direction);
-    rendering["properties"]["force_right_to_left_layout_direction"] =
+    schema["properties"]["pseudo"] = std::move(pseudo);
+    schema["properties"]["layout_direction"] = std::move(direction);
+    schema["properties"]["force_right_to_left"] =
         boolean(false, "Lay out every control right to left but those set to ltr, to check a "
                        "layout before a right-to-left translation exists.");
-
-    json::Value schema = object("Translations and the player's language, as Godot's "
-                                "internationalization settings.");
-    schema["properties"]["locale"] = std::move(locale);
-    schema["properties"]["pseudolocalization"] = std::move(pseudo);
-    schema["properties"]["rendering"] = std::move(rendering);
     return schema;
 }
 
@@ -383,14 +375,14 @@ std::vector<json::ValidationError> validate_settings(const json::Value& settings
     if (!errors.empty()) {
         return errors;
     }
-    const json::Value* translations = member(member(&settings, "locale"), "translations");
+    const json::Value* translations = member(&settings, "translations");
     if (translations == nullptr) {
         return errors;
     }
     const json::Array& files = translations->as_array();
     for (std::size_t i = 0; i < files.size(); ++i) {
         const std::string& path = files[i].as_string();
-        const std::string pointer = std::string(at) + "/locale/translations/" + std::to_string(i);
+        const std::string pointer = std::string(at) + "/translations/" + std::to_string(i);
         if (!is_project_path(path)) {
             errors.push_back({pointer, "expected a project path, relative and separated by '/'"});
         } else if (!translation_suffix(path)) {
@@ -402,8 +394,7 @@ std::vector<json::ValidationError> validate_settings(const json::Value& settings
 
 Settings parse_settings(const json::Value& settings) {
     Settings out;
-    const json::Value* locale = member(&settings, "locale");
-    if (const json::Value* translations = member(locale, "translations");
+    if (const json::Value* translations = member(&settings, "translations");
         translations != nullptr && translations->is_array()) {
         for (const json::Value& path : translations->as_array()) {
             if (path.is_string()) {
@@ -411,11 +402,11 @@ Settings parse_settings(const json::Value& settings) {
             }
         }
     }
-    read_string(locale, "fallback", out.fallback);
-    read_string(locale, "test", out.test);
-    const json::Value* pseudo = member(&settings, "pseudolocalization");
+    read_string(&settings, "fallback", out.fallback);
+    read_string(&settings, "test", out.test);
+    const json::Value* pseudo = member(&settings, "pseudo");
     Pseudolocalization& p = out.pseudolocalization;
-    read_bool(pseudo, "use_pseudolocalization", p.use_pseudolocalization);
+    read_bool(pseudo, "enabled", p.use_pseudolocalization);
     read_bool(pseudo, "replace_with_accents", p.replace_with_accents);
     read_bool(pseudo, "double_vowels", p.double_vowels);
     read_bool(pseudo, "fake_bidi", p.fake_bidi);
@@ -427,8 +418,7 @@ Settings parse_settings(const json::Value& settings) {
     read_string(pseudo, "prefix", p.prefix);
     read_string(pseudo, "suffix", p.suffix);
     read_bool(pseudo, "skip_placeholders", p.skip_placeholders);
-    const json::Value* rendering = member(&settings, "rendering");
-    if (const json::Value* direction = member(rendering, "root_node_layout_direction");
+    if (const json::Value* direction = member(&settings, "layout_direction");
         direction != nullptr && direction->is_string()) {
         for (std::size_t i = 0; i < kDirections.size(); ++i) {
             if (kDirections[i] == direction->as_string()) {
@@ -436,8 +426,7 @@ Settings parse_settings(const json::Value& settings) {
             }
         }
     }
-    read_bool(rendering, "force_right_to_left_layout_direction",
-              out.force_right_to_left_layout_direction);
+    read_bool(&settings, "force_right_to_left", out.force_right_to_left_layout_direction);
     return out;
 }
 

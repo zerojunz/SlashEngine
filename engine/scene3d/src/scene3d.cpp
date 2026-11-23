@@ -181,7 +181,7 @@ render::Light3D light_base(const T& light, render::LightType type, bool units) {
         }
     }
     out.specular = light.light_specular;
-    out.cull_mask = light.light_cull_mask;
+    out.cull_mask = light.lit_layers;
     out.shadow = light.shadow_enabled;
     out.shadow_bias = light.shadow_bias;
     out.shadow_normal_bias = light.shadow_normal_bias;
@@ -329,7 +329,7 @@ void add_sky(const world::World& world, entt::entity entity, Environment& out) {
         p.sky_horizon_color = rgb(m.sky_horizon_color);
         p.sky_curve = m.sky_curve;
         p.sky_energy_multiplier = m.sky_energy_multiplier;
-        p.sky_cover_modulate = rgba(m.sky_cover_modulate);
+        p.sky_cover_modulate = rgba(m.sky_cover_tint);
         p.ground_bottom_color = rgb(m.ground_bottom_color);
         p.ground_horizon_color = rgb(m.ground_horizon_color);
         p.ground_curve = m.ground_curve;
@@ -376,7 +376,7 @@ constexpr std::string_view kNoParticleMesh =
     "has no mesh to draw at its particles: set mesh to a model file, or add a QuadGeometry or "
     "another primitive mesh";
 constexpr std::string_view kNoDrawPassMesh =
-    "has no mesh to draw at its particles: set draw_pass_1 to a model file, or add a QuadGeometry "
+    "has no mesh to draw at its particles: set mesh_1 to a model file, or add a QuadGeometry "
     "or "
     "another primitive mesh";
 
@@ -572,24 +572,24 @@ Environment world_environment(const world::World& world, render::Color clear) {
         fog.temporal_reprojection = env.volumetric_fog_temporal_reprojection_enabled;
         fog.temporal_reprojection_amount = env.volumetric_fog_temporal_reprojection_amount;
     }
-    if (env.sdfgi_enabled) {
+    if (env.field_lighting_enabled) {
         render::Sdfgi3D& gi = out.sdfgi;
         gi.enabled = true;
-        gi.cascades = env.sdfgi_cascades;
-        gi.min_cell_size = env.sdfgi_min_cell_size;
+        gi.cascades = env.field_lighting_cascades;
+        gi.min_cell_size = env.field_lighting_min_cell_size;
         // Godot's sdfgi_y_scale: heights count twice as much at 50 percent.
         gi.y_scale = 1.5F;
-        if (env.sdfgi_y_scale == "50_percent") {
+        if (env.field_lighting_y_scale == "50_percent") {
             gi.y_scale = 2.0F;
-        } else if (env.sdfgi_y_scale == "100_percent") {
+        } else if (env.field_lighting_y_scale == "100_percent") {
             gi.y_scale = 1.0F;
         }
-        gi.use_occlusion = env.sdfgi_use_occlusion;
-        gi.bounce_feedback = env.sdfgi_bounce_feedback;
-        gi.read_sky_light = env.sdfgi_read_sky_light;
-        gi.energy = env.sdfgi_energy;
-        gi.normal_bias = env.sdfgi_normal_bias;
-        gi.probe_bias = env.sdfgi_probe_bias;
+        gi.use_occlusion = env.field_lighting_use_occlusion;
+        gi.bounce_feedback = env.field_lighting_bounce_feedback;
+        gi.read_sky_light = env.field_lighting_read_sky_light;
+        gi.energy = env.field_lighting_energy;
+        gi.normal_bias = env.field_lighting_normal_bias;
+        gi.probe_bias = env.field_lighting_probe_bias;
     }
     if (env.ssr_enabled) {
         out.ssr = {.enabled = true,
@@ -838,7 +838,7 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
 
 namespace {
 
-// Why a Model3D's material_override can't draw, as far as can be told without loading it:
+// Why a Model3D's material can't draw, as far as can be told without loading it:
 // it isn't a material file, can't be read, or (a .material.json file) isn't a spatial material;
 // "" for none. Its file's own mistakes are its file's to report.
 std::string override_problem(const world::World& world, const std::string& path) {
@@ -907,11 +907,10 @@ std::vector<Problem> check_meshes(const world::World& world) {
     }
     std::map<entt::entity, Model> loaded;
     for (const entt::entity entity : made<world::Model3D>(world)) {
-        if (std::string problem = override_problem(
-                world, world.ecs().get<const world::Model3D>(entity).material_override);
+        if (std::string problem =
+                override_problem(world, world.ecs().get<const world::Model3D>(entity).material);
             !problem.empty()) {
-            problems.push_back(
-                {entity, "/components/Model3D/material_override", std::move(problem)});
+            problems.push_back({entity, "/components/Model3D/material", std::move(problem)});
         }
         const std::string& path = world.ecs().get<const world::Model3D>(entity).mesh;
         if (path.empty()) {
@@ -1004,9 +1003,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     // A GpuEmitter3D draws its draw passes' models, or for the first "" its primitive mesh.
     for (const entt::entity entity : made<world::GpuEmitter3D>(world)) {
         const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(entity);
-        const std::array<const std::string*, 4> passes{&emitter.draw_pass_1, &emitter.draw_pass_2,
-                                                       &emitter.draw_pass_3, &emitter.draw_pass_4};
-        const auto count = static_cast<std::size_t>(std::clamp(emitter.draw_passes, 1, 4));
+        const std::array<const std::string*, 4> passes{&emitter.mesh_1, &emitter.mesh_2,
+                                                       &emitter.mesh_3, &emitter.mesh_4};
+        const auto count = static_cast<std::size_t>(std::clamp(emitter.mesh_count, 1, 4));
         for (std::size_t pass = 0; pass < count; ++pass) {
             const std::string field =
                 "/components/GpuEmitter3D/draw_pass_" + std::to_string(pass + 1);
@@ -1157,7 +1156,7 @@ std::vector<json::ValidationError> check_meshes(const world::ComponentRegistry& 
 render::Material3D material(const world::Surface3D& standard, const TextureSource& textures,
                             std::vector<Problem>& problems, entt::entity entity) {
     render::Material3D out;
-    const bool nearest = standard.texture_filter.starts_with("nearest");
+    const bool nearest = standard.filter.starts_with("nearest");
     const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
     const auto texture = [&](const std::string& path,
                              const char* field) -> render::MaterialTexture {
@@ -1170,7 +1169,7 @@ render::Material3D material(const world::Surface3D& standard, const TextureSourc
                 {entity, std::string("/components/Surface3D/") + field, made.error().message});
             return {};
         }
-        return {.texture = made.value().id, .repeat = standard.texture_repeat};
+        return {.texture = made.value().id, .repeat = standard.repeat};
     };
     out.albedo = {standard.albedo_color.x, standard.albedo_color.y, standard.albedo_color.z,
                   standard.albedo_color.w};
@@ -1193,7 +1192,7 @@ render::Material3D material(const world::Surface3D& standard, const TextureSourc
         out.normal_texture = texture(standard.normal_texture, "normal_texture");
         out.normal_scale = standard.normal_scale;
     }
-    out.unshaded = standard.shading_mode == "unshaded";
+    out.unshaded = standard.shading == "unshaded";
     if (standard.transparency == "alpha") {
         out.transparency = render::Transparency::Alpha;
     } else if (standard.transparency == "alpha_scissor") {
@@ -1209,10 +1208,10 @@ render::Material3D material(const world::Surface3D& standard, const TextureSourc
     } else if (standard.cull_mode == "disabled") {
         out.cull = render::CullMode::Disabled;
     }
-    out.uv1_scale = {static_cast<float>(standard.uv1_scale.x),
-                     static_cast<float>(standard.uv1_scale.y)};
-    out.uv1_offset = {static_cast<float>(standard.uv1_offset.x),
-                      static_cast<float>(standard.uv1_offset.y)};
+    out.uv1_scale = {static_cast<float>(standard.uv_scale.x),
+                     static_cast<float>(standard.uv_scale.y)};
+    out.uv1_offset = {static_cast<float>(standard.uv_offset.x),
+                      static_cast<float>(standard.uv_offset.y)};
     out.disable_fog = standard.disable_fog;
     if (standard.rim_enabled) {
         out.rim = standard.rim;
@@ -1225,15 +1224,15 @@ render::Material3D material(const world::Surface3D& standard, const TextureSourc
     if (standard.anisotropy_enabled) {
         out.anisotropy = standard.anisotropy;
     }
-    if (standard.subsurf_scatter_enabled) {
-        out.subsurface = standard.subsurf_scatter_strength;
-        out.subsurface_skin = standard.subsurf_scatter_skin_mode;
-        out.transmittance = standard.subsurf_scatter_transmittance_enabled;
-        const Vec4& through = standard.subsurf_scatter_transmittance_color;
+    if (standard.subsurface_enabled) {
+        out.subsurface = standard.subsurface_strength;
+        out.subsurface_skin = standard.subsurface_skin_mode;
+        out.transmittance = standard.subsurface_transmittance_enabled;
+        const Vec4& through = standard.subsurface_transmittance_color;
         out.transmittance_color = {static_cast<float>(through.x), static_cast<float>(through.y),
                                    static_cast<float>(through.z), static_cast<float>(through.w)};
-        out.transmittance_depth = standard.subsurf_scatter_transmittance_depth;
-        out.transmittance_boost = standard.subsurf_scatter_transmittance_boost;
+        out.transmittance_depth = standard.subsurface_transmittance_depth;
+        out.transmittance_boost = standard.subsurface_transmittance_boost;
     }
     return out;
 }
@@ -1244,19 +1243,18 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
                                                               bool& shadows_disabled) {
     shadows_disabled = false;
     const auto* standard = world.ecs().try_get<world::Surface3D>(entity);
-    if (instance.material_override.empty()) {
+    if (instance.material.empty()) {
         if (standard == nullptr) {
             return std::nullopt;
         }
         return material(*standard, textures_, problems_, entity);
     }
-    const std::string field = "/components/Model3D/material_override";
+    const std::string field = "/components/Model3D/material";
     if (!override_materials_) {
         problems_.push_back({entity, field, "material overrides can't load here"});
         return std::nullopt;
     }
-    auto loaded =
-        override_materials_(instance.material_override, instance.material_params, capture_time_);
+    auto loaded = override_materials_(instance.material, instance.material_params, capture_time_);
     if (!loaded) {
         const std::string& message = loaded.error().message;
         if (message.starts_with("material_params/")) {
@@ -1274,7 +1272,7 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
     }
     if (found.type != render::ShaderType::Spatial) {
         problems_.push_back({entity, field,
-                             "\"" + instance.material_override +
+                             "\"" + instance.material +
                                  "\" is a compositor material; a mesh takes one with "
                                  "\"shader_type\": \"spatial\""});
         return std::nullopt;
@@ -1293,7 +1291,7 @@ std::optional<render::Material3D> Renderer::override_material(const world::World
         if (!made) {
             problems_.push_back(
                 {entity, field,
-                 "\"" + instance.material_override + "\"'s texture: " + made.error().message});
+                 "\"" + instance.material + "\"'s texture: " + made.error().message});
             continue;
         }
         out.shader_textures.at(slot) = {.texture = made.value().id, .repeat = texture.repeat};
@@ -2181,7 +2179,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
     if (image < 0 || static_cast<std::size_t>(image) >= source.model->images.size()) {
         return {};
     }
-    const bool nearest = standard.texture_filter.starts_with("nearest");
+    const bool nearest = standard.filter.starts_with("nearest");
     const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
     const ModelImage& found = source.model->images[static_cast<std::size_t>(image)];
     if (!found.path.empty()) {
@@ -2191,7 +2189,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
                 {entity, field, "\"" + path + "\"'s texture: " + made.error().message});
             return {};
         }
-        return {.texture = made.value().id, .repeat = standard.texture_repeat};
+        return {.texture = made.value().id, .repeat = standard.repeat};
     }
     const std::string key = path + "@" + std::to_string(source.version) + "#" +
                             std::to_string(image) + (nearest ? "n" : "l");
@@ -2213,7 +2211,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
         embedded.id = made.value();
     }
     embedded.used = frame_;
-    return {.texture = embedded.id, .repeat = standard.texture_repeat};
+    return {.texture = embedded.id, .repeat = standard.repeat};
 }
 
 void Renderer::add_model(const world::World& world, entt::entity entity,
@@ -2234,7 +2232,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
         return;
     }
     const Model& model = *source.value().model;
-    // Its material_override, or a Surface3D on the entity, takes the place of every
+    // Its material, or a Surface3D on the entity, takes the place of every
     // surface's, as Godot's material_override.
     bool shadows_disabled = false;
     const std::optional<render::Material3D> override =
@@ -2302,7 +2300,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
         "skin:" + std::to_string(entt::to_integral(entity)) + ":" + prefix;
     // A moving mesh takes the light probes' light at its bounds' middle, as Godot's.
     render::LightmapCapture captured;
-    if (instance.gi_mode == "dynamic") {
+    if (instance.lighting_mode == "dynamic") {
         auto center = model_centers_.find(prefix);
         if (center == model_centers_.end()) {
             const Bounds box = bounds(model);
@@ -2415,7 +2413,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.lod_bias = instance.lod_bias;
             if (override) {
                 draw.material = *override;
-                if (!deformed && instance.material_override.empty()) {
+                if (!deformed && instance.material.empty()) {
                     face_camera(world.ecs().get<const world::Surface3D>(entity), part_place, draw);
                 }
             } else if (surface.material >= 0) {
@@ -2444,7 +2442,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 draw.material = *made_material;
             }
             render::MeshId lit = render::MeshId::None;
-            if (instance.gi_mode != "static" || deformed || part.skin >= 0) {
+            if (instance.lighting_mode != "static" || deformed || part.skin >= 0) {
                 // Moving meshes aren't baked; dynamic ones take the light probes'.
                 draw.material.capture = captured;
             } else if (const render::LightmapShading* lightmap =
@@ -2477,7 +2475,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 cut.place = part_place;
                 cut.box = draw.box;
                 cut.used = frame_;
-                cut.ignore_occlusion = instance.ignore_occlusion_culling;
+                cut.ignore_occlusion = instance.skip_occlusion;
                 if (cut.id != render::MeshId::None) {
                     draw.mesh = cut.id;
                 }
@@ -2530,7 +2528,7 @@ render::Material3D Renderer::surface_material(const SurfaceMaterial& from, entt:
 
 void Renderer::face_camera(const world::Surface3D& standard, const world::Affine3D& place,
                            Draw& draw) const {
-    const Billboard mode = billboard_of(standard.billboard_mode);
+    const Billboard mode = billboard_of(standard.billboard);
     if (mode == Billboard::Disabled) {
         return;
     }
@@ -2640,7 +2638,7 @@ void Renderer::add_multimesh(const world::World& world, entt::entity entity,
     instance.mesh = multimesh.mesh;
     instance.layers = multimesh.layers;
     instance.cast_shadow = multimesh.cast_shadow;
-    instance.gi_mode = "disabled";
+    instance.lighting_mode = "disabled";
     instance.lod_bias = multimesh.lod_bias;
     const std::size_t count =
         multimesh.visible_instance_count < 0
@@ -2737,7 +2735,7 @@ void Renderer::add_foliage(const world::World& world, entt::entity entity,
         instance.mesh = type->mesh;
         instance.layers = foliage.layers;
         instance.cast_shadow = type->cast_shadow;
-        instance.gi_mode = "disabled";
+        instance.lighting_mode = "disabled";
         // An impostor: a picture standing on the ground and turning to face the camera.
         std::optional<Bounds> impostor_box;
         if (!type->impostor.empty() && type->impostor_distance > 0.0F && models_) {
@@ -2969,7 +2967,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
     if (emitter.draw_order == "view_depth") {
         // Back to front along the camera's z, in the particles' own space.
         Vec3 z = camera.z;
-        if (emitter.local_coords) {
+        if (emitter.local_space) {
             z = place.inverse().basis(z);
         }
         sort_by_depth(particles, normalized(z));
@@ -2999,7 +2997,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
             look = &model->materials[static_cast<std::size_t>(piece.surface->material)].standard;
         }
         const Billboard mode =
-            look != nullptr ? billboard_of(look->billboard_mode) : Billboard::Disabled;
+            look != nullptr ? billboard_of(look->billboard) : Billboard::Disabled;
         const bool keep_scale = look != nullptr && look->billboard_keep_scale;
         // The texture coordinates are moved here, so a particle's frame comes after uv1, as in
         // Godot's shader.
@@ -3017,7 +3015,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
             world::Affine3D model_place = p.transform;
             model_place.origin =
                 p.previous + scaled(p.transform.origin - p.previous, interpolation);
-            if (emitter.local_coords) {
+            if (emitter.local_space) {
                 model_place = place * model_place;
             } else {
                 model_place.origin = model_place.origin - render_origin_;
@@ -3348,7 +3346,7 @@ void Renderer::add_fluid(const world::World& world, entt::entity entity, std::ui
     render::ShadowCasting casting = render::ShadowCasting::Off;
     if (recipe.gas) {
         look.transparency = "alpha";
-        look.shading_mode = "unshaded";
+        look.shading = "unshaded";
     } else {
         look.transparency = "alpha_scissor";
         look.alpha_scissor_threshold = 0.5F;
@@ -3523,9 +3521,9 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
         std::shared_ptr<const Model> model;
     };
     std::vector<Pass> passes;
-    const std::array<const std::string*, 4> paths{&emitter.draw_pass_1, &emitter.draw_pass_2,
-                                                  &emitter.draw_pass_3, &emitter.draw_pass_4};
-    const auto pass_count = static_cast<std::size_t>(std::clamp(emitter.draw_passes, 1, 4));
+    const std::array<const std::string*, 4> paths{&emitter.mesh_1, &emitter.mesh_2, &emitter.mesh_3,
+                                                  &emitter.mesh_4};
+    const auto pass_count = static_cast<std::size_t>(std::clamp(emitter.mesh_count, 1, 4));
     for (std::size_t pass = 0; pass < pass_count; ++pass) {
         Pass& made = passes.emplace_back();
         if (pass > 0 && paths.at(pass)->empty()) {
@@ -3601,19 +3599,19 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     look.lifetime_split =
         render::particle_lifetime_split(kept->amount, kept->steps.back().system_phase);
     look.align = particle_align(emitter.transform_align);
-    if (emitter.local_coords) {
+    if (emitter.local_space) {
         look.transform = particle_transform(place);
     }
     const world::Affine3D& camera = view.eye;
     Vec3 sort = camera.z;
-    if (emitter.local_coords) {
+    if (emitter.local_space) {
         sort = place.inverse().basis(sort);
     }
     look.sort_direction = to_float(normalized(sort));
     look.align_up = to_float(normalized(camera.y));
     // Particles in world coordinates are in the world, not around the render origin: their meshes
     // are made there and drawn moved by it.
-    const Vec3 shift = emitter.local_coords ? Vec3{} : render_origin_;
+    const Vec3 shift = emitter.local_space ? Vec3{} : render_origin_;
     world::Affine3D eye = camera;
     eye.origin = eye.origin + shift;
     look.camera = particle_transform(eye);
@@ -3684,7 +3682,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
             }
             render::ParticleMeshDraw3D at = look;
             if (standard != nullptr) {
-                switch (billboard_of(standard->billboard_mode)) {
+                switch (billboard_of(standard->billboard)) {
                 case Billboard::Disabled:
                     at.billboard = render::ParticleBillboard::Disabled;
                     break;
@@ -3827,7 +3825,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
         return;
     }
     render::ShadowCasting casting = casting_of(terrain.cast_shadow);
-    if ((terrain.render_layers & lens.cull_mask) == 0) {
+    if ((terrain.render_layers & lens.layer_filter) == 0) {
         if (casting == render::ShadowCasting::Off) {
             return;
         }
@@ -4229,7 +4227,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
         if (!moving) {
             moving.emplace();
             for (const entt::entity object : made<world::Model3D>(world)) {
-                if (ecs.get<const world::Model3D>(object).gi_mode == "dynamic" &&
+                if (ecs.get<const world::Model3D>(object).lighting_mode == "dynamic" &&
                     tree.visible(object)) {
                     moving->push_back({.entity = object,
                                        .object = &voxel_object(world, object),
@@ -4591,14 +4589,14 @@ std::optional<Frame3D> Renderer::prepare(
     find_lightmaps(world, env.exposure, global);
     frame.scene.decals.filter = decal_filter;
     if (method == render::RenderMethod::ForwardPlus) {
-        add_decals(world, tree, global, lens.cull_mask, env.exposure, frame.scene.decals);
+        add_decals(world, tree, global, lens.layer_filter, env.exposure, frame.scene.decals);
     }
     if (method == render::RenderMethod::ForwardPlus) {
-        add_splats(world, tree, global, lens.cull_mask, frame.scene.splats);
+        add_splats(world, tree, global, lens.layer_filter, frame.scene.splats);
     }
     add_effects(world, camera, method, frame);
     if (method == render::RenderMethod::ForwardPlus && frame.scene.volumetric_fog.enabled) {
-        add_fog_volumes(world, tree, global, lens.cull_mask, frame.scene.volumetric_fog.volumes);
+        add_fog_volumes(world, tree, global, lens.layer_filter, frame.scene.volumetric_fog.volumes);
     }
 
     for (const entt::entity entity : made<world::Model3D>(world)) {
@@ -4608,7 +4606,7 @@ std::optional<Frame3D> Renderer::prepare(
         }
         // A mesh the camera doesn't see still casts, as Godot's: it draws only into shadow maps.
         render::ShadowCasting casting = casting_of(instance.cast_shadow);
-        if ((instance.layers & lens.cull_mask) == 0) {
+        if ((instance.layers & lens.layer_filter) == 0) {
             if (casting == render::ShadowCasting::Off) {
                 continue;
             }
@@ -4658,16 +4656,16 @@ std::optional<Frame3D> Renderer::prepare(
             draw.material = *override;
         }
         if (const auto* standard = ecs.try_get<world::Surface3D>(entity);
-            standard != nullptr && instance.material_override.empty() && soft == nullptr) {
+            standard != nullptr && instance.material.empty() && soft == nullptr) {
             face_camera(*standard, global(entity), draw);
         }
         if (shadows_disabled && casting == render::ShadowCasting::On) {
             casting = render::ShadowCasting::Off;
         }
-        if (instance.gi_mode == "dynamic") {
+        if (instance.lighting_mode == "dynamic") {
             const Shared& shared = shared_.at(cached_.at(entity).key);
             draw.material.capture = capture(entity, global(entity).apply(shared.center));
-        } else if (instance.gi_mode == "static" && soft == nullptr) {
+        } else if (instance.lighting_mode == "static" && soft == nullptr) {
             const LitSource source{.key = "primitive:" + cached_.at(entity).key,
                                    .make = [&primitive](std::vector<render::Vertex3D>& vertices,
                                                         std::vector<std::uint32_t>& indices) {
@@ -4690,43 +4688,43 @@ std::optional<Frame3D> Renderer::prepare(
     // MultiMeshInstance3Ds draw their model at each instance.
     for (const entt::entity entity : made<world::ModelInstances3D>(world)) {
         if (tree.visible(entity)) {
-            add_multimesh(world, entity, global(entity), global, lens.cull_mask, t);
+            add_multimesh(world, entity, global(entity), global, lens.layer_filter, t);
         }
     }
     // Foliage3Ds draw their types' models at their instances.
     for (const entt::entity entity : made<world::Foliage3D>(world)) {
         if (tree.visible(entity)) {
-            add_foliage(world, entity, global(entity), global, camera_global, lens.cull_mask, t);
+            add_foliage(world, entity, global(entity), global, camera_global, lens.layer_filter, t);
         }
     }
     // CSG roots draw their results; the shapes under them draw nothing of their own.
     for (const entt::entity root : csg_roots(world, tree)) {
         if (tree.visible(root)) {
-            add_csg(world, tree, root, global(root), lens.cull_mask);
+            add_csg(world, tree, root, global(root), lens.layer_filter);
         }
     }
     // GridMaps draw their octants.
     for (const entt::entity entity : made<world::BlockMap3D>(world)) {
         if (tree.visible(entity)) {
-            add_gridmap(world, entity, global(entity), lens.cull_mask);
+            add_gridmap(world, entity, global(entity), lens.layer_filter);
         }
     }
     // CPUParticles3Ds draw their meshes at their particles.
     for (const entt::entity entity : made<world::Emitter3D>(world)) {
         if (tree.visible(entity)) {
-            add_particles(world, entity, global(entity), camera_global, lens.cull_mask, t);
+            add_particles(world, entity, global(entity), camera_global, lens.layer_filter, t);
         }
     }
     // HairInstance3Ds draw their grooms over their models.
     for (const entt::entity entity : made<world::Hair3D>(world)) {
         if (tree.visible(entity)) {
-            add_hair(world, tree, entity, lens.cull_mask, t);
+            add_hair(world, tree, entity, lens.layer_filter, t);
         }
     }
     // Fluid3Ds draw their particles.
     for (const entt::entity entity : made<world::Fluid3D>(world)) {
         if (tree.visible(entity)) {
-            add_fluid(world, entity, lens.cull_mask, frame.scene);
+            add_fluid(world, entity, lens.layer_filter, frame.scene);
         }
     }
     // Water3Ds draw their surfaces, moved by their waves between ticks.
@@ -4734,14 +4732,14 @@ std::optional<Frame3D> Renderer::prepare(
         const double water_time = world::water_time(world, t);
         for (const world::WaterBody& body : world::water_bodies(world, false)) {
             if (tree.visible(body.entity)) {
-                add_water(body, lens.cull_mask, water_time);
+                add_water(body, lens.layer_filter, water_time);
             }
         }
     }
     // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.
     for (const entt::entity entity : made<world::GpuEmitter3D>(world)) {
         if (tree.visible(entity)) {
-            add_gpu_particles(world, entity, global(entity), view, lens.cull_mask, t);
+            add_gpu_particles(world, entity, global(entity), view, lens.layer_filter, t);
         }
     }
     // Terrains draw the chunks their quad trees settle on for the camera.
@@ -5024,7 +5022,7 @@ void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,
         d.orm = image("texture_orm", decal.texture_orm);
         d.emission = image("texture_emission", decal.texture_emission);
         d.emission_energy = decal.emission_energy * exposure;
-        d.modulate = {decal.modulate.x, decal.modulate.y, decal.modulate.z, decal.modulate.w};
+        d.modulate = {decal.tint.x, decal.tint.y, decal.tint.z, decal.tint.w};
         d.albedo_mix = decal.albedo_mix;
         // Godot's setters keep the upper and lower fades at 0 or more, and its inspector the
         // normal fade from 0 to 1.
@@ -5034,7 +5032,7 @@ void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,
         d.distance_fade = decal.distance_fade_enabled;
         d.distance_fade_begin = decal.distance_fade_begin;
         d.distance_fade_length = std::max(decal.distance_fade_length, 0.0F);
-        d.cull_mask = decal.cull_mask;
+        d.cull_mask = decal.layer_filter;
         d.sorting_offset = decal.sorting_offset;
         if (!loaded) {
             continue;
@@ -5221,7 +5219,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                            .size = p.size,
                            .origin_offset = p.origin_offset,
                            .max_distance = p.max_distance,
-                           .cull_mask = p.cull_mask,
+                           .cull_mask = p.layer_filter,
                            .interior = p.interior,
                            .enable_shadows = p.enable_shadows};
         if (p.update_mode == "always" || slot->second.drawn != key) {
@@ -5271,7 +5269,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                     return began.error();
                 }
                 for (const Draw& draw : draws_) {
-                    if ((draw.layers & p.cull_mask) == 0) {
+                    if ((draw.layers & p.layer_filter) == 0) {
                         continue;
                     }
                     if (auto drawn =
@@ -5646,7 +5644,7 @@ void Renderer::cull_occluded(const world::World& world, const world::Tree3D& tre
         bool hidden = false;
         if (draw.shadows != render::ShadowCasting::ShadowsOnly &&
             draw.shadows != render::ShadowCasting::DoubleSided && box != boxes.end() &&
-            (instance == nullptr || !instance->ignore_occlusion_culling)) {
+            (instance == nullptr || !instance->skip_occlusion)) {
             std::uint64_t timeout = 0;
             if (const auto found = occlusion_timeouts_.find(key);
                 found != occlusion_timeouts_.end()) {

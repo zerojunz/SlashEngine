@@ -4,8 +4,8 @@
   "name": "Occlusion culling",
   "rendering": {
     "occlusion_culling": {
-      "jitter_projection": false,
-      "use_occlusion_culling": true
+      "enabled": true,
+      "jitter_projection": false
     }
   },
   "version": "1.0.0",

@@ -658,7 +658,7 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid_ui.scene.json
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     set_tests_properties(cli_scene_validate_invalid_ui PROPERTIES
-        PASS_REGULAR_EXPRESSION "\"message\":\"a control can't be its own child\",\"path\":\"/entities/panel/components/Widget/children/1\"}.*\"path\":\"/entities/hint/components/Widget/theme_override_colors/font_colour\"")
+        PASS_REGULAR_EXPRESSION "\"message\":\"a control can't be its own child\",\"path\":\"/entities/panel/components/Widget/children/1\"}.*\"path\":\"/entities/hint/components/Widget/theme_colors/font_colour\"")
 
     add_test(NAME cli_schema_theme COMMAND slash-cli schema theme)
     set_tests_properties(cli_schema_theme PROPERTIES

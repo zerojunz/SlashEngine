@@ -18,6 +18,7 @@
 #include "slash/storyboard/fingerprint.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 
@@ -184,7 +185,7 @@ json::Value look_of(Session& session, const world::World& world) {
                 if (std::ranges::find(kLookComponents, name) != kLookComponents.end()) {
                     look[name] = fields;
                 }
-                for (const std::string_view field : {"material_override", "material"}) {
+                for (const std::string_view field : {"material", "material"}) {
                     const json::Value* material = fields.find(field);
                     if (material == nullptr || !material->is_string() ||
                         material->as_string().empty() ||
@@ -222,7 +223,8 @@ json::Value look_of(Session& session, const world::World& world) {
         out["materials"] = std::move(materials);
     }
     if (auto project = session.read_project_file("project.json"); project && project.value()) {
-        if (auto parsed = json::parse(*project.value()); parsed) {
+        if (auto parsed = json::parse(*project.value()); parsed && parsed.value().is_object()) {
+            world::upgrade_settings(parsed.value());
             if (const json::Value* rendering = parsed.value().find("rendering");
                 rendering != nullptr) {
                 out["rendering"] = *rendering;
@@ -306,7 +308,7 @@ Result<void> build_stage(Session& stage, const Plan& plan, Vec3 center, double r
         {"subject", plan.what == "model"
                         ? json::Object{{"Model3D", json::Object{{"mesh", plan.path}}},
                                        {"Transform3D", json::Object{}}}
-                        : json::Object{{"Model3D", json::Object{{"material_override", plan.path}}},
+                        : json::Object{{"Model3D", json::Object{{"material", plan.path}}},
                                        {"SphereGeometry", json::Object{}},
                                        {"Transform3D", json::Object{}}}},
     }};

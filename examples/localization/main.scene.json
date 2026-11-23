@@ -51,7 +51,7 @@
         },
         "Widget": {
           "auto_translate_mode": "disabled",
-          "size_flags_horizontal": "shrink_begin"
+          "sizing_horizontal": "shrink_begin"
         }
       }
     }

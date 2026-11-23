@@ -11,7 +11,7 @@
     "hero/body": {
       "components": {
         "Sprite2D": {
-          "modulate": [0.2, 1.0, 0.4, 1.0]
+          "tint": [0.2, 1.0, 0.4, 1.0]
         }
       }
     }

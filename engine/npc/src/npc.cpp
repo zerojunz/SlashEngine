@@ -11,6 +11,7 @@
 #include "slash/navigation/navigation.hpp"
 #include "slash/npc/fauna.hpp"
 #include "slash/npc/story.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
 #include "slash/world/tree2d.hpp"
@@ -688,8 +689,10 @@ bool set_fact(world::World& world, entt::entity entity, std::string_view fact, i
     return true;
 }
 
-std::vector<json::ValidationError> check_scene(const json::Value& doc,
+std::vector<json::ValidationError> check_scene(const json::Value& as_written,
                                                const world::FileReader& reader) {
+    json::Value current;
+    const json::Value& doc = world::current_names(as_written, current);
     std::vector<json::ValidationError> errors;
     if (!reader) {
         return errors;

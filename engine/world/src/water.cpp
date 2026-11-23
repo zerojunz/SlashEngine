@@ -638,10 +638,10 @@ std::optional<WaterBody> make_body(const World& world, World* writable, entt::en
         body.inverse.origin = Vec3{} - body.place.origin;
         body.half = {water.width * 0.5F, water.depth};
         body.visible = water.visible;
-        body.z_index = water.z_index;
-        body.z_as_relative = water.z_as_relative;
-        body.modulate = water.modulate;
-        body.light_mask = water.light_mask;
+        body.z_index = water.sort_order;
+        body.z_as_relative = water.sort_order_relative;
+        body.modulate = water.tint;
+        body.light_mask = water.light_layers;
     } else {
         const auto& water = ecs.get<const Water3D>(entity);
         recipe_path = water.recipe;

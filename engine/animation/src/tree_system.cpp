@@ -451,7 +451,7 @@ struct TreePlayer::State {
         // A copy, since a track may set the tree's own fields.
         world::AnimationGraph tree = ecs.get<world::AnimationGraph>(entity);
         const std::string id(world.id_of(entity));
-        if (!tree.active || tree.tree_root.empty()) {
+        if (!tree.active || tree.root.empty()) {
             // An inactive tree stops its audio tracks' sounds, as Godot's clears its caches.
             stop_audio(world, entity, Mixer::Tree);
             auto& stored = ecs.get<world::AnimationGraph>(entity);
@@ -459,9 +459,9 @@ struct TreePlayer::State {
             stored.invalid.clear();
             return;
         }
-        auto loaded_tree = this->tree(tree.tree_root);
+        auto loaded_tree = this->tree(tree.root);
         if (!loaded_tree) {
-            const std::string message = tree.tree_root + ": " + loaded_tree.error().message;
+            const std::string message = tree.root + ": " + loaded_tree.error().message;
             warn_once(id, message);
             auto& stored = ecs.get<world::AnimationGraph>(entity);
             clear_report(stored, false);
@@ -475,7 +475,7 @@ struct TreePlayer::State {
         EntityCache& cache = entities[id];
         cache.used = true;
         TableKey key;
-        key.tree = tree.tree_root;
+        key.tree = tree.root;
         key.tree_version = source.handle.version();
         key.types = world.components().revision();
         for (const auto& [name, entry] : loaded) {
@@ -1049,7 +1049,7 @@ struct TreePlayer::State {
     std::optional<std::vector<scene3d::ClipSample>> clips(const world::World& world,
                                                           entt::entity entity) {
         const auto* tree = world.ecs().try_get<const world::AnimationGraph>(entity);
-        if (tree == nullptr || !tree->active || tree->tree_root.empty()) {
+        if (tree == nullptr || !tree->active || tree->root.empty()) {
             return std::nullopt;
         }
         std::vector<scene3d::ClipSample> out;
