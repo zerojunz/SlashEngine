@@ -61,87 +61,6 @@ json::Value short_mean(double value) {
     return out;
 }
 
-// Each channel's [min, mean, max] over the image, 0 to 255.
-json::Value channel_stats(const render::Image& image) {
-    constexpr std::array<std::string_view, 4> kChannels{"r", "g", "b", "a"};
-    const std::size_t count = image.pixels.size() / 4;
-    json::Value out;
-    for (std::size_t c = 0; c < 4; ++c) {
-        int low = 255;
-        int high = 0;
-        std::uint64_t sum = 0;
-        for (std::size_t i = 0; i < count; ++i) {
-            const int value = image.pixels[i * 4 + c];
-            low = std::min(low, value);
-            high = std::max(high, value);
-            sum += static_cast<std::uint64_t>(value);
-        }
-        out[kChannels.at(c)] =
-            count == 0
-                ? json::Array{0, 0, 0}
-                : json::Array{
-                      low, short_mean(static_cast<double>(sum) / static_cast<double>(count)), high};
-    }
-    return out;
-}
-
-// How far apart, on average per channel, neighboring pixels are inside the image and across its
-// edges when it repeats: a texture tiles without seams when "x" and "y" are near "inside".
-json::Value wrap_differences(const render::Image& image) {
-    const auto width = static_cast<std::size_t>(image.width);
-    const auto height = static_cast<std::size_t>(image.height);
-    const auto difference = [&](std::size_t a, std::size_t b) {
-        int total = 0;
-        for (std::size_t c = 0; c < 4; ++c) {
-            total += std::abs(int{image.pixels[a * 4 + c]} - int{image.pixels[b * 4 + c]});
-        }
-        return static_cast<double>(total) / 4.0;
-    };
-    double inside = 0.0;
-    std::size_t inside_count = 0;
-    for (std::size_t y = 0; y < height; ++y) {
-        for (std::size_t x = 0; x + 1 < width; ++x) {
-            inside += difference(y * width + x, y * width + x + 1);
-            ++inside_count;
-        }
-    }
-    double across_x = 0.0;
-    for (std::size_t y = 0; y < height; ++y) {
-        across_x += difference(y * width + width - 1, y * width);
-    }
-    double across_y = 0.0;
-    for (std::size_t x = 0; x < width; ++x) {
-        across_y += difference((height - 1) * width + x, x);
-    }
-    json::Value out;
-    out["inside"] = short_mean(inside_count > 0 ? inside / static_cast<double>(inside_count) : 0);
-    out["x"] = short_mean(height > 0 ? across_x / static_cast<double>(height) : 0.0);
-    out["y"] = short_mean(width > 0 ? across_y / static_cast<double>(width) : 0.0);
-    return out;
-}
-
-// Reads what a graph names from the project: text files, and images decoded as texture paths
-// are (a graph's images may be other graphs' outputs).
-procedural::GraphReader graph_reader(Session& session) {
-    auto read = [&session](std::string_view file) -> Result<std::string> {
-        auto resolved = session.resolve_path(std::string(file));
-        if (!resolved) {
-            return resolved.error();
-        }
-        return platform::read_file(resolved.value());
-    };
-    procedural::GraphReader reader;
-    reader.text = read;
-    reader.image = [read](std::string_view file) -> Result<render::Image> {
-        auto bytes = read(asset::file_of(file));
-        if (!bytes) {
-            return bytes.error();
-        }
-        return procedural::decode_texture(file, bytes.value(), read, procedural::graph_device());
-    };
-    return reader;
-}
-
 // A texture graph made with the params' "parameters", its output by name ("" for the first),
 // and every output's name.
 Reply bake_graph(Session& session, const json::Value& doc, std::string_view output,
@@ -341,6 +260,87 @@ Reply texture_generate(Session& session, const json::Value& params) {
 }
 
 } // namespace
+
+// Each channel's [min, mean, max] over the image, 0 to 255.
+json::Value channel_stats(const render::Image& image) {
+    constexpr std::array<std::string_view, 4> kChannels{"r", "g", "b", "a"};
+    const std::size_t count = image.pixels.size() / 4;
+    json::Value out;
+    for (std::size_t c = 0; c < 4; ++c) {
+        int low = 255;
+        int high = 0;
+        std::uint64_t sum = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            const int value = image.pixels[i * 4 + c];
+            low = std::min(low, value);
+            high = std::max(high, value);
+            sum += static_cast<std::uint64_t>(value);
+        }
+        out[kChannels.at(c)] =
+            count == 0
+                ? json::Array{0, 0, 0}
+                : json::Array{
+                      low, short_mean(static_cast<double>(sum) / static_cast<double>(count)), high};
+    }
+    return out;
+}
+
+// How far apart, on average per channel, neighboring pixels are inside the image and across its
+// edges when it repeats: a texture tiles without seams when "x" and "y" are near "inside".
+json::Value wrap_differences(const render::Image& image) {
+    const auto width = static_cast<std::size_t>(image.width);
+    const auto height = static_cast<std::size_t>(image.height);
+    const auto difference = [&](std::size_t a, std::size_t b) {
+        int total = 0;
+        for (std::size_t c = 0; c < 4; ++c) {
+            total += std::abs(int{image.pixels[a * 4 + c]} - int{image.pixels[b * 4 + c]});
+        }
+        return static_cast<double>(total) / 4.0;
+    };
+    double inside = 0.0;
+    std::size_t inside_count = 0;
+    for (std::size_t y = 0; y < height; ++y) {
+        for (std::size_t x = 0; x + 1 < width; ++x) {
+            inside += difference(y * width + x, y * width + x + 1);
+            ++inside_count;
+        }
+    }
+    double across_x = 0.0;
+    for (std::size_t y = 0; y < height; ++y) {
+        across_x += difference(y * width + width - 1, y * width);
+    }
+    double across_y = 0.0;
+    for (std::size_t x = 0; x < width; ++x) {
+        across_y += difference((height - 1) * width + x, x);
+    }
+    json::Value out;
+    out["inside"] = short_mean(inside_count > 0 ? inside / static_cast<double>(inside_count) : 0);
+    out["x"] = short_mean(height > 0 ? across_x / static_cast<double>(height) : 0.0);
+    out["y"] = short_mean(width > 0 ? across_y / static_cast<double>(width) : 0.0);
+    return out;
+}
+
+// Reads what a graph names from the project: text files, and images decoded as texture paths
+// are (a graph's images may be other graphs' outputs).
+procedural::GraphReader graph_reader(Session& session) {
+    auto read = [&session](std::string_view file) -> Result<std::string> {
+        auto resolved = session.resolve_path(std::string(file));
+        if (!resolved) {
+            return resolved.error();
+        }
+        return platform::read_file(resolved.value());
+    };
+    procedural::GraphReader reader;
+    reader.text = read;
+    reader.image = [read](std::string_view file) -> Result<render::Image> {
+        auto bytes = read(asset::file_of(file));
+        if (!bytes) {
+            return bytes.error();
+        }
+        return procedural::decode_texture(file, bytes.value(), read, procedural::graph_device());
+    };
+    return reader;
+}
 
 json::Value noise_source_property(std::string_view description) {
     json::Value schema;

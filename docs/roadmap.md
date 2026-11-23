@@ -1469,7 +1469,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Texture graphs: `.texture.json` files of `"type": "graph"`, nodes over parameters
               (generators, filters, height and normals, blends, PBR outputs), baked in compute
               on every device (the CPU twin on Direct3D 12 and OpenGL), with `texture.generate`
-        - [ ] `texture.inspect`, `texture.edit` and `texture.check` for graphs
+        - [x] `texture.inspect`, `texture.edit` and `texture.check` for graphs
         - [ ] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
               uniforms that animations and gameplay code drive
         - [ ] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world

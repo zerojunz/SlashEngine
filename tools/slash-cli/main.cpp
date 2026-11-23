@@ -2086,6 +2086,19 @@ int cmd_project(const std::vector<std::string>& args) {
             result["warnings"] = std::move(*warnings);
         }
     }
+    // The texture graphs: each bakes, and keeps its expected ranges and the style's palettes.
+    command::Reply textures = engine.session->call("texture.check", json::Object{});
+    if (!textures.ok) {
+        json::Value item;
+        item["file"] = "textures";
+        item["path"] = "";
+        item["message"] = textures.message;
+        errors.push_back(std::move(item));
+    } else if (json::Value* found = textures.value.find("errors"); found != nullptr) {
+        for (json::Value& error : found->as_array()) {
+            errors.push_back(std::move(error));
+        }
+    }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = std::move(errors);
