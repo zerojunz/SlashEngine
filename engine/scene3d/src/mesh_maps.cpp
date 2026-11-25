@@ -299,8 +299,8 @@ std::array<float, 4> trace_hit(const Bvh& bvh, const render::MeshMapTrace& t, Ve
     if (hit.hit == Hit::Miss) {
         return {};
     }
-    return {static_cast<float>(hit.triangle + 1), hit.barycentric.y, hit.barycentric.z,
-            hit.distance};
+    return {static_cast<float>(hit.triangle + 1), static_cast<float>(hit.barycentric.y),
+            static_cast<float>(hit.barycentric.z), static_cast<float>(hit.distance)};
 }
 
 // Traces on the device where it can, else on the CPU.
@@ -517,9 +517,12 @@ MeshMapMesh mesh_map_mesh(const Model& model) {
                     normalize(Vec3{dot(inverse.x, n), dot(inverse.y, n), dot(inverse.z, n)});
                 const Vec3 tangent =
                     normalize(to_model.basis({v.tangent[0], v.tangent[1], v.tangent[2]}));
-                v.position = {position.x, position.y, position.z};
-                v.normal = {normal.x, normal.y, normal.z};
-                v.tangent = {tangent.x, tangent.y, tangent.z, v.tangent[3]};
+                v.position = {static_cast<float>(position.x), static_cast<float>(position.y),
+                              static_cast<float>(position.z)};
+                v.normal = {static_cast<float>(normal.x), static_cast<float>(normal.y),
+                            static_cast<float>(normal.z)};
+                v.tangent = {static_cast<float>(tangent.x), static_cast<float>(tangent.y),
+                             static_cast<float>(tangent.z), v.tangent[3]};
                 out.vertices.push_back(v);
             }
             std::uint32_t material = default_material;
@@ -646,12 +649,15 @@ Result<MeshMapBake> bake_mesh_maps(const MeshMapMesh& low, const MeshMapMesh* hi
         const Vec3 tangent = lerp3({a.tangent[0], a.tangent[1], a.tangent[2]},
                                    {b.tangent[0], b.tangent[1], b.tangent[2]},
                                    {c.tangent[0], c.tangent[1], c.tangent[2]}, w);
-        s.tangent = {tangent.x, tangent.y, tangent.z, a.tangent[3] < 0.0F ? -1.0F : 1.0F};
+        s.tangent = {static_cast<float>(tangent.x), static_cast<float>(tangent.y),
+                     static_cast<float>(tangent.z), a.tangent[3] < 0.0F ? -1.0F : 1.0F};
         s.triangle = static_cast<std::uint32_t>(tri);
         s.covered = true;
         ++covered;
-        positions[at] = {s.position.x, s.position.y, s.position.z, 1.0F};
-        normals[at] = {s.normal.x, s.normal.y, s.normal.z, 0.0F};
+        positions[at] = {static_cast<float>(s.position.x), static_cast<float>(s.position.y),
+                         static_cast<float>(s.position.z), 1.0F};
+        normals[at] = {static_cast<float>(s.normal.x), static_cast<float>(s.normal.y),
+                       static_cast<float>(s.normal.z), 0.0F};
     }
     if (covered == 0) {
         return Error{ErrorCode::InvalidArgument,
@@ -725,8 +731,10 @@ Result<MeshMapBake> bake_mesh_maps(const MeshMapMesh& low, const MeshMapMesh* hi
             }
             s.triangle = static_cast<std::uint32_t>(t);
             s.high = true;
-            positions[at] = {s.position.x, s.position.y, s.position.z, 1.0F};
-            normals[at] = {s.normal.x, s.normal.y, s.normal.z, 0.0F};
+            positions[at] = {static_cast<float>(s.position.x), static_cast<float>(s.position.y),
+                             static_cast<float>(s.position.z), 1.0F};
+            normals[at] = {static_cast<float>(s.normal.x), static_cast<float>(s.normal.y),
+                           static_cast<float>(s.normal.z), 0.0F};
         }
         out.missed = static_cast<float>(missed) / static_cast<float>(covered);
         out.height_range = cage_distance;
@@ -796,8 +804,9 @@ Result<MeshMapBake> bake_mesh_maps(const MeshMapMesh& low, const MeshMapMesh* hi
                 rgb.fill(0.5F + (0.5F * curvature[at]));
                 break;
             case MeshMap::WorldNormal:
-                rgb = {(s.normal.x * 0.5F) + 0.5F, (s.normal.y * 0.5F) + 0.5F,
-                       (s.normal.z * 0.5F) + 0.5F};
+                rgb = {(static_cast<float>(s.normal.x) * 0.5F) + 0.5F,
+                       (static_cast<float>(s.normal.y) * 0.5F) + 0.5F,
+                       (static_cast<float>(s.normal.z) * 0.5F) + 0.5F};
                 break;
             case MeshMap::Position:
                 rgb = {fraction(s.position.x, box.min.x, extent.x),

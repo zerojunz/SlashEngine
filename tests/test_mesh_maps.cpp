@@ -63,9 +63,13 @@ void add_quad(scene3d::MeshMapMesh& mesh, const Face& face, int cell, int grid, 
     const std::array<std::array<float, 2>, 4> uvs{{{u0, v1}, {u1, v1}, {u1, v0}, {u0, v0}}};
     for (std::size_t k = 0; k < 4; ++k) {
         render::Vertex3D v;
-        v.position = {face.corners.at(k).x, face.corners.at(k).y, face.corners.at(k).z};
-        v.normal = {face.normal.x, face.normal.y, face.normal.z};
-        v.tangent = {face.tangent.x, face.tangent.y, face.tangent.z, 1.0F};
+        v.position = {static_cast<float>(face.corners.at(k).x),
+                      static_cast<float>(face.corners.at(k).y),
+                      static_cast<float>(face.corners.at(k).z)};
+        v.normal = {static_cast<float>(face.normal.x), static_cast<float>(face.normal.y),
+                    static_cast<float>(face.normal.z)};
+        v.tangent = {static_cast<float>(face.tangent.x), static_cast<float>(face.tangent.y),
+                     static_cast<float>(face.tangent.z), 1.0F};
         v.uv = uvs.at(k);
         v.uv2 = uvs.at(k);
         mesh.vertices.push_back(v);
