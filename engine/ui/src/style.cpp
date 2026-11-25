@@ -186,8 +186,7 @@ const std::vector<Property>& properties() {
                               kStretches)});
         out.push_back({"stretch_vertical", kTexture,
                        choice("How the middle fills the rect down.", kStretches)});
-        out.push_back(
-            {"tint", kTexture, numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
+        out.push_back({"tint", kTexture, numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
         out.push_back({"color", kLine, numbers("The line's color, as [r, g, b, a].", 4, 0.0)});
         out.push_back(
             {"thickness", kLine, number("The line's width in pixels.", 0.0, std::nullopt, true)});
@@ -512,9 +511,8 @@ Result<StyleBox> parse_style_box(const json::Value& given) {
         out.region_rect = vec4(*value);
     }
     read_four(doc, "slice_margin", kSides, out.texture_margin);
-    for (const auto& [name, field] :
-         {std::pair{"stretch_horizontal", &out.axis_stretch_horizontal},
-          std::pair{"stretch_vertical", &out.axis_stretch_vertical}}) {
+    for (const auto& [name, field] : {std::pair{"stretch_horizontal", &out.axis_stretch_horizontal},
+                                      std::pair{"stretch_vertical", &out.axis_stretch_vertical}}) {
         if (const json::Value* value = doc.find(name); value != nullptr) {
             for (const auto& [each, stretch] : kStretches) {
                 if (each == value->as_string()) {
