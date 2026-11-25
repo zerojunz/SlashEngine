@@ -123,10 +123,11 @@ Result<render::Image> read_image(Session& session, const std::string& path) {
     if (!bytes) {
         return bytes.error();
     }
-    if (!bytes.value()) {
+    const std::optional<std::string>& text = bytes.value();
+    if (!text.has_value()) {
         return make_error(ErrorCode::NotFound, "the project has no file " + quoted(path));
     }
-    return procedural::decode_texture(path, *bytes.value());
+    return procedural::decode_texture(path, *text);
 }
 
 // What a stack paints on. write lets the model's mesh maps bake into their folder, as
@@ -265,7 +266,7 @@ Result<Prepared> prepare(Session& session, const json::Value& doc, bool write) {
         }
     }
     std::map<std::string, render::Image, std::less<>> images;
-    Reply baked = bake_model_maps(session, params, write, &images);
+    const Reply baked = bake_model_maps(session, params, write, &images);
     if (!baked.ok) {
         return make_error(ErrorCode::InvalidArgument, "the model's mesh maps: " + baked.message);
     }
@@ -423,8 +424,8 @@ Reply paint_bake(Session& session, const json::Value& params) {
         if (!before) {
             return Reply::failure(before.error());
         }
-        if (before.value()) {
-            auto parsed = json::parse(*before.value());
+        if (const std::optional<std::string>& text = before.value(); text.has_value()) {
+            auto parsed = json::parse(*text);
             if (parsed && parsed.value().is_object()) {
                 doc = std::move(parsed).value();
             }
@@ -498,7 +499,8 @@ json::Array changes(const json::Value& before, const json::Value& after) {
         for (const auto& [list, into] : {std::pair{a, &was}, std::pair{b, &is}}) {
             if (list != nullptr && list->is_array()) {
                 for (const json::Value& layer : list->as_array()) {
-                    if (const json::Value* name = layer.find("name"); name && name->is_string()) {
+                    if (const json::Value* name = layer.find("name");
+                        name != nullptr && name->is_string()) {
                         (*into)[name->as_string()] = &layer;
                     }
                 }
@@ -569,7 +571,8 @@ Reply paint_edit(Session& session, const json::Value& params) {
         const auto names = [&] {
             std::vector<std::string> out;
             for (const json::Value& layer : layers) {
-                if (const json::Value* got = layer.find("name"); got && got->is_string()) {
+                if (const json::Value* got = layer.find("name");
+                    got != nullptr && got->is_string()) {
                     out.push_back(got->as_string());
                 }
             }
@@ -891,7 +894,7 @@ Reply paint_preview(Session& session, const json::Value& params) {
     // Each view's look in numbers.
     json::Array measured;
     const std::uint32_t view_width = picture.width / static_cast<std::uint32_t>(views);
-    procedural::PaintSurface all;
+    const procedural::PaintSurface all; // no texels marked: every pixel counts
     for (int v = 0; v < views; ++v) {
         render::Image frame;
         frame.width = view_width;

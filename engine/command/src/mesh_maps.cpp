@@ -250,10 +250,16 @@ Reply bake_model_maps(Session& session, const json::Value& params, bool write,
                 if (all_there && images != nullptr) {
                     for (const auto& [name, file] : result->find("maps")->as_object()) {
                         auto bytes = session.read_project_file(file.as_string());
-                        auto image = bytes && bytes.value()
-                                         ? render::decode_image(*bytes.value())
-                                         : Result<render::Image>(
-                                               make_error(ErrorCode::NotFound, "unreadable"));
+                        if (!bytes) {
+                            all_there = false;
+                            break;
+                        }
+                        const std::optional<std::string>& text = bytes.value();
+                        if (!text.has_value()) {
+                            all_there = false;
+                            break;
+                        }
+                        auto image = render::decode_image(*text);
                         if (!image) {
                             all_there = false;
                             break;

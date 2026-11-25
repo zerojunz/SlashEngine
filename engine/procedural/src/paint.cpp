@@ -32,7 +32,6 @@ using detail::number_field;
 
 constexpr std::string_view kPaintType = "paint";
 constexpr int kMaxExtends = 8;
-constexpr std::int64_t kDefaultSize = 1024;
 constexpr std::string_view kSourcePrefix = "paint:sources/";
 constexpr std::string_view kImagePrefix = "paint:images/";
 
@@ -409,7 +408,8 @@ void check_kind(const json::Value& doc, std::vector<json::ValidationError>& erro
             continue;
         }
         const std::string at = "/layers/" + std::to_string(i);
-        if (const json::Value* strokes = layer.find("strokes"); strokes && strokes->is_array()) {
+        if (const json::Value* strokes = layer.find("strokes");
+            strokes != nullptr && strokes->is_array()) {
             for (std::size_t s = 0; s < strokes->as_array().size(); ++s) {
                 const json::Value* points = strokes->as_array()[s].find("points");
                 if (points == nullptr || !points->is_array()) {
@@ -424,7 +424,8 @@ void check_kind(const json::Value& doc, std::vector<json::ValidationError>& erro
                 }
             }
         }
-        if (const json::Value* decals = layer.find("decals"); decals && decals->is_array()) {
+        if (const json::Value* decals = layer.find("decals");
+            decals != nullptr && decals->is_array()) {
             for (std::size_t d = 0; d < decals->as_array().size(); ++d) {
                 const json::Value& decal = decals->as_array()[d];
                 const std::string where = at + "/decals/" + std::to_string(d);
@@ -482,7 +483,7 @@ Result<std::string> read_text(const GraphReader& reader, std::string_view path) 
         return std::string(*builtin);
     }
     if (path.starts_with(kBuiltinPaintPrefix)) {
-        std::vector<std::string_view> names = builtin_paint_names();
+        const std::vector<std::string_view> names = builtin_paint_names();
         std::string message = quoted(path) + " isn't a smart material the engine ships";
         if (const std::string_view near =
                 closest_match(path.substr(kBuiltinPaintPrefix.size()), names);
@@ -700,7 +701,7 @@ private:
     }
 
     // An error message with the graph's node pointers turned back into the stack's.
-    std::string pointed(const std::string& message) const {
+    [[nodiscard]] std::string pointed(const std::string& message) const {
         constexpr std::string_view kNodes = "/nodes/";
         if (!message.starts_with(kNodes)) {
             return message;
@@ -787,7 +788,7 @@ private:
         return add(std::move(node), origin);
     }
 
-    std::optional<render::GraphImage> image_at(std::string_view path) const {
+    [[nodiscard]] std::optional<render::GraphImage> image_at(std::string_view path) const {
         render::GraphImage out;
         out.width = surface_.width;
         out.height = surface_.height;
@@ -816,14 +817,14 @@ private:
 
     // ---- Surface facts ----
 
-    bool painted(std::size_t at) const { return surface_.covered[at] != 0; }
+    [[nodiscard]] bool painted(std::size_t at) const { return surface_.covered[at] != 0; }
 
-    Vec position(std::size_t at) const {
+    [[nodiscard]] Vec position(std::size_t at) const {
         return {surface_.position[at * 3], surface_.position[(at * 3) + 1],
                 surface_.position[(at * 3) + 2]};
     }
 
-    Vec normal(std::size_t at) const {
+    [[nodiscard]] Vec normal(std::size_t at) const {
         return {surface_.normal[at * 3], surface_.normal[(at * 3) + 1],
                 surface_.normal[(at * 3) + 2]};
     }
@@ -844,7 +845,7 @@ private:
                                                           " map, which wasn't baked");
     }
 
-    std::vector<float> noise(float scale, int seed, int octaves) const {
+    [[nodiscard]] std::vector<float> noise(float scale, int seed, int octaves) const {
         NoiseSettings settings;
         settings.seed = seed;
         settings.frequency = 1.0F;
@@ -859,8 +860,7 @@ private:
                 }
                 float value = 0.0F;
                 if (surface_.sprite) {
-                    const float side =
-                        static_cast<float>(std::max(surface_.width, surface_.height));
+                    const auto side = static_cast<float>(std::max(surface_.width, surface_.height));
                     const Vec p = position(at);
                     value = noise.get_noise_2d(p.x / side * scale, p.y / side * scale);
                 } else {
@@ -888,7 +888,8 @@ private:
     Result<const Baked*> bake_graph(const json::Value& layer, const json::Value& graph,
                                     const std::string& at) {
         json::Object overrides;
-        if (const json::Value* given = layer.find("parameters"); given && given->is_object()) {
+        if (const json::Value* given = layer.find("parameters");
+            given != nullptr && given->is_object()) {
             for (const auto& [name, value] : given->as_object()) {
                 if (value.is_string() && value.as_string().starts_with('$')) {
                     const std::string param = value.as_string().substr(1);
@@ -1080,10 +1081,16 @@ private:
                         !near.empty()) {
                         message += " (did you mean " + quoted(near) + "?)";
                     }
-                    return make_error(ErrorCode::InvalidArgument,
-                                      at + "/" + field +
-                                          (given.is_string() ? "" : "/" + std::to_string(i)) +
-                                          ": " + message);
+                    std::string where = at;
+                    where += "/";
+                    where += field;
+                    if (!given.is_string()) {
+                        where += "/";
+                        where += std::to_string(i);
+                    }
+                    where += ": ";
+                    where += message;
+                    return make_error(ErrorCode::InvalidArgument, where);
                 }
                 wanted.insert(static_cast<std::int32_t>(found - known.begin()));
             }
@@ -1165,7 +1172,7 @@ private:
             const std::string centered =
                 math(n, "subtract", std::nullopt, json::Value(0.5), at + "/breakup");
             const json::Value& amount = *breakup->find("amount");
-            json::Value twice =
+            const json::Value twice =
                 amount.is_number()
                     ? json::Value(amount.as_double() * 2.0)
                     : json::Value(amount.as_string().starts_with('$')
@@ -1206,7 +1213,8 @@ private:
     }
 
     // The CPU's strokes for a layer: what they paint and what they erase, 0 to 1 a texel.
-    std::pair<std::vector<float>, std::vector<float>> strokes(const json::Value& list) const {
+    [[nodiscard]] std::pair<std::vector<float>, std::vector<float>>
+    strokes(const json::Value& list) const {
         std::vector<float> paint(texels_, 0.0F);
         std::vector<float> erase(texels_, 0.0F);
         bool any_erase = false;
@@ -1280,7 +1288,7 @@ private:
                                                          static_cast<float>(picture.width)
                                                    : 1.0F;
             float w = 1.0F;
-            float h = aspect;
+            float h = 0.0F;
             if (const json::Value* size = decal.find("size"); size != nullptr) {
                 if (size->is_number()) {
                     w = static_cast<float>(size->as_double());
@@ -1388,8 +1396,6 @@ private:
                             : json::Array{0.5, 0.5, 1.0};
             } else if (channel == "emission") {
                 value = json::Array{0.0, 0.0, 0.0};
-            } else if (channel == "roughness") {
-                value = 0.5;
             } else if (channel == "metallic") {
                 value = 0.0;
             } else if (channel == "ao") {
@@ -1397,7 +1403,7 @@ private:
                 value = !surface_.sprite && surface_.maps.contains("ao") ? json::Value("ao")
                                                                          : json::Value(1.0);
             } else {
-                value = 0.5;
+                value = 0.5; // roughness and height
             }
             acc_[std::string(channel)] = value_node(channel, value, at);
             if (given != nullptr && channel == "emission") {
@@ -1421,9 +1427,9 @@ private:
                 std::vector<float> texels(texels_ * 4, 1.0F);
                 for (std::size_t i = 0; i < texels_; ++i) {
                     for (std::size_t k = 0; k < 3; ++k) {
-                        texels[(i * 4) + k] = surface_.normal_map.empty()
-                                                  ? (k == 2 ? 1.0F : 0.5F)
-                                                  : surface_.normal_map[(i * 3) + k];
+                        const float flat = k == 2 ? 1.0F : 0.5F;
+                        texels[(i * 4) + k] =
+                            surface_.normal_map.empty() ? flat : surface_.normal_map[(i * 3) + k];
                     }
                 }
                 return color_image(std::move(texels), at);
@@ -1465,7 +1471,7 @@ private:
             }
             bool any = false;
             for (const auto& [output, rgba] : *baked.value()) {
-                std::string channel = output == "color" ? "albedo" : output;
+                const std::string channel = output == "color" ? "albedo" : output;
                 if (channel == "orm") {
                     const std::string whole = color_image(rgba, at + "/graph");
                     const std::array<std::pair<std::string, char>, 3> parts{
@@ -1504,7 +1510,8 @@ private:
 
         // Decals: their colors paint albedo and their alpha masks the layer.
         std::optional<std::string> decal_alpha;
-        if (const json::Value* list = layer.find("decals"); list && !list->as_array().empty()) {
+        if (const json::Value* list = layer.find("decals");
+            list != nullptr && !list->as_array().empty()) {
             auto made = decals(*list, at + "/decals");
             if (!made) {
                 return made.error();
@@ -1521,7 +1528,9 @@ private:
         // Flat values win over the graph's and the decals'.
         if (const json::Value* fill = layer.find("fill"); fill != nullptr) {
             for (const auto& [channel, value] : fill->as_object()) {
-                content[channel] = value_node(channel, value, at + "/fill/" + channel);
+                std::string where = at + "/fill/";
+                where += channel;
+                content[channel] = value_node(channel, value, where);
             }
         }
         if (content.empty()) {
@@ -1557,12 +1566,16 @@ private:
                 mask = add(std::move(node), at + "/mask");
             }
         }
-        if (decal_alpha) {
-            mask = mask ? math(*mask, "multiply", *decal_alpha, json::Value(), at + "/decals")
-                        : *decal_alpha;
+        if (decal_alpha && mask) {
+            mask = math(*mask, "multiply", decal_alpha, json::Value(), at + "/decals");
+        } else if (decal_alpha) {
+            mask = decal_alpha;
         }
-        if (const json::Value* list = layer.find("strokes"); list && !list->as_array().empty()) {
-            auto [paint, erase] = strokes(*list);
+        if (const json::Value* list = layer.find("strokes");
+            list != nullptr && !list->as_array().empty()) {
+            auto made = strokes(*list);
+            std::vector<float>& paint = made.first;
+            std::vector<float>& erase = made.second;
             const bool painting = std::ranges::any_of(list->as_array(), [](const json::Value& s) {
                 const json::Value* e = s.find("erase");
                 return e == nullptr || !e->as_bool();
@@ -1728,8 +1741,8 @@ private:
     std::size_t texels_;
     float diagonal_ = 1.0F;
     json::Object parameters_;
-    json::Value nodes_ = json::Object{};
-    json::Value outputs_ = json::Array{};
+    json::Value nodes_ = json::Object{};  // NOLINT(readability-redundant-member-init)
+    json::Value outputs_ = json::Array{}; // NOLINT(readability-redundant-member-init)
     std::map<std::string, std::string> origin_;
     int next_ = 0;
     std::vector<std::vector<float>> sources_;
@@ -2042,8 +2055,10 @@ Result<PaintSurface> paint_sprite_surface(const render::Image& sprite,
         if (sprite.pixels[(i * 4) + 3] >= 128) {
             out.covered[i] = 1;
         }
-        out.position[i * 3] = static_cast<float>(i % sprite.width) + 0.5F;
-        out.position[(i * 3) + 1] = static_cast<float>(i / sprite.width) + 0.5F;
+        const std::size_t column = i % sprite.width;
+        const std::size_t row = i / sprite.width;
+        out.position[i * 3] = static_cast<float>(column) + 0.5F;
+        out.position[(i * 3) + 1] = static_cast<float>(row) + 0.5F;
         if (normal_map != nullptr) {
             Vec n{(static_cast<float>(normal_map->pixels[i * 4]) / 127.5F) - 1.0F,
                   (static_cast<float>(normal_map->pixels[(i * 4) + 1]) / 127.5F) - 1.0F,
