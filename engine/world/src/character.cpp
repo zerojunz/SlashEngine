@@ -97,7 +97,7 @@ constexpr std::string_view kSchema = R"({
           "model": {"type": "string", "description": "A model file: glTF, OBJ, FBX or a .model.json recipe."},
           "point": {"enum": ["right_hand", "left_hand", "back", "hip_left", "hip_right", "head_top"], "description": "Where it is held or worn."},
           "position": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3, "description": "Meters from the point. Default [0, 0, 0]."},
-          "rotation": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3, "description": "Radians, Godot's YXZ Euler angles. Default [0, 0, 0]."},
+          "rotation": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3, "description": "Radians, Euler angles in YXZ order. Default [0, 0, 0]."},
           "scale": {"type": "number", "exclusiveMinimum": 0, "description": "Default 1."}
         }
       }

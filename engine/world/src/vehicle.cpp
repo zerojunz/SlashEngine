@@ -55,7 +55,7 @@ constexpr std::string_view kSchema = R"({
     },
     "parts": {
       "type": "array", "maxItems": 64,
-      "description": "Parts it is built of, on top of its body (or in place of it, with body.draw false): Godot's primitive shapes a meter across, stretched, turned and placed in its space, or model files (3D only).",
+      "description": "Parts it is built of, on top of its body (or in place of it, with body.draw false): primitive shapes a meter across, stretched, turned and placed in its space, or model files (3D only).",
       "items": {
         "type": "object", "additionalProperties": false, "required": ["name"],
         "properties": {
@@ -64,7 +64,7 @@ constexpr std::string_view kSchema = R"({
           "model": {"type": "string", "minLength": 1, "description": "A model file in place of a shape; 3D only."},
           "position": {"$ref": "#/$defs/point", "description": "Its middle. Default [0, 0, 0]."},
           "size": {"type": "array", "items": {"type": "number", "minimum": 0.01, "maximum": 100}, "minItems": 3, "maxItems": 3, "description": "Meters along x, y and z (a model's scale). Default [1, 1, 1]."},
-          "rotation": {"$ref": "#/$defs/point", "description": "Radians, in Godot's YXZ order. Default [0, 0, 0]."},
+          "rotation": {"$ref": "#/$defs/point", "description": "Radians, in YXZ order. Default [0, 0, 0]."},
           "material": {"type": "string", "pattern": "^[A-Za-z0-9_]+$", "description": "paint, trim or glass (the body's), or a name of its own with color. Default paint."},
           "color": {"$ref": "#/$defs/color", "description": "Its own color, under the material's name."},
           "collide": {"type": "boolean", "description": "Its turned box joins the vehicle's collision. Default false."}
@@ -154,7 +154,7 @@ constexpr std::string_view kSchema = R"({
         "suspension": {
           "type": "object", "additionalProperties": false,
           "properties": {
-            "stiffness": {"type": "number", "minimum": 0, "description": "As Godot's VehicleWheel3D's."},
+            "stiffness": {"type": "number", "minimum": 0, "description": "How firmly the suspension holds the wheel."},
             "damping": {"type": "number", "minimum": 0, "description": "Compression."},
             "relaxation": {"type": "number", "minimum": 0},
             "travel": {"type": "number", "minimum": 0, "description": "Meters."},
@@ -165,7 +165,7 @@ constexpr std::string_view kSchema = R"({
         "tires": {
           "type": "object", "additionalProperties": false,
           "properties": {
-            "friction": {"type": "number", "minimum": 0, "description": "As Godot's wheel_friction_slip."},
+            "friction": {"type": "number", "minimum": 0, "description": "How much grip the tyre has before it slides."},
             "roll_influence": {"$ref": "#/$defs/share"}
           }
         },
