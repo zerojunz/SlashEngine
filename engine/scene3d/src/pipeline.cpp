@@ -20,7 +20,7 @@ constexpr std::array<std::string_view, render::kEffectCallbacks> kCallbackNames{
 constexpr std::string_view kSchema = R"({
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SlashEngine pipeline",
-  "description": "A frame's passes and compositor effects, as Godot 4.3's Compositor and CompositorEffect, named by a Environment3D's or a Camera3D's compositor. Forward+ only: Compatibility draws no effects.",
+  "description": "A frame's passes and compositor effects, named by an Environment3D's or a Camera3D's compositor. Clustered renderer only: the compatibility renderer draws no effects.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -54,10 +54,10 @@ constexpr std::string_view kSchema = R"({
         "properties": {
           "name": {"type": "string", "minLength": 1, "description": "The effect's name, unique in the file."},
           "enabled": {"type": "boolean", "description": "Whether it draws. Default true."},
-          "effect_callback_type": {"enum": ["pre_opaque", "post_opaque", "post_sky", "pre_transparent", "post_transparent"], "description": "Where in the frame it draws, as Godot's EffectCallbackType: pre_opaque over the sky before the opaque meshes, post_opaque, post_sky and pre_transparent in that order after them, post_transparent after the blended meshes, before TAA, FSR and post-processing. Default post_transparent."},
+          "effect_callback_type": {"enum": ["pre_opaque", "post_opaque", "post_sky", "pre_transparent", "post_transparent"], "description": "Where in the frame it draws: pre_opaque over the sky before the opaque meshes, post_opaque, post_sky and pre_transparent in that order after them, post_transparent after the blended meshes, before TAA, FSR and post-processing. Default post_transparent."},
           "material": {"type": "string", "pattern": "\\.material\\.json$", "description": "Project path of a material with \"shader_type\": \"compositor\"."},
           "material_params": {"type": "object", "description": "Values of the material's params by name, over its defaults."},
-          "needs_normal_roughness": {"type": "boolean", "description": "Whether NORMAL_ROUGHNESS_TEXTURE reads the prepass's normals and roughness, which the frame then draws, as Godot's needs_normal_roughness. Default false: it reads a normal facing the camera and a roughness of 1."},
+          "needs_normal_roughness": {"type": "boolean", "description": "Whether NORMAL_ROUGHNESS_TEXTURE reads the prepass's normals and roughness, which the frame then draws. Default false: it reads a normal facing the camera and a roughness of 1."},
           "code": {"type": "string", "description": "The name of a C++ callback the game's code registers with scene3d::add_compositor_code, run each frame before the effect draws to change it."}
         }
       }
