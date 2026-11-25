@@ -274,7 +274,7 @@ TEST_CASE("legend values name an item, then its orientation") {
                          "orientation if it is turned");
     CHECK(error("wall:") == R"("wall:": after the ':' comes an orientation, 0 to 23)");
     CHECK(error("wall:x") == R"("wall:x": after the ':' comes an orientation, 0 to 23)");
-    CHECK(error("wall:24") == R"("wall:24": 24 is not one of Godot's 24 orientations, 0 to 23)");
+    CHECK(error("wall:24") == R"("wall:24": 24 is not one of the 24 orientations, 0 to 23)");
 }
 
 TEST_CASE("BlockMap3D cells are floors of rows of legend keys, and encode back in canonical form") {
@@ -341,7 +341,7 @@ TEST_CASE("validate_grid_cells finds every error, each with its JSON Pointer") {
               "/legend/.: a key is one to three letters, digits or punctuation marks other than "
               "'.', '\"' and backslash",
               "/legend/bc: keys are all the same length: \"bc\" is 2 characters, \"a\" 1",
-              "/legend/d: \"door:99\": 99 is not one of Godot's 24 orientations, 0 to 23"});
+              "/legend/d: \"door:99\": 99 is not one of the 24 orientations, 0 to 23"});
     const world::BlockMap3D rows = grid(R"({
         "legend": {"ab": "wall"},
         "floors": [{"y": 0, "rows": ["ab", "abc", "ab..zz"]},

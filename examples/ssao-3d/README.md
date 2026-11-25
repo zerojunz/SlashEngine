@@ -34,5 +34,5 @@ frame.capture {"points":[[96,20],[272,90],[208,130],[160,165]],"path":"shots/roo
 - Turning `ssao_enabled` off leaves the room lit evenly again.
 
 SSAO darkens opaque meshes only, as in Godot: a transparent material neither casts occlusion nor
-takes it. Godot's Compatibility renderer (`"rendering_method": "gl_compatibility"`, and always
+takes it. Godot's Compatibility renderer (`"renderer": "compatibility"`, and always
 with the OpenGL drivers) has no SSAO.

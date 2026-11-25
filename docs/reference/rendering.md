@@ -1004,7 +1004,7 @@ of the next tick for drawing between ticks.
 
 The render scale follows Godot's `scaling_3d` settings, applied to the whole world (`fsr2`
 scales only the 3D world; see TAA above): `rendering.scaling` in `project.json` (`mode`, `scale`,
-`fsr_sharpness`, `upscaler`) and
+`sharpness`, `upscaler`) and
 `display.set`'s `scaling`. `CanvasRenderer` draws the world, with the canvas layers below it,
 into an upscaler's input at the render size, scales it over the screen, then draws the world's
 controls and the layers above at full size (`scaled()`; `frame.capture` returns `upscaler` and

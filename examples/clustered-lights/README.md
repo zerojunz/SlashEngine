@@ -7,7 +7,7 @@ plaza at night under a dim `moon`, seen from above through a `Camera3D` in a 320
 
 That is more lights than Godot's Compatibility renderer draws: it adds the first 64 to every
 pixel. [project.json](project.json) leaves `rendering.renderer` at its default,
-`forward_plus`, so each frame sorts the lanterns into tiles of 32 pixels and slices of depth,
+`clustered`, so each frame sorts the lanterns into tiles of 32 pixels and slices of depth,
 and a pixel adds only the moon and the few lanterns whose range reaches its tile and slice. All
 100 light the plaza.
 
@@ -29,5 +29,5 @@ frame.capture {"points":[[96,33],[131,107],[150,107],[263,167],[160,115]]}
 - `component.set` turns `lantern100` red, and `frame.capture` reads it red. `path` saves the
   frame as `shots/plaza.png`.
 
-With `"rendering_method": "gl_compatibility"` in project.json, as Godot's Compatibility renderer
+With `"renderer": "compatibility"` in project.json, as Godot's Compatibility renderer
 and as the OpenGL drivers always draw, the plaza from `lantern064` on stays dark.

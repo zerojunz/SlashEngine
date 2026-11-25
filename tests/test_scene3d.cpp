@@ -1547,7 +1547,7 @@ TEST_CASE("skies and fog draw behind and over the 3D world, their textures by pa
 
 TEST_CASE("project.json's rendering.renderer picks how 3D meshes are lit") {
     json::Value project = parse(R"({"format": 1, "name": "Lamps", "version": "1.0.0",
-        "main_scene": "main.scene.json", "rendering": {"renderer": "gl_compatibility"}})");
+        "main_scene": "main.scene.json", "rendering": {"renderer": "compatibility"}})");
     CHECK(slash::runtime::validate_project(project).empty());
     CHECK(slash::runtime::parse_project(project).value().rendering_method ==
           render::RenderMethod::Compatibility);
@@ -1558,7 +1558,15 @@ TEST_CASE("project.json's rendering.renderer picks how 3D meshes are lit") {
     const auto errors = slash::runtime::validate_project(project);
     REQUIRE(errors.size() == 1);
     CHECK(errors.front().path == "/rendering/renderer");
+    CHECK(render::parse_render_method("clustered") == render::RenderMethod::ForwardPlus);
+    CHECK(render::parse_render_method("compatibility") == render::RenderMethod::Compatibility);
+    // The old names still load.
     CHECK(render::parse_render_method("forward_plus") == render::RenderMethod::ForwardPlus);
+    CHECK(render::parse_render_method("gl_compatibility") == render::RenderMethod::Compatibility);
+    project["rendering"]["renderer"] = "gl_compatibility";
+    CHECK(slash::runtime::validate_project(project).empty());
+    CHECK(slash::runtime::parse_project(project).value().rendering_method ==
+          render::RenderMethod::Compatibility);
     CHECK_FALSE(render::parse_render_method("forward").has_value());
 }
 

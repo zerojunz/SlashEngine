@@ -516,8 +516,7 @@ json::Value param_schema(bool textures) {
         param["properties"]["source_color"]["type"] = "boolean";
         param["properties"]["source_color"]["default"] = false;
         param["properties"]["source_color"]["description"] =
-            "Spatial materials' textures: it holds sRGB colors, which the shader reads linear, as "
-            "Godot's source_color hint.";
+            "Spatial materials' textures: it holds sRGB colors, which the shader reads linear.";
     }
     param["properties"]["doc"] = text_schema("What the param does, for whoever sets it.");
     return param;
@@ -531,8 +530,7 @@ json::Value schema(bool list_ops) {
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine material";
-    out["description"] = "A canvas material: a node graph that colors each pixel of a sprite, "
-                         "like Godot's canvas_item shaders.";
+    out["description"] = "A canvas material: a node graph that colors each pixel of a sprite.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format"};
@@ -546,13 +544,12 @@ json::Value schema(bool list_ops) {
     }
     properties["blend"]["enum"] = std::move(blends);
     properties["blend"]["default"] = "mix";
-    properties["blend"]["description"] =
-        "How the color combines with what is under it, as Godot's blend modes.";
+    properties["blend"]["description"] = "How the color combines with what is under it.";
     properties["light_mode"]["enum"] = json::Array{"normal", "unshaded", "light_only"};
     properties["light_mode"]["default"] = "normal";
     properties["light_mode"]["description"] =
-        "How 2D lights shade it, as Godot's: normal, unshaded (lights and AmbientTint2D leave it "
-        "alone) or light_only (shown only where lights reach).";
+        "How 2D lights shade it: normal, unshaded (lights and AmbientTint2D leave it alone) or "
+        "light_only (shown only where lights reach).";
     properties["params"]["type"] = "object";
     properties["params"]["additionalProperties"] = param;
     properties["params"]["description"] =
@@ -565,18 +562,16 @@ json::Value schema(bool list_ops) {
                                          "the vertex color.";
     properties["shader"] = text_schema(
         "A game's own shader instead of nodes and color: an .hlsl file's project path, with "
-        "fragment() and vertex() functions as Godot's canvas_item shaders, a fragment() that "
-        "gives a mesh's surface as its spatial shaders, or a fragment() that gives the 3D "
-        "world's new color (compositor). A .texture.json graph's path works the graph out as "
-        "it draws: params named as its parameters move it, and its \"time\" parameter follows "
-        "TIME.");
+        "fragment() and vertex() functions, a fragment() that gives a mesh's surface as its "
+        "spatial shaders, or a fragment() that gives the 3D world's new color (compositor). A "
+        ".texture.json graph's path works the graph out as it draws: params named as its "
+        "parameters move it, and its \"time\" parameter follows TIME.");
     properties["shader_type"]["enum"] = json::Array{"canvas_item", "spatial", "compositor"};
     properties["shader_type"]["default"] = "canvas_item";
     properties["shader_type"]["description"] =
-        "What it draws, as Godot's shader_type: sprites and controls (canvas_item), meshes "
-        "(spatial, which needs a shader; Model3D's material names it), or a "
-        "screen pass over the 3D world (compositor, which needs a shader; a .pipeline.json "
-        "effect names it).";
+        "What it draws: sprites and controls (canvas_item), meshes (spatial, which needs a shader; "
+        "Model3D's material names it), or a screen pass over the 3D world (compositor, which needs "
+        "a shader; a .pipeline.json effect names it).";
     json::Array modes;
     for (const std::string_view mode : kRenderModes) {
         modes.emplace_back(mode);
@@ -584,9 +579,8 @@ json::Value schema(bool list_ops) {
     properties["render_mode"]["type"] = "array";
     properties["render_mode"]["items"]["enum"] = std::move(modes);
     properties["render_mode"]["description"] =
-        "A spatial material's render modes, as Godot's render_mode line: one blend_ mode (mix "
-        "by default), one cull_ mode (back by default), unshaded, fog_disabled, "
-        "shadows_disabled, world_vertex_coords.";
+        "A spatial material's render modes: one blend_ mode (mix by default), one cull_ mode (back "
+        "by default), unshaded, fog_disabled, shadows_disabled, world_vertex_coords.";
 
     json::Value compiled;
     compiled["type"] = "object";

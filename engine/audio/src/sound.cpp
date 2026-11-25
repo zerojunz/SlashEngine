@@ -324,12 +324,10 @@ json::Value stream_file_schema() {
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine audio stream";
     schema["description"] =
-        "One of: a sound with Godot's import settings (source); Godot's AudioStreamRandomizer, "
-        "one of several sounds each time it plays (streams); music, as Godot's "
-        "AudioStreamPlaylist (playlist), AudioStreamSynchronized (synchronized) and "
-        "AudioStreamInteractive (clips); Godot's AudioStreamGenerator (generator) or "
-        "AudioStreamPolyphonic (polyphonic), which a game's code plays frames or streams on; or "
-        "Godot's AudioStreamMicrophone (microphone).";
+        "One of: a sound with its import settings (source); one of several sounds each time it "
+        "plays (streams); music: a playlist (playlist), layers played together (synchronized) or "
+        "interactive clips (clips); frames a game's code pushes (generator) or streams it plays "
+        "(polyphonic); or the microphone (microphone).";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -468,8 +466,7 @@ json::Value stream_file_schema() {
     json::Value& generator = properties["generator"];
     generator["type"] = "object";
     generator["additionalProperties"] = false;
-    generator["description"] =
-        "Plays frames a game's code pushes as it runs, as Godot's AudioStreamGenerator.";
+    generator["description"] = "Plays frames a game's code pushes as it runs.";
     generator["properties"]["mix_rate_mode"] =
         choice("The rate frames are pushed at: the mix rate, the rate microphone input is "
                "recorded at (the mix rate), or mix_rate.",
@@ -481,8 +478,8 @@ json::Value stream_file_schema() {
     json::Value& polyphonic = properties["polyphonic"];
     polyphonic["type"] = "object";
     polyphonic["additionalProperties"] = false;
-    polyphonic["description"] = "Plays streams a game starts on one player, each with its own "
-                                "volume and pitch, as Godot's AudioStreamPolyphonic.";
+    polyphonic["description"] =
+        "Plays streams a game starts on one player, each with its own volume and pitch.";
     json::Value& polyphony = polyphonic["properties"]["polyphony"];
     polyphony["type"] = "integer";
     polyphony["minimum"] = 1;
@@ -493,9 +490,8 @@ json::Value stream_file_schema() {
     microphone["type"] = "object";
     microphone["additionalProperties"] = false;
     microphone["properties"] = json::Object{};
-    microphone["description"] =
-        "Plays what the microphone records, 50 ms late, as Godot's AudioStreamMicrophone; only as "
-        "a player's own stream, with project.json's audio.input_enabled on.";
+    microphone["description"] = "Plays what the microphone records, 50 ms late; only as a player's "
+                                "own stream, with project.json's audio.input_enabled on.";
     return schema;
 }
 

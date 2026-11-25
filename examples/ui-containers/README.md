@@ -13,7 +13,7 @@ texture. [expected.txt](expected.txt) holds its output.
 
 ```text
 ui.theme {"id":"slot_0","items":["styles"]}
-{"items":[{"from":"ui/game.theme.json","item":"styles/panel","value":{"bg_color":[0.2,0.22,0.3,1.0],
+{"items":[{"from":"ui/game.theme.json","item":"styles/panel","value":{"background_color":[0.2,0.22,0.3,1.0],
   "content_margin":8.0,"corner_radius":6}}]}
 ```
 

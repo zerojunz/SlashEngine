@@ -32,7 +32,7 @@ frame.capture {"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/smooth.p
 
 Captures keep TAA's history between them, as a running game's frames do, so the first capture
 after a change shows what one frame of a game would. TAA blends only the 3D world, in Forward+:
-the canvas, controls and Godot's Compatibility renderer (`"rendering_method":
-"gl_compatibility"`, and always with the OpenGL drivers) draw without it. As in Godot, where a
+the canvas, controls and the compatibility renderer (`"renderer":
+"compatibility"`, and always with the OpenGL drivers) draw without it. As in Godot, where a
 background pixel was covered in the frame before, a little of the old color can trail for a
 frame or two; and details thinner than a pixel, which most frames miss, fade rather than smooth.

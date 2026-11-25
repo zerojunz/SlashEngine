@@ -6,6 +6,6 @@
     "frequency": 0.09,
     "seed": 12
   },
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 48
 }

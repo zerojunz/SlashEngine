@@ -729,8 +729,8 @@ TEST_CASE("AnimationTrees in a scene are checked against their trees and librari
           std::vector<std::string>{
               "/entities/hero/components/AnimationGraph/libraries: "
               "Transform2D/position/x has no key in a RESET animation in the library "
-              "\"\"; a deterministic tree sets it to 0 while no animation plays it, as "
-              "Godot's does: add a RESET animation with its rest value, or set "
+              "\"\"; a deterministic tree sets it to 0 while no animation plays it: "
+              "add a RESET animation with its rest value, or set "
               "deterministic to false",
               "/entities/hero/components/AnimationGraph/libraries: hero.animtree.json: "
               "/root/nodes/walk/animation: the libraries have no animation \"wakl\"; "

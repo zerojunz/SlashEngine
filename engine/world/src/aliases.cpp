@@ -676,6 +676,12 @@ constexpr std::array kSettings = std::to_array<SettingAlias>({
     {"gui", "ui"},
 });
 
+// Setting values that took new names, looked up after the settings have moved.
+constexpr std::array kSettingValues = std::to_array<SettingValueAlias>({
+    {"rendering/renderer", "forward_plus", "clustered"},
+    {"rendering/renderer", "gl_compatibility", "compatibility"},
+});
+
 // The next name in a path of names split by '/', taken off its front.
 std::string_view next_name(std::string_view& path) {
     const std::size_t slash = path.find('/');
@@ -771,12 +777,44 @@ std::vector<Renamed> upgrade_settings(json::Value& project) {
         at += alias.old_path;
         renamed.push_back({std::move(at), std::string(alias.old_path), std::string(alias.path)});
     }
+    for (const SettingValueAlias& alias : kSettingValues) {
+        json::Value* value = find_setting(project, alias.path);
+        if (value == nullptr || !value->is_string() || value->as_string() != alias.old_value) {
+            continue;
+        }
+        *value = std::string(alias.value);
+        std::string at = "/";
+        at += alias.path;
+        renamed.push_back({std::move(at), std::string(alias.old_value), std::string(alias.value)});
+    }
     return renamed;
 }
 
+std::span<const SettingValueAlias> setting_value_aliases() {
+    return kSettingValues;
+}
+
+std::string_view current_setting_value(std::string_view path, std::string_view value) {
+    for (const SettingValueAlias& alias : kSettingValues) {
+        if (alias.path == path && alias.old_value == value) {
+            return alias.value;
+        }
+    }
+    return value;
+}
+
 bool has_old_settings(const json::Value& project) {
-    return project.is_object() && std::ranges::any_of(kSettings, [&](const SettingAlias& alias) {
-               return find_setting(project, alias.old_path) != nullptr;
+    if (!project.is_object()) {
+        return false;
+    }
+    return std::ranges::any_of(kSettings,
+                               [&](const SettingAlias& alias) {
+                                   return find_setting(project, alias.old_path) != nullptr;
+                               }) ||
+           std::ranges::any_of(kSettingValues, [&](const SettingValueAlias& alias) {
+               const json::Value* value = find_setting(project, alias.path);
+               return value != nullptr && value->is_string() &&
+                      value->as_string() == alias.old_value;
            });
 }
 
@@ -850,7 +888,49 @@ constexpr std::array kParamValues = std::to_array<ParamValueAlias>({
     {"schema.get", "kind", "voxel_gi", "voxel_light"},
 });
 
+// Paths of names joined by '/'.
+constexpr std::array kParamNames = std::to_array<ParamNameAlias>({
+    {"display.set", "scaling/fsr_sharpness", "scaling/sharpness"},
+    {"display.set", "vsync_mode", "vsync"},
+});
+
 } // namespace
+
+std::span<const ParamNameAlias> param_name_aliases() {
+    return kParamNames;
+}
+
+bool upgrade_param_names(std::string_view command, json::Value& params) {
+    bool replaced = false;
+    for (const ParamNameAlias& alias : kParamNames) {
+        if (alias.command != command) {
+            continue;
+        }
+        const std::size_t slash = alias.old_path.rfind('/');
+        const std::string_view parent_path =
+            slash == std::string_view::npos ? std::string_view{} : alias.old_path.substr(0, slash);
+        json::Value* parent = find_setting(params, parent_path);
+        if (parent == nullptr || !parent->is_object()) {
+            continue;
+        }
+        json::Object& object = parent->as_object();
+        const auto old = object.find(std::string(alias.old_path.substr(slash + 1)));
+        if (old == object.end()) {
+            continue;
+        }
+        const std::string name(alias.path.substr(alias.path.rfind('/') + 1));
+        // Given under both names, the current one wins.
+        if (!object.contains(name)) {
+            json::Value value = std::move(old->second);
+            object.erase(old);
+            object[name] = std::move(value);
+        } else {
+            object.erase(old);
+        }
+        replaced = true;
+    }
+    return replaced;
+}
 
 std::span<const ParamValueAlias> param_value_aliases() {
     return kParamValues;

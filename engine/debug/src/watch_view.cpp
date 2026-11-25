@@ -25,7 +25,7 @@ constexpr std::string_view kBar = R"({
   "entities": {
     "bar": {"components": {
       "Widget": {"children": ["status"], "anchor_right": 1, "pointer_mode": "ignore",
-                  "theme_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
+                  "theme_styles": {"panel": {"background_color": [0.06, 0.07, 0.09, 0.85],
                                                       "content_margin": 6}}},
       "PanelBox": {}}},
     "status": {"components": {
@@ -99,7 +99,7 @@ std::optional<std::array<float, 2>> project(const scene3d::CameraView& view, Vec
 
 json::Value outline_style(Vec4 color) {
     json::Value style;
-    style["draw_center"] = false;
+    style["fill_center"] = false;
     style["border_width"] = 2;
     style["border_color"] = json::Array{color.x, color.y, color.z, color.w};
     return style;
@@ -107,7 +107,8 @@ json::Value outline_style(Vec4 color) {
 
 json::Value name_style(Vec4 color) {
     json::Value style;
-    style["bg_color"] = json::Array{color.x * 0.35F, color.y * 0.35F, color.z * 0.35F, 0.9F};
+    style["background_color"] =
+        json::Array{color.x * 0.35F, color.y * 0.35F, color.z * 0.35F, 0.9F};
     style["content_margin"] = 2;
     return style;
 }

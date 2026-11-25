@@ -42,7 +42,7 @@ json::Value plugin_file_schema() {
     auto schema = json::parse(R"({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "SlashEngine plugin",
-        "description": "A plugin library built against slash/plugin/slash_plugin.h, as Godot's .gdextension file.",
+        "description": "A plugin library built against slash/plugin/slash_plugin.h.",
         "type": "object",
         "additionalProperties": false,
         "required": ["entry"],

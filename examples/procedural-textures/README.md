@@ -1,7 +1,6 @@
 # Procedural textures
 
-Textures made from settings rather than painted, as Godot's `NoiseTexture2D`,
-`GradientTexture1D` and `GradientTexture2D` resources. The project commits no images: its three
+Textures made from settings rather than painted: noise and gradients. The project commits no images: its three
 textures are `.texture.json` files in [textures/](textures/), made into pixels as they load, the
 same on every machine.
 

@@ -16,6 +16,6 @@
     ]
   },
   "height": 32,
-  "type": "GradientTexture2D",
+  "type": "gradient_2d",
   "width": 32
 }

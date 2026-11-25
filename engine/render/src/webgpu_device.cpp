@@ -8347,7 +8347,7 @@ private:
                                    post.glow, lut, view_of(brightness));
                            });
         }
-        if (!run_graph(graph, bound, "Forward+'s post passes")) {
+        if (!run_graph(graph, bound, "The clustered renderer's post passes")) {
             return draws;
         }
         if (luminance) {

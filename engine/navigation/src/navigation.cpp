@@ -1596,9 +1596,7 @@ json::Value settings_schema(Map map) {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] =
-        map == Map::TwoD ? "The 2D navigation map, as Godot's navigation/2d project settings."
-                         : "The 3D navigation map, as Godot's navigation/3d project settings.";
+    schema["description"] = map == Map::TwoD ? "The 2D navigation map." : "The 3D navigation map.";
     json::Value& properties = schema["properties"];
     properties["cell_size"] =
         number("The map's cell size in " + unit + ": navigation polygons should be made for it.",

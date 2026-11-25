@@ -87,8 +87,8 @@ json::Value make_schema() {
     json::Value item;
     item["type"] = "object";
     item["additionalProperties"] = false;
-    item["description"] = "What a cell holding the item draws, collides as and walks on, in the "
-                          "cell's space, as Godot's MeshLibrary item.";
+    item["description"] =
+        "What a cell holding the item draws, collides as and walks on, in the cell's space.";
     json::Value& properties = item["properties"];
     properties["mesh"]["type"] = "string";
     properties["mesh"]["description"] = "A .gltf, .glb, .obj, .fbx, .blend or .model.json file's "
@@ -125,8 +125,7 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine mesh library";
-    schema["description"] =
-        "Items a BlockMap3D places in its cells, by name, as Godot's MeshLibrary.";
+    schema["description"] = "Items a BlockMap3D places in its cells, by name.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -977,7 +976,7 @@ Result<GridItem> parse_grid_item(std::string_view text) {
         if (out.orientation >= kOrientations) {
             return make_error(ErrorCode::InvalidArgument,
                               quoted(text) + ": " + std::string(digits) +
-                                  " is not one of Godot's 24 orientations, 0 to 23");
+                                  " is not one of the 24 orientations, 0 to 23");
         }
     }
     return out;

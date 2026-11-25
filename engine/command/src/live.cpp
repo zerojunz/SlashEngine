@@ -98,7 +98,7 @@ Reply param_error(int error_code, std::string_view path, const std::string& mess
 // and render size the last frame drew with.
 json::Value frame_settings(const LiveGame& game, const Session& session) {
     json::Value out;
-    out["vsync_mode"] = render::vsync_mode_name(game.renderer->vsync());
+    out["vsync"] = render::vsync_mode_name(game.renderer->vsync());
     out["max_fps"] = game.loop->max_fps();
     json::Value scaling = render::scaling_json(canvas::settings(session.world()).scaling);
     if (game.canvas != nullptr) {
@@ -149,7 +149,7 @@ Reply set_scaling(Session& session, const json::Value& params) {
     if (const json::Value* scale = params.find("scale"); scale != nullptr) {
         scaling.scale = static_cast<float>(scale->as_double());
     }
-    if (const json::Value* sharpness = params.find("fsr_sharpness"); sharpness != nullptr) {
+    if (const json::Value* sharpness = params.find("sharpness"); sharpness != nullptr) {
         scaling.fsr_sharpness = static_cast<float>(sharpness->as_double());
     }
     if (const json::Value* upscaler = params.find("upscaler"); upscaler != nullptr) {
@@ -208,7 +208,7 @@ Reply display_set(const LiveGame& game, Session& session, const json::Value& par
             *game.path_trace = traced;
         }
     }
-    if (const json::Value* vsync = params.find("vsync_mode"); vsync != nullptr) {
+    if (const json::Value* vsync = params.find("vsync"); vsync != nullptr) {
         game.renderer->set_vsync(
             render::parse_vsync_mode(vsync->as_string()).value_or(render::VsyncMode::Enabled));
     }
@@ -283,7 +283,7 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     json::Value scaling = params_schema({
         {"mode", property("string", "bilinear, fsr, fsr2 or fsr3.")},
         {"scale", std::move(scale)},
-        {"fsr_sharpness", std::move(sharpness)},
+        {"sharpness", std::move(sharpness)},
         {"upscaler", property("string", "An upscaler the game added; \"\" for none.")},
     });
     scaling["description"] = "The render scale, as project.json's rendering.scaling; fields left "
@@ -323,7 +323,7 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({
-            {"vsync_mode", std::move(vsync_mode)},
+            {"vsync", std::move(vsync_mode)},
             {"max_fps", std::move(max_fps)},
             {"scaling", std::move(scaling)},
             {"path_trace", std::move(path_trace)},

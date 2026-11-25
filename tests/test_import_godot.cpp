@@ -782,7 +782,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");
     CHECK(settings.find("rendering")->find("driver")->as_string() == "opengl");
-    CHECK(settings.find("rendering")->find("renderer")->as_string() == "gl_compatibility");
+    CHECK(settings.find("rendering")->find("renderer")->as_string() == "compatibility");
     CHECK_FALSE(settings.find("rendering")->find("fallback_to_opengl")->as_bool());
     CHECK(settings.find("physics_2d")->find("gravity")->as_double() == 490.0);
     CHECK(settings.find("physics_2d")->find("linear_damp")->as_double() == 0.5);
@@ -937,7 +937,7 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(*play.find("Button")->find("button_mask") == parse(R"(["left", "right"])"));
     CHECK(play.find("Button")->find("alignment") == nullptr); // fill has no equivalent
     CHECK(*play.find("Widget")->find("theme_styles")->find("normal") ==
-          parse(R"({"type": "flat", "bg_color": [0.1, 0.1, 0.2, 0.9],
+          parse(R"({"type": "flat", "background_color": [0.1, 0.1, 0.2, 0.9],
                     "corner_radius_top_left": 6, "border_width_bottom": 2})"));
     CHECK(*entity(files, level, "volume").find("Slider") ==
           parse(R"({"max_value": 10.0, "vertical": true})"));
@@ -1056,7 +1056,7 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
         "types": {
             "Button": {"colors": {"font_color": [1.0, 0.9, 0.5, 1.0]},
                        "constants": {"h_separation": 6},
-                       "styles": {"normal": {"type": "flat", "bg_color": [0.2, 0.3, 0.4, 1.0],
+                       "styles": {"normal": {"type": "flat", "background_color": [0.2, 0.3, 0.4, 1.0],
                                              "corner_radius_top_left": 4}}},
             "Title": {"base_type": "Label", "font_sizes": {"font_size": 24}}}})"));
     CHECK(unsupported(plan.report, "theme item styles").find("why")->as_string() ==
@@ -6069,7 +6069,7 @@ texture = SubResource("GradientTexture1D_bar")
     CHECK(texture_of("sky") == "godot/sky.texture.json");
     const json::Value noise = parse(files.at(waves));
     CHECK(slash::procedural::validate_texture(noise).empty());
-    CHECK(noise == parse(R"({"format": 1, "type": "NoiseTexture2D", "width": 64, "height": 32,
+    CHECK(noise == parse(R"({"format": 1, "type": "noise", "width": 64, "height": 32,
         "invert": true, "seamless": true, "seamless_blend_skirt": 0.2,
         "color_ramp": {"points": [{"offset": 0, "color": [0.1, 0.2, 0.5, 1]},
                                   {"offset": 1, "color": [0.8, 0.9, 1, 1]}]},
@@ -6078,14 +6078,14 @@ texture = SubResource("GradientTexture1D_bar")
                   "domain_warp_enabled": true, "domain_warp_fractal_type": "independent"}})"));
     // Points come sorted, with Godot's cubic Oklab blending.
     const json::Value sky = parse(files.at("godot/sky.texture.json"));
-    CHECK(sky == parse(R"({"format": 1, "type": "GradientTexture2D", "width": 32, "height": 16,
+    CHECK(sky == parse(R"({"format": 1, "type": "gradient_2d", "width": 32, "height": 16,
         "fill": "radial", "fill_from": [0.5, 0.5], "fill_to": [1, 0.5], "repeat": "mirror",
         "gradient": {"interpolation_mode": "cubic", "interpolation_color_space": "oklab",
                      "points": [{"offset": 0, "color": [0.1, 0.1, 0.3, 1]},
                                 {"offset": 1, "color": [1, 0.8, 0.5, 1]}]}})"));
     // A texture with no gradient keeps Godot's black to white.
     const json::Value bar = parse(files.at(texture_of("bar")));
-    CHECK(bar == parse(R"({"format": 1, "type": "GradientTexture1D", "width": 8})"));
+    CHECK(bar == parse(R"({"format": 1, "type": "gradient_1d", "width": 8})"));
     const json::Value& report = plan.report;
     CHECK(report.find("converted")->find("procedural_textures")->as_int() == 3);
     CHECK(unsupported(report, "FastNoiseLite.spooky").is_object());

@@ -37,5 +37,5 @@ frame.capture {"points":[[118,92],[200,88],[60,84],[160,165]],"path":"shots/hall
 
 SSR reflects only what is on screen, as in Godot: what is behind the camera or off the edges has
 no reflection, and reflections fade toward the edges rather than end there. It reflects in opaque
-meshes only. Godot's Compatibility renderer (`"rendering_method": "gl_compatibility"`, and always
+meshes only. Godot's Compatibility renderer (`"renderer": "compatibility"`, and always
 with the OpenGL drivers) has no SSR.

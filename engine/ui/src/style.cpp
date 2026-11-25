@@ -14,8 +14,8 @@
 #include <utility>
 #include <vector>
 
-// Style boxes as Godot's StyleBoxFlat, StyleBoxTexture, StyleBoxLine and StyleBoxEmpty
-// (scene/resources/style_box*.cpp), read from JSON with Godot's property names.
+// Style boxes, ported from Godot's StyleBoxFlat, StyleBoxTexture, StyleBoxLine and StyleBoxEmpty
+// (scene/resources/style_box*.cpp, MIT), read from JSON.
 namespace slash::ui {
 namespace {
 
@@ -139,12 +139,12 @@ const std::vector<Property>& properties() {
                               kTypes)});
         add_four(out, "content_margin", kSides, kAll, number("", -1.0),
                  "The content's margin in pixels; -1 takes the borders' or texture margins'");
-        add_four(out, "expand_margin", kSides, kFlatAndTexture, number(""),
+        add_four(out, "outset", kSides, kFlatAndTexture, number(""),
                  "Pixels drawn outside the rect");
-        out.push_back({"draw_center", kFlatAndTexture,
+        out.push_back({"fill_center", kFlatAndTexture,
                        boolean("Draw the middle, not only the "
                                "borders.")});
-        out.push_back({"bg_color", kFlat, numbers("As [r, g, b, a] from 0 to 1.", 4, 0.0)});
+        out.push_back({"background_color", kFlat, numbers("As [r, g, b, a] from 0 to 1.", 4, 0.0)});
         add_four(out, "border_width", kSides, kFlat, number("", 0.0, std::nullopt, true),
                  "The border's width in pixels");
         out.push_back(
@@ -153,7 +153,7 @@ const std::vector<Property>& properties() {
                        boolean("Blend the borders' inner edge into the middle's color.")});
         add_four(out, "corner_radius", kCorners, kFlat, number("", 0.0, std::nullopt, true),
                  "The corner's radius in pixels");
-        out.push_back({"corner_detail", kFlat,
+        out.push_back({"corner_segments", kFlat,
                        number("Points around each corner: more is smoother.", 1.0, 20.0, true)});
         out.push_back(
             {"shadow_color", kFlat, numbers("The shadow's color, as [r, g, b, a].", 4, 0.0)});
@@ -174,20 +174,19 @@ const std::vector<Property>& properties() {
         texture["type"] = "string";
         texture["description"] = "Project path of a PNG, BMP or KTX2 file.";
         out.push_back({"texture", kTexture, std::move(texture)});
-        out.push_back({"region_rect", kTexture,
+        out.push_back({"region", kTexture,
                        numbers("The part of the texture used, [x, y, width, height] in pixels; a "
                                "zero size uses the whole texture.",
                                4, 0.0)});
-        add_four(out, "texture_margin", kSides, kTexture, number("", 0.0),
+        add_four(out, "slice_margin", kSides, kTexture, number("", 0.0),
                  "Pixels of the texture on this side that don't stretch");
-        out.push_back({"axis_stretch_horizontal", kTexture,
+        out.push_back({"stretch_horizontal", kTexture,
                        choice("How the middle fills the rect across: stretched, tiled, or tiled "
                               "with tiles stretched to fit a whole number.",
                               kStretches)});
-        out.push_back({"axis_stretch_vertical", kTexture,
+        out.push_back({"stretch_vertical", kTexture,
                        choice("How the middle fills the rect down.", kStretches)});
-        out.push_back(
-            {"modulate_color", kTexture, numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
+        out.push_back({"tint", kTexture, numbers("Tints the texture, as [r, g, b, a].", 4, 0.0)});
         out.push_back({"color", kLine, numbers("The line's color, as [r, g, b, a].", 4, 0.0)});
         out.push_back(
             {"thickness", kLine, number("The line's width in pixels.", 0.0, std::nullopt, true)});
@@ -320,12 +319,85 @@ Vec2 StyleBox::minimum_size() const {
     return {margin(0) + margin(2), margin(1) + margin(3)};
 }
 
+namespace {
+
+// The keys style boxes had before they took their own names, and their names now. A key with
+// sides ("expand_margin_left") is renamed as its base.
+constexpr std::array<StyleBoxAlias, 9> kStyleBoxAliases{{
+    {"axis_stretch_horizontal", "stretch_horizontal"},
+    {"axis_stretch_vertical", "stretch_vertical"},
+    {"bg_color", "background_color"},
+    {"corner_detail", "corner_segments"},
+    {"draw_center", "fill_center"},
+    {"expand_margin", "outset"},
+    {"modulate_color", "tint"},
+    {"region_rect", "region"},
+    {"texture_margin", "slice_margin"},
+}};
+
+// The current name of a style box key, or the key as given.
+std::string current_key(std::string_view key) {
+    for (const StyleBoxAlias& alias : kStyleBoxAliases) {
+        if (key == alias.old_name) {
+            return std::string(alias.name);
+        }
+        if (key.starts_with(alias.old_name) && key.size() > alias.old_name.size() &&
+            key[alias.old_name.size()] == '_' &&
+            std::ranges::find(kSides, key.substr(alias.old_name.size() + 1)) != kSides.end()) {
+            return std::string(alias.name) + std::string(key.substr(alias.old_name.size()));
+        }
+    }
+    return std::string(key);
+}
+
+} // namespace
+
+std::span<const StyleBoxAlias> style_box_aliases() {
+    return kStyleBoxAliases;
+}
+
+bool upgrade_style_box(json::Value& doc) {
+    if (!doc.is_object()) {
+        return false;
+    }
+    bool any = false;
+    json::Object current;
+    const json::Object& given = doc.as_object();
+    for (const auto& [key, value] : given) {
+        std::string now = current_key(key);
+        if (now == key) {
+            current[key] = value;
+            continue;
+        }
+        any = true;
+        // Given under both names, the current one wins.
+        if (!given.contains(now)) {
+            current[std::move(now)] = value;
+        }
+    }
+    if (any) {
+        doc = json::Value(std::move(current));
+    }
+    return any;
+}
+
+const json::Value& current_style_box(const json::Value& doc, json::Value& copy) {
+    if (!doc.is_object() || std::ranges::none_of(doc.as_object(), [](const auto& entry) {
+            return current_key(entry.first) != entry.first;
+        })) {
+        return doc;
+    }
+    copy = doc;
+    upgrade_style_box(copy);
+    return copy;
+}
+
 json::Value style_box_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "A style box, as Godot's StyleBoxFlat, StyleBoxTexture, StyleBoxLine "
-                            "and StyleBoxEmpty. Sides are left, top, right and bottom.";
+    schema["description"] = "A style box: a flat rect, a texture cut into nine parts, a line, or "
+                            "nothing. Sides are left, top, right and bottom.";
     json::Value& out = schema["properties"];
     for (const Property& property : properties()) {
         json::Value each = property.schema;
@@ -347,7 +419,9 @@ json::Value style_box_schema() {
     return schema;
 }
 
-std::vector<json::ValidationError> validate_style_box(const json::Value& doc) {
+std::vector<json::ValidationError> validate_style_box(const json::Value& given) {
+    json::Value copy;
+    const json::Value& doc = current_style_box(given, copy);
     std::vector<json::ValidationError> errors = json::validate(doc, style_box_schema());
     if (!errors.empty()) {
         return errors;
@@ -382,7 +456,9 @@ std::vector<json::ValidationError> validate_style_box(const json::Value& doc) {
     return errors;
 }
 
-Result<StyleBox> parse_style_box(const json::Value& doc) {
+Result<StyleBox> parse_style_box(const json::Value& given) {
+    json::Value copy;
+    const json::Value& doc = current_style_box(given, copy);
     if (const auto errors = validate_style_box(doc); !errors.empty()) {
         const json::ValidationError& first = errors.front();
         return make_error(ErrorCode::InvalidArgument,
@@ -392,11 +468,11 @@ Result<StyleBox> parse_style_box(const json::Value& doc) {
     StyleBox out;
     out.type = type_of(doc);
     read_four(doc, "content_margin", kSides, out.content_margin);
-    read_four(doc, "expand_margin", kSides, out.expand_margin);
-    if (const json::Value* value = doc.find("draw_center"); value != nullptr) {
+    read_four(doc, "outset", kSides, out.expand_margin);
+    if (const json::Value* value = doc.find("fill_center"); value != nullptr) {
         out.draw_center = value->as_bool();
     }
-    if (const json::Value* value = doc.find("bg_color"); value != nullptr) {
+    if (const json::Value* value = doc.find("background_color"); value != nullptr) {
         out.bg_color = vec4(*value);
     }
     read_four(doc, "border_width", kSides, out.border_width);
@@ -407,7 +483,7 @@ Result<StyleBox> parse_style_box(const json::Value& doc) {
         out.border_blend = value->as_bool();
     }
     read_four(doc, "corner_radius", kCorners, out.corner_radius);
-    if (const json::Value* value = doc.find("corner_detail"); value != nullptr) {
+    if (const json::Value* value = doc.find("corner_segments"); value != nullptr) {
         out.corner_detail = static_cast<int>(value->as_int());
     }
     if (const json::Value* value = doc.find("shadow_color"); value != nullptr) {
@@ -431,13 +507,12 @@ Result<StyleBox> parse_style_box(const json::Value& doc) {
     if (const json::Value* value = doc.find("texture"); value != nullptr) {
         out.texture = value->as_string();
     }
-    if (const json::Value* value = doc.find("region_rect"); value != nullptr) {
+    if (const json::Value* value = doc.find("region"); value != nullptr) {
         out.region_rect = vec4(*value);
     }
-    read_four(doc, "texture_margin", kSides, out.texture_margin);
-    for (const auto& [name, field] :
-         {std::pair{"axis_stretch_horizontal", &out.axis_stretch_horizontal},
-          std::pair{"axis_stretch_vertical", &out.axis_stretch_vertical}}) {
+    read_four(doc, "slice_margin", kSides, out.texture_margin);
+    for (const auto& [name, field] : {std::pair{"stretch_horizontal", &out.axis_stretch_horizontal},
+                                      std::pair{"stretch_vertical", &out.axis_stretch_vertical}}) {
         if (const json::Value* value = doc.find(name); value != nullptr) {
             for (const auto& [each, stretch] : kStretches) {
                 if (each == value->as_string()) {
@@ -446,7 +521,7 @@ Result<StyleBox> parse_style_box(const json::Value& doc) {
             }
         }
     }
-    if (const json::Value* value = doc.find("modulate_color"); value != nullptr) {
+    if (const json::Value* value = doc.find("tint"); value != nullptr) {
         out.modulate_color = vec4(*value);
     }
     if (const json::Value* value = doc.find("color"); value != nullptr) {
@@ -495,19 +570,19 @@ json::Value style_box_json(const StyleBox& style) {
         }
         return out;
     }
-    write_four(out, "expand_margin", kSides, style.expand_margin, 0.0F);
+    write_four(out, "outset", kSides, style.expand_margin, 0.0F);
     if (style.draw_center != defaults.draw_center) {
-        out["draw_center"] = style.draw_center;
+        out["fill_center"] = style.draw_center;
     }
     if (style.type == StyleBox::Type::Texture) {
         out["texture"] = style.texture;
         if (style.region_rect != defaults.region_rect) {
-            out["region_rect"] = color_json(style.region_rect);
+            out["region"] = color_json(style.region_rect);
         }
-        write_four(out, "texture_margin", kSides, style.texture_margin, 0.0F);
+        write_four(out, "slice_margin", kSides, style.texture_margin, 0.0F);
         for (const auto& [name, value] :
-             {std::pair{"axis_stretch_horizontal", style.axis_stretch_horizontal},
-              std::pair{"axis_stretch_vertical", style.axis_stretch_vertical}}) {
+             {std::pair{"stretch_horizontal", style.axis_stretch_horizontal},
+              std::pair{"stretch_vertical", style.axis_stretch_vertical}}) {
             if (value != StyleBox::Stretch::Stretch) {
                 for (const auto& [each, stretch] : kStretches) {
                     if (stretch == value) {
@@ -517,12 +592,12 @@ json::Value style_box_json(const StyleBox& style) {
             }
         }
         if (style.modulate_color != defaults.modulate_color) {
-            out["modulate_color"] = color_json(style.modulate_color);
+            out["tint"] = color_json(style.modulate_color);
         }
         return out;
     }
     if (style.bg_color != defaults.bg_color) {
-        out["bg_color"] = color_json(style.bg_color);
+        out["background_color"] = color_json(style.bg_color);
     }
     write_four(out, "border_width", kSides, style.border_width, 0);
     if (style.border_color != defaults.border_color) {
@@ -533,7 +608,7 @@ json::Value style_box_json(const StyleBox& style) {
     }
     write_four(out, "corner_radius", kCorners, style.corner_radius, 0);
     if (style.corner_detail != defaults.corner_detail) {
-        out["corner_detail"] = style.corner_detail;
+        out["corner_segments"] = style.corner_detail;
     }
     if (style.shadow_color != defaults.shadow_color) {
         out["shadow_color"] = color_json(style.shadow_color);

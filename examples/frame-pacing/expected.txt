@@ -1,8 +1,8 @@
 display.list {}
-  -> {"displays":[],"frame_generation":{"enabled":false},"max_fps":60,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
-display.set {"vsync_mode": "mailbox", "max_fps": 120}
-  -> {"frame_generation":{"enabled":false},"max_fps":120,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"mailbox"}
+  -> {"displays":[],"frame_generation":{"enabled":false},"max_fps":60,"scaling":{"mode":"bilinear","scale":1.0,"sharpness":0.2},"vsync":"enabled"}
+display.set {"vsync": "mailbox", "max_fps": 120}
+  -> {"frame_generation":{"enabled":false},"max_fps":120,"scaling":{"mode":"bilinear","scale":1.0,"sharpness":0.2},"vsync":"mailbox"}
 display.set {"max_fps": 5000}
   -> error: /max_fps: must be at most 1000, got 5000
 perf.stats {}
-  -> frames 90, ticks 90, catch-up frames 0, vsync_mode mailbox, max_fps 120, renderer null
+  -> frames 90, ticks 90, catch-up frames 0, vsync mailbox, max_fps 120, renderer null

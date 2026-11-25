@@ -50,7 +50,7 @@ void register_fluid_commands(Registry& registry);
 // Adds water.place and water.sample, over slash/world/water.hpp (water.cpp).
 void register_water_commands(Registry& registry);
 
-// The noise a command samples: a .texture.json NoiseTexture2D's (its noise, normalize and
+// The noise a command samples: a .texture.json noise texture's (its noise, normalize and
 // invert), or inline FastNoiseLite settings, normalized.
 struct NoiseSource {
     procedural::NoiseSettings settings;

@@ -5558,7 +5558,7 @@ private:
             SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
             if (texture == nullptr) {
                 return sdl_error("creating a " + std::to_string(w) + "x" + std::to_string(h) +
-                                 " texture for Forward+'s post passes failed");
+                                 " texture for the clustered renderer's post passes failed");
             }
             return texture;
         };
@@ -8633,7 +8633,7 @@ private:
                                     texture_of(brightness));
                            });
         }
-        if (!run_graph(graph, bound, "Forward+'s post passes")) {
+        if (!run_graph(graph, bound, "The clustered renderer's post passes")) {
             return;
         }
         if (luminance) {

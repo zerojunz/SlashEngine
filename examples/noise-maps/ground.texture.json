@@ -17,6 +17,6 @@
     "frequency": 0.25,
     "noise_type": "cellular"
   },
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 64
 }

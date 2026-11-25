@@ -220,7 +220,7 @@ json::Value gradient_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "A gradient, as Godot's Gradient. Left out, black to white.";
+    schema["description"] = "A gradient. Left out, black to white.";
     json::Value& p = schema["properties"];
     p["points"]["type"] = "array";
     p["points"]["items"] = point;

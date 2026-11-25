@@ -159,9 +159,7 @@ json::Value node_schema(TreeNodeType type) {
     properties["type"]["const"] = tree_node_type_name(type);
     if (tree_node_has_filter(type)) {
         properties["filter_enabled"] =
-            boolean("Blend only the tracks filters names; the rest pass through or stop, as "
-                    "Godot's filters.",
-                    false);
+            boolean("Blend only the tracks filters names; the rest pass through or stop.", false);
         properties["filters"]["type"] = "array";
         properties["filters"]["items"]["type"] = "string";
         properties["filters"]["description"] =
@@ -169,8 +167,7 @@ json::Value node_schema(TreeNodeType type) {
             "event, after a target and \":\" for a track with one.";
     }
     if (has_sync(type)) {
-        properties["sync"] =
-            boolean("Keep inputs that count for nothing playing, as Godot's sync.", false);
+        properties["sync"] = boolean("Keep inputs that count for nothing playing.", false);
     }
     const std::vector<std::string> inputs = fixed_inputs(type);
     if (!inputs.empty()) {
@@ -195,7 +192,7 @@ json::Value node_schema(TreeNodeType type) {
         properties["animation"]["minLength"] = 1;
         properties["play_mode"] = choice("Play it forward or backward.", kPlayModes);
         properties["advance_on_start"] =
-            boolean("Move on by a tick's time on the tick it starts, as Godot's.", false);
+            boolean("Move on by a tick's time on the tick it starts.", false);
         properties["use_custom_timeline"] =
             boolean("Use timeline_length, start_offset, loop_mode and stretch_time_scale in "
                     "place of the animation's length and loop.",
@@ -243,8 +240,8 @@ json::Value node_schema(TreeNodeType type) {
             properties["x_label"]["default"] = "x";
             properties["y_label"] = property("string", "What y stands for.");
             properties["y_label"]["default"] = "y";
-            properties["auto_triangles"] = boolean(
-                "Join the points in triangles by Delaunay triangulation, as Godot's.", true);
+            properties["auto_triangles"] =
+                boolean("Join the points in triangles by Delaunay triangulation.", true);
             json::Value triangle;
             triangle["type"] = "array";
             triangle["items"]["type"] = "integer";
@@ -283,7 +280,7 @@ json::Value node_schema(TreeNodeType type) {
         break;
     case TreeNodeType::TimeSeek:
         properties["explicit_elapse"] =
-            boolean("A seek counts the time it skips, as Godot's, so events between fire.", true);
+            boolean("A seek counts the time it skips, so events between fire.", true);
         break;
     case TreeNodeType::Transition: {
         out["required"] = json::Array{"type", "inputs"};
@@ -351,8 +348,8 @@ json::Value node_schema(TreeNodeType type) {
                                "to be taken on its own.");
         fields["advance_condition"]["default"] = "";
         fields["advance_expression"] = property(
-            "string", "With auto, an expression of the tree's variables, as Godot's, that must "
-                      "be true for it to be taken on its own: \"speed > 0.1 and not jumping\".");
+            "string", "With auto, an expression of the tree's variables, that must be true for it "
+                      "to be taken on its own: \"speed > 0.1 and not jumping\".");
         fields["advance_expression"]["default"] = "";
         fields["xfade_time"] = number("Seconds the two states cross-fade over.", 0.0);
         fields["xfade_time"]["minimum"] = 0;
@@ -393,8 +390,8 @@ json::Value schema() {
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine animation tree";
-    out["description"] = "A tree of animation nodes that blends animations, as Godot's "
-                         "AnimationGraph. The AnimationGraph component plays it.";
+    out["description"] =
+        "A tree of animation nodes that blends animations. The AnimationGraph component plays it.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format", "root"};
@@ -1173,7 +1170,7 @@ void add_parameters(const AnimationTreeResource& tree, int index, std::vector<Tr
         break;
     case TreeNodeType::StateMachine: {
         add("playback", json::Object{}, false,
-            "The state playing, the one fading out and the travel path, as Godot's playback.");
+            "The state playing, the one fading out and the travel path.");
         if (node.state_machine_type != StateMachineType::Grouped) {
             add("travel", "", true,
                 "A state to go to by the cheapest way through transitions, or to jump to if "
@@ -1594,14 +1591,13 @@ std::vector<json::ValidationError> check_trees(const json::Value& as_written,
                 }
             }
             for (const auto& [track_name, zero] : unkeyed) {
-                errors.push_back(
-                    {at + "/libraries",
-                     track_name +
-                         " has no key in a RESET animation in the library \"\"; a "
-                         "deterministic tree sets it to " +
-                         json::write(zero, json::Style::Compact) +
-                         " while no animation plays it, as Godot's does: add a RESET animation "
-                         "with its rest value, or set deterministic to false"});
+                errors.push_back({at + "/libraries",
+                                  track_name +
+                                      " has no key in a RESET animation in the library \"\"; a "
+                                      "deterministic tree sets it to " +
+                                      json::write(zero, json::Style::Compact) +
+                                      " while no animation plays it: add a RESET animation with "
+                                      "its rest value, or set deterministic to false"});
             }
         }
         std::vector<std::string_view> animation_names;

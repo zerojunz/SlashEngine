@@ -51,7 +51,7 @@ void read_bool(const json::Value* object, std::string_view key, bool& out) {
 } // namespace
 
 json::Value settings_schema() {
-    json::Value openxr = object("The headset's runtime, as Godot's xr/openxr settings.");
+    json::Value openxr = object("The headset's runtime.");
     openxr["properties"]["enabled"] =
         boolean(false, "Start the headset when the game starts; sessions start the test "
                        "headset instead.");
@@ -68,10 +68,10 @@ json::Value settings_schema() {
         choice({"opaque", "additive", "alpha"}, "opaque",
                "How the game's picture blends with the room: not at all (virtual reality), "
                "added to it, or by its alpha (augmented reality).");
-    json::Value shaders = object("As Godot's xr/shaders.");
+    json::Value shaders = object("");
     shaders["properties"]["enabled"] =
         boolean(false, "Draw for headsets: each eye's view in one pass.");
-    json::Value schema = object("Virtual and augmented reality, as Godot's xr settings.");
+    json::Value schema = object("Virtual and augmented reality.");
     schema["properties"]["openxr"] = std::move(openxr);
     schema["properties"]["shaders"] = std::move(shaders);
     return schema;
