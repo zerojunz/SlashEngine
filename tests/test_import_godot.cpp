@@ -6069,7 +6069,7 @@ texture = SubResource("GradientTexture1D_bar")
     CHECK(texture_of("sky") == "godot/sky.texture.json");
     const json::Value noise = parse(files.at(waves));
     CHECK(slash::procedural::validate_texture(noise).empty());
-    CHECK(noise == parse(R"({"format": 1, "type": "NoiseTexture2D", "width": 64, "height": 32,
+    CHECK(noise == parse(R"({"format": 1, "type": "noise", "width": 64, "height": 32,
         "invert": true, "seamless": true, "seamless_blend_skirt": 0.2,
         "color_ramp": {"points": [{"offset": 0, "color": [0.1, 0.2, 0.5, 1]},
                                   {"offset": 1, "color": [0.8, 0.9, 1, 1]}]},
@@ -6078,14 +6078,14 @@ texture = SubResource("GradientTexture1D_bar")
                   "domain_warp_enabled": true, "domain_warp_fractal_type": "independent"}})"));
     // Points come sorted, with Godot's cubic Oklab blending.
     const json::Value sky = parse(files.at("godot/sky.texture.json"));
-    CHECK(sky == parse(R"({"format": 1, "type": "GradientTexture2D", "width": 32, "height": 16,
+    CHECK(sky == parse(R"({"format": 1, "type": "gradient_2d", "width": 32, "height": 16,
         "fill": "radial", "fill_from": [0.5, 0.5], "fill_to": [1, 0.5], "repeat": "mirror",
         "gradient": {"interpolation_mode": "cubic", "interpolation_color_space": "oklab",
                      "points": [{"offset": 0, "color": [0.1, 0.1, 0.3, 1]},
                                 {"offset": 1, "color": [1, 0.8, 0.5, 1]}]}})"));
     // A texture with no gradient keeps Godot's black to white.
     const json::Value bar = parse(files.at(texture_of("bar")));
-    CHECK(bar == parse(R"({"format": 1, "type": "GradientTexture1D", "width": 8})"));
+    CHECK(bar == parse(R"({"format": 1, "type": "gradient_1d", "width": 8})"));
     const json::Value& report = plan.report;
     CHECK(report.find("converted")->find("procedural_textures")->as_int() == 3);
     CHECK(unsupported(report, "FastNoiseLite.spooky").is_object());

@@ -22,9 +22,23 @@ using detail::EnumName;
 // The largest texture every GPU takes, as render::decode_image allows.
 constexpr std::int64_t kMaxSize = 16384;
 
-constexpr std::string_view kNoiseType = "NoiseTexture2D";
-constexpr std::string_view kGradient1DType = "GradientTexture1D";
-constexpr std::string_view kGradient2DType = "GradientTexture2D";
+constexpr std::string_view kNoiseType = "noise";
+constexpr std::string_view kGradient1DType = "gradient_1d";
+constexpr std::string_view kGradient2DType = "gradient_2d";
+
+// The type names files written before the rename use, and the names they load as.
+std::string_view current_type(std::string_view name) {
+    if (name == "NoiseTexture2D") {
+        return kNoiseType;
+    }
+    if (name == "GradientTexture1D") {
+        return kGradient1DType;
+    }
+    if (name == "GradientTexture2D") {
+        return kGradient2DType;
+    }
+    return name;
+}
 
 constexpr std::array<EnumName<GradientFill>, 3> kFills{{
     {GradientFill::Linear, "linear"},
@@ -49,7 +63,7 @@ json::Value base_schema(std::string_view type, std::string_view description) {
     p["format"]["const"] = 1;
     p["format"]["description"] = "Format version. Must be 1.";
     p["type"]["const"] = type;
-    p["type"]["description"] = "Which of Godot's texture resources this is.";
+    p["type"]["description"] = "Which kind of texture this is.";
     return schema;
 }
 
@@ -70,8 +84,7 @@ json::Value point_field(Vec2 fallback, std::string_view description) {
 
 json::Value noise_texture_schema() {
     const NoiseTexture2D d;
-    json::Value schema = base_schema(kNoiseType, "Noise drawn into a texture, as Godot's "
-                                                 "NoiseTexture2D.");
+    json::Value schema = base_schema(kNoiseType, "Noise drawn into a texture.");
     json::Value& p = schema["properties"];
     p["width"] = size_field(d.width, "Width in pixels.");
     p["height"] = size_field(d.height, "Height in pixels.");
@@ -94,8 +107,8 @@ json::Value noise_texture_schema() {
 
 json::Value gradient_1d_schema() {
     const GradientTexture1D d;
-    json::Value schema = base_schema(kGradient1DType, "A gradient across a texture one pixel "
-                                                      "high, as Godot's GradientTexture1D.");
+    json::Value schema =
+        base_schema(kGradient1DType, "A gradient across a texture one pixel high.");
     json::Value& p = schema["properties"];
     p["width"] = size_field(d.width, "Width in pixels.");
     p["gradient"] = gradient_schema();
@@ -104,8 +117,7 @@ json::Value gradient_1d_schema() {
 
 json::Value gradient_2d_schema() {
     const GradientTexture2D d;
-    json::Value schema =
-        base_schema(kGradient2DType, "A gradient filling a texture, as Godot's GradientTexture2D.");
+    json::Value schema = base_schema(kGradient2DType, "A gradient filling a texture.");
     json::Value& p = schema["properties"];
     p["width"] = size_field(d.width, "Width in pixels.");
     p["height"] = size_field(d.height, "Height in pixels.");
@@ -426,8 +438,8 @@ json::Value texture_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine procedural texture";
-    schema["description"] = "A texture made as it loads, as Godot's NoiseTexture2D, "
-                            "GradientTexture1D or GradientTexture2D; \"type\" says which.";
+    schema["description"] =
+        "A texture made as it loads: noise, a gradient or a graph; \"type\" says which.";
     schema["oneOf"] = json::Array{noise_texture_schema(), gradient_1d_schema(),
                                   gradient_2d_schema(), texture_graph_schema()};
     return schema;
@@ -440,10 +452,16 @@ std::vector<json::ValidationError> validate_texture(const json::Value& doc) {
     // Each type is checked against its own schema, so errors name its fields.
     const json::Value* type = doc.find("type");
     if (type == nullptr || !type->is_string()) {
-        return {
-            {"/type", R"(expected "NoiseTexture2D", "GradientTexture1D" or "GradientTexture2D")"}};
+        return {{"/type", R"(expected "noise", "gradient_1d", "gradient_2d" or "graph")"}};
     }
     const std::string& name = type->as_string();
+    const std::string_view current = current_type(name);
+    if (current != name) {
+        // A file written with the old type name: check it as if it had the new one.
+        json::Value upgraded = doc;
+        upgraded["type"] = std::string(current);
+        return validate_texture(upgraded);
+    }
     if (name == kNoiseType) {
         return json::validate(doc, noise_texture_schema());
     }
@@ -457,8 +475,7 @@ std::vector<json::ValidationError> validate_texture(const json::Value& doc) {
         return validate_texture_graph(doc);
     }
     std::string message = "unknown texture type \"" + name +
-                          R"(": expected "NoiseTexture2D", "GradientTexture1D", )"
-                          R"("GradientTexture2D" or "graph")";
+                          R"(": expected "noise", "gradient_1d", "gradient_2d" or "graph")";
     return {{"/type", std::move(message)}};
 }
 
@@ -470,7 +487,7 @@ Result<ProceduralTexture> parse_texture(const json::Value& doc) {
         return make_error(ErrorCode::InvalidArgument,
                           "a texture graph is compiled (compile_texture_graph), not parsed");
     }
-    const std::string& type = doc.find("type")->as_string();
+    const std::string_view type = current_type(doc.find("type")->as_string());
     const auto gradient_at = [&doc](std::string_view key) -> Gradient {
         const json::Value* value = doc.find(key);
         return value != nullptr ? parse_gradient(*value).value() : Gradient{};

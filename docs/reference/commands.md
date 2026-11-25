@@ -1862,7 +1862,7 @@ and highest.
 | `island_height_ratio` | number | `-1` | The edges' height, `-1` (lowest) to `1` (highest, a canyon) |
 | `island_shape` | number | `0` | `0` round to `1` square |
 | `additive` | boolean | `false` | Add the noise to the current heights |
-| `noise` | string or object | | Noise in place of the Perlin noise: a `NoiseTexture2D`'s [`.texture.json`](scene-format.md#procedural-textures) file, or [FastNoiseLite settings](scene-format.md#noise) |
+| `noise` | string or object | | Noise in place of the Perlin noise: a noise texture's [`.texture.json`](scene-format.md#procedural-textures) file, or [FastNoiseLite settings](scene-format.md#noise) |
 
 Needs: `edit`, `filesystem`. The same seed makes the same heights on every machine. From
 [examples/terrain](../../examples/terrain/):

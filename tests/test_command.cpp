@@ -4281,10 +4281,10 @@ TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
     REQUIRE(slash::platform::create_directories(root).ok());
     REQUIRE(slash::platform::write_file(root + "/ground.tileset.json", sides_tileset()).ok());
     REQUIRE(slash::platform::write_file(root + "/islands.texture.json", R"({"format": 1,
-        "type": "NoiseTexture2D", "invert": true, "noise": {"frequency": 0.2}})")
+        "type": "noise", "invert": true, "noise": {"frequency": 0.2}})")
                 .ok());
     REQUIRE(slash::platform::write_file(root + "/sky.texture.json", R"({"format": 1,
-        "type": "GradientTexture1D"})")
+        "type": "gradient_1d"})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;
@@ -4330,7 +4330,7 @@ TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
         "noise": {"frequency": 0.2}, "bands": [{"below": 0.5, "terrain": "water"},
                                                {"terrain": "grass"}]})")
                .find("changed") == parse("0"));
-    // A NoiseTexture2D's file brings its noise and inverts it as it says, so water and land
+    // A noise texture's file brings its noise and inverts it as it says, so water and land
     // swap but for the cells right at the middle.
     engine.ok("tilemap.generate", R"({"id": "map", "rect": [0, 0, 8, 8],
         "noise": "islands.texture.json", "bands": [{"below": 0.5, "terrain": "water"},
@@ -4376,7 +4376,7 @@ TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
         "noise": "sky.texture.json", "bands": [{"tile": null}]})",
                          command::code::kInvalidArgument);
     CHECK(reply.message ==
-          "/noise: \"sky.texture.json\" is a gradient texture; name a NoiseTexture2D");
+          "/noise: \"sky.texture.json\" is a gradient texture; name a noise texture");
     reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
         "noise": "ground.png", "bands": [{"tile": null}]})",
                          command::code::kInvalidArgument);
@@ -4389,7 +4389,7 @@ TEST_CASE("terrain.generate makes heights from a FastNoiseLite of one's own") {
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
     REQUIRE(slash::platform::write_file(root + "/hills.texture.json", R"({"format": 1,
-        "type": "NoiseTexture2D", "invert": true, "noise": {"frequency": 0.05}})")
+        "type": "noise", "invert": true, "noise": {"frequency": 0.05}})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;

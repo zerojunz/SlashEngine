@@ -244,54 +244,54 @@ TEST_CASE("gradients blend as Godot's") {
 }
 
 TEST_CASE("gradient textures fill as Godot's GradientTexture1D and GradientTexture2D") {
-    const render::Image row = image_of(R"({"format": 1, "type": "GradientTexture1D", "width": 3})");
+    const render::Image row = image_of(R"({"format": 1, "type": "gradient_1d", "width": 3})");
     CHECK(row.width == 3);
     CHECK(row.height == 1);
     CHECK(pixel(row, 0, 0) == std::vector<int>{0, 0, 0, 255});
     CHECK(pixel(row, 1, 0) == std::vector<int>{128, 128, 128, 255});
     CHECK(pixel(row, 2, 0) == std::vector<int>{255, 255, 255, 255});
     // One pixel wide, the first color, where Godot divides by zero.
-    CHECK(pixel(image_of(R"({"format": 1, "type": "GradientTexture1D", "width": 1})"), 0, 0) ==
+    CHECK(pixel(image_of(R"({"format": 1, "type": "gradient_1d", "width": 1})"), 0, 0) ==
           std::vector<int>{0, 0, 0, 255});
 
     // Linear along fill_from to fill_to, held past it.
-    const render::Image linear = image_of(R"({"format": 1, "type": "GradientTexture2D",
+    const render::Image linear = image_of(R"({"format": 1, "type": "gradient_2d",
         "width": 5, "height": 5, "fill_to": [0.5, 0]})");
     CHECK(pixel(linear, 0, 3) == std::vector<int>{0, 0, 0, 255});
     CHECK(pixel(linear, 1, 0) == std::vector<int>{128, 128, 128, 255});
     CHECK(pixel(linear, 4, 4) == std::vector<int>{255, 255, 255, 255});
 
     // Radial from the middle, the same on every side.
-    const render::Image radial = image_of(R"({"format": 1, "type": "GradientTexture2D",
+    const render::Image radial = image_of(R"({"format": 1, "type": "gradient_2d",
         "width": 5, "height": 5, "fill": "radial", "fill_from": [0.5, 0.5], "fill_to": [1, 0.5]})");
     CHECK(pixel(radial, 2, 2) == std::vector<int>{0, 0, 0, 255});
     CHECK(pixel(radial, 0, 2) == pixel(radial, 4, 2));
     CHECK(pixel(radial, 2, 0) == pixel(radial, 2, 4));
     CHECK(pixel(radial, 4, 2) == std::vector<int>{255, 255, 255, 255});
     // Square fills reach the corners at the same offset as the sides.
-    const render::Image square = image_of(R"({"format": 1, "type": "GradientTexture2D",
+    const render::Image square = image_of(R"({"format": 1, "type": "gradient_2d",
         "width": 5, "height": 5, "fill": "square", "fill_from": [0.5, 0.5], "fill_to": [1, 0.5]})");
     CHECK(pixel(square, 0, 0) == pixel(square, 4, 2));
 
     // Repeat starts again past fill_to; mirror comes back.
-    const render::Image repeat = image_of(R"({"format": 1, "type": "GradientTexture2D",
+    const render::Image repeat = image_of(R"({"format": 1, "type": "gradient_2d",
         "width": 9, "height": 1, "fill_to": [0.5, 0], "repeat": "repeat"})");
     CHECK(pixel(repeat, 2, 0) == pixel(repeat, 6, 0));
-    const render::Image mirror = image_of(R"({"format": 1, "type": "GradientTexture2D",
+    const render::Image mirror = image_of(R"({"format": 1, "type": "gradient_2d",
         "width": 9, "height": 1, "fill_to": [0.5, 0], "repeat": "mirror"})");
     CHECK(pixel(mirror, 2, 0) == pixel(mirror, 6, 0));
     CHECK(pixel(mirror, 3, 0) == pixel(mirror, 5, 0));
     CHECK(pixel(mirror, 8, 0) == std::vector<int>{0, 0, 0, 255});
 
     // A gradient of one color fills with it.
-    CHECK(pixel(image_of(R"({"format": 1, "type": "GradientTexture2D", "width": 2, "height": 2,
+    CHECK(pixel(image_of(R"({"format": 1, "type": "gradient_2d", "width": 2, "height": 2,
         "gradient": {"points": [{"offset": 0.3, "color": [1, 0.5, 0]}]}})"),
                 1, 1) == std::vector<int>{255, 127, 0, 255});
 }
 
 TEST_CASE("noise textures make Godot's NoiseTexture2D pixels") {
     const render::Image plain =
-        image_of(R"({"format": 1, "type": "NoiseTexture2D", "width": 64, "height": 32})");
+        image_of(R"({"format": 1, "type": "noise", "width": 64, "height": 32})");
     CHECK(plain.width == 64);
     CHECK(plain.height == 32);
     // Gray and opaque, stretched over the full range.
@@ -312,18 +312,18 @@ TEST_CASE("noise textures make Godot's NoiseTexture2D pixels") {
     CHECK(pixel(plain, 10, 20) == (std::vector<int>{192, 192, 192, 255}));
 
     // Inverted, each byte turns over.
-    const render::Image inverted = image_of(
-        R"({"format": 1, "type": "NoiseTexture2D", "width": 64, "height": 32, "invert": true})");
+    const render::Image inverted =
+        image_of(R"({"format": 1, "type": "noise", "width": 64, "height": 32, "invert": true})");
     CHECK(pixel(inverted, 10, 20)[0] == 255 - pixel(plain, 10, 20)[0]);
 
     // Without normalizing, -1 to 1 maps onto 0 to 255.
-    const render::Image raw = image_of(
-        R"({"format": 1, "type": "NoiseTexture2D", "width": 8, "height": 8, "normalize": false})");
+    const render::Image raw =
+        image_of(R"({"format": 1, "type": "noise", "width": 8, "height": 8, "normalize": false})");
     const float value = procedural::Noise().get_noise_2d(3.0F, 5.0F);
     CHECK(pixel(raw, 3, 5)[0] == static_cast<int>(value * 127.5F + 127.5F));
 
     // A color ramp colors each value by its luminance.
-    const render::Image ramp = image_of(R"({"format": 1, "type": "NoiseTexture2D", "width": 64,
+    const render::Image ramp = image_of(R"({"format": 1, "type": "noise", "width": 64,
         "height": 32, "color_ramp": {"points": [{"offset": 0, "color": [0, 0, 1]},
                                                {"offset": 1, "color": [1, 0, 0]}]}})");
     for (std::uint32_t x = 0; x < 64; ++x) {
@@ -334,7 +334,7 @@ TEST_CASE("noise textures make Godot's NoiseTexture2D pixels") {
 }
 
 TEST_CASE("seamless noise textures tile") {
-    const std::string_view settings = R"({"format": 1, "type": "NoiseTexture2D", "width": 64,
+    const std::string_view settings = R"({"format": 1, "type": "noise", "width": 64,
         "height": 64, "noise": {"frequency": 0.05}})";
     const auto [inside, across] = seam_difference(image_of(settings));
     // Plain noise jumps where it repeats.
@@ -374,7 +374,7 @@ TEST_CASE("noise textures make normal maps as Godot's bump_map_to_normal_map") {
     // The last pixel wraps to the first, a step down, so it tilts right.
     CHECK(pixel(ramp, 3, 0)[0] > 127);
 
-    const render::Image normals = image_of(R"({"format": 1, "type": "NoiseTexture2D",
+    const render::Image normals = image_of(R"({"format": 1, "type": "noise",
         "width": 16, "height": 16, "as_normal_map": true})");
     for (std::uint32_t i = 0; i < 16; ++i) {
         // Normals face out of the surface.
@@ -387,9 +387,9 @@ TEST_CASE(".texture.json files validate, format and load as textures") {
     const auto unknown = procedural::validate_texture(parse(R"({"format": 1, "type": "Noise"})"));
     REQUIRE(unknown.size() == 1);
     CHECK(unknown[0].path == "/type");
-    CHECK(unknown[0].message.find("NoiseTexture2D") != std::string::npos);
+    CHECK(unknown[0].message.find("\"noise\"") != std::string::npos);
     const auto bad = procedural::validate_texture(parse(R"({"format": 1,
-        "type": "GradientTexture2D", "width": 0, "fill": "conic",
+        "type": "gradient_2d", "width": 0, "fill": "conic",
         "gradient": {"points": [{"offset": 2, "color": [1, 1]}]}})"));
     std::vector<std::string> paths;
     for (const json::ValidationError& error : bad) {
@@ -398,17 +398,17 @@ TEST_CASE(".texture.json files validate, format and load as textures") {
     std::ranges::sort(paths);
     CHECK(paths == std::vector<std::string>{"/fill", "/gradient/points/0/color",
                                             "/gradient/points/0/offset", "/width"});
-    CHECK_FALSE(procedural::parse_texture(parse(R"({"type": "NoiseTexture2D"})")).ok());
+    CHECK_FALSE(procedural::parse_texture(parse(R"({"type": "noise"})")).ok());
     CHECK(procedural::texture_schema().find("oneOf")->as_array().size() ==
           4); // three resources and graphs
 
     // Written back, only what differs from Godot's defaults stays.
-    const json::Value doc = parse(R"({"format": 1, "type": "NoiseTexture2D", "width": 128,
+    const json::Value doc = parse(R"({"format": 1, "type": "noise", "width": 128,
         "seamless": true, "noise": {"noise_type": "perlin"},
         "color_ramp": {"interpolation_mode": "constant"}})");
     CHECK(procedural::texture_to_json(procedural::parse_texture(doc).value()) == doc);
     CHECK(procedural::texture_to_json(procedural::GradientTexture2D{}) ==
-          parse(R"({"format": 1, "type": "GradientTexture2D"})"));
+          parse(R"({"format": 1, "type": "gradient_2d"})"));
 
     CHECK(procedural::is_texture_path("rock.texture.json"));
     CHECK(procedural::is_texture_path("rock.png"));
@@ -417,24 +417,37 @@ TEST_CASE(".texture.json files validate, format and load as textures") {
 
     // Canvas loads them as textures, so anything that names a .png file can name one.
     MemoryFiles files;
-    files.files["sky.texture.json"] = R"({"format": 1, "type": "GradientTexture1D", "width": 16})";
+    files.files["sky.texture.json"] = R"({"format": 1, "type": "gradient_1d", "width": 16})";
     asset::Assets assets{files.source()};
     canvas::add_asset_types(assets);
     auto loaded = assets.load<render::Image>("sky.texture.json");
     REQUIRE_MESSAGE(loaded.ok(), loaded.error().message);
     CHECK(loaded.value()->width == 16);
     CHECK(pixel(*loaded.value(), 15, 0) == std::vector<int>{255, 255, 255, 255});
-    files.files["broken.texture.json"] = R"({"format": 1, "type": "GradientTexture1D", "w": 1})";
+    files.files["broken.texture.json"] = R"({"format": 1, "type": "gradient_1d", "w": 1})";
     const auto broken = assets.load<render::Image>("broken.texture.json");
     REQUIRE_FALSE(broken.ok());
     CHECK(broken.error().message.find("/w") != std::string::npos);
+}
+
+TEST_CASE(".texture.json files with the old type names still load, and write the new ones") {
+    const json::Value old = parse(R"({"format": 1, "type": "GradientTexture1D", "width": 8})");
+    CHECK(procedural::validate_texture(old).empty());
+    CHECK(procedural::texture_to_json(procedural::parse_texture(old).value()) ==
+          parse(R"({"format": 1, "type": "gradient_1d", "width": 8})"));
+    CHECK(
+        procedural::validate_texture(parse(R"({"format": 1, "type": "NoiseTexture2D"})")).empty());
+    const auto bad = procedural::validate_texture(
+        parse(R"({"format": 1, "type": "GradientTexture2D", "w": 1})"));
+    REQUIRE(bad.size() == 1);
+    CHECK(bad[0].path == "/w");
 }
 
 TEST_CASE("texture.generate makes and measures a texture") {
     const std::string root = "procedural_test_project";
     REQUIRE(slash::platform::create_directories(root).ok());
     REQUIRE(slash::platform::write_file(root + "/ramp.texture.json",
-                                        R"({"format": 1, "type": "GradientTexture1D",
+                                        R"({"format": 1, "type": "gradient_1d",
                                             "width": 4})")
                 .ok());
 
@@ -466,7 +479,7 @@ TEST_CASE("texture.generate makes and measures a texture") {
         "pixels": [[255, 255, 255, 255]]})"));
 
     // Inline settings, to try them without a file: seamless noise wraps as smoothly as inside.
-    reply = call(R"({"texture": {"format": 1, "type": "NoiseTexture2D", "width": 32,
+    reply = call(R"({"texture": {"format": 1, "type": "noise", "width": 32,
                                  "height": 32, "seamless": true,
                                  "noise": {"frequency": 0.05}}})");
     REQUIRE_MESSAGE(reply.ok, reply.message);
@@ -485,7 +498,7 @@ TEST_CASE("texture.generate makes and measures a texture") {
     CHECK(decoded.value().width == 4);
 
     // Errors point at the bad value.
-    reply = call(R"({"texture": {"format": 1, "type": "GradientTexture1D", "width": -1}})");
+    reply = call(R"({"texture": {"format": 1, "type": "gradient_1d", "width": -1}})");
     CHECK_FALSE(reply.ok);
     CHECK(reply.message.find("/texture/width") != std::string::npos);
     CHECK_FALSE(call(R"({})").ok);
@@ -639,8 +652,7 @@ TEST_CASE("texture.inspect, texture.edit and texture.check work on graphs as tex
     CHECK_FALSE(reply.ok);
     CHECK(reply.message.starts_with("/patch/nodes/flat/op:"));
     CHECK(reply.message.find(R"(did you mean "noise"?)") != std::string::npos);
-    reply = call("texture.edit",
-                 R"({"path": "brick.texture.json", "patch": {"type": "NoiseTexture2D"}})");
+    reply = call("texture.edit", R"({"path": "brick.texture.json", "patch": {"type": "noise"}})");
     CHECK_FALSE(reply.ok);
     CHECK(reply.message.starts_with("/patch/type:"));
     CHECK_FALSE(call("texture.inspect", R"({"path": "missing.texture.json"})").ok);

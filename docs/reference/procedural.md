@@ -11,9 +11,9 @@ then domain warp, then noise), the same bits everywhere since FastNoiseLite call
 square roots and the module builds with `-ffp-contract=off`. Gameplay code samples it while a game
 runs. `procedural::Gradient` (`gradient.hpp`) is Godot's `Gradient`, with its sRGB, linear and
 Oklab blending through `slash::exp` and `ln`. A `.texture.json` file (`texture.hpp`;
-`$cli schema texture`) is a `NoiseTexture2D` (`Noise::_get_image` and
-`_generate_seamless_image`, the color ramp and `bump_map_to_normal_map` ported line for line),
-`GradientTexture1D` or `GradientTexture2D`, made into pixels as it loads: `canvas::add_asset_types`
+`$cli schema texture`) is a `noise` texture (`Noise::_get_image` and
+`_generate_seamless_image`, the color ramp and `bump_map_to_normal_map` ported line for line from
+Godot), or a `gradient_1d` or `gradient_2d` texture, made into pixels as it loads: `canvas::add_asset_types`
 and `ui::add_asset_types` register it as a texture, and code that reads texture files itself
 (scene3d's material, terrain and vector field checks) goes through `procedural::decode_texture`
 and `is_texture_path`, so any texture field takes one. Exports ship the file and validate it.
@@ -85,7 +85,7 @@ Maps come from noise too: `tilemap.generate` (`engine/command/src/builtin.cpp`) 
 over a rect of cells and gives each the first band its value is under, painting each band's
 terrain with `paint_terrain` in turn or setting its tile, and `terrain.generate`'s `noise` puts a
 FastNoiseLite's values (`TerrainNoise::values`) in place of Terrain3D's Perlin noise before its
-curve, island and erosion. Both take a NoiseTexture2D's `.texture.json` file or inline settings
+curve, island and erosion. Both take a noise texture's `.texture.json` file or inline settings
 (`read_noise_source` and `sample_noise_source` in `engine/command/src/procedural.cpp`, sampled
 and normalized as Godot's `Noise::_get_image`), so the noise an agent tuned with
 `texture.generate` makes the map. `examples/noise-maps` makes an archipelago and dunes.

@@ -362,7 +362,7 @@ std::optional<Reply> read_noise_source(Session& session, const json::Value& valu
     const std::string& file = value.as_string();
     if (!file.ends_with(procedural::kTextureSuffix)) {
         return param_error(code::kInvalidArgument, at,
-                           "expected a .texture.json file of a NoiseTexture2D, or noise settings "
+                           "expected a .texture.json file of a noise texture, or noise settings "
                            "as an object");
     }
     // Read as text: the asset of a .texture.json path is its image.
@@ -391,7 +391,7 @@ std::optional<Reply> read_noise_source(Session& session, const json::Value& valu
     const auto* noise = std::get_if<procedural::NoiseTexture2D>(&texture);
     if (noise == nullptr) {
         return param_error(code::kInvalidArgument, at,
-                           quoted(file) + " is a gradient texture; name a NoiseTexture2D");
+                           quoted(file) + " is a gradient texture; name a noise texture");
     }
     out = NoiseSource{
         .settings = noise->noise, .normalize = noise->normalize, .invert = noise->invert};

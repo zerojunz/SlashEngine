@@ -2128,7 +2128,7 @@ The textures hold 8 bits a channel, so drawn colors reach 1 at most: glow needs
 `glow_blend_mode` and `glow_mix` do nothing.
 
 A color correction texture one pixel tall maps each channel by its value along x, as Godot's 1D
-LUTs (a `GradientTexture1D`) do. One as wide as its height squared is a 3D LUT: height slices of
+LUTs (a `gradient_1d` texture) do. One as wide as its height squared is a 3D LUT: height slices of
 height by height pixels side by side, blue choosing the slice and red and green the pixel in it,
 as Godot imports a `Texture3D` from horizontal slices. A texture of another shape, or one that
 can't load, is reported and left out.
@@ -2912,8 +2912,8 @@ bytes in the form the device keeps it.
 
 ## Procedural textures
 
-A `.texture.json` file is a texture made from settings as it loads, as Godot's `NoiseTexture2D`,
-`GradientTexture1D` and `GradientTexture2D` resources. Any field that names a texture can name
+A `.texture.json` file is a texture made from settings as it loads: noise (`noise`), a gradient
+one pixel high (`gradient_1d`) or a gradient filling it (`gradient_2d`). Any field that names a texture can name
 one: a sprite, a tile set's atlas, a material's or style box's texture, a `Picture`, a
 `Surface3D`'s maps and a terrain's textures. The pixels are the same on every machine,
 so a game ships settings rather than images and [`texture.generate`](commands.md#texturegenerate)
@@ -2932,7 +2932,7 @@ measures them without drawing a frame. `slash-cli schema texture` prints the sch
   "height": 64,
   "noise": {"frequency": 0.08, "noise_type": "cellular", "seed": 3},
   "seamless": true,
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 64
 }
 ```
@@ -2942,7 +2942,7 @@ Every key but `format` and `type` is optional, with Godot's default.
 | Key | Types | Default | Meaning |
 | --- | --- | --- | --- |
 | `format` | all | required | Format version. Must be `1` |
-| `type` | all | required | `NoiseTexture2D`, `GradientTexture1D` or `GradientTexture2D` |
+| `type` | all | required | `noise`, `gradient_1d` or `gradient_2d` (the old `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` still load) |
 | `width`, `height` | all | `512` (noise), `256` x 1 (1D), `64` (2D) | Size in pixels, 1 to 16384; a 1D gradient is one pixel high |
 | `noise` | noise | Godot's `FastNoiseLite` | The [noise](#noise) to draw |
 | `invert` | noise | `false` | Light becomes dark and dark light |
@@ -3042,7 +3042,7 @@ the same either way.
 
 | Ops | What they make |
 | --- | --- |
-| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, Godot's FastNoiseLite noise (with domain warp and `seamless`), Godot's `GradientTexture2D`, shapes and bricks in cells, bands, an image file |
+| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, Godot's FastNoiseLite noise (with domain warp and `seamless`), a `gradient_2d` gradient, shapes and bricks in cells, bands, an image file |
 | `levels`, `invert`, `clamp`, `gradient_map`, `hsv`, `grayscale`, `threshold`, `posterize`, `swizzle`, `remap` | Color and value adjustments |
 | `blur`, `sharpen`, `warp`, `transform`, `edge_detect` | Filters and moves |
 | `normal_from_height`, `ao_from_height`, `curvature_from_height` | Maps from a height's red |

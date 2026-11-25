@@ -4,7 +4,7 @@ Tile maps and terrains made from noise, as an agent tunes a FastNoiseLite once a
 both a texture and a map ([`tilemap.generate`](../../docs/reference/commands.md#tilemapgenerate)
 and [`terrain.generate`](../../docs/reference/commands.md#terraingenerate)'s `noise`).
 
-- `islands.texture.json` is a `NoiseTexture2D`. [`texture.generate`](../../docs/reference/commands.md#texturegenerate)
+- `islands.texture.json` is a noise texture. [`texture.generate`](../../docs/reference/commands.md#texturegenerate)
   measures it and reads two of its pixels, as an agent would while tuning it.
 - `tilemap.generate` samples the same noise at each cell of a 24 by 12 rect and paints water
   where it is under 0.5 and grass above, with the tile set's terrain painting picking the shore
