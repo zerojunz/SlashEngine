@@ -47,7 +47,7 @@ project.import {"source":"godot"}
     "seed": 11
   },
   "seamless": true,
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 64
 }
 --- godot/pond_gradient_texture2d_glow.texture.json
@@ -69,7 +69,7 @@ project.import {"source":"godot"}
     ]
   },
   "height": 32,
-  "type": "GradientTexture2D",
+  "type": "gradient_2d",
   "width": 32
 }
 texture.generate {"path":"godot/pond_noise_texture2d_water.texture.json"}

@@ -8,6 +8,6 @@
     "fractal_type": "ridged",
     "frequency": 0.03
   },
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 65
 }

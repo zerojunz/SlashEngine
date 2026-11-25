@@ -7561,7 +7561,7 @@ void register_builtin_commands(Registry& registry) {
         .params = params_schema(
             {{"id", layer_id},
              {"rect", std::move(generate_rect)},
-             {"noise", noise_source_property("A NoiseTexture2D's .texture.json file, "
+             {"noise", noise_source_property("A noise texture's .texture.json file, "
                                              "normalized and inverted as it says, or "
                                              "FastNoiseLite settings, normalized over the "
                                              "rect.")},

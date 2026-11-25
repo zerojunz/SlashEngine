@@ -273,7 +273,7 @@ TEST_CASE("style.check's journal shows drift creeping up that no single check fa
 
 TEST_CASE("style references keep 2D scenes, images, models and materials too") {
     const std::string root = project("kinds");
-    write(root + "/dusk.texture.json", R"({"format": 1, "type": "GradientTexture1D",
+    write(root + "/dusk.texture.json", R"({"format": 1, "type": "gradient_1d",
         "width": 64, "gradient": {"points": [{"offset": 0, "color": [0.1, 0.1, 0.3, 1]},
         {"offset": 1, "color": [0.9, 0.4, 0.3, 1]}]}})");
     // A 2D scene: the gradient stretched over the window, under a AmbientTint2D.

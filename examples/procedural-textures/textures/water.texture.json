@@ -20,6 +20,6 @@
     "seed": 3
   },
   "seamless": true,
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 64
 }

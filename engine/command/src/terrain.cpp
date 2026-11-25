@@ -1039,7 +1039,7 @@ void register_terrain_commands(Registry& registry) {
                 {"additive",
                  property("boolean", "Add the noise to the current heights. Default false.")},
                 {"noise", noise_source_property(
-                              "Noise in place of the Perlin noise: a NoiseTexture2D's "
+                              "Noise in place of the Perlin noise: a noise texture's "
                               ".texture.json file or FastNoiseLite settings, sampled a cell "
                               "apart and normalized as the texture is. Then scale, roughness "
                               "and octaves do nothing, and seed replaces its seed.")},
