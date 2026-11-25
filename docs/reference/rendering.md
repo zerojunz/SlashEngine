@@ -2,7 +2,7 @@
 
 The renderer: devices, passes, materials, lighting and ray tracing.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-25
 
 Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
 
@@ -325,7 +325,11 @@ count. With `LightmapSettings::device` (`lightmap.bake`'s `device` `"gpu"`), the
 bounces and probes are traced by `RenderDevice::trace_lightmap` (`slash/render/bake.hpp`) instead:
 on Vulkan with ray queries, `shaders/lightmap_light.comp` ports those three passes with the same
 random numbers over one structure of the bake's triangles, a dispatch per region of 512x512 texels
-or pass of rays, waited for so none runs long; a change to those passes goes in both. A
+or pass of rays, waited for so none runs long; a change to those passes goes in both. The
+shader's passes 3 and 4 are the mesh map baker's (`slash/scene3d/mesh_maps.hpp`,
+`src/mesh_maps.cpp`, its CPU twin, sharing the lightmapper's hierarchy and rasterizer through
+`src/bake_rays.hpp`): `render::trace_mesh_maps` runs a texel's occlusion, sky and thickness rays,
+or its ray from the cage onto a high mesh, through `trace_lightmap`. A
 `.lightmap.json` file (`$cli schema lightmap`) is its baked data, with the texels in an `.hdr`
 beside it; `lightmap.bake` (`engine/command/src/lightmap.cpp`) writes both.
 `scene3d::Renderer::find_lightmaps` loads them, gives each lightmapped mesh its UVs (`uv2`) by the

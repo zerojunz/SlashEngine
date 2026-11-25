@@ -75,7 +75,7 @@ target_link_libraries(slash-ray-msl PRIVATE glslang::glslang
 slash_target_warnings(slash-ray-msl)
 set(_slash_ray_msl_commands "")
 # Each with its passes, the values of its specialization constant kPass.
-foreach(entry IN ITEMS ray_shadows:RayShadows:1 ray_light:RayLight:5 lightmap_light:LightmapLight:3)
+foreach(entry IN ITEMS ray_shadows:RayShadows:1 ray_light:RayLight:5 lightmap_light:LightmapLight:5)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
     list(GET parts 1 name)

@@ -214,30 +214,32 @@ struct ProbeSums
 
 constant uint kPass_tmp [[function_constant(0)]];
 constant uint kPass = is_function_constant_defined(kPass_tmp) ? kPass_tmp : 0u;
-constant bool _2676 = (kPass == 2u);
-constant bool _2712 = (kPass == 0u);
+constant bool _2941 = (kPass == 2u);
+constant bool _2977 = (kPass == 0u);
+constant bool _2990 = (kPass == 1u);
+constant bool _3003 = (kPass == 3u);
 constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(64u, 1u, 1u);
 
 struct spvDescriptorSetBuffer0
 {
     raytracing::acceleration_structure<raytracing::instancing> scene [[id(0)]];
-    device Params* m_377 [[id(1)]];
-    device Vertices* m_800 [[id(2)]];
-    device Indices* m_804 [[id(3)]];
-    device Triangles* m_952 [[id(4)]];
-    device Lights* m_1347 [[id(5)]];
-    device Albedo* m_560 [[id(6)]];
-    device Emission* m_584 [[id(7)]];
-    device Positions* m_430 [[id(8)]];
-    device Normals* m_2221 [[id(9)]];
-    device Environment* m_737 [[id(10)]];
-    device LightSource* m_601 [[id(11)]];
-    device Accum* m_2350 [[id(12)]];
-    device Probes* m_2476 [[id(13)]];
-    device ProbeSums* m_2506 [[id(14)]];
+    device Params* m_386 [[id(1)]];
+    device Vertices* m_809 [[id(2)]];
+    device Indices* m_813 [[id(3)]];
+    device Triangles* m_961 [[id(4)]];
+    device Lights* m_1356 [[id(5)]];
+    device Albedo* m_569 [[id(6)]];
+    device Emission* m_593 [[id(7)]];
+    device Positions* m_439 [[id(8)]];
+    device Normals* m_2230 [[id(9)]];
+    device Environment* m_746 [[id(10)]];
+    device LightSource* m_610 [[id(11)]];
+    device Accum* m_2359 [[id(12)]];
+    device Probes* m_2485 [[id(13)]];
+    device ProbeSums* m_2515 [[id(14)]];
 };
 
-constant spvUnsafeArray<float2, 16> _1608 = spvUnsafeArray<float2, 16>({ float2(0.5, 0.3333333432674407958984375), float2(0.25, 0.666666686534881591796875), float2(0.75, 0.111111111938953399658203125), float2(0.125, 0.4444444477558135986328125), float2(0.625, 0.77777779102325439453125), float2(0.375, 0.22222222387790679931640625), float2(0.875, 0.5555555820465087890625), float2(0.0625, 0.888888895511627197265625), float2(0.5625, 0.0370370410382747650146484375), float2(0.3125, 0.3703703582286834716796875), float2(0.8125, 0.703703701496124267578125), float2(0.1875, 0.1481481492519378662109375), float2(0.6875, 0.481481492519378662109375), float2(0.4375, 0.8148148059844970703125), float2(0.9375, 0.2592592537403106689453125), float2(0.03125, 0.59259259700775146484375) });
+constant spvUnsafeArray<float2, 16> _1617 = spvUnsafeArray<float2, 16>({ float2(0.5, 0.3333333432674407958984375), float2(0.25, 0.666666686534881591796875), float2(0.75, 0.111111111938953399658203125), float2(0.125, 0.4444444477558135986328125), float2(0.625, 0.77777779102325439453125), float2(0.375, 0.22222222387790679931640625), float2(0.875, 0.5555555820465087890625), float2(0.0625, 0.888888895511627197265625), float2(0.5625, 0.0370370410382747650146484375), float2(0.3125, 0.3703703582286834716796875), float2(0.8125, 0.703703701496124267578125), float2(0.1875, 0.1481481492519378662109375), float2(0.6875, 0.481481492519378662109375), float2(0.4375, 0.8148148059844970703125), float2(0.9375, 0.2592592537403106689453125), float2(0.03125, 0.59259259700775146484375) });
 
 static inline __attribute__((always_inline))
 uint hash(thread const uint& value)
@@ -268,13 +270,13 @@ static inline __attribute__((always_inline))
 float3 sphere_uniform_direction(thread uint& _noise)
 {
     uint param = _noise;
-    float _299 = randomize(param);
+    float _308 = randomize(param);
     _noise = param;
-    float theta = 6.283185482025146484375 * _299;
+    float theta = 6.283185482025146484375 * _308;
     uint param_1 = _noise;
-    float _305 = randomize(param_1);
+    float _314 = randomize(param_1);
     _noise = param_1;
-    float z = 1.0 - (2.0 * _305);
+    float z = 1.0 - (2.0 * _314);
     float sin_phi = sqrt(fast::max(0.0, (1.0 - z) * (1.0 + z)));
     return float3(sin_phi * cos(theta), sin_phi * sin(theta), z);
 }
@@ -283,24 +285,24 @@ static inline __attribute__((always_inline))
 float3 unit(thread const float3& v)
 {
     float l = length(v);
-    float3 _178;
+    float3 _187;
     if (l > 0.0)
     {
-        _178 = v / float3(l);
+        _187 = v / float3(l);
     }
     else
     {
-        _178 = float3(0.0);
+        _187 = float3(0.0);
     }
-    return _178;
+    return _187;
 }
 
 static inline __attribute__((always_inline))
-bool test(thread const uint& index, thread const float3& from, thread const float3& dir, thread const float& max_distance, thread const float& bias0, thread float& best, thread Hit& hit, device Vertices& _800, device Indices& _804, device Triangles& _952)
+bool test(thread const uint& index, thread const float3& from, thread const float3& dir, thread const float& max_distance, thread const float& bias0, thread float& best, thread Hit& hit, device Vertices& _809, device Indices& _813, device Triangles& _961)
 {
-    float3 p0 = _800.vertices[_804.indices[index * 3u]].position_u.xyz;
-    float3 p1 = _800.vertices[_804.indices[(index * 3u) + 1u]].position_u.xyz;
-    float3 p2 = _800.vertices[_804.indices[(index * 3u) + 2u]].position_u.xyz;
+    float3 p0 = _809.vertices[_813.indices[index * 3u]].position_u.xyz;
+    float3 p1 = _809.vertices[_813.indices[(index * 3u) + 1u]].position_u.xyz;
+    float3 p2 = _809.vertices[_813.indices[(index * 3u) + 2u]].position_u.xyz;
     float3 e0 = p1 - p0;
     float3 e1 = p0 - p2;
     float3 triangle_normal = cross(e1, e0);
@@ -316,36 +318,36 @@ bool test(thread const uint& index, thread const float3& from, thread const floa
     barycentric.z = dot(i, e0);
     barycentric.x = 1.0 - (barycentric.z + barycentric.y);
     float _distance = dot(triangle_normal, e2);
-    bool _892 = (_distance > bias0) && (_distance < max_distance);
-    bool _898;
-    if (_892)
+    bool _901 = (_distance > bias0) && (_distance < max_distance);
+    bool _907;
+    if (_901)
     {
-        _898 = barycentric.x >= 0.0;
+        _907 = barycentric.x >= 0.0;
     }
     else
     {
-        _898 = _892;
+        _907 = _901;
     }
-    bool _904;
-    if (_898)
+    bool _913;
+    if (_907)
     {
-        _904 = barycentric.y >= 0.0;
+        _913 = barycentric.y >= 0.0;
+    }
+    )msl"
+    R"msl(else
+    {
+        _913 = _907;
+    }
+    bool _919;
+    if (_913)
+    {
+        _919 = barycentric.z >= 0.0;
     }
     else
     {
-        _904 = _898;
+        _919 = _913;
     }
-    bool _910;
-    if (_904)
-    {
- )msl"
-    R"msl(       _910 = barycentric.z >= 0.0;
-    }
-    else
-    {
-        _910 = _904;
-    }
-    bool hits = _910;
+    bool hits = _919;
     if (!hits)
     {
         return false;
@@ -361,7 +363,7 @@ bool test(thread const uint& index, thread const float3& from, thread const floa
     {
         return false;
     }
-    uint cull = ((device uint*)&_952.triangles[index])[1u];
+    uint cull = ((device uint*)&_961.triangles[index])[1u];
     if (cull == 2u)
     {
         backface = false;
@@ -382,7 +384,7 @@ bool test(thread const uint& index, thread const float3& from, thread const floa
 }
 
 static inline __attribute__((always_inline))
-Hit trace(thread const float3& from, thread const float3& to, device Params& _377, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene)
+Hit trace(thread const float3& from, thread const float3& to, device Params& _386, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene)
 {
     Hit hit;
     hit.kind = 0u;
@@ -401,31 +403,31 @@ Hit trace(thread const float3& from, thread const float3& to, device Params& _37
     query.reset(ray(from, dir, 0.0, rel_len), scene, 255u, spvMakeIntersectionParams(2u));
     for (;;)
     {
-        bool _1023 = query.next();
-        if (_1023)
+        bool _1032 = query.next();
+        if (_1032)
         {
-            int _1025 = query.get_candidate_primitive_id();
-            uint index = uint(_1025);
+            int _1034 = query.get_candidate_primitive_id();
+            uint index = uint(_1034);
             uint param_1 = index;
             float3 param_2 = from;
             float3 param_3 = dir;
             float param_4 = rel_len;
-            float param_5 = ((device float*)&_377.values)[0u];
+            float param_5 = ((device float*)&_386.values)[0u];
             float param_6 = best;
             Hit param_7 = hit;
-            bool _1044 = test(param_1, param_2, param_3, param_4, param_5, param_6, param_7, _800, _804, _952);
+            bool _1053 = test(param_1, param_2, param_3, param_4, param_5, param_6, param_7, _809, _813, _961);
             best = param_6;
             hit = param_7;
-            bool _1052;
-            if (_1044)
+            bool _1061;
+            if (_1053)
             {
-                _1052 = hit.kind == 1u;
+                _1061 = hit.kind == 1u;
             }
             else
             {
-                _1052 = _1044;
+                _1061 = _1053;
             }
-            if (_1052)
+            if (_1061)
             {
                 query.commit_triangle_intersection();
             }
@@ -446,7 +448,7 @@ int wrap(thread const int& i, thread const int& count)
 }
 
 static inline __attribute__((always_inline))
-float3 environment_color(thread const float3& ray_dir, device Params& _377, device Environment& _737)
+float3 environment_color(thread const float3& ray_dir, device Params& _386, device Environment& _746)
 {
     float3 param = ray_dir;
     float3 sky_dir = unit(param);
@@ -457,8 +459,8 @@ float3 environment_color(thread const float3& ray_dir, device Params& _377, devi
     {
         s += 6.283185482025146484375;
     }
-    int w = int(((device uint*)&_377.size)[3u]);
-    int h = int(((device uint*)&_377.counts)[0u]);
+    int w = int(((device uint*)&_386.size)[3u]);
+    int h = int(((device uint*)&_386.counts)[0u]);
     float x = ((s / 6.283185482025146484375) * float(w)) - 0.5;
     float yy = ((t / 3.1415927410125732421875) * float(h)) - 0.5;
     float fx = floor(x);
@@ -477,133 +479,133 @@ float3 environment_color(thread const float3& ray_dir, device Params& _377, devi
     int param_7 = y0 + 1;
     int param_8 = h;
     int y1 = wrap(param_7, param_8);
-    float4 ta = _737.environment[(y0 * w) + x0];
-    float4 tb = _737.environment[(y0 * w) + x1];
-    float4 tc = _737.environment[(y1 * w) + x0];
-    float4 td = _737.environment[(y1 * w) + x1];
+    float4 ta = _746.environment[(y0 * w) + x0];
+    float4 tb = _746.environment[(y0 * w) + x1];
+    float4 tc = _746.environment[(y1 * w) + x0];
+    float4 td = _746.environment[(y1 * w) + x1];
     float4 top = ta + ((tb - ta) * tx);
     float4 bottom = tc + ((td - tc) * tx);
     return (top + ((bottom - top) * ty)).xyz;
 }
 
 static inline __attribute__((always_inline))
-Surface surface_of(thread const Hit& hit, device Vertices& _800, device Indices& _804, device Triangles& _952)
+Surface surface_of(thread const Hit& hit, device Vertices& _809, device Indices& _813, device Triangles& _961)
 {
-    uint _1063 = hit.triangle * 3u;
-    Vertex_1 _1069;
-    _1069.position_u = _800.vertices[_804.indices[_1063]].position_u;
-    _1069.normal_v = _800.vertices[_804.indices[_1063]].normal_v;
-    Vertex_1 a = _1069;
-    uint _1074 = (hit.triangle * 3u) + 1u;
-    Vertex_1 _1079;
-    _1079.position_u = _800.vertices[_804.indices[_1074]].position_u;
-    _1079.normal_v = _800.vertices[_804.indices[_1074]].normal_v;
-    Vertex_1 b = _1079;
-    uint _1084 = (hit.triangle * 3u) + 2u;
-    Vertex_1 _1089;
-    _1089.position_u = _800.vertices[_804.indices[_1084]].position_u;
-    _1089.normal_v = _800.vertices[_804.indices[_1084]].normal_v;
-    Vertex_1 c = _1089;
+    uint _1072 = hit.triangle * 3u;
+    Vertex_1 _1078;
+    _1078.position_u = _809.vertices[_813.indices[_1072]].position_u;
+    _1078.normal_v = _809.vertices[_813.indices[_1072]].normal_v;
+    Vertex_1 a = _1078;
+    uint _1083 = (hit.triangle * 3u) + 1u;
+    Vertex_1 _1088;
+    _1088.position_u = _809.vertices[_813.indices[_1083]].position_u;
+    _1088.normal_v = _809.vertices[_813.indices[_1083]].normal_v;
+    Vertex_1 b = _1088;
+    uint _1093 = (hit.triangle * 3u) + 2u;
+    Vertex_1 _1098;
+    _1098.position_u = _809.vertices[_813.indices[_1093]].position_u;
+    _1098.normal_v = _809.vertices[_813.indices[_1093]].normal_v;
+    Vertex_1 c = _1098;
     float3 w = hit.barycentric;
     Surface s;
     s.u = ((w.x * a.position_u.w) + (w.y * b.position_u.w)) + (w.z * c.position_u.w);
     s.v = ((w.x * a.normal_v.w) + (w.y * b.normal_v.w)) + (w.z * c.normal_v.w);
     s.position = ((a.position_u.xyz * w.x) + (b.position_u.xyz * w.y)) + (c.position_u.xyz * w.z);
     s.normal = ((a.normal_v.xyz * w.x) + (b.normal_v.xyz * w.y)) + (c.normal_v.xyz * w.z);
-    s.slice = int(((device uint*)&_952.triangles[hit.triangle])[0u]);
+    s.slice = int(((device uint*)&_961.triangles[hit.triangle])[0u]);
     return s;
 }
 
 static inline __attribute__((always_inline))
-uint texel_at(thread const int& slice, thread const int& x, thread const int& y, device Params& _377)
+uint texel_at(thread const int& slice, thread const int& x, thread const int& y, device Params& _386)
 {
-    return uint((((slice * int(((device uint*)&_377.size)[1u])) + y) * int(((device uint*)&_377.size)[0u])) + x);
+    return uint((((slice * int(((device uint*)&_386.size)[1u])) + y) * int(((device uint*)&_386.size)[0u])) + x);
 }
 
 static inline __attribute__((always_inline))
-float4 sample_atlas(thread const uint& layer, thread const int& slice, thread const float& u, thread const float& v, device Params& _377, device Albedo& _560, device Emission& _584, device LightSource& _601)
+float4 sample_atlas(thread const uint& layer, thread const int& slice, thread const float& u, thread const float& v, device Params& _386, device Albedo& _569, device Emission& _593, device LightSource& _610)
 {
-    float x = (u * float(((device uint*)&_377.size)[0u])) - 0.5;
-    float y = (v * float(((device uint*)&_377.size)[1u])) - 0.5;
+    float x = (u * float(((device uint*)&_386.size)[0u])) - 0.5;
+    float y = (v * float(((device uint*)&_386.size)[1u])) - 0.5;
     float fx = floor(x);
     float fy = floor(y);
     float tx = x - fx;
     float ty = y - fy;
     int param = int(fx);
-    int param_1 = int(((device uint*)&_377.size)[0u]);
+    int param_1 = int(((device uint*)&_386.size)[0u]);
     int x0 = wrap(param, param_1);
     int param_2 = int(fy);
-    int param_3 = int(((device uint*)&_377.size)[1u]);
+    int param_3 = int(((device uint*)&_386.size)[1u]);
     int y0 = wrap(param_2, param_3);
     int param_4 = x0 + 1;
-    int param_5 = int(((device uint*)&_377.size)[0u]);
+    int param_5 = int(((device uint*)&_386.size)[0u]);
     int x1 = wrap(param_4, param_5);
     int param_6 = y0 + 1;
-    int param_7 = int(((device uint*)&_377.size)[1u]);
+    int param_7 = int(((device uint*)&_386.size)[1u]);
     int y1 = wrap(param_6, param_7);
     int param_8 = slice;
     int param_9 = x0;
     int param_10 = y0;
-    uint a = texel_at(param_8, param_9, param_10, _377);
+    uint a = texel_at(param_8, param_9, param_10, _386);
     int param_11 = slice;
     int param_12 = x1;
     int param_13 = y0;
-    uint b = texel_at(param_11, param_12, param_13, _377);
+    uint b = texel_at(param_11, param_12, param_13, _386);
     int param_14 = slice;
     int param_15 = x0;
     int param_16 = y1;
-    uint c = texel_at(param_14, param_15, param_16, _377);
+    uint c = texel_at(param_14, param_15, param_16, _386);
     int param_17 = slice;
     int param_18 = x1;
     int param_19 = y1;
-    uint d = texel_at(param_17, param_18, param_19, _377);
+    uint d = texel_at(param_17, param_18, param_19, _386);
     float4 ta;
     float4 tb;
     float4 tc;
     float4 td;
     if (layer == 0u)
     {
-        ta = _560.albedo[a];
-        tb = _560.albedo[b];
-        tc = _560.albedo[c];
-        td = _560.albedo[d];
+        ta = _569.albedo[a];
+        tb = _569.albedo[b];
+        tc = _569.albedo[c];
+        td = _569.albedo[d];
     }
     else
     {
         if (layer == 1u)
         {
-            ta = _584.emission[a];
-            tb = _584.emission[b];
-            tc = _584.emission[c];
-            td = _584.emission[d];
+            ta = _593.emission[a];
+            tb = _593.emission[b];
+            tc = _593.emission[c];
+            td = _593.emission[d];
         }
         else
         {
-            ta = _601.light_source[a];
-            tb = _601.light_source[b];
-            tc = _601.light_source[c];
-            td = _601.light_source[d];
+            ta = _610.light_source[a];
+            tb = _610.light_source[b];
+            tc = _610.light_source[c];
+            td = _610.light_source[d];
         }
     }
     float4 top = ta + ((tb - ta) * tx);
-    float4 bottom = tc + ((td - tc) * tx);
+    float4 bottom =)msl"
+    R"msl( tc + ((td - tc) * tx);
     return top + ((bottom - top) * ty);
 }
 
-static )msl"
-    R"msl(inline __attribute__((always_inline))
+static inline __attribute__((always_inline))
 float power(thread const float& base, thread const float& exponent)
 {
-    float _205;
+    float _214;
     if (base > 0.0)
     {
-        _205 = exp(exponent * log(base));
+        _214 = exp(exponent * log(base));
     }
     else
     {
-        _205 = 0.0;
+        _214 = 0.0;
     }
-    return _205;
+    return _214;
 }
 
 static inline __attribute__((always_inline))
@@ -628,7 +630,7 @@ float2 vogel_disk(thread const float& i, thread const float& rotation, thread co
 }
 
 static inline __attribute__((always_inline))
-float4 shadow_ray(thread const float3& from, thread const float3& to, thread const float3& light_dir, thread const float3& light_color, thread const bool& count, thread uint& hits, device Params& _377, device Albedo& _560, device Emission& _584, device LightSource& _601, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene)
+float4 shadow_ray(thread const float3& from, thread const float3& to, thread const float3& light_dir, thread const float3& light_color, thread const bool& count, thread uint& hits, device Params& _386, device Albedo& _569, device Emission& _593, device LightSource& _610, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene)
 {
     float power_left = 0.0;
     float3 color = light_color;
@@ -638,8 +640,8 @@ float4 shadow_ray(thread const float3& from, thread const float3& to, thread con
     {
         float3 param = origin;
         float3 param_1 = to;
-        Hit _1252 = trace(param, param_1, _377, _800, _804, _952, query, scene);
-        Hit hit = _1252;
+        Hit _1261 = trace(param, param_1, _386, _809, _813, _961, query, scene);
+        Hit hit = _1261;
         if (hit.kind == 0u)
         {
             if (!did_hit)
@@ -653,12 +655,12 @@ float4 shadow_ray(thread const float3& from, thread const float3& to, thread con
             break;
         }
         Hit param_2 = hit;
-        Surface s = surface_of(param_2, _800, _804, _952);
+        Surface s = surface_of(param_2, _809, _813, _961);
         uint param_3 = 0u;
         int param_4 = s.slice;
         float param_5 = s.u;
         float param_6 = s.v;
-        float4 hit_albedo = sample_atlas(param_3, param_4, param_5, param_6, _377, _560, _584, _601);
+        float4 hit_albedo = sample_atlas(param_3, param_4, param_5, param_6, _386, _569, _593, _610);
         bool contribute = (hit.kind == 1u) || (!did_hit);
         if (!did_hit)
         {
@@ -674,7 +676,7 @@ float4 shadow_ray(thread const float3& from, thread const float3& to, thread con
             color = mix(color, color * hit_albedo.xyz, float3(hit_albedo.w));
             power_left *= (1.0 - hit_albedo.w);
         }
-        origin = s.position + (light_dir * ((device float*)&_377.values)[0u]);
+        origin = s.position + (light_dir * ((device float*)&_386.values)[0u]);
         if ((power_left - 9.9999997473787516355514526367188e-06) <= 0.0)
         {
             break;
@@ -684,15 +686,15 @@ float4 shadow_ray(thread const float3& from, thread const float3& to, thread con
 }
 
 static inline __attribute__((always_inline))
-float3 direct_light(thread const float3& position, thread const float3& normal, thread const uint& index, thread const bool& soft_shadowing, thread uint& _noise, thread const float& texel_size, device Params& _377, device Albedo& _560, device Emission& _584, device LightSource& _601, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1347)
+float3 direct_light(thread const float3& position, thread const float3& normal, thread const uint& index, thread const bool& soft_shadowing, thread uint& _noise, thread const float& texel_size, device Params& _386, device Albedo& _569, device Emission& _593, device LightSource& _610, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1356)
 {
-    Light _1352;
-    _1352.position = _1347.lights[index].position;
-    _1352.direction = _1347.lights[index].direction;
-    _1352.color = _1347.lights[index].color;
-    _1352.shape = _1347.lights[index].shape;
-    _1352.more = _1347.lights[index].more;
-    Light light = _1352;
+    Light _1361;
+    _1361.position = _1356.lights[index].position;
+    _1361.direction = _1356.lights[index].direction;
+    _1361.color = _1356.lights[index].color;
+    _1361.shape = _1356.lights[index].shape;
+    _1361.more = _1356.lights[index].more;
+    Light light = _1361;
     uint type = uint(light.position.w);
     float light_size = light.shape.x;
     float range = light.shape.y;
@@ -704,10 +706,10 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
     float3 light_dir;
     if (type == 0u)
     {
-        light_pos = position - (light.direction.xyz * ((device float*)&_377.values)[3u]);
+        light_pos = position - (light.direction.xyz * ((device float*)&_386.values)[3u]);
         float3 param = light_pos - position;
         light_dir = unit(param);
-        dist = ((device float*)&_377.values)[3u];
+        dist = ((device float*)&_386.values)[3u];
         disk_size = light_size;
     }
     else
@@ -753,17 +755,17 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
     {
         bool use_soft_shadows = light_size > 0.0;
         uint ray_count = 16u;
-        uint _1491;
+        uint _1500;
         if (use_soft_shadows)
         {
-            _1491 = ((device uint*)&_377.counts)[2u];
+            _1500 = ((device uint*)&_386.counts)[2u];
         }
         else
         {
-            _1491 = ray_count;
+            _1500 = ray_count;
         }
-        uint total_ray_count = _1491;
-        uint shadowing_ray_count = max(1u, (((device uint*)&_377.counts)[2u] / ray_count));
+        uint total_ray_count = _1500;
+        uint shadowing_ray_count = max(1u, (((device uint*)&_386.counts)[2u] / ray_count));
         float shadowing_ray_count_sqrt = sqrt(float(total_ray_count));
         float3 aux = (normal.y < 0.777000010013580322265625) ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
         float3 param_8 = cross(normal, aux);
@@ -779,7 +781,7 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
         float aa_power = 0.0;
         for (uint i = 0u; i < ray_count; i++)
         {
-            float2 halton = _1608[i];
+            float2 halton = _1617[i];
             float2 disk_sample = float2(((halton.x - 0.5) * texel_size) * shadow_blur, ((halton.y - 0.5) * texel_size) * shadow_blur);
             float3 disk_aligned = (tangent * disk_sample.x) + (bitan * disk_sample.y);
             float3 origin = position - disk_aligned;
@@ -792,18 +794,18 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
                 uint soft_shadow_hits = 0u;
                 for (uint j = 0u; j < shadowing_ray_count; j++)
                 {
-                    bool _1674 = j > 0u;
-                    bool _1681;
-                    if (_1674)
-                    {
-                        _1681 = j == (shadowing_ray_count / 2u);
-    )msl"
-    R"msl(                }
+                    bool _1683 = j > 0u;
+                    bool _1690;
+                    if (_1683)
+                 )msl"
+    R"msl(   {
+                        _1690 = j == (shadowing_ray_count / 2u);
+                    }
                     else
                     {
-                        _1681 = _1674;
+                        _1690 = _1683;
                     }
-                    if (_1681)
+                    if (_1690)
                     {
                         if ((soft_shadow_hits == j) || (soft_shadow_hits == 0u))
                         {
@@ -811,9 +813,9 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
                         }
                     }
                     uint param_12 = _noise;
-                    float _1696 = randomize(param_12);
+                    float _1705 = randomize(param_12);
                     _noise = param_12;
-                    float a = (_1696 * 2.0) * 3.1415927410125732421875;
+                    float a = (_1705 * 2.0) * 3.1415927410125732421875;
                     float vogel_index = float((total_ray_count - 1u) - ((i * shadowing_ray_count) + j));
                     float param_13 = vogel_index;
                     float param_14 = a;
@@ -822,15 +824,15 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
                     float2 light_disk = float2((d.x * disk_size) * shadow_blur, (d.y * disk_size) * shadow_blur);
                     float3 param_16 = (light_to_point + (light_to_point_tan * light_disk.x)) + (light_to_point_bitan * light_disk.y);
                     float3 light_disk_to_point = unit(param_16);
-                    float3 param_17 = origin - (light_disk_to_point * (((device float*)&_377.values)[0u] + disk_length));
+                    float3 param_17 = origin - (light_disk_to_point * (((device float*)&_386.values)[0u] + disk_length));
                     float3 param_18 = position - (light_disk_to_point * dist);
                     float3 param_19 = light_dir;
                     float3 param_20 = light.color.xyz;
                     bool param_21 = true;
                     uint param_22 = soft_shadow_hits;
-                    float4 _1771 = shadow_ray(param_17, param_18, param_19, param_20, param_21, param_22, _377, _560, _584, _601, _800, _804, _952, query, scene);
+                    float4 _1780 = shadow_ray(param_17, param_18, param_19, param_20, param_21, param_22, _386, _569, _593, _610, _809, _813, _961, query, scene);
                     soft_shadow_hits = param_22;
-                    float4 shadow = _1771;
+                    float4 shadow = _1780;
                     power_sum += shadow.x;
                     light_color += shadow.yzw;
                     power_accm++;
@@ -840,15 +842,15 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
             {
                 float3 param_23 = light_pos - origin;
                 float3 to_light = unit(param_23);
-                float3 param_24 = origin + (to_light * (((device float*)&_377.values)[0u] + disk_length));
+                float3 param_24 = origin + (to_light * (((device float*)&_386.values)[0u] + disk_length));
                 float3 param_25 = light_pos;
                 float3 param_26 = light_dir;
                 float3 param_27 = light.color.xyz;
                 bool param_28 = false;
                 uint param_29 = unused;
-                float4 _1813 = shadow_ray(param_24, param_25, param_26, param_27, param_28, param_29, _377, _560, _584, _601, _800, _804, _952, query, scene);
+                float4 _1822 = shadow_ray(param_24, param_25, param_26, param_27, param_28, param_29, _386, _569, _593, _610, _809, _813, _961, query, scene);
                 unused = param_29;
-                float4 shadow_1 = _1813;
+                float4 shadow_1 = _1822;
                 power_sum = shadow_1.x;
                 light_color = shadow_1.yzw;
                 power_accm = 1u;
@@ -861,15 +863,15 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
     }
     else
     {
-        float3 param_30 = position + (light_dir * ((device float*)&_377.values)[0u]);
+        float3 param_30 = position + (light_dir * ((device float*)&_386.values)[0u]);
         float3 param_31 = light_pos;
         float3 param_32 = light_dir;
         float3 param_33 = light.color.xyz;
         bool param_34 = false;
         uint param_35 = unused;
-        float4 _1863 = shadow_ray(param_30, param_31, param_32, param_33, param_34, param_35, _377, _560, _584, _601, _800, _804, _952, query, scene);
+        float4 _1872 = shadow_ray(param_30, param_31, param_32, param_33, param_34, param_35, _386, _569, _593, _610, _809, _813, _961, query, scene);
         unused = param_35;
-        float4 shadow_2 = _1863;
+        float4 shadow_2 = _1872;
         penumbra = fast::clamp(shadow_2.x, 0.0, 1.0);
         penumbra_color = shadow_2.yzw;
     }
@@ -877,18 +879,18 @@ float3 direct_light(thread const float3& position, thread const float3& normal, 
 }
 
 static inline __attribute__((always_inline))
-float3 bounce_direct(thread const Surface& s, thread const float3& position, thread const float3& normal, thread uint& _noise, thread const float& texel_size, device Params& _377, device Albedo& _560, device Emission& _584, device LightSource& _601, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1347)
+float3 bounce_direct(thread const Surface& s, thread const float3& position, thread const float3& normal, thread uint& _noise, thread const float& texel_size, device Params& _386, device Albedo& _569, device Emission& _593, device LightSource& _610, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1356)
 {
-    if (((device uint*)&_377.flags)[0u] != 0u)
+    if (((device uint*)&_386.flags)[0u] != 0u)
     {
         uint param = 2u;
         int param_1 = s.slice;
         float param_2 = s.u;
         float param_3 = s.v;
-        return sample_atlas(param, param_1, param_2, param_3, _377, _560, _584, _601).xyz;
+        return sample_atlas(param, param_1, param_2, param_3, _386, _569, _593, _610).xyz;
     }
     float3 direct = float3(0.0);
-    for (uint i = 0u; i < ((device uint*)&_377.counts)[1u]; i++)
+    for (uint i = 0u; i < ((device uint*)&_386.counts)[1u]; i++)
     {
         float3 param_4 = position;
         float3 param_5 = normal;
@@ -896,12 +898,12 @@ float3 bounce_direct(thread const Surface& s, thread const float3& position, thr
         bool param_7 = false;
         uint param_8 = _noise;
         float param_9 = texel_size;
-        float3 _1921 = direct_light(param_4, param_5, param_6, param_7, param_8, param_9, _377, _560, _584, _601, _800, _804, _952, query, scene, _1347);
+        float3 _1930 = direct_light(param_4, param_5, param_6, param_7, param_8, param_9, _386, _569, _593, _610, _809, _813, _961, query, scene, _1356);
         _noise = param_8;
-        float3 lit = _1921;
-        direct += (lit * ((device float*)&_1347.lights[i].color)[3u]);
+        float3 lit = _1930;
+        direct += (lit * ((device float*)&_1356.lights[i].color)[3u]);
     }
-    return direct * ((device float*)&_377.values)[2u];
+    return direct * ((device float*)&_386.values)[2u];
 }
 
 static inline __attribute__((always_inline))
@@ -914,13 +916,13 @@ static inline __attribute__((always_inline))
 float3 hemisphere_cosine_weighted_direction(thread uint& _noise)
 {
     uint param = _noise;
-    float _267 = randomize(param);
+    float _276 = randomize(param);
     _noise = param;
-    float _noise1 = _267;
+    float _noise1 = _276;
     uint param_1 = _noise;
-    float _272 = randomize(param_1);
+    float _281 = randomize(param_1);
     _noise = param_1;
-    float _noise2 = (_272 * 2.0) * 3.1415927410125732421875;
+    float _noise2 = (_281 * 2.0) * 3.1415927410125732421875;
     return float3(sqrt(_noise1) * cos(_noise2), sqrt(_noise1) * sin(_noise2), sqrt(1.0 - _noise1));
 }
 
@@ -933,43 +935,43 @@ float3 ray_dir_from_normal(thread const float3& normal, thread uint& _noise)
     float3 param_1 = cross(tangent, normal);
     float3 bitangent = unit(param_1);
     uint param_2 = _noise;
-    float3 _353 = hemisphere_cosine_weighted_direction(param_2);
+    float3 _362 = hemisphere_cosine_weighted_direction(param_2);
     _noise = param_2;
-    float3 h = _353;
+    float3 h = _362;
     return ((tangent * h.x) + (bitangent * h.y)) + (normal * h.z);
 }
 
 static inline __attribute__((always_inline))
-float3 indirect_light(thread const float3& start, thread const float3& start_dir, thread uint& _noise, thread const float& texel_size, device Params& _377, device Albedo& _560, device Emission& _584, device LightSource& _601, device Environment& _737, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1347)
+float3 indirect_light(thread const float3& start, thread const float3& start_dir, thread uint& _noise, thread const float& texel_size, device Params& _386, device Albedo& _569, device Emission& _593, device LightSource& _610, device Environment& _746, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1356)
 {
     float3 position = start;
     float3 ray_dir = start_dir;
-    int max_depth = max(int(((device uint*)&_377.counts)[3u]), 1);
+    int max_depth = max(int(((device uint*)&_386.counts)[3u]), 1);
     int transparency_rays_left = 8;
     float3 throughput = float3(1.0);
     float3 light = float3(0.0);
     for (int depth = 0; depth < max_depth; depth++)
     {
-        float3 param = position + (ray_dir * ((device float*)&_377.values)[0u]);
-        float3 param_1 = position + (ray_dir * ((device float*)&_377.values)[3u]);
-        Hit _1976 = trace(param, param_1, _377, _800, _804, _952, query, scene);
-        Hit hit = _1976;
+        float3 param = position + (ray_dir * ((device float*)&_386.values)[0u]);
+        float3 param_1 = position + (ray_dir * ((device float*)&_386.values)[3u]);
+        Hit _1985 = trace(param, param_1, _386, _809, _813, _961, query, scene);
+        Hit hit = _1985;
         if (hit.kind == 0u)
         {
             float3 param_2 = ray_dir;
-            light += (throughput * environment_color(param_2, _377, _737));
+            light += (throughput * environment_color(param_2, _386, _746));
             break;
         }
         Hit param_3 = hit;
-        Surface s = surface_of(param_3, _800, _804, _952);
+        Surface s = surface_of(param_3, _809, _813, _961);
         position = s.position;
         float3 normal = s.normal;
         uint param_4 = 0u;
-        int param_5 = s.slice;
+        int pa)msl"
+    R"msl(ram_5 = s.slice;
         float param_6 = s.u;
-        float param_7 = s.v;)msl"
-    R"msl(
-        float4 albedo_alpha = sample_atlas(param_4, param_5, param_6, param_7, _377, _560, _584, _601);
+        float param_7 = s.v;
+        float4 albedo_alpha = sample_atlas(param_4, param_5, param_6, param_7, _386, _569, _593, _610);
         float alpha = albedo_alpha.w;
         if (hit.kind == 1u)
         {
@@ -979,17 +981,17 @@ float3 indirect_light(thread const float3& start, thread const float3& start_dir
             float3 param_10 = normal;
             uint param_11 = _noise;
             float param_12 = texel_size;
-            float3 _2032 = bounce_direct(param_8, param_9, param_10, param_11, param_12, _377, _560, _584, _601, _800, _804, _952, query, scene, _1347);
+            float3 _2041 = bounce_direct(param_8, param_9, param_10, param_11, param_12, _386, _569, _593, _610, _809, _813, _961, query, scene, _1356);
             _noise = param_11;
-            float3 direct = _2032;
+            float3 direct = _2041;
             uint param_13 = 1u;
             int param_14 = s.slice;
             float param_15 = s.u;
             float param_16 = s.v;
-            float3 emissive = sample_atlas(param_13, param_14, param_15, param_16, _377, _560, _584, _601).xyz * ((device float*)&_377.values)[2u];
+            float3 emissive = sample_atlas(param_13, param_14, param_15, param_16, _386, _569, _593, _610).xyz * ((device float*)&_386.values)[2u];
             light += ((throughput * emissive) * alpha);
             throughput = mix(throughput, throughput * albedo_alpha.xyz, float3(alpha));
-            light += ((throughput * direct) * (((device float*)&_377.more)[0u] * alpha));
+            light += ((throughput * direct) * (((device float*)&_386.more)[0u] * alpha));
             if (alpha < 1.0)
             {
                 transparency_rays_left--;
@@ -1000,29 +1002,29 @@ float3 indirect_light(thread const float3& start, thread const float3& start_dir
                 }
                 float pa = alpha * alpha;
                 uint param_17 = _noise;
-                float _2095 = randomize(param_17);
+                float _2104 = randomize(param_17);
                 _noise = param_17;
-                if (_2095 > pa)
+                if (_2104 > pa)
                 {
                     normal = prev_normal;
                 }
-                position += (normal * ((device float*)&_377.values)[0u]);
+                position += (normal * ((device float*)&_386.values)[0u]);
             }
             float3 param_18 = throughput;
             float p = max3(param_18);
             uint param_19 = _noise;
-            float _2114 = randomize(param_19);
+            float _2123 = randomize(param_19);
             _noise = param_19;
-            if (_2114 > p)
+            if (_2123 > p)
             {
                 break;
             }
             throughput *= (1.0 / p);
             float3 param_20 = normal;
             uint param_21 = _noise;
-            float3 _2129 = ray_dir_from_normal(param_20, param_21);
+            float3 _2138 = ray_dir_from_normal(param_20, param_21);
             _noise = param_21;
-            ray_dir = _2129;
+            ray_dir = _2138;
             continue;
         }
         transparency_rays_left--;
@@ -1036,51 +1038,51 @@ float3 indirect_light(thread const float3& start, thread const float3& start_dir
         float3 param_24 = normal;
         uint param_25 = _noise;
         float param_26 = texel_size;
-        float3 _2152 = bounce_direct(param_22, param_23, param_24, param_25, param_26, _377, _560, _584, _601, _800, _804, _952, query, scene, _1347);
+        float3 _2161 = bounce_direct(param_22, param_23, param_24, param_25, param_26, _386, _569, _593, _610, _809, _813, _961, query, scene, _1356);
         _noise = param_25;
-        float3 direct_1 = _2152;
+        float3 direct_1 = _2161;
         uint param_27 = 1u;
         int param_28 = s.slice;
         float param_29 = s.u;
         float param_30 = s.v;
-        float3 emissive_1 = sample_atlas(param_27, param_28, param_29, param_30, _377, _560, _584, _601).xyz * ((device float*)&_377.values)[2u];
+        float3 emissive_1 = sample_atlas(param_27, param_28, param_29, param_30, _386, _569, _593, _610).xyz * ((device float*)&_386.values)[2u];
         light += ((throughput * emissive_1) * alpha);
         throughput = mix(mix(throughput, throughput * albedo_alpha.xyz, float3(alpha)), float3(0.0), float3(alpha));
-        light += ((throughput * direct_1) * (((device float*)&_377.more)[0u] * alpha));
-        position += (ray_dir * ((device float*)&_377.values)[0u]);
+        light += ((throughput * direct_1) * (((device float*)&_386.more)[0u] * alpha));
+        position += (ray_dir * ((device float*)&_386.values)[0u]);
     }
     return light;
 }
 
 static inline __attribute__((always_inline))
-void probe_pass(thread const uint& probe, device Params& _377, device Albedo& _560, device Emission& _584, device LightSource& _601, device Environment& _737, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1347, device Probes& _2476, device ProbeSums& _2506)
+void probe_pass(thread const uint& probe, device Params& _386, device Albedo& _569, device Emission& _593, device LightSource& _610, device Environment& _746, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1356, device Probes& _2485, device ProbeSums& _2515)
 {
-    float3 position = _2476.probes[probe].xyz;
-    uint param = ((device uint*)&_377._step)[1u];
+    float3 position = _2485.probes[probe].xyz;
+    uint param = ((device uint*)&_386._step)[1u];
     uint param_1 = probe;
     uint param_2 = 49502741u;
     uint _noise = random_seed(param, param_1, param_2);
     spvUnsafeArray<float3, 9> sums;
     for (uint j = 0u; j < 9u; j++)
     {
-        sums[j] = _2506.probe_sums[(probe * 9u) + j].xyz;
+        sums[j] = _2515.probe_sums[(probe * 9u) + j].xyz;
     }
-    for (uint i = ((device uint*)&_377._step)[1u]; i < ((device uint*)&_377._step)[2u]; i++)
+    for (uint i = ((device uint*)&_386._step)[1u]; i < ((device uint*)&_386._step)[2u]; i++)
     {
         uint param_3 = _noise;
-        float3 _2532 = sphere_uniform_direction(param_3);
+        float3 _2541 = sphere_uniform_direction(param_3);
         _noise = param_3;
-        float3 d = _2532;
-        float3 ray_dir = ((_377.space[0].xyz * d.x) + (_377.space[1].xyz * d.y)) + (_377.space[2].xyz * d.z);
+        float3 d = _2541;
+        float3 ray_dir = ((_386.space[0].xyz * d.x) + (_386.space[1].xyz * d.y)) + (_386.space[2].xyz * d.z);
         float3 param_4 = position;
         float3 param_5 = ray_dir;
         uint param_6 = _noise;
         float param_7 = 0.0;
-        float3 _2564 = indirect_light(param_4, param_5, param_6, param_7, _377, _560, _584, _601, _737, _800, _804, _952, query, scene, _1347);
+        float3 _2573 = indirect_light(param_4, param_5, param_6, param_7, _386, _569, _593, _610, _746, _809, _813, _961, query, scene, _1356);
         _noise = param_6;
-        float3 light = _2564;
-        spvUnsafeArray<float, 9> _2622 = spvUnsafeArray<float, 9>({ 0.2820949852466583251953125, 0.48860299587249755859375 * d.y, 0.48860299587249755859375 * d.z, 0.48860299587249755859375 * d.x, (1.09254801273345947265625 * d.x) * d.y, (1.09254801273345947265625 * d.y) * d.z, 0.3153919875621795654296875 * (((3.0 * d.z) * d.z) - 1.0), (1.09254801273345947265625 * d.x) * d.z, 0.546274006366729736328125 * ((d.x * d.x) - (d.y * d.y)) });
-        spvUnsafeArray<float, 9> c = _2622;
+        float3 light = _2573;
+        spvUnsafeArray<float, 9> _2631 = spvUnsafeArray<float, 9>({ 0.2820949852466583251953125, 0.48860299587249755859375 * d.y, 0.48860299587249755859375 * d.z, 0.48860299587249755859375 * d.x, (1.09254801273345947265625 * d.x) * d.y, (1.09254801273345947265625 * d.y) * d.z, 0.3153919875621795654296875 * (((3.0 * d.z) * d.z) - 1.0), (1.09254801273345947265625 * d.x) * d.z, 0.546274006366729736328125 * ((d.x * d.x) - (d.y * d.y)) });
+        spvUnsafeArray<float, 9> c = _2631;
         for (uint j_1 = 0u; j_1 < 9u; j_1++)
         {
             sums[j_1] += (light * c[j_1]);
@@ -1088,89 +1090,89 @@ void probe_pass(thread const uint& probe, device Params& _377, device Albedo& _5
     }
     for (uint j_2 = 0u; j_2 < 9u; j_2++)
     {
-        _2506.probe_sums[(probe * 9u) + j_2] = float4(sums[j_2], 0.0);
+        _2515.probe_sums[(probe * 9u) + j_2] = float4(sums[j_2], 0.0);
     }
 }
 
 static inline __attribute__((always_inline))
-bool inside(thread const int& x, thread const int& y, device Params& _377)
+bool inside(thread const int& x, thread const int& y, device Params& _386)
 {
-    bool _399 = (x >= 0) && (y >= 0);
-    bool _407;
-    if (_399)
+    bool _408 = (x >= 0) && (y >= 0);
+    bool _416;
+    if (_408)
     {
-        _407 = x < int(((device uint*)&_377.size)[0u]);
+        _416 = x < int(((device uint*)&_386.size)[0u]);
     }
     else
     {
-        _407 = _399;
+        _416 = _408;
     }
-    bool _415;
-    if (_407)
+    bool _424;
+    if (_416)
     {
-        _415 = y < int(((device uint*)&_377.size)[1u]);
-    }
-    else
-    {
-        _415 = _407;
-    }
-    return _415;
-}
-
-static inline __attribute__((always_inline))
-float4 fetch_position(thread const int& slice, thread const int& x, thread const int& y, device Params& _377, device Positions& _430)
-{
-    int param = x;
-    int param_1 = y;
-    float4 _424;
-    if (inside(param, param_1, _377))
-    {
-        int param_2 = slice;
-        int param_3 = x;
-        int param_4 = y;
-        _424 = _430.positions[texel_at(param_2, param_3, param_4, _377)];
+        _424 = y < int(((device uint*)&_386.size)[1u]);
     }
     else
     {
-        _424 = float4(0.0);
+        _424 = _416;
     }
     return _424;
 }
 
 static inline __attribute__((always_inline))
-void direct_pass(thread const int& slice, thread const int& x, thread const int& y, device Params& _377, device Positions& _430, device Albedo& _560, device Emission& _584, device LightSource& _601, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1347, device Normals& _2221, device Accum& _2350)
+float4 fetch_position(thread const int& slice, thread const int& x, thread const int& y, device Params& _386, device Positions& _439)
+{
+    int param = x;
+    int param_1 = y;
+    float4 _433;
+    if (inside(param, param_1, _386))
+    {
+        int param_2 = slice;
+        int param_3 = x;
+        int param_4 = y;
+        _433 = _439.positions[texel_at(param_2, param_3, param_4, _386)];
+    }
+    else
+    {
+        _433 = float4(0.0);
+    }
+    return _433;
+}
+
+static inline __attribute__((always_inline))
+void direct_pass(thread const int& slice, thread const int& x, thread const int& y, device Params& _386, device Positions& _439, device Albedo& _569, device Emission& _593, device LightSource& _610, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1356, device Normals& _2230, device Accum& _2359)
 {
     int param = slice;
     int param_1 = x;
     int param_2 = y;
-    uint at = texel_at(param, param_1, param_2, _377);
-    float3 normal = _2221.normals[at].xyz;
+    uint at = texel_at(param, param_1, param_2, _386);
+    float3 normal = _2230.normals[at].xyz;
     if (length(normal) < 0.5)
     {
         return;
     }
-    float3 position = _430.positions[at].xyz;
+    float3 position = _439.positions[at].xyz;
     int param_3 = slice;
     int param_4 = x + 1;
     int param_5 = y;
-    float4 neighbor = fetch_position(param_3, param_4, param_5, _377, _430);
+    float4 neighbor = fetch_position(param_3, param_4, param_5, _386, _439);
     if (neighbor.w < 0.001000000047497451305389404296875)
     {
         int param_6 = slice;
         int param_7 = x - 1;
         int param_8 = y;
-        float4 left = fetch_position(param_6, param_7, param_8, _377, _430);
+        float4 left = fetch_position(param_6, param_7, param_8, _386, _439);
         neighbor = float4(left.xyz, neighbor.w);
     }
-    float texel_size = length(position - neighbor.xyz) * ((device float*)&_377.values)[1u];
-    float3 light_for_t)msl"
-    R"msl(exture = float3(0.0);
+    float texel_size = length(position -)msl"
+    R"msl( neighbor.xyz) * ((device float*)&_386.values)[1u];
+    float3 light_for_texture = float3(0.0);
     float3 light_for_bounces = float3(0.0);
     uint param_9 = uint(x);
     uint param_10 = uint(y);
     uint param_11 = 43573547u;
     uint _noise = random_seed(param_9, param_10, param_11);
-    for (uint i = 0u; i < ((device uint*)&_377.counts)[1u]; i++)
+    for (uint i = 0u; i < ((device uint*)&_386.counts)[1u]; i++)
     {
         float3 param_12 = position;
         float3 param_13 = normal;
@@ -1178,96 +1180,236 @@ void direct_pass(thread const int& slice, thread const int& x, thread const int&
         bool param_15 = true;
         uint param_16 = _noise;
         float param_17 = texel_size;
-        float3 _2312 = direct_light(param_12, param_13, param_14, param_15, param_16, param_17, _377, _560, _584, _601, _800, _804, _952, query, scene, _1347);
+        float3 _2321 = direct_light(param_12, param_13, param_14, param_15, param_16, param_17, _386, _569, _593, _610, _809, _813, _961, query, scene, _1356);
         _noise = param_16;
-        float3 lit = _2312;
-        if (((device float*)&_1347.lights[i].more)[2u] != 0.0)
+        float3 lit = _2321;
+        if (((device float*)&_1356.lights[i].more)[2u] != 0.0)
         {
             light_for_texture += lit;
         }
-        light_for_bounces += (lit * ((device float*)&_1347.lights[i].color)[3u]);
+        light_for_bounces += (lit * ((device float*)&_1356.lights[i].color)[3u]);
     }
-    light_for_bounces *= ((device float*)&_377.values)[2u];
-    light_for_texture *= ((device float*)&_377.values)[2u];
-    _601.light_source[at] = float4(light_for_bounces, 1.0);
-    _2350.accum[at] = float4(light_for_texture, 1.0);
+    light_for_bounces *= ((device float*)&_386.values)[2u];
+    light_for_texture *= ((device float*)&_386.values)[2u];
+    _610.light_source[at] = float4(light_for_bounces, 1.0);
+    _2359.accum[at] = float4(light_for_texture, 1.0);
 }
 
 static inline __attribute__((always_inline))
-void bounce_pass(thread const int& slice, thread const int& x, thread const int& y, device Params& _377, device Positions& _430, device Albedo& _560, device Emission& _584, device LightSource& _601, device Environment& _737, device Vertices& _800, device Indices& _804, device Triangles& _952, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1347, device Normals& _2221, device Accum& _2350)
+void bounce_pass(thread const int& slice, thread const int& x, thread const int& y, device Params& _386, device Positions& _439, device Albedo& _569, device Emission& _593, device LightSource& _610, device Environment& _746, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Lights& _1356, device Normals& _2230, device Accum& _2359)
 {
     int param = slice;
     int param_1 = x;
     int param_2 = y;
-    uint at = texel_at(param, param_1, param_2, _377);
-    float3 normal = _2221.normals[at].xyz;
+    uint at = texel_at(param, param_1, param_2, _386);
+    float3 normal = _2230.normals[at].xyz;
     if (length(normal) < 0.5)
     {
         return;
     }
-    float3 position = _430.positions[at].xyz;
-    int neighbor_offset = (x < (int(((device uint*)&_377.size)[0u]) - 1)) ? 1 : (-1);
+    float3 position = _439.positions[at].xyz;
+    int neighbor_offset = (x < (int(((device uint*)&_386.size)[0u]) - 1)) ? 1 : (-1);
     int param_3 = slice;
     int param_4 = x + neighbor_offset;
     int param_5 = y;
-    float texel_size = length(position - fetch_position(param_3, param_4, param_5, _377, _430).xyz);
-    uint param_6 = ((device uint*)&_377._step)[1u];
+    float texel_size = length(position - fetch_position(param_3, param_4, param_5, _386, _439).xyz);
+    uint param_6 = ((device uint*)&_386._step)[1u];
     uint param_7 = uint(x);
     uint param_8 = uint(y);
     uint _noise = random_seed(param_6, param_7, param_8);
     float3 light_accum = float3(0.0);
-    for (uint i = ((device uint*)&_377._step)[1u]; i < ((device uint*)&_377._step)[2u]; i++)
+    for (uint i = ((device uint*)&_386._step)[1u]; i < ((device uint*)&_386._step)[2u]; i++)
     {
         float3 param_9 = normal;
         uint param_10 = _noise;
-        float3 _2434 = ray_dir_from_normal(param_9, param_10);
+        float3 _2443 = ray_dir_from_normal(param_9, param_10);
         _noise = param_10;
-        float3 ray_dir = _2434;
+        float3 ray_dir = _2443;
         float3 param_11 = position;
         float3 param_12 = ray_dir;
         uint param_13 = _noise;
         float param_14 = texel_size;
-        float3 _2445 = indirect_light(param_11, param_12, param_13, param_14, _377, _560, _584, _601, _737, _800, _804, _952, query, scene, _1347);
+        float3 _2454 = indirect_light(param_11, param_12, param_13, param_14, _386, _569, _593, _610, _746, _809, _813, _961, query, scene, _1356);
         _noise = param_13;
-        light_accum += _2445;
+        light_accum += _2454;
     }
-    float3 added = light_accum * (1.0 / float(((device uint*)&_377.counts)[2u]));
-    _2350.accum[at] = float4(_2350.accum[at].xyz + added, ((device float*)&_2350.accum[at])[3u]);
+    float3 added = light_accum * (1.0 / float(((device uint*)&_386.counts)[2u]));
+    _2359.accum[at] = float4(_2359.accum[at].xyz + added, ((device float*)&_2359.accum[at])[3u]);
 }
 
-kernel void main0(constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
+static inline __attribute__((always_inline))
+void mesh_occlusion_pass(thread const int& x, thread const int& y, device Params& _386, device Positions& _439, device LightSource& _610, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Normals& _2230)
+{
+    int param = 0;
+    int param_1 = x;
+    int param_2 = y;
+    uint at = texel_at(param, param_1, param_2, _386);
+    float3 normal = _2230.normals[at].xyz;
+    if (length(normal) < 0.5)
+    {
+        return;
+    }
+    float3 position = _439.positions[at].xyz;
+    uint rays = max(((device uint*)&_386.counts)[2u], 1u);
+    uint param_3 = uint(x);
+    uint param_4 = uint(y);
+    uint param_5 = 1u;
+    uint _noise = random_seed(param_3, param_4, param_5);
+    float open = 0.0;
+    for (uint i = 0u; i < rays; i++)
+    {
+        float3 param_6 = normal;
+        uint param_7 = _noise;
+        float3 _2728 = ray_dir_from_normal(param_6, param_7);
+        _noise = param_7;
+        float3 ray_dir = _2728;
+        float3 param_8 = position;
+        float3 param_9 = position + (ray_dir * ((device float*)&_386.more)[1u]);
+        Hit _2739 = trace(param_8, param_9, _386, _809, _813, _961, query, scene);
+        if (_2739.kind == 0u)
+        {
+            open += 1.0;
+        }
+    }
+    uint param_10 = uint(x);
+    uint param_11 = uint(y);
+    uint param_12 = 2u;
+    _noise = random_seed(param_10, param_11, param_12);
+    float sky = 0.0;
+    for (uint i_1 = 0u; i_1 < rays; i_1++)
+    {
+        float3 param_13 = normal;
+        uint param_14 = _noise;
+        float3 _2771 = ray_dir_from_normal(param_13, param_14);
+        _noise = param_14;
+        float3 ray_dir_1 = _2771;
+        bool _2775 = ray_dir_1.y > 0.0;
+        bool _2790;
+        if (_2775)
+        {
+            float3 param_15 = position;
+            float3 param_16 = position + (ray_dir_1 * ((device float*)&_386.values)[3u]);
+            Hit _2787 = trace(param_15, param_16, _386, _809, _813, _961, query, scene);
+            _2790 = _2787.kind == 0u;
+        }
+        else
+        {
+            _2790 = _2775;
+        }
+        if (_2790)
+        {
+            sky += 1.0;
+        }
+    }
+    uint param_17 = uint(x);
+    uint param_18 = uint(y);
+    uint param_19 = 3u;
+    _noise = random_seed(param_17, param_18, param_19);
+    float through = 0.0;
+    float _2837;
+    for (uint i_2 = 0u; i_2 < rays; i_2++)
+    {
+        float3 param_20 = normal * (-1.0);
+        uint param_21 = _noise;
+        float3 _2821 = ray_dir_from_normal(param_20, param_21);
+        _noise = param_21;
+        float3 ray_dir_2 = _2821;
+        float3 param_22 = position;
+        float3 param_23 = position + (ray_dir_2 * ((device float*)&_386.more)[2u]);
+        Hit _2833 = trace(param_22, param_23, _386, _809, _813, _961, query, scene);
+        Hit hit = _2833;
+        if (hit.kind == 0u)
+        {
+            _2837 = ((device float*)&_386.more)[2u];
+        }
+        else
+        {
+            _2837 = fast::min(hit._distance, ((device float*)&_386.more)[2u]);
+        }
+        through += _2837;
+    }
+    float count = float(rays);
+    _610.light_source[at] = float4(open / count, sky / count, through / (count * ((device float*)&_386.more)[2u]), 1.0);
+}
+
+static inline __attribute__((always_inline))
+void mesh_hits_pass(thread const int& x, thread const int& y, device Params& _386, device Positions& _439, device LightSource& _610, device Vertices& _809, device Indices& _813, device Triangles& _961, thread raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data>& query, const raytracing::acceleration_structure<raytracing::instancing> scene, device Normals& _2230)
+{
+    int param = 0;
+    int param_1 = x;
+    int param_2 = y;
+    uint at = texel_at(param, param_1, param_2, _386);
+    float3 normal = _2230.normals[at].xyz;
+    if (length(normal) < 0.5)
+    {
+        return;
+    }
+    float3 position = _439.positions[at].xyz;
+    float3 outside = position + (normal * ((device float*)&_386.more)[3u]);
+    float3 param_3 = outside;
+    float3 param_4 = position - (normal * ((device float*)&_386.more)[3u]);
+    Hit _2911 = trace(param_3, param_4, _386, _809, _813, _961, query, scene);
+    Hit hit = _2911;
+    if (hit.kind == 0u)
+    {
+        _610.light_source[at] = float4(0.0);
+        return;
+    }
+    _610.light_source[at] = float4(float(hit.triangle + 1u), hit.barycentric.y, hit.barycentric.z, hit._distance);
+}
+
+kernel void main0(constant spvDescriptorSetBuffer0& spvDescriptorSe)msl"
+    R"msl(t0 [[buffer(0)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
 {
     uint id = gl_GlobalInvocationID.x;
     raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data> query;
-    if (_2676)
+    if (_2941)
     {
-        if (id < ((device uint*)&(*spvDescriptorSet0.m_377)._step)[3u])
+        if (id < ((device uint*)&(*spvDescriptorSet0.m_386)._step)[3u])
         {
             uint param = id;
-            probe_pass(param, (*spvDescriptorSet0.m_377), (*spvDescriptorSet0.m_560), (*spvDescriptorSet0.m_584), (*spvDescriptorSet0.m_601), (*spvDescriptorSet0.m_737), (*spvDescriptorSet0.m_800), (*spvDescriptorSet0.m_804), (*spvDescriptorSet0.m_952), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_1347), (*spvDescriptorSet0.m_2476), (*spvDescriptorSet0.m_2506));
+            probe_pass(param, (*spvDescriptorSet0.m_386), (*spvDescriptorSet0.m_569), (*spvDescriptorSet0.m_593), (*spvDescriptorSet0.m_610), (*spvDescriptorSet0.m_746), (*spvDescriptorSet0.m_809), (*spvDescriptorSet0.m_813), (*spvDescriptorSet0.m_961), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_1356), (*spvDescriptorSet0.m_2485), (*spvDescriptorSet0.m_2515));
         }
         return;
     }
-    id += ((device uint*)&(*spvDescriptorSet0.m_377).flags)[1u];
-    if (id >= ((device uint*)&(*spvDescriptorSet0.m_377).flags)[2u])
+    id += ((device uint*)&(*spvDescriptorSet0.m_386).flags)[1u];
+    if (id >= ((device uint*)&(*spvDescriptorSet0.m_386).flags)[2u])
     {
         return;
     }
-    int x = int(id % ((device uint*)&(*spvDescriptorSet0.m_377).size)[0u]);
-    int y = int(id / ((device uint*)&(*spvDescriptorSet0.m_377).size)[0u]);
-    if (_2712)
+    int x = int(id % ((device uint*)&(*spvDescriptorSet0.m_386).size)[0u]);
+    int y = int(id / ((device uint*)&(*spvDescriptorSet0.m_386).size)[0u]);
+    if (_2977)
     {
-        int param_1 = int(((device uint*)&(*spvDescriptorSet0.m_377)._step)[0u]);
+        int param_1 = int(((device uint*)&(*spvDescriptorSet0.m_386)._step)[0u]);
         int param_2 = x;
         int param_3 = y;
-        direct_pass(param_1, param_2, param_3, (*spvDescriptorSet0.m_377), (*spvDescriptorSet0.m_430), (*spvDescriptorSet0.m_560), (*spvDescriptorSet0.m_584), (*spvDescriptorSet0.m_601), (*spvDescriptorSet0.m_800), (*spvDescriptorSet0.m_804), (*spvDescriptorSet0.m_952), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_1347), (*spvDescriptorSet0.m_2221), (*spvDescriptorSet0.m_2350));
+        direct_pass(param_1, param_2, param_3, (*spvDescriptorSet0.m_386), (*spvDescriptorSet0.m_439), (*spvDescriptorSet0.m_569), (*spvDescriptorSet0.m_593), (*spvDescriptorSet0.m_610), (*spvDescriptorSet0.m_809), (*spvDescriptorSet0.m_813), (*spvDescriptorSet0.m_961), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_1356), (*spvDescriptorSet0.m_2230), (*spvDescriptorSet0.m_2359));
     }
     else
     {
-        int param_4 = int(((device uint*)&(*spvDescriptorSet0.m_377)._step)[0u]);
-        int param_5 = x;
-        int param_6 = y;
-        bounce_pass(param_4, param_5, param_6, (*spvDescriptorSet0.m_377), (*spvDescriptorSet0.m_430), (*spvDescriptorSet0.m_560), (*spvDescriptorSet0.m_584), (*spvDescriptorSet0.m_601), (*spvDescriptorSet0.m_737), (*spvDescriptorSet0.m_800), (*spvDescriptorSet0.m_804), (*spvDescriptorSet0.m_952), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_1347), (*spvDescriptorSet0.m_2221), (*spvDescriptorSet0.m_2350));
+        if (_2990)
+        {
+            int param_4 = int(((device uint*)&(*spvDescriptorSet0.m_386)._step)[0u]);
+            int param_5 = x;
+            int param_6 = y;
+            bounce_pass(param_4, param_5, param_6, (*spvDescriptorSet0.m_386), (*spvDescriptorSet0.m_439), (*spvDescriptorSet0.m_569), (*spvDescriptorSet0.m_593), (*spvDescriptorSet0.m_610), (*spvDescriptorSet0.m_746), (*spvDescriptorSet0.m_809), (*spvDescriptorSet0.m_813), (*spvDescriptorSet0.m_961), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_1356), (*spvDescriptorSet0.m_2230), (*spvDescriptorSet0.m_2359));
+        }
+        else
+        {
+            if (_3003)
+            {
+                int param_7 = x;
+                int param_8 = y;
+                mesh_occlusion_pass(param_7, param_8, (*spvDescriptorSet0.m_386), (*spvDescriptorSet0.m_439), (*spvDescriptorSet0.m_610), (*spvDescriptorSet0.m_809), (*spvDescriptorSet0.m_813), (*spvDescriptorSet0.m_961), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_2230));
+            }
+            else
+            {
+                int param_9 = x;
+                int param_10 = y;
+                mesh_hits_pass(param_9, param_10, (*spvDescriptorSet0.m_386), (*spvDescriptorSet0.m_439), (*spvDescriptorSet0.m_610), (*spvDescriptorSet0.m_809), (*spvDescriptorSet0.m_813), (*spvDescriptorSet0.m_961), query, spvDescriptorSet0.scene, (*spvDescriptorSet0.m_2230));
+            }
+        }
     }
 }
 
@@ -1277,6 +1419,6 @@ kernel void main0(constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0
 inline constexpr int kLightmapLightMslIds[][2] = {{0, -1}, {1, -1}, {2, -1}, {3, -1}, {4, -1}, {5, -1}, {6, -1}, {7, -1}, {8, -1}, {9, -1}, {10, -1}, {11, -1}, {12, -1}, {13, -1}, {14, -1}};
 
 // The FNV-1a hash of the GLSL it was made from.
-inline constexpr std::uint64_t kLightmapLightMslFrom = 0x61889a866c91718dULL;
+inline constexpr std::uint64_t kLightmapLightMslFrom = 0xf7059d858aa9911bULL;
 
 } // namespace slash::render::shaders

@@ -5183,6 +5183,55 @@ TEST_CASE("model.cleanup writes a model game-ready as a .glb file, under its sto
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("model.bake_maps bakes a model's mesh maps beside it, once") {
+    const std::string root = "command_mesh_maps_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/props").ok());
+    // Two boxes whose texture coordinates lie on each other.
+    REQUIRE(slash::platform::write_file(root + "/props/pair.model.json", R"({"format": 1,
+        "parts": [{"name": "low", "shape": "box", "size": [1, 1, 1], "position": [0, 0.5, 0]},
+                  {"name": "high", "shape": "box", "size": [0.5, 0.5, 0.5],
+                   "position": [0, 1.25, 0]}]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    const json::Value made = engine.ok(
+        "model.bake_maps",
+        R"({"path": "props/pair.model.json", "size": 32, "rays": 4, "maps": ["ao", "part_id"]})");
+    CHECK(made.find("out")->as_string() == "props/pair.maps");
+    CHECK(*made.find("files") ==
+          parse(R"(["props/pair.maps/ao.png", "props/pair.maps/part_id.png"])"));
+    CHECK(made.find("coverage")->as_double() > 0.1);
+    CHECK(made.find("overlap")->as_double() > 0.1);
+    CHECK(made.find("warnings")->as_array()[0].as_string().find("overlap") != std::string::npos);
+    CHECK(made.find("parts")->size() == 2);
+    CHECK(made.find("stats")->find("ao")->size() == 3);
+    CHECK(std::filesystem::exists(root + "/props/pair.maps/ao.png"));
+    CHECK(std::filesystem::exists(root + "/props/pair.maps/maps.json"));
+    // The same call again bakes nothing; other params bake again.
+    const json::Value again = engine.ok(
+        "model.bake_maps",
+        R"({"path": "props/pair.model.json", "size": 32, "rays": 4, "maps": ["ao", "part_id"]})");
+    CHECK(again.find("cached")->as_bool());
+    CHECK(again.find("coverage")->as_double() == made.find("coverage")->as_double());
+    CHECK(engine
+              .ok("model.bake_maps",
+                  R"({"path": "props/pair.model.json", "size": 16, "maps": ["ao"]})")
+              .find("cached") == nullptr);
+    // The height map needs a high model.
+    const command::Reply refused =
+        engine.call("model.bake_maps", R"({"path": "props/pair.model.json", "maps": ["height"]})");
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.data.find("path")->as_string() == "/maps/0");
+    // Undo takes the files back.
+    engine.ok("undo");
+    engine.ok("undo");
+    CHECK_FALSE(std::filesystem::exists(root + "/props/pair.maps/ao.png"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("model.cleanup gives a model collision, which model.inspect reports") {
     const std::string root = "command_collision_project";
     std::filesystem::remove_all(root);

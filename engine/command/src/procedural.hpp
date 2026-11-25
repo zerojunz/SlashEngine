@@ -20,6 +20,9 @@ void register_procedural_commands(Registry& registry);
 // slash/procedural/texture_graph.hpp (texture_tools.cpp).
 void register_texture_tools(Registry& registry);
 
+// Adds model.bake_maps, over slash/scene3d/mesh_maps.hpp (mesh_maps.cpp).
+void register_mesh_map_commands(Registry& registry);
+
 // Reads what a graph names from the session's project: text files, and images decoded as
 // texture paths are (a graph's images may be other graphs' outputs).
 [[nodiscard]] procedural::GraphReader graph_reader(Session& session);
