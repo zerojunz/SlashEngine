@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -14,7 +16,7 @@
 
 namespace slash::xr::detail {
 
-// A graphics API's part in an OpenXR session, as Godot's OpenXRGraphicsExtensionWrapper: the
+// A graphics API's part in an OpenXR session: the
 // runtime's say in making the render device, the session's graphics binding and the swapchains'
 // images.
 class OpenXRGraphics {

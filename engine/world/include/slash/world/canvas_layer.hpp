@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -11,8 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
-// The canvases 2D entities and controls draw in, as Godot's viewport and its CanvasLayers, and
-// Parallax2D, which scrolls with the camera. The math gives the same bits on every platform.
+// The canvases 2D entities and controls draw in, and Parallax2D, which scrolls with the camera. The
+// math gives the same bits on every platform.
 namespace slash::world {
 
 class World;
@@ -22,15 +23,15 @@ struct Canvas {
     entt::entity layer = entt::null; // the ScreenLayer, or null for the world
     int order = 0;                   // the ScreenLayer's layer; 0 for the world
     bool visible = true;
-    // Its pixels to the screen's, as Godot's RendererViewport places a canvas: the camera's
-    // canvas transform for the world, a ScreenLayer's own (canvas_layer_transform). Controls in
-    // the world stay on the screen instead, as before canvas layers.
+    // Its pixels to the screen's: the camera's canvas transform for the world, a ScreenLayer's own
+    // (canvas_layer_transform). Controls in the world stay on the screen instead, as before screen
+    // layers.
     Affine2D transform;
 };
 
-// Where a ScreenLayer draws, as Godot's RendererViewport draws its canvas: its offset, rotation
-// and scale; following the viewport, after the world's canvas transform (the camera's) and then
-// scaled by follow_viewport_scale around the middle of a screen of screen_size pixels.
+// Where a ScreenLayer draws: its offset, rotation and scale; following the viewport, after the
+// world's canvas transform (the camera's) and then scaled by follow_viewport_scale around the
+// middle of a screen of screen_size pixels.
 [[nodiscard]] Affine2D canvas_layer_transform(const ScreenLayer& layer, const Affine2D& world,
                                               Vec2 screen_size);
 
@@ -41,9 +42,8 @@ public:
     // The canvases as the view shows them on a screen of screen_size pixels.
     Canvases(const World& world, const Tree2D& tree, const CameraView& view, Vec2 screen_size);
 
-    // In drawing order, as Godot stacks canvases: by layer, the world first among layer 0, and
-    // CanvasLayers of one layer in the order their entities were made. The world is always
-    // there.
+    // In drawing order: by layer, the world first among layer 0, and ScreenLayers of one layer in
+    // the order their entities were made. The world is always there.
     [[nodiscard]] const std::vector<Canvas>& all() const { return canvases_; }
     // The place in all() of the canvas an entity draws in: that of the ScreenLayer whose
     // children hold it or an entity above it (through Transform2D and Widget children), else
@@ -70,12 +70,12 @@ private:
 [[nodiscard]] Affine2D screen_transform(const World& world, const Canvases& canvases,
                                         entt::entity entity);
 
-// Godot's Camera2D::_update_scroll: the screen_offset a view gives a Parallax2D, the middle of
-// the screen in the world less half the screen.
+// The screen_offset a view gives a Parallax2D, the middle of the screen in the world less half the
+// screen.
 [[nodiscard]] Vec2 parallax_screen_offset(const CameraView& view, Vec2 screen_size);
 
-// Godot's Parallax2D::_update_scroll: the position a Parallax2D puts its entity at, whose own
-// scale is scale, on a screen of screen_size pixels.
+// The position a Parallax2D puts its entity at, whose own scale is scale, on a screen of
+// screen_size pixels.
 [[nodiscard]] Vec2 parallax_position(const Parallax2D& parallax, Vec2 scale, Vec2 screen_size);
 
 // Adds the "parallax_2d" system, which each tick, right after "camera_2d", moves each

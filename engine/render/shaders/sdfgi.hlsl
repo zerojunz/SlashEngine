@@ -1,6 +1,6 @@
-// SDFGI's passes over its cascades (Godot 4.6's sdfgi_preprocess.glsl, sdfgi_direct_light.glsl
-// and sdfgi_integrate.glsl): one compute shader whose uniforms say which pass runs. src/sdfgi.cpp
-// is its CPU twin, and src/sdfgi_gpu.hpp lays out its buffers and lists the passes
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// SDFGI's passes over its cascades: one compute shader whose uniforms say which pass runs.
+// src/sdfgi.cpp is its CPU twin, and src/sdfgi_gpu.hpp lays out its buffers and lists the passes
 // (SdfgiPass). Keep them in step. sdfgi_voxelize.hlsl sums the triangles into cells first and
 // sdfgi_gather.hlsl gives each pixel its light after.
 
@@ -348,7 +348,7 @@ void occlusion_region(uint r) {
                 }
                 uint sum = 0u;
                 uint avg = 0u;
-                // Sides, then edges, then the corner, as Godot reads them.
+                // Sides, then edges, then the corner.
                 int3 takes[7] = {int3(1, 0, 0), int3(0, 1, 0), int3(0, 0, 1), int3(0, 1, 1),
                                  int3(1, 0, 1), int3(1, 1, 0), int3(1, 1, 1)};
                 [unroll] for (uint t = 0u; t < 7u; ++t) {

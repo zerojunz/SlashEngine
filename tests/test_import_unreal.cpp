@@ -402,7 +402,7 @@ TEST_CASE("an Unreal project imports through its editor into scenes, settings an
     CHECK(report.find("main_scene")->as_string() == "unreal/Content/Maps/Drop.scene.json");
     CHECK(report.find("converted")->find("meshes")->as_int() == 2);
 
-    // Unreal's centimeters, z up, are Godot's meters, y up: x stays, Unreal's y is z.
+    // Unreal's centimeters, z up, are the engine's meters, y up: x stays, Unreal's y is z.
     const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
     const json::Value& crate = component(scene, "crate", "Transform3D");
     CHECK(triple(*crate.find("position")) == std::array<double, 3>{2.0, 3.0, 1.0});
@@ -1077,7 +1077,7 @@ TEST_CASE("project.import runs Unreal's editor only where it may") {
     CHECK(at[1] == doctest::Approx(0.0).epsilon(0.03));
 }
 
-TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
+TEST_CASE("an Unreal import turns Niagara emitters into particles") {
     const fs::path project = fs::absolute("import_unreal_niagara");
     fs::remove_all(project);
     write_project(project / "unreal");
@@ -1585,7 +1585,7 @@ r.DefaultFeature.AutoExposure.Bias=2.0
     CHECK(environment.find("tonemap_mode")->as_string() == "aces");
     CHECK(environment.find("background_mode")->as_string() == "sky");
 
-    // Unreal's air, made linear and as bright as Godot's default blue, and twice the haze.
+    // Unreal's air, made linear and as bright as the default blue, and twice the haze.
     const json::Value& physical = component(scene, "environment", "SkyScattering");
     INFO(json::write(physical));
     const json::Array& rayleigh = physical.find("rayleigh_color")->as_array();
@@ -1600,7 +1600,7 @@ r.DefaultFeature.AutoExposure.Bias=2.0
     CHECK(multiplier > 1.0);
     CHECK(multiplier < 10.0);
 
-    // Auto exposure over the extended range, two stops over Godot's default scale's one.
+    // Auto exposure over the extended range, two stops over the default scale's one.
     const json::Value& exposure = component(scene, "environment", "CameraLens");
     CHECK(exposure.find("auto_exposure_enabled")->as_bool());
     CHECK(exposure.find("auto_exposure_scale")->as_double() == doctest::Approx(0.8));

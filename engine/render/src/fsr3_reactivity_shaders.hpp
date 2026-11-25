@@ -1714,10 +1714,10 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> tint_symbol {
 inline constexpr char kFsr3ReactivityHlsl[] = R"hlsl(// FSR 3's prepare reactivity pass (ffx_fsr3upscaler_prepare_reactivity.h): for each render pixel,
 // how far its surface was hidden in the frame before (from the reconstruct pass's depths), how much
 // its shading changed, how its motion differs from where it came from, and how many frames it has
-// gathered, which it keeps for the next frame. Godot gives no reactive or transparency and
-// composition mask, so those are 0. The thin features this pass locks AMD scatters to the display
-// pixels they land on; fsr3_lock.hlsl gathers them there instead. Keep it in step with
-// src/fsr3.cpp, its CPU twin.
+// gathered, which it keeps for the next frame. There is no reactive or transparency and composition
+// mask, so those are 0. The thin features this pass locks AMD scatters to the display pixels they
+// land on; fsr3_lock.hlsl gathers them there instead. Keep it in step with src/fsr3.cpp, its CPU
+// twin.
 //
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
@@ -1736,15 +1736,16 @@ inline constexpr char kFsr3ReactivityHlsl[] = R"hlsl(// FSR 3's prepare reactivi
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// What the passes of AMD's FidelityFX Super Resolution 3.1's upscaler share (FidelityFX SDK
-// 1.1.4, gpu/fsr3upscaler): the uniforms, ffx_fsr3upscaler_common.h's helpers and
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// What the passes of AMD's FidelityFX Super Resolution 3.1's upscaler share (FidelityFX SDK 1.1.4,
+// gpu/fsr3upscaler): the uniforms, ffx_fsr3upscaler_common.h's helpers and
 // ffx_fsr3upscaler_sample.h's filters. AMD's passes are compute shaders; here each draws one
 // triangle over its target (the reconstruct pass alone is a compute shader, for its atomics), loads
 // texels and filters them in code, keeping every load inside its texture, so every device draws the
-// same values. The settings are those Godot gives FSR 2: HDR input, reversed depth, motion vectors
-// at the render size with the sky's worked out from the depth, no reactive or transparency and
-// composition mask, no auto exposure, a pre-exposure of 1 and a meter a unit. Keep these files in
-// step with src/fsr3.cpp, their CPU twin.
+// same values. The settings are: HDR input, reversed depth, motion vectors at the render size with
+// the sky's worked out from the depth, no reactive or transparency and composition mask, no auto
+// exposure, a pre-exposure of 1 and a meter a unit. Keep these files in step with src/fsr3.cpp,
+// their CPU twin.
 //
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
@@ -1778,7 +1779,7 @@ cbuffer Fsr3 : FSR3_UNIFORMS {
     // scatters), and 1 for an orthogonal camera, whose depth FSR 3's perspective formulas take as
     // linear here.
     int4 options;
-    // Godot's reprojection matrix by columns: clip space now to the frame before's.
+    // The reprojection matrix by columns: clip space now to the frame before's.
     float4 reprojection[4];
     float4 previous; // the frame before's jitter in render pixels, then nothing
 };
@@ -1840,8 +1841,7 @@ float MinDisocclusionAccumulation() {
     return -1.0 / 3.0;
 }
 
-// Godot's derive_motion_vector (motion_vector_inc.glsl): a render pixel's motion vector from its
-// depth, for one the prepass drew none for, as Godot does for FSR 2.
+// A render pixel's motion vector from its depth, for one the prepass drew none for.
 float2 DeriveMotionVector(float2 fUv, float fDepth) {
     float x = fUv.x * 2.0 - 1.0;
     float y = 1.0 - fUv.y * 2.0;
@@ -1991,9 +1991,9 @@ float GetViewSpaceDepthInMeters(float fDeviceDepth) {
 // the farthest depth's second. AMD's is the render size halved, which a render size of 1 keeps
 // at 1 here.
 int2 ShadingChangeRenderSize() {
+    return max(int2(RenderSize() * 0.5), int2(1, 1));
 )hlsl"
-R"hlsl(    return max(int2(RenderSize() * 0.5), int2(1, 1));
-}
+R"hlsl(}
 // The shading change pyramid's level's size.
 int2 GetSPDMipDimensions(int iMipLevel) {
     return max(ShadingChangeRenderSize() >> iMipLevel, int2(1, 1));
@@ -2211,9 +2211,9 @@ Reactivity fs_main(float4 position : SV_Position) {
     int2 iPxPos = int2(position.xy);
     float2 fUv = (float2(iPxPos) + 0.5) / float2(RenderSize());
     float2 fMotionVector = LoadDilatedMotionVector(iPxPos);
+    float fDilatedDepth = LoadDilatedDepth(iPxPos);
 )hlsl"
-R"hlsl(    float fDilatedDepth = LoadDilatedDepth(iPxPos);
-    float fDisocclusion =
+R"hlsl(    float fDisocclusion =
         ComputeDisocclusions(fUv, fMotionVector, GetViewSpaceDepth(fDilatedDepth));
     // ComputeShadingChange, which puts the jitter back that the accumulate pass takes off; the
     // reactive mask it is the most of is 0.

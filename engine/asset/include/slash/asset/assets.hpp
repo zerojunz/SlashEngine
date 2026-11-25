@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-// Assets are files a game loads by project path, like Godot's resources: a JSON table, a text
+// Assets are files a game loads by project path: a JSON table, a text
 // file and, as the renderer and audio arrive, textures and sounds. Loading one returns a handle;
 // every handle to the same path shares one copy, which stays loaded while a handle exists.
 //
@@ -29,7 +29,7 @@
 // up an edit without restarting. A handle always gives the latest version.
 namespace slash::asset {
 
-// What separates a file from the form of it an asset path names, as Godot's "::".
+// What separates a file from the form of it an asset path names.
 inline constexpr std::string_view kSubresource = "::";
 
 // The file an asset path reads: the path up to "::".
@@ -44,7 +44,7 @@ inline constexpr std::string_view kSubresource = "::";
                                         : path.substr(at + kSubresource.size());
 }
 
-// Assets made by code rather than read from a file, as Godot's ImageTexture and ArrayMesh made
+// Assets made by code rather than read from a file, such as images and meshes made
 // by a script, are named by this prefix and a name: "made:minimap". Assets::put makes one.
 inline constexpr std::string_view kMadePrefix = "made:";
 
@@ -154,7 +154,7 @@ public:
 
     // The asset at a project path, loaded on first use and shared by every handle after that.
     // T must be the type its suffix loads as. A path can name one form of its file after "::",
-    // as Godot names a file's sub-resources ("props/crate.model.json::damaged"): the file is read
+    // as a file's sub-resources are named ("props/crate.model.json::damaged"): the file is read
     // and watched as itself, and the loader gets the whole path.
     template <typename T>
     [[nodiscard]] Result<Handle<T>> load(std::string_view path) {

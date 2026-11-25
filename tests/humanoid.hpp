@@ -164,7 +164,7 @@ inline slash::scene3d::Model make(const std::vector<Bone>& bones, const Options&
     return model;
 }
 
-// A Mixamo character, its bones named as Godot names Mixamo's ("mixamorig:Hips" becomes
+// A Mixamo character, its bones named as the engine names Mixamo's ("mixamorig:Hips" becomes
 // "mixamorig_Hips"), standing in a T-pose with every rest unturned, its hips a meter up.
 inline std::vector<Bone> mixamo() {
     const auto m = [](const char* name) { return std::string("mixamorig_") + name; };
@@ -213,8 +213,8 @@ inline std::vector<Bone> mixamo() {
     return bones;
 }
 
-// A smaller character named as Blender's metarig names it (Godot turning "thigh.L" into
-// "thigh_L"), its heads given in centimeters, for an armature scaled by 0.01.
+// A smaller character named as Blender's metarig names it ("thigh.L" turns into "thigh_L"),
+// its heads given in centimeters, for an armature scaled by 0.01.
 inline std::vector<Bone> blender() {
     std::vector<Bone> bones = {
         {"hips", "", {0.0F, 80.0F, 0.0F}, "spine"},
@@ -239,7 +239,7 @@ inline std::vector<Bone> blender() {
     return bones;
 }
 
-// Adds a box to a surface, its faces wound clockwise from outside, as Godot's front faces are.
+// Adds a box to a surface, its faces wound clockwise from outside, the front faces.
 inline void add_box(slash::scene3d::ModelSurface& surface, Vec3 low, Vec3 high) {
     const std::array<Vec3, 8> corner{{{low.x, low.y, low.z},
                                       {high.x, low.y, low.z},

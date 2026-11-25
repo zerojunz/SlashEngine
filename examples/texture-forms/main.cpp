@@ -1,10 +1,10 @@
 // Textures in the forms each platform's GPUs sample, made once and cached.
 //
-// project.json's rendering.textures says how exports ship textures, as Godot's compress/mode:
-// as their files ("lossless"), as BC7 or ASTC 4x4 blocks ("vram_compressed") or as RGBA8 texels
-// ("vram_uncompressed"). texture.forms makes each texture's forms, keeps them in the asset
-// library's cache, where exports find them, and reports their sizes and how close their colors
-// stay. An exported game then reads, for each texture, the form its GPU samples.
+// project.json's rendering.textures says how exports ship textures: as their files ("lossless"), as
+// BC7 or ASTC 4x4 blocks ("vram_compressed") or as RGBA8 texels ("vram_uncompressed").
+// texture.forms makes each texture's forms, keeps them in the asset library's cache, where exports
+// find them, and reports their sizes and how close their colors stay. An exported game then reads,
+// for each texture, the form its GPU samples.
 
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"

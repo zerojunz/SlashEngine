@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -65,7 +66,7 @@ struct Color {
     float a = 1.0F;
 };
 
-// How frames wait for the display, as in Godot.
+// How frames wait for the display.
 enum class VsyncMode : std::uint8_t {
     Disabled, // present at once: lowest latency, may tear; Enabled where unsupported
     Enabled,  // wait for the display's refresh: no tearing, the default
@@ -79,7 +80,7 @@ enum class VsyncMode : std::uint8_t {
 // The mode with this name, or nullopt.
 [[nodiscard]] std::optional<VsyncMode> parse_vsync_mode(std::string_view name);
 
-// What a window shows behind everything: Godot's default clear color.
+// What a window shows behind everything: the default clear color.
 inline constexpr Color kDefaultClearColor{.r = 0.3F, .g = 0.3F, .b = 0.3F, .a = 1.0F};
 
 // The widest and tallest texture every GPU takes.
@@ -90,7 +91,7 @@ inline constexpr std::uint32_t kMaxTextureSize = 16384;
 enum class TextureId : std::uint32_t { None = 0 };
 
 enum class Filter : std::uint8_t {
-    Linear,  // smooth when scaled, Godot's default
+    Linear,  // smooth when scaled, the default
     Nearest, // sharp texels, for pixel art
 };
 
@@ -190,9 +191,9 @@ struct Shading {
     bool operator==(const Shading&) const = default;
 };
 
-// A draw's texture read as a multichannel signed distance field, as Godot draws MSDF text: the
-// median of its red, green and blue is the distance to the edge, 0.5 on it, and alpha is the
-// true distance (msdfgen's MTSDF). Each pixel is the vertex color with coverage as alpha.
+// A draw's texture read as a multichannel signed distance field: the median of its red, green and
+// blue is the distance to the edge, 0.5 on it, and alpha is the true distance (msdfgen's MTSDF).
+// Each pixel is the vertex color with coverage as alpha.
 struct DistanceField {
     // How far the field reaches across its 0 to 1, in texels; 0 draws the texture as colors.
     float pixel_range = 0.0F;
@@ -223,9 +224,8 @@ struct Material {
     Shading shading;
     // Draws the texture as a distance field instead; only with no program.
     DistanceField field;
-    // Moves the draw's positions before the frame's view maps them to clip space, as Godot's
-    // canvas transform moves the world under a Camera2D: the view times this. Lights shade the
-    // positions as given.
+    // Moves the draw's positions before the frame's view maps them to clip space, as a 2D camera
+    // moves the world: the view times this. Lights shade the positions as given.
     std::optional<Mat4> transform;
     // A game's own shader (create_shader), drawn instead of a program: program has no code, and
     // its constants hold the shader's params and, at kShaderTimeConstant, the time.
@@ -267,27 +267,27 @@ struct TerrainShading {
     bool operator==(const TerrainShading&) const = default;
 };
 
-// A mesh's baked light, as Godot's LightmapGI gives an instance: a half-float RGBA texture
-// (TextureFormat::Rgba16F) of the light reaching each texel, linear, sampled at the mesh's second
-// texture coordinate (Vertex3D::uv2) times uv_rect's scale (zw) plus its offset (xy), as Godot's
-// lightmap_uv_scale, with Godot's bicubic filter or bilinearly, and times exposure (the camera's
-// exposure over the one it was baked with). It is the mesh's ambient light: the scene's ambient
-// light and the probes' leave it alone, and so do baked lights. Terrains take none.
+// A mesh's baked light: a half-float RGBA texture (TextureFormat::Rgba16F) of the light reaching
+// each texel, linear, sampled at the mesh's second texture coordinate (Vertex3D::uv2) times
+// uv_rect's scale (zw) plus its offset (xy), with a bicubic filter or bilinearly, and times
+// exposure (the camera's exposure over the one it was baked with). It is the mesh's ambient light:
+// the scene's ambient light and the probes' leave it alone, and so do baked lights. Terrains take
+// none.
 struct LightmapShading {
     TextureId texture = TextureId::None; // None: no lightmap
     std::array<float, 4> uv_rect{0.0F, 0.0F, 1.0F, 1.0F};
     float exposure = 1.0F;
-    bool bicubic = true; // Godot's rendering/lightmapping/lightmap_gi/use_bicubic_filter
+    bool bicubic = true; // a bicubic filter, not bilinear
 
     bool operator==(const LightmapShading&) const = default;
 };
 
-// The light a moving mesh takes from a BakedLighting3D's light probes, as Godot's lightmap capture:
-// nine spherical harmonics coefficients in the world's space (l0; l1 for y, z and x; l2 for xy,
-// yz, 3z²-1, xz and x²-y²), linear RGB, already times the camera's exposure over the one they
-// were baked with. With enabled it is the mesh's ambient light, evaluated at each pixel's normal
-// as Godot's INSTANCE_FLAGS_USE_LIGHTMAP_CAPTURE does: the scene's ambient light and the probes'
-// leave it alone, but baked lights still light it. A lightmap goes before it; terrains take none.
+// The light a moving mesh takes from a BakedLighting3D's light probes: nine spherical harmonics
+// coefficients in the world's space (l0; l1 for y, z and x; l2 for xy, yz, 3z²-1, xz and x²-y²),
+// linear RGB, already times the camera's exposure over the one they were baked with. With enabled
+// it is the mesh's ambient light, evaluated at each pixel's normal. The scene's ambient light and
+// the probes' leave it alone, but baked lights still light it. A lightmap goes before it; terrains
+// take none.
 struct LightmapCapture {
     bool enabled = false;
     std::array<std::array<float, 3>, 9> sh{};
@@ -295,9 +295,9 @@ struct LightmapCapture {
     bool operator==(const LightmapCapture&) const = default;
 };
 
-// The VoxelGIs a mesh traces (at most two, as Godot pairs them), and the atlas their light is in:
-// a texture of TextureFormat::Rgba8 made with Filter::Linear. Where they reach, their light goes
-// over the sky's by how much their cones cover. Forward+ only; lightmapped, captured and terrain
+// The VoxelGIs a mesh traces (at most two), and the atlas their light is in: a texture of
+// TextureFormat::Rgba8 made with Filter::Linear. Where they reach, their light goes over the sky's
+// by how much their cones cover. In the clustered renderer only; lightmapped, captured and terrain
 // draws take none.
 struct VoxelGIShading {
     TextureId atlas = TextureId::None; // None: no VoxelLighting3D
@@ -307,9 +307,8 @@ struct VoxelGIShading {
     bool operator==(const VoxelGIShading&) const = default;
 };
 
-// A Surface3D: what each pixel of a mesh is, with Godot's parameters and defaults.
-// Colors are sRGB; textures are sampled at the mesh's texture coordinate times uv1_scale plus
-// uv1_offset, and None samples white.
+// A Surface3D: what each pixel of a mesh is. Colors are sRGB; textures are sampled at the mesh's
+// texture coordinate times uv1_scale plus uv1_offset, and None samples white.
 struct Material3D {
     std::array<float, 4> albedo{1.0F, 1.0F, 1.0F, 1.0F};
     // Each texture may be left out. NOLINTBEGIN(readability-redundant-member-init)
@@ -354,9 +353,9 @@ struct Material3D {
     // Its anisotropy, -1 to 1: highlights stretched along the tangent (above 0) or across it, as
     // brushed metal and hair. 0 for none.
     float anisotropy = 0.0F;
-    // Its subsurface scattering, 0 to 1, in Forward+: an opaque mesh's diffuse light is blurred
-    // across the screen by how strong it is, as Godot's subsurf_scatter_strength, through skin's
-    // profile with subsurface_skin. 0 for none.
+    // Its subsurface scattering, 0 to 1, in the clustered renderer: an opaque mesh's diffuse light
+    // is blurred across the screen by how strong it is, through skin's profile with
+    // subsurface_skin. 0 for none.
     float subsurface = 0.0F;
     bool subsurface_skin = false;
     // With subsurface above 0, its transmittance: light reaching the side away from each light
@@ -376,11 +375,11 @@ struct Material3D {
     LightmapCapture capture{}; // NOLINT(readability-redundant-member-init): may be left out
     // VoxelGIs' light, for a mesh with neither.
     VoxelGIShading voxel_gi{}; // NOLINT(readability-redundant-member-init): may be left out
-    // A game's spatial shader (create_shader with ShaderType::Spatial), as Godot's
-    // ShaderMaterial: its fragment() gives each pixel's albedo, alpha, metallic, roughness,
-    // specular, emission, ambient occlusion and normal in place of the fields and textures above,
-    // which still say how the mesh draws (transparency, blend, cull, unshaded, disable_fog) and
-    // what lights it (lightmap, capture, voxel_gi). Not with terrain shading.
+    // A game's spatial shader (create_shader with ShaderType::Spatial): its fragment() gives each
+    // pixel's albedo, alpha, metallic, roughness, specular, emission, ambient occlusion and normal
+    // in place of the fields and textures above, which still say how the mesh draws (transparency,
+    // blend, cull, unshaded, disable_fog) and what lights it (lightmap, capture, voxel_gi). Not
+    // with terrain shading.
     ShaderId shader = ShaderId::None;
     // The shader's params, at the constants and slots its source gave them, and the time in
     // kShaderTimeConstant's x.
@@ -453,10 +452,8 @@ struct ParticleRun {
 };
 
 // Which of Apple's MetalFX scalers a device runs (RenderDevice::metalfx): only the GPU device on
-// Metal does, on macOS 13 and iOS 16 or later with a GPU MetalFX takes, as Godot's
-// SUPPORTS_METALFX_SPATIAL and SUPPORTS_METALFX_TEMPORAL. The temporal one takes render scales
-// (the render size over the screen's) from min_scale to max_scale, as Godot's
-// LIMIT_METALFX_TEMPORAL_SCALER_MIN_SCALE and MAX_SCALE.
+// Metal does, on macOS 13 and iOS 16 or later with a GPU MetalFX takes. The temporal one takes
+// render scales (the render size over the screen's) from min_scale to max_scale.
 struct MetalFxSupport {
     bool spatial = false;
     bool temporal = false;
@@ -472,11 +469,10 @@ struct Stats {
     std::uint64_t triangles = 0;     // triangles drawn
     std::uint32_t textures = 0;      // textures alive
     std::uint64_t texture_bytes = 0; // what they take on the GPU (texture_bytes)
-    // The last frame's graph of passes, as Unity's render graph and Godot's RenderingDevice
-    // graph keep one: the passes it ran and left out, the device passes they were recorded in
-    // (compute passes next to each other share one), and its transient textures' bytes, each
-    // alone and as they share allocations whose uses don't overlap. Zero where a device keeps
-    // none.
+    // The last frame's graph of passes, as Unity's render graph keeps one: the passes it ran and
+    // left out, the device passes they were recorded in (compute passes next to each other share
+    // one), and its transient textures' bytes, each alone and as they share allocations whose uses
+    // don't overlap. Zero where a device keeps none.
     std::uint32_t graph_passes = 0;
     std::uint32_t graph_culled = 0;
     std::uint32_t graph_groups = 0;
@@ -484,15 +480,14 @@ struct Stats {
     std::uint64_t transient_allocated_bytes = 0;
 };
 
-// The objects of the native API a GPU device draws with, each unretained, as Godot's
-// RenderingDevice::get_driver_resource hands them over: on Vulkan, instance, physical_device,
-// device and queue are the VkInstance, VkPhysicalDevice, VkDevice and VkQueue, and queue_family
-// is the queue's family; on Direct3D 12, device and queue are the ID3D12Device and
-// ID3D12CommandQueue; on Metal, the id<MTLDevice> and id<MTLCommandQueue>. On OpenGL, gl says
-// which window system the context is on, and device is the context (EGLContext, GLXContext or
-// HGLRC), instance its display (EGLDisplay, the X11 Display* or the window's HDC) and
-// physical_device its config (EGLConfig or GLXFBConfig), with the GLX window and visual and
-// get_proc_address, eglGetProcAddress on EGL. The software device has none.
+// The objects of the native API a GPU device draws with, each unretained: on Vulkan, instance,
+// physical_device, device and queue are the VkInstance, VkPhysicalDevice, VkDevice and VkQueue, and
+// queue_family is the queue's family; on Direct3D 12, device and queue are the ID3D12Device and
+// ID3D12CommandQueue; on Metal, the id<MTLDevice> and id<MTLCommandQueue>. On OpenGL, gl says which
+// window system the context is on, and device is the context (EGLContext, GLXContext or HGLRC),
+// instance its display (EGLDisplay, the X11 Display* or the window's HDC) and physical_device its
+// config (EGLConfig or GLXFBConfig), with the GLX window and visual and get_proc_address,
+// eglGetProcAddress on EGL. The software device has none.
 struct NativeDevice {
     // The window system an OpenGL context is on.
     enum class GlSystem : std::uint8_t { None, Egl, Glx, Wgl };
@@ -543,7 +538,7 @@ public:
     [[nodiscard]] virtual Result<TextureId>
     create_texture(const TextureDesc& desc, std::span<const std::uint8_t> texels = {}) = 0;
     // Replaces every texel, given in the texture's format. Draws are sent at end_frame, so an
-    // update during a frame shows in all of that frame's draws, as in Godot.
+    // update during a frame shows in all of that frame's draws.
     [[nodiscard]] virtual Result<void> update_texture(TextureId texture,
                                                       std::span<const std::uint8_t> texels) = 0;
     virtual void destroy_texture(TextureId texture) = 0;
@@ -637,9 +632,9 @@ public:
     }
 
     // A mesh of vertices, every three indices a triangle, each index below the vertex count, or
-    // every three vertices a triangle when there are no indices. At most kMaxMeshVertices. lods
-    // are coarser versions of its triangles over the same vertices, as a Godot mesh's surface
-    // LODs, each a list of indices that draw_mesh can draw in place of the mesh's own.
+    // every three vertices a triangle when there are no indices. At most kMaxMeshVertices. lods are
+    // coarser versions of its triangles over the same vertices, each a list of indices that
+    // draw_mesh can draw in place of the mesh's own.
     [[nodiscard]] virtual Result<MeshId>
     create_mesh(std::span<const Vertex3D> vertices, std::span<const std::uint32_t> indices,
                 std::span<const std::span<const std::uint32_t>> lods = {}) = 0;
@@ -651,9 +646,9 @@ public:
     // A mesh in use by the frame being built goes once the frame is sent.
     virtual void destroy_mesh(MeshId mesh) = 0;
 
-    // Whether it moves skinned meshes' vertices on the GPU (create_skin and skin_mesh), as
-    // Godot's skeleton compute shader does: the GPU device on Vulkan and Metal and the WebGPU
-    // device. Elsewhere scene3d skins on the CPU and calls update_mesh.
+    // Whether it moves skinned meshes' vertices on the GPU (create_skin and skin_mesh): the GPU
+    // device on Vulkan and Metal and the WebGPU device. Elsewhere scene3d skins on the CPU and
+    // calls update_mesh.
     [[nodiscard]] virtual bool gpu_skinning() const { return false; }
     // Keeps what a skin moves on the device: its rest vertices, weights and blend shapes.
     [[nodiscard]] virtual Result<SkinId> create_skin(const SkinDesc& /*desc*/) {
@@ -697,14 +692,14 @@ public:
     [[nodiscard]] Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices) {
         return draw(texture, vertices, Material{});
     }
-    // Draws a mesh in the frame's scene, moved into the world by transform and colored by
-    // material, if one of layers' bits is in a light's cull_mask, lit by that light. Opaque and
-    // alpha scissor meshes are drawn first, nearest first, then alpha meshes, farthest first,
-    // as Godot sorts them; all before the frame's 2D draws. shadows says which lights' shadow
-    // maps it is drawn into; alpha meshes cast no shadows, as in Godot. previous is where the
-    // mesh was in the frame before, from which a frame with TAA works out how far its pixels
-    // moved; without it, the mesh stood still. lod picks the triangles: the mesh's own (0), or
-    // those of the lod-th of the LODs it was made with, in its shadows too.
+    // Draws a mesh in the frame's scene, moved into the world by transform and colored by material,
+    // if one of layers' bits is in a light's cull_mask, lit by that light. Opaque and alpha scissor
+    // meshes are drawn first, nearest first, then alpha meshes, farthest first; all before the
+    // frame's 2D draws. shadows says which lights' shadow maps it is drawn into; alpha meshes cast
+    // no shadows. previous is where the mesh was in the frame before, from which a frame with TAA
+    // works out how far its pixels moved; without it, the mesh stood still. lod picks the
+    // triangles: the mesh's own (0), or those of the lod-th of the LODs it was made with, in its
+    // shadows too.
     [[nodiscard]] virtual Result<void>
     draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
               std::uint32_t layers = 1, ShadowCasting shadows = ShadowCasting::On,
@@ -763,8 +758,8 @@ public:
     // null ones.
     [[nodiscard]] virtual bool generates_frames() const { return false; }
 
-    // The device's native objects, as an OpenXR runtime's session binds them (Godot hands its
-    // graphics extension the rendering device's): the GPU device's, else empty.
+    // The device's native objects, as an OpenXR runtime's session binds them: the GPU device's,
+    // else empty.
     [[nodiscard]] virtual NativeDevice native_device() const { return {}; }
     // Copies source, a render target, into target, a native image of its size such as an OpenXR
     // swapchain's, after what the device sent before, outside any frame. The copy is of the
@@ -792,8 +787,7 @@ private:
     std::vector<Vertex3D> particle_vertices_;
 };
 
-// What an OpenXR runtime asks of the GPU device it shows, as Godot's OpenXRVulkanExtension and
-// OpenXRD3D12Extension ask it of the rendering device. On Vulkan the runtime makes the instance
+// What an OpenXR runtime asks of the GPU device it shows. On Vulkan the runtime makes the instance
 // and the device and names the GPU (xrCreateVulkanInstanceKHR, xrCreateVulkanDeviceKHR and
 // xrGetVulkanGraphicsDevice2KHR): each hook takes the Vulkan structures and handles as pointers,
 // and get_instance_proc_addr is vkGetInstanceProcAddr, and returns a VkResult. On Direct3D 12 the
@@ -812,13 +806,13 @@ struct XrDeviceHooks {
 struct DeviceOptions {
     // The window to draw to. Without one, only render-target textures can be drawn to.
     SDL_Window* window = nullptr;
-    // "auto" picks the GPU backend SDL finds best, or on the web WebGPU where the browser has
-    // it and WebGL 2 elsewhere; "null", "vulkan", "metal", "d3d12", "opengl", "opengl_es" or
-    // "webgpu" asks for one. The OpenGL drivers are Godot's compatibility renderer, drawing to a
-    // window made with SDL_WINDOW_OPENGL: "opengl" is OpenGL 3.3 on Windows, macOS and Linux,
-    // falling back to OpenGL ES 3.0 where that doesn't start, and "opengl_es" is OpenGL ES 3.0,
-    // which is all Android and iOS have, and WebGL 2 on the web. "webgpu" is the browser's
-    // WebGPU, which only web builds have; web/webgpu.js asks for its device before main() runs.
+    // "auto" picks the GPU backend SDL finds best, or on the web WebGPU where the browser has it
+    // and WebGL 2 elsewhere; "null", "vulkan", "metal", "d3d12", "opengl", "opengl_es" or "webgpu"
+    // asks for one. The OpenGL drivers are the compatibility renderer, drawing to a window made
+    // with SDL_WINDOW_OPENGL: "opengl" is OpenGL 3.3 on Windows, macOS and Linux, falling back to
+    // OpenGL ES 3.0 where that doesn't start, and "opengl_es" is OpenGL ES 3.0, which is all
+    // Android and iOS have, and WebGL 2 on the web. "webgpu" is the browser's WebGPU, which only
+    // web builds have; web/webgpu.js asks for its device before main() runs.
     std::string driver = "auto";
     // Turns on the GPU API's validation, which is slow.
     bool debug = false;
@@ -842,12 +836,11 @@ struct DeviceOptions {
 // SDL_WINDOW_OPENGL.
 [[nodiscard]] bool uses_opengl(std::string_view driver);
 
-// The driver to make the window for and create the device with, as Godot's
-// rendering_device/fallback_to_opengl3: "opengl" for "auto", "vulkan", "metal", "d3d12" or
-// "webgpu" when fallback_to_opengl is set, that GPU backend doesn't work here and the video
-// driver has OpenGL (Godot falls back the same way before it makes the window), and the driver
-// itself otherwise. Asks SDL whether the backend works, starting its video if nothing has. On
-// the web, "auto" needs no fallback: it is WebGL 2 where there is no WebGPU.
+// The driver to make the window for and create the device with: "opengl" for "auto", "vulkan",
+// "metal", "d3d12" or "webgpu" when fallback_to_opengl is set, that GPU backend doesn't work here
+// and the video driver has OpenGL, and the driver itself otherwise. Asks SDL whether the backend
+// works, starting its video if nothing has. On the web, "auto" needs no fallback: it is WebGL 2
+// where there is no WebGPU.
 [[nodiscard]] std::string choose_driver(const std::string& driver, bool fallback_to_opengl);
 
 // The null device: it keeps textures and counts frames and triangles but draws nothing. Reading a

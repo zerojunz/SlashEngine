@@ -4,8 +4,7 @@
 #include <string_view>
 #include <vector>
 
-// Fonts installed on the machine, for text a game's own fonts can't draw, as Godot's
-// OS::get_system_font_path_for_text.
+// Fonts installed on the machine, for text a game's own fonts can't draw.
 namespace slash::platform {
 
 // Font files installed on the machine that may draw some text (one character, UTF-8), best

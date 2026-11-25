@@ -12,7 +12,7 @@ namespace slash::world {
 class World;
 }
 
-// World streaming, as Unreal's World Partition streams cells (Godot has none): each
+// World streaming, as Unreal's World Partition streams cells: each
 // StreamedScene3D loads its scene file while a StreamingSource3D is near and unloads it when they
 // have all gone, so a world too large to keep whole is kept in pieces.
 namespace slash::scene3d {

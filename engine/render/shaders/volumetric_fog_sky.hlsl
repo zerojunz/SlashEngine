@@ -1,8 +1,8 @@
-// The sky seen through volumetric fog, as Godot 4.6's sky shader takes the fog's whole length
-// (sky.glsl's volumetric fog, mixed in by its sky_affect): one triangle over the target, drawn
-// after the sky and before the meshes, blended as ONE, SRC_ALPHA, so that a pixel becomes
-// lerp(sky, sky * a + rgb, affect) of the fog's last slice there. src/volumetric_fog.cpp's fog_sky
-// is its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The sky seen through volumetric fog, taking the fog's whole length (mixed in by its sky_affect):
+// one triangle over the target, drawn after the sky and before the meshes, blended as ONE,
+// SRC_ALPHA, so that a pixel becomes lerp(sky, sky * a + rgb, affect) of the fog's last slice
+// there. src/volumetric_fog.cpp's fog_sky is its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));

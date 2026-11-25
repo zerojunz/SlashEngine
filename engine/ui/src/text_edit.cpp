@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "text_edit.hpp"
 
 #include "syntax_highlighter.hpp"
@@ -18,7 +19,7 @@
 namespace slash::ui {
 namespace {
 
-// Godot's TextEdit tab size: a tab reaches the next multiple of four spaces.
+// The tab size: a tab reaches the next multiple of four spaces.
 constexpr int kTabSize = 4;
 // The tab and space icons (text_edit_tab.svg and text_edit_space.svg): 8 by 8 pixels, #b2b2b2
 // at a quarter alpha, drawn modulated by the text's color.
@@ -37,7 +38,7 @@ Vec4 times(Vec4 a, Vec4 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
 }
 
-// Godot's Color::lightened and darkened.
+// A color lightened or darkened by an amount.
 Vec4 lightened(Vec4 c, float amount) {
     return {c.x + ((1.0F - c.x) * amount), c.y + ((1.0F - c.y) * amount),
             c.z + ((1.0F - c.z) * amount), c.w};
@@ -124,8 +125,8 @@ void push_unfilled(std::vector<Box>& out, Vec2 size, Vec2 position, Vec2 extent,
     push_clipped(out, size, {at.x + extent.x, at.y + 1.0F}, {1.0F, extent.y - 1.0F}, color);
 }
 
-// What a TextArea shows for a character of its text: control characters hidden (Godot's
-// preserve_control off), and line and paragraph separators as spaces so a line stays one line
+// What a TextArea shows for a character of its text: control characters hidden, and line and
+// paragraph separators as spaces so a line stays one line
 // until it wraps; the placeholder breaks at line breaks as a paragraph does.
 char32_t shown_character(char32_t c, bool placeholder) {
     if (c == U'\t' || (placeholder && (c == U'\n' || c == U'\r'))) {
@@ -157,7 +158,7 @@ text::Autowrap autowrap_of(const world::TextArea& edit) {
     return text::Autowrap::WordSmart;
 }
 
-// A caret as Godot's CaretInfo gives one: a rect from the baseline, and its direction.
+// A caret: a rect from the baseline, and its direction.
 struct CaretRect {
     bool found = false;
     Vec2 position;
@@ -363,7 +364,7 @@ std::pair<int, int> search_lines(const std::vector<std::u32string>& lines, std::
                 return {current_column, current_line};
             }
             current_column += backwards ? -1 : 1;
-            // Godot's rfind would start again from the end here, and never stop.
+            // Starting again from the end here would never stop.
             if (current_column < 0) {
                 break;
             }
@@ -447,7 +448,7 @@ SelectionRange selection_range(const TextEditState::Caret& caret) {
 
 // ---- EditArea ----
 
-// One line shaped as it shows, Godot's Text::Line with its TextParagraph.
+// One line shaped as it shows, with its paragraph.
 struct EditArea::LineData {
     std::string utf8; // what it shows
     text::TextLayout layout;
@@ -902,8 +903,8 @@ double EditArea::v_scroll_offset() const {
 double EditArea::visible_lines_offset() const {
     double total = static_cast<double>(control_height()) / static_cast<double>(line_height());
     total -= std::floor(total);
-    // Whole rows filling the height exactly give 1, where Godot's clamp gives 0.999 and
-    // set_line_as_last_visible leaves the last row a thousandth of a row short of fitting.
+    // Whole rows filling the height exactly give 1, not 0.999, which would leave the last row a
+    // thousandth of a row short of fitting.
     if (total == 0.0) {
         return 1.0;
     }
@@ -1556,8 +1557,7 @@ void EditArea::draw(const world::TextArea& edit, const TextEditState& state, boo
             ofs_y -= first_visible_wrap_ * row_height;
             ofs_y -= static_cast<int>(std::round(v_scroll_offset() * row_height));
             // A row above the top is passed over, and drawing stops below the bottom.
-            // Rows wholly in the margins aren't drawn (Godot draws one that starts on the bottom
-            // margin), so the rows drawn are the rows in view.
+            // Rows wholly in the margins aren't drawn, so the rows drawn are the rows in view.
             const bool clipped = ofs_y + row_height <= top_limit;
             if (ofs_y >= bottom_limit) {
                 i = draw_amount;
@@ -1626,7 +1626,7 @@ void EditArea::draw(const world::TextArea& edit, const TextEditState& state, boo
             }
 
             // Where search_text occurs in the row, then the selected text: rects between the
-            // margins (cut on one side only, as Godot cuts these).
+            // margins (cut on one side only).
             if (!clipped && !placeholder) {
                 const auto row_start = static_cast<int>(shaped.start());
                 const std::u32string_view str =
@@ -2071,7 +2071,7 @@ void EditArea::draw_gutters(const world::TextArea& edit, const TextEditState& st
         }
         switch (gutter.kind) {
         case Kind::String: {
-            // Godot draws these unmirrored; here they keep to their column right to left too.
+            // They keep to their column right to left too.
             const world::TextEditGutterLine* entry = gutter_line(edit.gutters.at(g - own), line);
             if (entry == nullptr || entry->text.empty()) {
                 break;

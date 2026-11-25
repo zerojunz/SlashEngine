@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/procedural/gradient.hpp"
 
 #include "json_fields.hpp"
@@ -51,7 +52,7 @@ float component(const Vec4& color, int i) {
     }
 }
 
-// Godot's Math::cubic_interpolate.
+// Cubic interpolation between two values, given the points before and after.
 float cubic(float from, float to, float pre, float post, float weight) {
     return 0.5F * ((from * 2.0F) + (-pre + to) * weight +
                    (2.0F * pre - 5.0F * from + 4.0F * to - post) * (weight * weight) +
@@ -84,7 +85,7 @@ Vec4 from_space(GradientColorSpace space, Vec4 color) {
     return color;
 }
 
-// Godot's Math::lerp.
+// Linear interpolation.
 float lerp(float from, float to, float weight) {
     return from + (to - from) * weight;
 }
@@ -131,7 +132,7 @@ Vec4 oklab_to_linear(Vec4 c) {
             -0.0041960863F * l - 0.7034186147F * m + 1.7076147010F * s, c.w};
 }
 
-// Godot's Gradient::get_color_at_offset, line for line.
+// The color at an offset.
 Vec4 Gradient::color_at(float offset) const {
     if (points.empty()) {
         return {0.0F, 0.0F, 0.0F, 1.0F};

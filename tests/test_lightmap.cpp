@@ -185,7 +185,7 @@ TEST_CASE("half floats and Radiance HDR files keep a lightmap's light") {
     CHECK_FALSE(render::decode_hdr("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 1\n").ok());
 }
 
-TEST_CASE("meshes unwrap into lightmap UVs as Godot's lightmap_unwrap, the same every time") {
+TEST_CASE("meshes unwrap into lightmap UVs, the same every time") {
     const scene3d::MeshData box = scene3d::box_mesh({});
     const scene3d::LightmapUnwrap unwrap =
         scene3d::unwrap_lightmap(box.vertices, box.indices).value();
@@ -270,7 +270,7 @@ TEST_CASE(".lightmap.json files keep unwraps and users, and say what's wrong wit
     CHECK(scene3d::lightmap_texture_path("one.json") == "one.json.hdr");
 }
 
-TEST_CASE("a BakedLighting3D bakes its static meshes' light, shadows and bounces, as Godot's") {
+TEST_CASE("a BakedLighting3D bakes its static meshes' light, shadows and bounces") {
     Room room;
     const scene3d::LightmapBake bake = scene3d::bake_lightmap(room.world, room.gi, {}).value();
     CHECK(bake.problems.empty());
@@ -281,7 +281,7 @@ TEST_CASE("a BakedLighting3D bakes its static meshes' light, shadows and bounces
     CHECK(bake.data.users[1].entity == "box");
     CHECK(bake.data.meshes.size() == 2);
     // Two slices of the smallest square hold the two as cheaply as one slice twice as wide, and
-    // Godot keeps the first it tried.
+    // The first it tried is kept.
     CHECK(bake.data.slices == 2);
     CHECK(bake.texels.width == bake.data.width);
     CHECK(bake.texels.height == bake.data.height * bake.data.slices);
@@ -300,7 +300,7 @@ TEST_CASE("a BakedLighting3D bakes its static meshes' light, shadows and bounces
     CHECK(shadowed > 0.0F);
 }
 
-TEST_CASE("project.json's rendering.lightmaps sets bakes' rays and passes, as Godot's") {
+TEST_CASE("project.json's rendering.lightmaps sets bakes' rays and passes") {
     const json::Value rendering = json::parse(R"({"lightmaps": {
         "bake_quality": {"low_quality_ray_count": 8, "medium_quality_ray_count": 16,
             "high_quality_ray_count": 4096, "ultra_quality_ray_count": 0,
@@ -497,7 +497,7 @@ std::string words(std::initializer_list<std::uint32_t> values) {
     return slash::base64_encode(bytes);
 }
 
-// The light along a direction from spherical harmonics in Godot's order.
+// The light along a direction from spherical harmonics in their order.
 float sh_value(const scene3d::LightmapSh& sh, std::size_t c, const Point& n) {
     return (0.282095F * sh[0].at(c)) +
            (0.488603F * ((sh[1].at(c) * n[1]) + (sh[2].at(c) * n[2]) + (sh[3].at(c) * n[0]))) +
@@ -509,7 +509,7 @@ float sh_value(const scene3d::LightmapSh& sh, std::size_t c, const Point& n) {
 
 } // namespace
 
-TEST_CASE("light probes go where Godot's LightmapGI places them") {
+TEST_CASE("light probes go where the baker places them") {
     // A floor of 4 by 4 meters, and a LightProbe3D in a doorway above it.
     const std::vector<Point> floor{{-2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, 2.0F},
                                    {-2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, 2.0F},  {-2.0F, 0.0F, 2.0F}};
@@ -643,7 +643,7 @@ TEST_CASE("light probes are joined into Delaunay tetrahedra, the same every time
             }
         }
     }
-    // Tetrahedra touching the starting tetrahedron's corners go, as in Godot, which can leave
+    // Tetrahedra touching the starting tetrahedron's corners go, which can leave
     // slivers by the hull empty.
     CHECK(volume <= 48.001);
     CHECK(volume > 47.9);
@@ -651,7 +651,7 @@ TEST_CASE("light probes are joined into Delaunay tetrahedra, the same every time
 
 TEST_CASE("light probes over a bare floor fill their bounds with tetrahedra that don't overlap") {
     // A floor's probes lie in two flat layers of a grid, where every cell's corners share a
-    // sphere: Godot's tolerant circumsphere test lets tetrahedra overlap there (twice the bounds'
+    // sphere: the tolerant circumsphere test lets tetrahedra overlap there (twice the bounds'
     // volume, and a BSP tree that ran for minutes); the exact test doesn't.
     const std::vector<Point> floor{{-2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, 2.0F},
                                    {-2.0F, 0.0F, -2.0F}, {2.0F, 0.0F, 2.0F},  {-2.0F, 0.0F, 2.0F}};
@@ -838,7 +838,7 @@ TEST_CASE(".lightmap.json files keep light probes, and say what's wrong with the
     CHECK(errors[1].message == "isn't base64 of 24-byte nodes");
 }
 
-TEST_CASE("a BakedLighting3D bakes light probes over its static meshes, as Godot's") {
+TEST_CASE("a BakedLighting3D bakes light probes over its static meshes") {
     Room room;
     room.create("doorway", R"({"Transform3D": {"position": [1, 1, 1]}, "LightProbe3D": {}})");
     const scene3d::LightmapBake bake = scene3d::bake_lightmap(room.world, room.gi, {}).value();
@@ -936,7 +936,7 @@ std::array<int, 3> seen_pixel(const render::Image& image, float x, float y, floa
 
 } // namespace
 
-TEST_CASE("lightmapped meshes draw their baked light in place of baked lights, as Godot's") {
+TEST_CASE("lightmapped meshes draw their baked light in place of baked lights") {
     DrawnRoom drawn;
     // Unbaked, the sun lights the floor live and casts no shadow, since its shadow is off.
     const render::Image live = drawn.capture();
@@ -972,7 +972,7 @@ TEST_CASE("lightmapped meshes draw their baked light in place of baked lights, a
     CHECK(std::abs(floor_pixel(changed, -0.2F, -0.95F) - live_shadowed) < 0.05F);
 }
 
-TEST_CASE("moving meshes take their ambient light from a BakedLighting3D's probes, as Godot's") {
+TEST_CASE("moving meshes take their ambient light from a BakedLighting3D's probes") {
     DrawnRoom drawn;
     const entt::entity ball =
         drawn.room.create("ball", R"({"Transform3D": {"position": [1.2, 0.5, 1.2]},
@@ -1001,7 +1001,7 @@ TEST_CASE("moving meshes take their ambient light from a BakedLighting3D's probe
     CHECK(after[0] > before[0] + 5);
 
     // Probes red on the left and blue on the right, with the sun off: the ball takes the color
-    // where it is, eased toward it as it moves, 15 times the time a frame takes as Godot's update
+    // where it is, eased toward it as it moves, 15 times the time a frame takes, its update
     // speed.
     const Point low{-2.5F, -0.5F, -2.5F};
     const Point high{2.5F, 1.5F, 2.5F};

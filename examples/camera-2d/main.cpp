@@ -1,11 +1,10 @@
-// Camera2D: the part of a level a window shows, as Godot's Camera2D.
+// Camera2D: the part of a level a window shows.
 //
 // The level is 1600 pixels wide in a 320x180 window. The player carries a camera 32 pixels above
-// it, as a child entity, so the view follows the player: the camera's drag margins let the
-// player walk a little before it moves, smoothing makes it glide, and its limits keep the view
-// inside the level. The coin counter is a control, so it stays put on the screen. Games ship PNG
-// files made in an image editor; this example draws its textures in code, so the repository
-// holds no images.
+// it, as a child entity, so the view follows the player: the camera's drag margins let the player
+// walk a little before it moves, smoothing makes it glide, and its limits keep the view inside the
+// level. The coin counter is a control, so it stays put on the screen. Games ship PNG files made in
+// an image editor; this example draws its textures in code, so the repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

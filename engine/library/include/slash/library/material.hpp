@@ -23,7 +23,7 @@ inline constexpr double kSeamless = 1.5;
 [[nodiscard]] render::Image make_seamless(const render::Image& image);
 
 // A normal map of the image's brightness taken as height, wrapping round its edges so it tiles
-// as the image does, in Godot's convention (OpenGL's: green points up the image).
+// as the image does, in the OpenGL convention (green points up the image).
 [[nodiscard]] render::Image normal_map(const render::Image& image);
 
 // A roughness map of the image's brightness: darker places, such as cracks, rougher. Gray, from

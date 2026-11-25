@@ -4756,11 +4756,12 @@ R"wgsl(                      let v_256 = length(v_255);
 }
 )wgsl"};
 
-inline constexpr char kVolumetricFogHlsl[] = R"hlsl(// Volumetric fog's passes, as Godot 4.6's volumetric_fog_process.glsl runs them for its Forward+
-// renderer, a thread a froxel (a column of them, gathering): each froxel's light and density
-// (Density), the blur across (FilterX) and down (FilterY), and the light the fog in front of each
-// froxel adds and how much it lets through (Integrate). Its CPU twin is src/volumetric_fog.cpp,
-// which this follows line for line; a change to one goes in the other.
+inline constexpr char kVolumetricFogHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Volumetric fog's passes, for the clustered renderer, a thread a froxel (a column of them,
+// gathering): each froxel's light and density (Density), the blur across (FilterX) and down
+// (FilterY), and the light the fog in front of each froxel adds and how much it lets through
+// (Integrate). Its CPU twin is src/volumetric_fog.cpp, which this follows line for line; a change
+// to one goes in the other.
 //
 // The volume is a storage buffer of a float4 a froxel, in rows across, then down, then slices
 // deeper, read from source and written to target: the density pass reads the frame before's
@@ -4789,10 +4790,11 @@ inline constexpr char kVolumetricFogHlsl[] = R"hlsl(// Volumetric fog's passes, 
 #define TARGET_BUFFER register(u0, space1)
 #endif
 
-// Godot's color conversions and tonemappers (drivers/gles3/shaders/tonemap_inc.glsl), which
-// mesh.hlsl and post.hlsl share. Keep it in step with tonemap in src/post.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Color conversions and tonemappers, which mesh.hlsl and post.hlsl share. Keep it in step with
+// tonemap in src/post.cpp, its CPU twin.
 
-// Godot's approximations of the sRGB curves, for colors from 0 to 1.
+// Approximations of the sRGB curves, for colors from 0 to 1.
 float3 srgb_to_linear(float3 color) {
     return color * (color * (color * 0.305306011 + 0.682171111) + 0.012522878);
 }
@@ -4829,7 +4831,7 @@ float3 tonemap_filmic(float3 color, float white) {
 }
 
 // From https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl (MIT License), as
-// Godot adapts it, with an exposure bias of 1.8 in the first matrix.
+// adapted here, with an exposure bias of 1.8 in the first matrix.
 float3 tonemap_aces(float3 color, float white) {
     const float bias = 1.8;
     const float A = 0.0245786;
@@ -4860,7 +4862,7 @@ float3 agx_contrast_approx(float3 x) {
            27.069 * x4 * x2;
 }
 
-// Godot's simplification of EaryChow's AgX, as Blender uses it
+// A simplification of EaryChow's AgX, as Blender uses it
 // (https://github.com/EaryChow/AgX_LUT_Gen/blob/main/AgXBasesRGB.py).
 float3 tonemap_agx(float3 color) {
     // Linear sRGB to linear Rec. 2020 with AgX's inset, and back with its outset; the rows are
@@ -4913,7 +4915,7 @@ struct Light {
 // frame's items.
 struct Volume {
     float4 to_local[4]; // the world to the volume's space, a column each
-    float4 position;   // its place in the world, then its shape (Godot's RS::FogVolumeShape)
+    float4 position;   // its place in the world, then its shape
     float4 size;       // its size (twice the froxels for a world shape), then 1 for a FogVolumeLook
     int4 corner;       // the first froxel it fills
     int4 corner_end;   // past the last froxel it fills
@@ -5018,11 +5020,11 @@ float4 sample_source(float3 uvw) {
                     source[froxel(uint3(high.x, low.y, high.z))], t.x);
     float4 d = lerp(source[froxel(uint3(low.x, high.y, high.z))],
                     source[froxel(uint3(high.x, high.y, high.z))], t.x);
-    return lerp(lerp(a, b, t.y), lerp(c, d, t.y), t.z);
+)hlsl"
+R"hlsl(    return lerp(lerp(a, b, t.y), lerp(c, d, t.y), t.z);
 }
 
-)hlsl"
-R"hlsl(// A shadow atlas's depth at a texture coordinate, filtered linearly from its four texels.
+// A shadow atlas's depth at a texture coordinate, filtered linearly from its four texels.
 float atlas_depth(bool positional, float2 uv) {
     uint width;
     uint height;
@@ -5139,10 +5141,10 @@ uint range_mask(uint word, uint first, uint end) {
     return below_high & ~below_low;
 }
 
-// What the fog volumes add to a froxel at id, whose point is world, as Godot's volumetric_fog.glsl
-// adds each into its density, light and emissive maps: the density in 1024ths, then the scattering
-// and emission, each a channel's units as Godot packs them into 11, 11 and 10 bits, held there.
-// The k-th float4 of the index-th VoxelLighting3D in fog_items.
+// What the fog volumes add to a froxel at id, whose point is world, as each is added into its
+// density, light and emissive maps: the density in 1024ths, then the scattering and emission, each
+// a channel's units, packed into 11, 11 and 10 bits, held there. The k-th float4 of the index-th
+// VoxelLighting3D in fog_items.
 float4 voxel_gi_item(uint index, uint k) {
     return fog_items[(items.x * kFogVolumeItems) + (index * kFogVoxelGIItems) + k];
 }
@@ -5257,7 +5259,7 @@ VolumeSums fog_volumes(uint3 id, float3 world) {
             float3 q = abs(local_pos) - half_size;
             sdf = length(max(q, (float3)0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
         }
-        // Godot's default material doesn't read the distance, so its cells outside are culled.
+        // The default material doesn't read the distance, so its cells outside are culled.
         float cull_mask = 1.0;
         if (shape <= 3u && !material) {
             cull_mask = 1.0 - smooth(-0.1, 0.0, sdf);
@@ -5312,9 +5314,9 @@ float4 density_pass(uint3 id) {
         before.x /= lerp(frustum.x, frustum.z, t);
         before.y /= lerp(frustum.y, frustum.w, t);
         before.xy = before.xy * 0.5 + 0.5;
-        before.z = pow(before.z, 1.0 / spread);
 )hlsl"
-R"hlsl(        if (before.x > 0.0 && before.y > 0.0 && before.z > 0.0 && before.x < 1.0 &&
+R"hlsl(        before.z = pow(before.z, 1.0 / spread);
+        if (before.x > 0.0 && before.y > 0.0 && before.z > 0.0 && before.x < 1.0 &&
             before.y < 1.0 && before.z < 1.0) {
             reprojected = sample_source(before.xyz);
             reproject_amount = jitter.w;

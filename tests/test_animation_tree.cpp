@@ -178,7 +178,7 @@ bool near(Vec3 a, Vec3 b) {
 } // namespace
 
 TEST_CASE("a Blend2 mixes two animations by its blend_amount, from their start on the first "
-          "tick, as Godot's tree does") {
+          "tick") {
     Scene scene;
     scene.files.write("hero.anim.json", R"({"format": 1, "animations": {
         "RESET": {"length": 1, "tracks": [{"path": "Transform2D/position/x", "keys": [{"time": 0, "value": 0}]}]},
@@ -226,7 +226,7 @@ TEST_CASE("a Blend2 mixes two animations by its blend_amount, from their start o
 }
 
 TEST_CASE("a OneShot fires on request, fades in and out over its input and reports its "
-          "animation's start and end, as Godot's") {
+          "animation's start and end") {
     Scene scene;
     scene.files.write("hero.anim.json", std::string(kHolds));
     scene.files.write("hero.animtree.json", R"({"format": 1, "root": {"type": "BlendTree",
@@ -251,7 +251,7 @@ TEST_CASE("a OneShot fires on request, fades in and out over its input and repor
     CHECK(scene.tree(hero).state.at("shot/active").as_bool());
     CHECK(scene.take_events() ==
           std::vector<std::string>{R"(animation_started {"animation":"twenty"})"});
-    // It fades in over 0.2 seconds, a tick behind its time, as Godot's does.
+    // It fades in over 0.2 seconds, a tick behind its time.
     scene.world.step(0.1);
     CHECK(x() == doctest::Approx(10.0002).epsilon(1e-6));
     scene.world.step(0.1);
@@ -354,7 +354,7 @@ TEST_CASE("blend spaces blend the points around their position, or play the clos
     CHECK(scene.tree(hero).state.at("closest").as_int() == 2);
 }
 
-TEST_CASE("filters choose the tracks a node blends; the rest pass through as Godot's") {
+TEST_CASE("filters choose the tracks a node blends; the rest pass through") {
     Scene scene;
     scene.files.write("hero.anim.json", R"({"format": 1, "animations": {
         "RESET": {"length": 1, "tracks": [
@@ -449,7 +449,7 @@ TEST_CASE("event tracks and discrete keys fire as the tree's playback passes the
 }
 
 TEST_CASE("a tree's animation tracks play and stop another Animator's animations, as "
-          "Godot's mixer") {
+          "the mixer") {
     Scene scene;
     scene.files.write("door.anim.json", R"({"format": 1, "animations": {
         "open": {"length": 1, "tracks": [{"path": "Transform2D/position/x",
@@ -491,7 +491,7 @@ TEST_CASE("a tree's animation tracks play and stop another Animator's animations
                                     .tracks[0]) == "door:[animation]");
 }
 
-TEST_CASE("a tree's audio tracks play as loud as their animations count, as Godot's mixer") {
+TEST_CASE("a tree's audio tracks play as loud as their animations count") {
     Scene scene;
     slash::test::FakeSound sound;
     sound.install(scene.world);
@@ -664,7 +664,7 @@ TEST_CASE("a tree plays node tracks as it plays a model's animations, from the d
     CHECK(near(pose[1].position, {0.0F, 1.25F, 0.0F}));
 
     // Half blended in, the root's accumulated position is half way from its rest in the drawn
-    // model to the track's value, as Godot's mixer starts from the skeleton's rest.
+    // model to the track's value; the mixer starts from the skeleton's rest.
     walker.document["nodes"] = slash::test::gltf_json(R"([
         {"name": "Root", "translation": [4, 0, 0], "children": [1]},
         {"name": "Body", "translation": [0, 1, 0]}])");
@@ -757,7 +757,7 @@ constexpr std::string_view kMoves = R"({"format": 1, "animations": {
 }})";
 
 TEST_CASE("a state machine starts at the state after Start and travels the cheapest way through "
-          "its transitions, cross-fading, as Godot's") {
+          "its transitions, cross-fading") {
     Scene scene;
     scene.files.write("hero.anim.json", std::string(kMoves));
     // Walking is the shorter way to run, unless leaving idle for walk costs more.
@@ -1003,7 +1003,7 @@ TEST_CASE("a nested state machine carries on when its parent seeks to its start,
     scene.set(hero, "pick/transition_request", "legs");
     scene.world.step(0.1);
     CHECK(x() == doctest::Approx(30.0));
-    // The Transition fades wave out over no time, as Godot's.
+    // The Transition fades wave out over no time.
     CHECK(scene.playing(hero) == "run@0*1 jump@0.1*0");
 }
 

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "mesh_shading.hpp"
@@ -10,10 +11,10 @@
 #include <span>
 #include <vector>
 
-// What every device shares to draw reflection probes (Reflections3D and ProbeCapture, in
-// mesh.hpp): the probes as the mesh pass reads them, the filter that makes a captured cube's
-// levels, and the CPU twin of Godot's reflection_process (scene_forward_lights_inc.glsl), which
-// mesh.hlsl's Forward+ variant runs and the software device draws with.
+// What every device shares to draw reflection probes (Reflections3D and ProbeCapture, in mesh.hpp):
+// the probes as the mesh pass reads them, the filter that makes a captured cube's levels, and the
+// CPU twin of the reflection processing, which mesh.hlsl's clustered variant runs and the software
+// device draws with.
 namespace slash::render::detail {
 
 // A frame's probes, in its order, and the scene uniform that goes with them: how many, the level
@@ -30,8 +31,8 @@ namespace slash::render::detail {
 template <typename AtlasCubes>
 [[nodiscard]] Result<void> check_reflections(const Scene3D& scene, const AtlasCubes& atlas_cubes);
 
-// The light a pixel takes from the probes, as Godot's reflection_process accumulates it: the
-// reflection and the ambient light, each premultiplied by how much of the sky's it replaces.
+// The light a pixel takes from the probes, accumulated: the reflection and the ambient light, each
+// premultiplied by how much of the sky's it replaces.
 struct ProbeLight {
     Float4 reflection{};
     Float4 ambient{};

@@ -15,7 +15,7 @@ Keep every change true to these:
 - Commands cost agents as few calls and tokens as possible.
 - Model agnostic: nothing depends on one AI vendor.
 - Lightweight and modular; macOS first, games export to every platform.
-- Permissive open-source code only. When a design choice is open, follow Godot's approach.
+- Permissive open-source code only. When a design choice is open, follow the approach of the MIT-licensed engine much of the code is ported from (see `THIRD_PARTY.md`).
 - Gameplay code is plain C++; no embedded scripting language.
 
 ## Build and test

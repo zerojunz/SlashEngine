@@ -810,7 +810,8 @@ void write_animated_tiles(const fs::path& folder) {
              "  m_MinSpeed: 0.5\n  m_MaxSpeed: 1.5\n");
     animated("Lava", "a1000000000000000000000000000f04", {pool(2005), pool(2006)},
              "  m_MinSpeed: 1\n  m_MaxSpeed: 1\n  m_AnimationStartTime: 1\n");
-    // Frames that go back along the row, and frames on two textures, which Godot's can't play.
+    // Frames that go back along the row, and frames on two textures, which a tile
+    // animation can't play.
     animated("Jumble", "a1000000000000000000000000000f05", {pool(2004), pool(2001)}, "");
     animated("Elsewhere", "a1000000000000000000000000000f0a",
              {pool(2004), ref(kWholeSprite, kSparePng)}, "");
@@ -3097,7 +3098,7 @@ TEST_CASE("Unity's isometric and hexagonal tile maps keep their cells where Unit
         return centers;
     };
 
-    // Isometric: Unity's cell (x, y) is (x, -y - 1) in Godot's diamond_right layout, where
+    // Isometric: Unity's cell (x, y) is (x, -y - 1) in the diamond_right layout, where
     // Unity centers it at ((x - y) * 16, -(x + y + 1) * 8); the layer moves up 8 pixels to
     // put it there, and its marker moves back.
     const Layer iso = layer_of("iso_tiles");
@@ -3125,7 +3126,7 @@ TEST_CASE("Unity's isometric and hexagonal tile maps keep their cells where Unit
     CHECK(look.position == slash::Vec2{-16.0F, -24.0F});
     CHECK(look.size == slash::Vec2{32.0F, 32.0F});
 
-    // Hexagons pointing up: odd rows sit half a cell right, as in Godot's stacked_offset layout
+    // Hexagons pointing up: odd rows sit half a cell right, as in the stacked_offset layout
     // once rows go down.
     const Layer hex = layer_of("hex_tiles");
     CHECK(hex.set.shape == canvas::TileShape::Hexagon);
@@ -3366,9 +3367,8 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
         CHECK(item.find("where")->as_string() == where);
     }
 
-    // It plays: 34 ticks in (the tree spends its first seeking to its states' starts, as
-    // Godot's does), the body is on its way down from the top of its bob, faded, on its second
-    // frame, and has croaked.
+    // It plays: 34 ticks in (the tree spends its first seeking to its states' starts), the body is
+    // on its way down from the top of its bob, faded, on its second frame, and has croaked.
     slash::world::ComponentRegistry components;
     slash::world::register_builtin_components(components);
     command::Registry commands;
@@ -3871,7 +3871,7 @@ TEST_CASE("Unity blend trees become blend spaces, nested and collapsed as Unity 
     CHECK(hero_x() == doctest::Approx(64.0));
 }
 
-TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints") {
+TEST_CASE("Unity audio mixers become a bus layout and 2D joints") {
     const fs::path project = "import_unity_mill";
     fs::remove_all(project);
     make_project(project / "unity");
@@ -4285,7 +4285,7 @@ TEST_CASE("Unity dropdowns become option buttons, their captions, arrows and lis
     CHECK(list.find("items")->as_array().size() == 2);
 }
 
-TEST_CASE("Unity's 2D lights become Godot's lights, its shadow casters occluders") {
+TEST_CASE("Unity's 2D lights become lights, its shadow casters occluders") {
     const fs::path project = "import_unity_lights";
     fs::remove_all(project);
     make_project(project / "unity");
@@ -4782,8 +4782,8 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     slash::world::register_builtin_components(components);
     CHECK(slash::world::validate_scene(components, parse(files.at(hall))).empty());
 
-    // Unity's axes are left-handed and Godot's right-handed, so x is mirrored: positions flip in
-    // x and rotations turn the other way about y and z. The crate turned 30 degrees about y in
+    // Unity's axes are left-handed and the engine's right-handed, so x is mirrored: positions flip
+    // in x and rotations turn the other way about y and z. The crate turned 30 degrees about y in
     // Unity turns -30 here.
     const json::Value crate = entity(files, hall, "crate");
     CHECK(*crate.find("Transform3D") == parse(R"({"position": [-3.0, 0.5, 2.0],
@@ -4804,7 +4804,7 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
                     "axis_lock_angular_z": true})"));
     CHECK(*crate.find("Collider3D") == parse("{}")); // a box a meter across
 
-    // Unity's cameras, lights and quads face along +z, Godot's along -z: they turn half a turn
+    // Unity's cameras, lights and quads face along +z, the engine's along -z: they turn half a turn
     // about y, and what is under a turned object turns back.
     const json::Value camera = entity(files, hall, "main_camera");
     CHECK(*camera.find("Transform3D") == parse(R"({"position": [-1.0, 2.0, -10.0],
@@ -5358,10 +5358,10 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
     slash::world::register_builtin_components(components);
     CHECK(slash::world::validate_scene(components, parse(files.at(bonfire))).empty());
 
-    // The fire: Godot emits amount particles each lifetime, so 10 a second for 2 seconds is 20.
-    // Unity's cone leaves along +z from a disc at its base, a ring here; Unity's local simulation
-    // space is local_coords. Unity keeps the gradient's color and alpha keys apart: a point goes
-    // at each, with both blended there.
+    // The fire: the engine emits amount particles each lifetime, so 10 a second for 2 seconds
+    // is 20. Unity's cone leaves along +z from a disc at its base, a ring here; Unity's local
+    // simulation space is local_coords. Unity keeps the gradient's color and alpha keys apart: a
+    // point goes at each, with both blended there.
     const json::Value fire = entity(files, bonfire, "fire");
     CHECK(*fire.find("Emitter3D") == parse(R"({
         "amount": 20, "lifetime": 2.0, "local_space": true, "emission_shape": "ring",
@@ -5382,7 +5382,7 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
     CHECK(*fire.find("Transform3D") ==
           parse(R"({"position": [-2.0, 0.0, 0.0], "rotation": [-1.570796, 0.0, 0.0]})"));
 
-    // The sparks: a burst of 30 at the start, once; random lifetimes as Godot's randomness,
+    // The sparks: a burst of 30 at the start, once; random lifetimes,
     // colors between two as an initial ramp, gravity by its modifier, a seed of their own, cubes
     // in view depth order, and an eased size sampled each sixteenth of a life.
     const json::Value sparks = entity(files, bonfire, "sparks");
@@ -5432,8 +5432,7 @@ TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and ea
         "particles_anim_v_frames": 2, "particles_anim_loop": true})"));
 
     const json::Value report = parse(files.at("import/unity.json"));
-    CHECK(unsupported(report, "particle Noise").find("why")->as_string() ==
-          "Godot's CPUParticles3D has none");
+    CHECK(unsupported(report, "particle Noise").find("why")->as_string() == "Emitter3D has none");
     CHECK(unsupported(report, "particle emission rate that varies") != nullptr);
 }
 

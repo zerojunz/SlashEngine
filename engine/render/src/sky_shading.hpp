@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "checks.hpp"
@@ -25,9 +26,9 @@ using Float3 = std::array<float, 3>;
 // sky.hlsl's options.z.
 inline constexpr std::uint32_t kSkyDeband = 1;
 inline constexpr std::uint32_t kSkyTexture = 2;
-// Forward+'s sky, as Godot's RD renderer draws it: the material's colors, its texture and the
-// lights' colors are linear, and so is what it works out. Without it, as the Compatibility
-// renderer, they are sRGB and the result is made linear.
+// The clustered renderer's sky: the material's colors, its texture and the lights' colors are
+// linear, and so is what it works out. Without it, as in the compatibility renderer, they are sRGB
+// and the result is made linear.
 inline constexpr std::uint32_t kSkyLinear = 4;
 
 struct SkyLightUniforms {
@@ -57,7 +58,7 @@ static_assert(sizeof(SkyUniforms) == 448);
 [[nodiscard]] TextureId sky_texture(const Sky3D& sky);
 
 // The sky pass's uniforms, for a target of width x height, seen through the camera moved by TAA's
-// or FSR 2's jitter in clip space, as Godot's sky.
+// or FSR 2's jitter in clip space.
 [[nodiscard]] SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width,
                                        std::uint32_t height,
                                        const std::array<float, 2>& jitter = {});
@@ -80,21 +81,20 @@ struct SkyRay {
 // A cube texture's faces, in the order every API holds them: +x, -x, +y, -y, +z, -z.
 inline constexpr std::uint32_t kCubeFaces = 6;
 
-// The radiance is RGB10A2, as Godot's: 10 bits a color channel.
+// The radiance is RGB10A2: 10 bits a color channel.
 inline constexpr float kRadianceSteps = 1023.0F;
 
-// The level Godot's scene shader takes ambient light from, and the reflections of the roughest
-// surfaces (RADIANCE_MAX_LOD).
+// The level the scene shader takes ambient light from, and the reflections of the roughest surfaces
+// (RADIANCE_MAX_LOD).
 inline constexpr float kRadianceMaxLevel = 5.0F;
 
-// The most samples the roughest levels are blurred with, as Godot's Compatibility renderer: four
-// times rendering/reflections/sky_reflections/ggx_samples, which is 32 by default and at most
-// kMaxGgxSamples here (radiance.hlsl's uniforms hold kRadianceSamples).
+// The most samples the roughest levels are blurred with in the compatibility renderer: four times
+// the ggx_samples setting, which is 32 by default and at most kMaxGgxSamples here (radiance.hlsl's
+// uniforms hold kRadianceSamples).
 inline constexpr std::uint32_t kRadianceSamples = 128;
 inline constexpr std::uint32_t kMaxGgxSamples = kRadianceSamples / 4;
 
-// How many levels a radiance cube size texels across has, as Godot's mipmap_count: down to faces
-// 4 texels across.
+// How many levels a radiance cube size texels across has: down to faces 4 texels across.
 [[nodiscard]] std::uint32_t radiance_levels(std::uint32_t size);
 
 // The direction a point of a cube face looks along, unnormalized: s and t from -1 to 1 across the
@@ -104,8 +104,8 @@ inline constexpr std::uint32_t kMaxGgxSamples = kRadianceSamples / 4;
 // Whether a scene's meshes are lit by its radiance.
 [[nodiscard]] bool radiance_used(const Scene3D& scene);
 
-// The sky pass's uniforms to draw a face of the radiance's raw cube: the material looking out
-// of the face, exposed but neither fogged nor tonemapped, as Godot's cubemap pass draws it.
+// The sky pass's uniforms to draw a face of the radiance's raw cube: the material looking out of
+// the face, exposed but neither fogged nor tonemapped.
 [[nodiscard]] SkyUniforms radiance_face_uniforms(const Scene3D& scene, std::uint32_t face);
 
 // The texture the raw cube's sky samples, or None.
@@ -124,9 +124,9 @@ struct RadianceUniforms {
 };
 static_assert(sizeof(RadianceUniforms) == 32 + (16 * kRadianceSamples));
 
-// The filter pass's uniforms for a level of a radiance of size and levels, as Godot's
-// CubemapFilter::filter_radiance: level 0 copies the raw cube's, and each next one blurs it for a
-// rougher surface, by ggx_samples (Radiance3D's). The face is params[0]'s, for the device to set.
+// The filter pass's uniforms for a level of a radiance of size and levels: level 0 copies the raw
+// cube's, and each next one blurs it for a rougher surface, by ggx_samples (Radiance3D's). The face
+// is params[0]'s, for the device to set.
 [[nodiscard]] RadianceUniforms radiance_uniforms(std::uint32_t size, std::uint32_t levels,
                                                  std::uint32_t level,
                                                  std::uint32_t ggx_samples = 32);
@@ -172,8 +172,8 @@ void cube_mipmaps(CubeImage& cube, bool linear);
 make_radiance(const Scene3D& scene,
               const std::function<Float4(const std::array<float, 2>&)>& texel);
 
-// Checks a scene's sky, fog and radiance: kinds that are one, finite numbers, at most
-// kMaxSkyLights lights, a radiance size Godot takes, and textures the device has (known).
+// Checks a scene's sky, fog and radiance: kinds that are one, finite numbers, at most kMaxSkyLights
+// lights, a radiance size devices take, and textures the device has (known).
 template <typename Known>
 [[nodiscard]] Result<void> check_sky(const Scene3D& scene, const Known& known) {
     const Sky3D& sky = scene.sky;

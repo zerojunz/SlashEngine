@@ -1,7 +1,7 @@
-// SceneMultiplayer, SceneCacheInterface, SceneRPCInterface and SceneReplicationInterface, ported
-// from Godot 4.5's modules/multiplayer (MIT). Nodes become entities and node paths their IDs; an
+// The multiplayer, cache, RPC and replication interfaces. Entities are named by their IDs; an
 // RPC's arguments, a spawn's argument and state and a sync's properties are JSON, sent as compact
-// JSON text where Godot encodes Variants.
+// JSON text.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/net/multiplayer.hpp"
 
 #include "slash/core/log.hpp"
@@ -58,7 +58,7 @@ constexpr std::uint8_t kNoArgsFlag = 1U << kNoArgsShift;
 enum NodeIdCompression : std::uint8_t { kNodeId8, kNodeId16, kNodeId32 };
 enum NameIdCompression : std::uint8_t { kNameId8, kNameId16 };
 
-constexpr int kMd5Length = 33; // Godot's 32 hex digits and the terminating zero
+constexpr int kMd5Length = 33; // 32 hex digits and the terminating zero
 
 using Bytes = std::vector<std::uint8_t>;
 
@@ -522,7 +522,7 @@ struct Multiplayer::State {
         last_send_cache_id = 1;
     }
 
-    // As Godot's tree_exited connection: an entity that is gone leaves the cache.
+    // An entity that is gone leaves the cache.
     void forget_destroyed_entities() {
         for (const world::Event& event : world.events()) {
             if (event.kind == world::kEntityDestroyed) {
@@ -743,7 +743,7 @@ struct Multiplayer::State {
         return names;
     }
 
-    // What Godot's get_rpc_md5 checks: a hash of the entity's procedures' names, 32 digits.
+    // What the RPC check compares: a hash of the entity's procedures' names, 32 digits.
     [[nodiscard]] std::string rpc_md5(std::string_view entity) const {
         std::string list;
         for (const std::string_view name : rpc_names(entity)) {
@@ -964,7 +964,7 @@ struct Multiplayer::State {
 
     // ------------------------------------------------------------------------------------------
     // SceneReplicationInterface, with NetSpawner's and NetSync's state.
-    // Godot connects to tree signals; here each poll compares the world with what it tracked.
+    // Each poll compares the world with what it tracked.
 
     static constexpr std::uint8_t kInvalidSceneId = 0xFF; // a custom spawn
     static constexpr unsigned kCmdFlag0Shift = 3;         // SceneMultiplayer::CMD_FLAG_0_SHIFT
@@ -1933,7 +1933,7 @@ struct Multiplayer::State {
     }
 
     // Entities, spawners and synchronizers that went since the last poll leave the tracking,
-    // despawning on the peers what a spawner spawned, as the tree signals Godot connects.
+    // despawning on the peers what a spawner spawned.
     void forget_gone() {
         for (auto& [spawner_id, state] : spawners) {
             const entt::entity spawner = world.find(spawner_id);

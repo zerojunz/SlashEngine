@@ -1,7 +1,7 @@
-// 2D cloth, as Unreal's Chaos Cloth on a cut-out (Box2D and Godot have none): a Cloth2D's sheet
-// of points carried by its entity's transform, the skinned ones exactly and the rest up to their
-// max distance, held together by edges, bends and long range attachments and pushed out of
-// Box2D's shapes, solved with small steps of position based dynamics.
+// 2D cloth, as Unreal's Chaos Cloth on a cut-out (Box2D has none): a Cloth2D's sheet of points
+// carried by its entity's transform, the skinned ones exactly and the rest up to their max
+// distance, held together by edges, bends and long range attachments and pushed out of Box2D's
+// shapes, solved with small steps of position based dynamics.
 #include "space.hpp"
 
 #include "slash/core/json.hpp"

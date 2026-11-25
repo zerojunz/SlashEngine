@@ -4228,11 +4228,13 @@ fn fs_main(@location(0u) v_190 : vec2<f32>, @location(1u) v_191 : vec4<f32>, @lo
 }
 )wgsl";
 
-inline constexpr char kMaterialHlsl[] = R"hlsl(// The material shader: runs a material program (engine/render/include/slash/render/material.hpp)
+inline constexpr char kMaterialHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The material shader: runs a material program (engine/render/include/slash/render/material.hpp)
 // for each pixel, then shades it with the frame's 2D lights (canvas.hlsl). Canvas materials
 // compile from node graphs to a few instructions, so they need no shader compiler at run time.
 // Keep it in step with run_program in src/material.cpp.
 
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
 // (light.hpp). The material shader (material.hlsl) includes it, and so does each of a game's own
 // shaders, which the shader tools wrap around the game's fragment() and vertex() functions. Keep
@@ -4364,7 +4366,7 @@ float shadow_amount(Light light, float2 position) {
     return hidden / float(2 * taps + 1);
 }
 
-// Godot's 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
+// 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
 float3 light_normal(float3 light_vec, float3 normal, float3 base, float3 light_color,
                     float4 shine, bool shine_used) {
     float n_dot_l = max(0.0, dot(normal, light_vec));
@@ -4509,10 +4511,10 @@ float4 first_components(uint count) {
 
 float4 rgb_to_hsv(float4 c) {
     float4 k = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    float4 p = c.g < c.b ? float4(c.b, c.g, k.w, k.z) : float4(c.g, c.b, k.x, k.y);
-    float4 q = c.r < p.x ? float4(p.x, p.y, p.w, c.r) : float4(c.r, p.y, p.z, p.x);
 )hlsl"
-R"hlsl(    float d = q.x - min(q.w, q.y);
+R"hlsl(    float4 p = c.g < c.b ? float4(c.b, c.g, k.w, k.z) : float4(c.g, c.b, k.x, k.y);
+    float4 q = c.r < p.x ? float4(p.x, p.y, p.w, c.r) : float4(c.r, p.y, p.z, p.x);
+    float d = q.x - min(q.w, q.y);
     float e = 1.0e-10;
     return float4(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x, 0.0);
 }
@@ -4641,9 +4643,9 @@ float4 sample_slot(uint slot, float2 uv) {
     return texture3.SampleLevel(sampler3, uv, 0.0);
 }
 
-// Godot's MSDF text: coverage from the median distance of the field's three channels, sharp at
-// any scale. uv_dx and uv_dy are how the texture coordinate changes across one pixel. Keep it in
-// step with distance_field_coverage in src/device.cpp.
+// MSDF text: coverage from the median distance of the field's three channels, sharp at any scale.
+// uv_dx and uv_dy are how the texture coordinate changes across one pixel. Keep it in step with
+// distance_field_coverage in src/device.cpp.
 float field_coverage(float4 t, float2 uv_dx, float2 uv_dy) {
     float2 dest_size = 1.0 / max(abs(uv_dx) + abs(uv_dy), float2(1.0e-8, 1.0e-8));
     float px_size = max(0.5 * dot(field.x * texel.xy, dest_size), 1.0);

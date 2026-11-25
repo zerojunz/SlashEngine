@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/tilemap.hpp"
 
 #include "slash/canvas/debug_draw.hpp"
@@ -24,7 +25,7 @@ constexpr std::array<std::string_view, 3> kModeNames = {"match_corners_and_sides
                                                         "match_sides"};
 // A texture is at most 16384 pixels on a side.
 constexpr std::int64_t kMaxPixels = 16384;
-// Godot keeps alternative IDs below its transform flags, bit 12 up.
+// Alternative IDs stay below the transform flags, which start at bit 12.
 constexpr int kMaxAlternative = 4095;
 constexpr std::int64_t kMaxFrames = 256;
 // The most texture cells one tile and its frames can cover.
@@ -460,14 +461,13 @@ Vec2i pair_of(const json::Value* value, Vec2i fallback) {
     return {static_cast<int>(items[0].as_int()), static_cast<int>(items[1].as_int())};
 }
 
-// The texture cell a tile's frame starts at, as Godot's get_tile_texture_region finds it.
+// The texture cell a tile's frame starts at.
 Vec2i frame_cell(Vec2i atlas, Vec2i size, Vec2i separation, int columns, int frame) {
     const Vec2i at = columns > 0 ? Vec2i{frame % columns, frame / columns} : Vec2i{frame, 0};
     return {atlas.x + ((size.x + separation.x) * at.x), atlas.y + ((size.y + separation.y) * at.y)};
 }
 
-// What a direction is to a cell of a shape, as Godot's is_valid_terrain_peering_bit_for_mode
-// with both corners and sides.
+// What a direction is to a cell of a shape, with both corners and sides.
 PeeringKind kind_of(TileShape shape, TileOffsetAxis axis, Neighbor direction) {
     const auto d = static_cast<std::size_t>(direction);
     const bool main = d % 2 == 0;  // one of the eight main points
@@ -564,8 +564,8 @@ int posmod2(int value) {
     return ((value % 2) + 2) % 2;
 }
 
-// One step from a cell of a shape other than squares toward one of the eight main points
-// (0 n, 1 ne, ... 7 nw), as Godot's get_neighbor_cell for half-offset shapes.
+// One step from a cell of a shape other than squares toward one of the eight main points (0 n, 1
+// ne, ... 7 nw), for half-offset shapes.
 Vec2i half_offset_step(const TileSet& set, Vec2i cell, std::size_t point) {
     const bool rows = set.offset_axis == TileOffsetAxis::Horizontal;
     switch (set.layout) {
@@ -618,8 +618,7 @@ float cross(Vec2 a, Vec2 b) {
     return (a.x * b.y) - (a.y * b.x);
 }
 
-// How much a shape's rows (or columns) overlap, as Godot's overlapping ratio: diamonds by half,
-// hexagons by a quarter.
+// How much a shape's rows (or columns) overlap: diamonds by half, hexagons by a quarter.
 float overlap_of(TileShape shape) {
     switch (shape) {
     case TileShape::Isometric:
@@ -763,8 +762,8 @@ private:
         }
     }
 
-    // That a tile, with its size_in_atlas and its animation frames, covers no texture cell
-    // another tile does, as Godot's has_room_for_tile.
+    // That a tile, with its size_in_atlas and its animation frames, covers no texture cell another
+    // tile does.
     void check_cover(const std::string& key, Vec2i atlas, const json::Value& tile,
                      const std::string& at, std::map<Vec2i, std::string, CellOrder>& covered) {
         const Vec2i size = pair_of(tile.find("size_in_atlas"), {1, 1});
@@ -871,7 +870,7 @@ private:
         }
     }
 
-    // Each value against its layer's type, as Godot's custom data layers hold one type each.
+    // Each value against its layer's type: a custom data layer holds one type.
     void check_custom_data(const json::Value& data, const std::string& at) {
         for (const auto& [name, value] : data.as_object()) {
             const std::string value_at = at + "/" + json::pointer_escape(name);
@@ -1386,7 +1385,7 @@ std::optional<Neighbor> godot_neighbor(TileShape shape, TileOffsetAxis axis, int
     if (bit < 0 || bit > 15) {
         return std::nullopt;
     }
-    // Godot's bits go round clockwise from the right, a side then a corner each way.
+    // The bits go round clockwise from the right, a side then a corner each way.
     constexpr std::array<Neighbor, 8> kFacing{Neighbor::E, Neighbor::SE, Neighbor::S, Neighbor::SW,
                                               Neighbor::W, Neighbor::NW, Neighbor::N, Neighbor::NE};
     const auto way = static_cast<std::size_t>(bit / 2);
@@ -1410,7 +1409,7 @@ std::optional<Neighbor> godot_neighbor(TileShape shape, TileOffsetAxis axis, int
 }
 
 Vec2 map_to_local(const TileSet& set, Vec2i cell) {
-    // Godot's TileSet::map_to_local, line for line.
+    // The cell's center in pixels.
     auto x = static_cast<float>(cell.x);
     auto y = static_cast<float>(cell.y);
     const bool rows = set.offset_axis == TileOffsetAxis::Horizontal;
@@ -1481,7 +1480,7 @@ Vec2 map_to_local(const TileSet& set, Vec2i cell) {
 }
 
 Vec2i local_to_map(const TileSet& set, Vec2 point) {
-    // Godot's TileSet::local_to_map, line for line.
+    // The cell a point is in.
     Vec2 at{point.x / static_cast<float>(set.tile_size.x),
             point.y / static_cast<float>(set.tile_size.y)};
     const bool rows = set.offset_axis == TileOffsetAxis::Horizontal;
@@ -1963,8 +1962,8 @@ std::string tile_text(const TileSet& set, const TileRef& tile) {
     return out;
 }
 
-// Godot's TileMapLayer::compute_transformed_tile_dest_rect: the tile centered on the cell, turned
-// by its alternative, moved by its texture origin, then turned by the cell.
+// The tile centered on the cell, turned by its alternative, moved by its texture origin, then
+// turned by the cell.
 TileLook tile_look(const TileSet& set, const TileRef& tile) {
     TileLook out;
     bool tile_flip_h = false;
@@ -2135,9 +2134,9 @@ int tile_frame(const TileData& tile, double time, double offset) {
     if (count <= 1) {
         return 0;
     }
-    // As Godot's draw_tile and the canvas renderer's animation slices: the frames' durations are
-    // summed before they are divided by the speed, and a frame shows from its start up to, not
-    // including, its end.
+    // As the canvas renderer's animation slices have it: the frames' durations are summed before
+    // they are divided by the speed, and a frame shows from its start up to, not including, its
+    // end.
     const double speed = tile.animation_speed;
     double total = 0.0;
     for (const double duration : tile.animation_frames) {

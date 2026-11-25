@@ -6,7 +6,7 @@
 // a red wall and a crate, lit by the sun, and a VoxelGI over it whose data
 // names main.gi_data.res, the VoxelGIData Godot's bake saves beside the scene
 // in its binary resource format. main.cpp first plays the part of that bake: it
-// voxelizes the same meshes with SlashEngine's port of Godot's Voxelizer and
+// voxelizes the same meshes with SlashEngine's voxelizer and
 // saves the cells as Godot's VoxelGIData keeps them. Then it makes the calls an
 // agent would make over MCP or JSON-RPC. The data is made in code, so the
 // repository holds no binary files.

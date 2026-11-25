@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "forward_post.hpp"
 
 #include "slash/core/bits.hpp"
@@ -53,8 +54,8 @@ Float3 times_rows(const Float3& c, const std::array<Float3, 3>& r) {
     return out;
 }
 
-// Godot's environment_get_white for a texture of half floats: at least 1, and 2 for AgX; linear
-// colors have no white but 1.
+// The white point for a texture of half floats: at least 1, and 2 for AgX; linear colors have no
+// white but 1.
 float forward_white(const PostProcess& post) {
     switch (post.tonemapper) {
     case Tonemapper::Linear:
@@ -69,8 +70,7 @@ float forward_white(const PostProcess& post) {
     return std::max(1.0F, post.white);
 }
 
-// Godot's environment_get_tonemap_parameters: what each tonemapper needs of white, worked out
-// once for the frame.
+// What each tonemapper needs of white, worked out once for the frame.
 Float4 tonemapper_parameters(const PostProcess& post, float white) {
     switch (post.tonemapper) {
     case Tonemapper::Linear:
@@ -635,7 +635,7 @@ Float4 forward_clear(const Color& clear) {
 
 GlowPlan forward_glow_plan(const PostProcess& post, std::uint32_t width, std::uint32_t height) {
     GlowPlan plan;
-    // Godot's Image::get_image_required_mipmaps: halvings to 1 x 1.
+    // The mipmap count: halvings to 1 x 1.
     int mipmaps = 0;
     for (std::uint32_t size = std::max(width, height); size > 1; size >>= 1U) {
         ++mipmaps;
@@ -749,7 +749,7 @@ bool uses_dof(const PostProcess& post) {
 }
 
 std::vector<DofStep> dof_plan(const PostProcess& post, std::uint32_t width, std::uint32_t height) {
-    // As Godot's can_use_effects: no post effects under 8 x 8 pixels.
+    // No post effects under 8 x 8 pixels.
     if (!uses_dof(post) || width < 8 || height < 8) {
         return {};
     }

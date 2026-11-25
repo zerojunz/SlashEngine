@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -19,10 +20,10 @@ namespace slash::world {
 class World;
 } // namespace slash::world
 
-// Input as Godot's: events from keys, mouse buttons, touches and gamepads (InputEvent), actions
-// that name what a game does with them (InputMap), and the state gameplay code asks about
-// (Input). Events wait in a queue and apply at the start of the next tick, so a run with the same
-// events at the same ticks plays out the same way, and agents send events with input.inject.
+// Input: events from keys, mouse buttons, touches and gamepads (InputEvent), actions that name what
+// a game does with them (InputMap), and the state gameplay code asks about (Input). Events wait in
+// a queue and apply at the start of the next tick, so a run with the same events at the same ticks
+// plays out the same way, and agents send events with input.inject.
 namespace slash::input {
 
 enum class EventType : std::uint8_t {
@@ -34,14 +35,13 @@ enum class EventType : std::uint8_t {
     JoypadButton, // a gamepad button pressed or released
     JoypadMotion, // a gamepad stick or trigger moved
     Action,       // an action pressed or released directly, by name
-    // The text an input method (IME) is composing, as for Japanese, Chinese or Korean, before
-    // it commits it as key events with unicode; empty text ends the composition. Godot reads it
-    // from DisplayServer::ime_get_text rather than as an event.
+    // The text an input method (IME) is composing, as for Japanese, Chinese or Korean, before it
+    // commits it as key events with unicode; empty text ends the composition.
     Ime,
 };
 
-// Keyboard keys, by Godot's names ("A", "Space", "Left", "Kp Enter"). A physical key is where
-// the key sits on a US QWERTY keyboard, whatever the layout says.
+// Keyboard keys, by name ("A", "Space", "Left", "Kp Enter"). A physical key is where the key sits
+// on a US QWERTY keyboard, whatever the layout says.
 enum class Key : std::uint8_t {
     None,
     Escape,
@@ -195,14 +195,14 @@ enum class Key : std::uint8_t {
     AsciiTilde,
 };
 
-// Godot's name for a key, e.g. "Kp Enter"; "" for Key::None.
+// The name of a key, e.g. "Kp Enter"; "" for Key::None.
 [[nodiscard]] std::string_view key_name(Key key);
-// The key with this name, ignoring case as Godot does, or nullopt.
+// The key with this name, ignoring case, or nullopt.
 [[nodiscard]] std::optional<Key> parse_key(std::string_view name);
 // Every key name but Key::None's, in the order of the Key enum.
 [[nodiscard]] std::span<const std::string_view> key_names();
 
-// Mouse buttons, numbered as Godot's MouseButton. The wheel sends a press and a release.
+// Mouse buttons, numbered. The wheel sends a press and a release.
 enum class MouseButton : std::uint8_t {
     None,
     Left,
@@ -216,8 +216,8 @@ enum class MouseButton : std::uint8_t {
     Xbutton2,
 };
 
-// Gamepad buttons, numbered as Godot's JoyButton and SDL's gamepad buttons: A, B, X and Y are
-// the bottom, right, left and top face buttons, as on an Xbox controller.
+// Gamepad buttons, numbered as SDL's gamepad buttons are: A, B, X and Y are the bottom, right, left
+// and top face buttons, as on an Xbox controller.
 enum class JoyButton : std::uint8_t {
     A,
     B,
@@ -242,8 +242,7 @@ enum class JoyButton : std::uint8_t {
     Touchpad,
 };
 
-// Gamepad axes, numbered as Godot's JoyAxis. Sticks go from -1 to 1, y down; triggers from 0 to
-// 1.
+// Gamepad axes, numbered. Sticks go from -1 to 1, y down; triggers from 0 to 1.
 enum class JoyAxis : std::uint8_t {
     LeftX,
     LeftY,
@@ -257,10 +256,9 @@ enum class JoyAxis : std::uint8_t {
 [[nodiscard]] std::string_view joy_button_name(JoyButton button);
 [[nodiscard]] std::string_view joy_axis_name(JoyAxis axis);
 
-// A binding's device that matches events from every device, as Godot's InputMap::ALL_DEVICES.
+// A binding's device that matches events from every device::ALL_DEVICES.
 inline constexpr int kAllDevices = -1;
-// The device of events made from other events (a mouse click from a touch), as Godot's
-// InputEvent::DEVICE_ID_EMULATION.
+// The device of events made from other events (a mouse click from a touch)::DEVICE_ID_EMULATION.
 inline constexpr int kEmulatedDevice = -1;
 
 struct Modifiers {
@@ -272,8 +270,8 @@ struct Modifiers {
     friend bool operator==(const Modifiers&, const Modifiers&) = default;
 };
 
-// One input event, as Godot's InputEvent subclasses: type says which fields mean something. An
-// action binding is an event too, with only the fields that identify it.
+// One input event: type says which fields mean something. An action binding is an event too, with
+// only the fields that identify it.
 struct Event {
     EventType type = EventType::Key;
     // Which keyboard, mouse, finger set or gamepad: 0 for the first. A binding's device is
@@ -287,8 +285,8 @@ struct Event {
     Key key = Key::None;
     Key physical_key = Key::None;
     bool echo = false; // the key is held and repeating
-    // Key: the character it types, as Godot's InputEventKey.unicode, or 0. Text typed with an
-    // input method or an on-screen keyboard comes as presses with a character and no key.
+    // Key: the character it types, or 0. Text typed with an input method or an on-screen keyboard
+    // comes as presses with a character and no key.
     char32_t unicode = 0;
     // Key and MouseButton: the modifier keys held. A binding's modifiers must all be held.
     Modifiers modifiers;
@@ -313,8 +311,8 @@ struct Event {
     std::string action;    // Action: the action's name
     float strength = 1.0F; // Action: how hard, from 0 to 1
 
-    // Ime: the text being composed, and the part of it the input method has selected, in
-    // characters from its start, as Godot's ime_get_selection.
+    // Ime: the text being composed, and the part of it the input method has selected, in characters
+    // from its start.
     std::string text;
     int selection_start = 0;
     int selection_length = 0;
@@ -349,7 +347,7 @@ enum class Use : std::uint8_t { Event, Binding };
 // character in unicode.
 [[nodiscard]] std::vector<Event> text_events(std::string_view text);
 
-// How a binding matches an event, as Godot's InputEvent::action_match.
+// How a binding matches an event::action_match.
 struct Match {
     bool pressed = false;
     float strength = 0.0F;     // 0 to 1, past the deadzone
@@ -360,7 +358,7 @@ struct Match {
 [[nodiscard]] std::optional<Match> match(const Event& binding, const Event& event, float deadzone,
                                          bool exact = false);
 
-// Godot's deadzone for new actions, and for its built-in ui_* actions.
+// The deadzone for new actions, and for the built-in ui_* actions.
 inline constexpr float kDefaultDeadzone = 0.2F;
 inline constexpr float kToggleDeadzone = 0.5F;
 
@@ -369,22 +367,21 @@ struct Action {
     std::vector<Event> events; // bindings
 };
 
-// Which keyboard shortcuts Godot's built-in text actions use: Ctrl on most systems; Command
-// (meta) on Apple's, with macOS's own (Option+Left for a word, Command+Left for the line's
-// start), as Godot's ".macos" overrides.
+// Which keyboard shortcuts the built-in text actions use: Ctrl on most systems; Command (meta) on
+// Apple's, with macOS's own (Option+Left for a word, Command+Left for the line's start).
 enum class Keyboard : std::uint8_t { Pc, Mac };
 // The machine's: Mac on macOS and iOS, else Pc.
 [[nodiscard]] Keyboard host_keyboard();
 
-// Actions by name and the events bound to each, as Godot's InputMap. A game can rebind them
-// while it runs, e.g. from an options menu.
+// Actions by name and the events bound to each. A game can rebind them while it runs, e.g. from an
+// options menu.
 class Map {
 public:
-    // Godot's built-in actions: for moving through and pressing UI (ui_accept, ui_select,
-    // ui_cancel, ui_focus_next, ui_focus_prev, ui_left, ui_right, ui_up, ui_down, ui_page_up,
-    // ui_page_down, ui_home and ui_end), and for editing text (ui_cut, ui_copy, ui_paste,
-    // ui_undo, ui_redo, ui_text_submit, ui_text_backspace, ui_text_caret_word_left and the rest)
-    // with the keyboard's shortcuts.
+    // The built-in actions: for moving through and pressing UI (ui_accept, ui_select, ui_cancel,
+    // ui_focus_next, ui_focus_prev, ui_left, ui_right, ui_up, ui_down, ui_page_up, ui_page_down,
+    // ui_home and ui_end), and for editing text (ui_cut, ui_copy, ui_paste, ui_undo, ui_redo,
+    // ui_text_submit, ui_text_backspace, ui_text_caret_word_left and the rest) with the keyboard's
+    // shortcuts.
     [[nodiscard]] static Map with_defaults(Keyboard keyboard = host_keyboard());
 
     [[nodiscard]] bool has_action(std::string_view name) const;
@@ -403,8 +400,8 @@ public:
     // Action names, sorted, for "did you mean" hints.
     [[nodiscard]] std::vector<std::string_view> names() const;
 
-    // The first of an action's bindings that matches event, with its index, as Godot's
-    // InputMap::event_get_index. An Action event matches its own action, with the largest index.
+    // The first of an action's bindings that matches event, with its index::event_get_index. An
+    // Action event matches its own action, with the largest index.
     struct Found {
         std::size_t index = 0;
         Match match;
@@ -418,12 +415,12 @@ private:
     std::map<std::string, Action, std::less<>> actions_;
 };
 
-// Whether an action is one of Godot's built-in ones for editing text (ui_cut, ui_text_backspace
-// and the like), which input.actions lists only when asked by name.
+// Whether an action is one of the built-in ones for editing text (ui_cut, ui_text_backspace and the
+// like), which input.actions lists only when asked by name.
 [[nodiscard]] bool is_text_action(std::string_view name);
 
-// project.json's "input": actions by name, each {"deadzone", "events"}, over Godot's built-in
-// ui_* actions, which an entry with the same name replaces.
+// project.json's "input": actions by name, each {"deadzone", "events"}, over the built-in ui_*
+// actions, which an entry with the same name replaces.
 [[nodiscard]] json::Value map_schema();
 [[nodiscard]] std::vector<json::ValidationError> validate_map(const json::Value& doc,
                                                               const std::string& path = "");
@@ -456,20 +453,18 @@ void install(world::World& world, Map map = Map::with_defaults(), Settings setti
 [[nodiscard]] const Map* map(const world::World& world);
 
 // Queues an event for the start of the next tick. A mouse motion, finger drag or gamepad axis
-// motion merges into the queued one from the same source if no press or release came between,
-// as Godot's accumulated input does. Does nothing if input isn't installed.
+// motion merges into the queued one from the same source if no press or release came between. Does
+// nothing if input isn't installed.
 void push(world::World& world, Event event);
-// Queues an Action event: the action is pressed from the next tick until action_release, as
-// Godot's Input.action_press.
+// Queues an Action event: the action is pressed from the next tick until action_release.
 void action_press(world::World& world, std::string_view action, float strength = 1.0F);
 void action_release(world::World& world, std::string_view action);
-// Releases every key, button and action at the next tick, as Godot does when the window loses
-// focus.
+// Releases every key, button and action at the next tick, for when the window loses focus.
 void release_pressed(world::World& world);
 
-// What gameplay code asks, as Godot's Input. "Just" means during the tick the input system last
-// ran: inside a system, this tick. A press and release in one tick count as both, so a quick tap
-// is never missed. Unknown actions read as released. Exact also requires the same modifiers.
+// What gameplay code asks. "Just" means during the tick the input system last ran: inside a system,
+// this tick. A press and release in one tick count as both, so a quick tap is never missed. Unknown
+// actions read as released. Exact also requires the same modifiers.
 [[nodiscard]] bool is_action_pressed(const world::World& world, std::string_view action,
                                      bool exact = false);
 [[nodiscard]] bool is_action_just_pressed(const world::World& world, std::string_view action,
@@ -510,9 +505,9 @@ void release_pressed(world::World& world);
 [[nodiscard]] json::Value state_json(const world::World& world,
                                      std::span<const std::string> actions = {});
 
-// What a text field with focus asks of the platform, as Godot's LineEdit asks DisplayServer to
-// turn on the input method and show the on-screen keyboard: ui::text_input works it out each
-// tick and SdlReader::set_text_input applies it.
+// What a text field with focus asks of the platform, which is to turn on the input method and show
+// the on-screen keyboard: ui::text_input works it out each tick and SdlReader::set_text_input
+// applies it.
 struct TextInput {
     bool active = false; // a text field is being edited
     // The field in window pixels, and the caret's x from its left, so the input method's

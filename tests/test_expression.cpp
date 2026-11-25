@@ -38,10 +38,10 @@ std::string parse_error(std::string_view text) {
 
 } // namespace
 
-TEST_CASE("expressions bind operators as Godot's Expression does") {
+TEST_CASE("expressions bind operators") {
     CHECK(run("1 + 2 * 3") == json::Value(7));
     CHECK(run("(1 + 2) * 3") == json::Value(9));
-    CHECK(run("2 ** 3 ** 2") == json::Value(64)); // left to right, as Godot's
+    CHECK(run("2 ** 3 ** 2") == json::Value(64)); // left to right
     CHECK(run("-2 ** 2") == json::Value(-4));     // ** binds tighter than unary minus
     CHECK(run("10 - 4 - 3") == json::Value(3));
     CHECK(run("1 << 4 | 1") == json::Value(17));
@@ -57,7 +57,7 @@ TEST_CASE("expressions bind operators as Godot's Expression does") {
     CHECK(run("2 * -3") == json::Value(-6));
 }
 
-TEST_CASE("expression values follow Godot's Variant rules for numbers, booleans and strings") {
+TEST_CASE("expression values follow the Variant rules for numbers, booleans and strings") {
     // Integers divide and take remainders as integers; floats as floats.
     CHECK(run("7 / 2") == json::Value(3));
     CHECK(run("-7 / 2") == json::Value(-3));
@@ -87,7 +87,7 @@ TEST_CASE("expression values follow Godot's Variant rules for numbers, booleans 
     CHECK(run("PI > 3.14 and TAU < 6.3") == json::Value(true));
 }
 
-TEST_CASE("expressions read names from the caller and call Godot's math functions") {
+TEST_CASE("expressions read names from the caller and call math functions") {
     const std::map<std::string, json::Value> values{
         {"speed", 2.5}, {"grounded", true}, {"jumps", 2}, {"name", "mira"}};
     CHECK(run("speed > 0.1 and grounded", values) == json::Value(true));

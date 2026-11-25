@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/procedural/noise.hpp"
 
 #include "json_fields.hpp"
@@ -10,8 +11,7 @@
 
 namespace slash::procedural {
 
-// Two of FastNoiseLite's objects, as Godot's resource keeps them: one for the noise and one for
-// the domain warp (modules/noise/fastnoise_lite.cpp).
+// Two of FastNoiseLite's objects: one for the noise and one for the domain warp.
 struct Noise::Impl {
     FastNoiseLite noise;
     FastNoiseLite warp;
@@ -61,7 +61,7 @@ constexpr std::array<EnumName<DomainWarpFractal>, 3> kWarpFractals{{
     {DomainWarpFractal::Independent, "independent"},
 }};
 
-// Godot's _convert_domain_warp_fractal_type_enum.
+// The domain warp fractal type as FastNoiseLite's enum.
 FastNoiseLite::FractalType warp_fractal(DomainWarpFractal type) {
     switch (type) {
     case DomainWarpFractal::Progressive:
@@ -74,7 +74,7 @@ FastNoiseLite::FractalType warp_fractal(DomainWarpFractal type) {
     return FastNoiseLite::FractalType_None;
 }
 
-// FastNoiseLite's objects set up as Godot's FastNoiseLite constructor and setters leave them.
+// FastNoiseLite's objects set up from the settings.
 void configure(FastNoiseLite& noise, FastNoiseLite& warp, const NoiseSettings& s) {
     noise.SetNoiseType(static_cast<FastNoiseLite::NoiseType>(s.noise_type));
     noise.SetSeed(s.seed);
@@ -124,7 +124,7 @@ Noise::Noise(Noise&&) noexcept = default;
 Noise& Noise::operator=(Noise&&) noexcept = default;
 Noise::~Noise() = default;
 
-// Godot's FastNoiseLite::get_noise_1d: the offset added, warped in x alone, then 2D noise at y 0.
+// The 1D noise: the offset added, warped in x alone, then 2D noise at y 0.
 float Noise::get_noise_1d(float x) const {
     x += settings_.offset.x;
     if (settings_.domain_warp_enabled) {

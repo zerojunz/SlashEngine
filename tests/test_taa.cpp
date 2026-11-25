@@ -28,8 +28,8 @@ using render::Vertex3D;
 
 namespace {
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has no TAA.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has no TAA.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -154,7 +154,7 @@ slash::json::Value parse(const char* text) {
 
 } // namespace
 
-TEST_CASE("TAA's jitter is Godot's Halton sequence over 16 frames, within half a pixel") {
+TEST_CASE("TAA's jitter is a Halton sequence over 16 frames, within half a pixel") {
     CHECK(detail::halton(0, 2) == -1.0F);
     CHECK(detail::halton(1, 2) == 0.0F);
     CHECK(detail::halton(2, 2) == -0.5F);
@@ -228,12 +228,12 @@ TEST_CASE("TAA's motion vectors point from each pixel to where it was, without t
     CHECK(down[1] == doctest::Approx(-0.25F));
 }
 
-TEST_CASE("TAA's resolve blends the frame with its history, as Godot's taa_resolve") {
+TEST_CASE("TAA's resolve blends the frame with its history") {
     constexpr std::uint32_t kSize = 8;
     const detail::TaaUniforms uniforms = detail::taa_uniforms(kSize, kSize);
     CHECK(uniforms.size[0] == kSize);
     CHECK(uniforms.params[0] == 2.5F);
-    // Godot's variance clipping box: 1.1 at 1080 pixels high, kept from 0.75 to 1.
+    // The variance clipping box: 1.1 at 1080 pixels high, kept from 0.75 to 1.
     CHECK(uniforms.params[1] == 1.0F);
     CHECK(detail::taa_uniforms(3840, 2160).params[1] == 0.75F);
     // A checkerboard of black and white, and a grey history.
@@ -264,7 +264,7 @@ TEST_CASE("TAA's resolve blends the frame with its history, as Godot's taa_resol
     CHECK(out[4] < 0.5F);
     CHECK(out[4] > 0.45F);
     CHECK(out[3] == 1.0F);
-    // History that moved off the frame is dropped for the frame, less the share Godot keeps where
+    // History that moved off the frame is dropped for the frame, less the share kept where
     // the frame's luminance jumps from the history's.
     std::vector<float> away(still.size(), 0.0F);
     for (std::size_t i = 0; i < away.size(); i += 2) {
@@ -298,7 +298,7 @@ TEST_CASE("TAA settings come from project.json's rendering.anti_aliasing.taa") {
     CHECK_FALSE(render::use_taa(parse("{}")));
 }
 
-TEST_CASE("Forward+ TAA smooths a still square's edges over its frames") {
+TEST_CASE("clustered-renderer TAA smooths a still square's edges over its frames") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         // Without TAA, each pixel is the square's or the background's.
@@ -312,7 +312,7 @@ TEST_CASE("Forward+ TAA smooths a still square's edges over its frames") {
         CHECK(red(smooth, 16, 16) > 250);
         CHECK(red(smooth, 1, 1) == red(plain, 1, 1));
         CHECK(differing(smooth, plain, 40) < 200);
-        // Godot's Compatibility renderer has no TAA.
+        // the compatibility renderer has no TAA.
         const auto compatibility = render::RenderMethod::Compatibility;
         CHECK(difference(
                   draw_square(*device, {.method = compatibility, .frames = 4}),
@@ -322,7 +322,8 @@ TEST_CASE("Forward+ TAA smooths a still square's edges over its frames") {
     }
 }
 
-TEST_CASE("Forward+ TAA follows moving meshes and a moving camera by their motion vectors") {
+TEST_CASE("the clustered renderer's TAA follows moving meshes and a moving camera by their motion "
+          "vectors") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image still = draw_square(*device, {.frames = 24});

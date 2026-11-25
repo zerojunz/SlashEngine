@@ -1,7 +1,7 @@
-// Forward+'s light clusters, as Godot's ClusterBuilderRD lays them out (servers/rendering/
-// renderer_rd/cluster_builder_rd.cpp and its cluster_render and cluster_store shaders), but built
-// on the CPU from each light's bounding sphere instead of rasterized on the GPU, so the software
-// device and every GPU read the same clusters. Float math, built with -ffp-contract=off.
+// The clustered renderer's light clusters, built on the CPU from each light's bounding sphere, so
+// the software device and every GPU read the same clusters. Float math, built with
+// -ffp-contract=off.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "decal.hpp"
 #include "mesh_shading.hpp"
@@ -120,7 +120,8 @@ void screen_rect(const Mat4& projection, const Points& points, float w, float h,
 } // namespace
 
 float far_plane(const Mat4& projection) {
-    // Both projections put the far plane at [14] / [10]; Godot's default camera's otherwise.
+    // Both projections put the far plane at [14] / [10]; a projection with no depth term takes
+    // 4000.
     return projection[10] != 0.0F ? projection[14] / projection[10] : 4000.0F;
 }
 

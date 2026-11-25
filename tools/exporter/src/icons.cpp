@@ -18,9 +18,8 @@ namespace fs = std::filesystem;
 
 constexpr std::size_t kChannels = 4;
 
-// The .icns images, as Godot's macOS export's icon_infos: PNG ones from the largest, then 32 and
-// 16 pixel ones of run-length encoded RGB with an 8-bit alpha mask, which Finder's smallest
-// views read.
+// The .icns images: PNG ones from the largest, then 32 and 16 pixel ones of run-length encoded RGB
+// with an 8-bit alpha mask, which Finder's smallest views read.
 struct IcnsImage {
     std::string_view type;
     std::string_view mask;
@@ -39,7 +38,7 @@ constexpr std::array<IcnsImage, 10> kIcnsImages{{
     {"is32", "s8mk", 16},
 }};
 
-// The .ico images, as Godot's Windows export writes them.
+// The .ico images.
 constexpr std::array<std::uint32_t, 6> kIcoSizes{16, 32, 48, 64, 128, 256};
 
 // Android's densities and an adaptive icon layer's pixels at each: 108 dp.

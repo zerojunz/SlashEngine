@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include <cstddef>
@@ -7,7 +9,7 @@
 #include <string>
 #include <string_view>
 
-// Face tracking, as Godot's XRFaceTracker and XRFace3D: a face tracker holds a weight for
+// Face tracking: a face tracker holds a weight for
 // each of the 143 face shapes of the Unified Expressions standard (Tracker::blend_shapes), and a
 // mesh's blend shapes named in that standard, Apple ARKit's, SRanipal's or Meta's follow them.
 //
@@ -15,25 +17,25 @@
 //   for (const auto& [name, shape] : drives) instance.blend_shapes[name] = weights[shape];
 namespace slash::xr {
 
-// Godot's XRFaceTracker::FT_MAX: the face shapes, 102 base shapes then 41 blended of them.
+// The face shapes, 102 base shapes then 41 blended of them.
 inline constexpr std::size_t kFaceShapeCount = 143;
-// The tracker Godot's XRFaceModifier3D follows by default.
+// The tracker a face modifier follows by default.
 inline constexpr std::string_view kFaceTracker = "/user/face_tracker";
 
 // A face shape's Unified Expressions name, as "JawOpen" or "MouthSmileLeft".
 [[nodiscard]] std::string_view face_shape_name(std::size_t shape);
 
-// The face shape a blend shape's name stands for, as Godot's find_face_blend_shape: the name in
+// The face shape a blend shape's name stands for: the name in
 // any case, with underscores ignored, in Unified Expressions, ARKit ("jawOpen", "eyeBlinkLeft"),
 // SRanipal or Meta's standard.
 [[nodiscard]] std::optional<std::size_t> face_shape_named(std::string_view name);
 
-// The shapes a blended face shape is made of, as Godot's table of unified blend shapes; empty for
+// The shapes a blended face shape is made of; empty for
 // a base shape.
 [[nodiscard]] std::span<const std::size_t> face_shape_parts(std::size_t shape);
 
-// Which face shape drives each of a mesh's blend shapes, as Godot's XRFaceModifier3D works it
-// out: each name face_shape_named knows, less a blended shape whose parts the mesh has (so a
+// Which face shape drives each of a mesh's blend shapes:
+// each name face_shape_named knows, less a blended shape whose parts the mesh has (so a
 // face isn't moved twice).
 [[nodiscard]] std::map<std::string, std::size_t>
 face_blend_mapping(std::span<const std::string> names);

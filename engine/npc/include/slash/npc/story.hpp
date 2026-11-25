@@ -1,16 +1,14 @@
 #pragma once
 
-// NPCs' stories: questlines and conversations, which Godot leaves to scripts. A .quest.json file
-// is a questline of stages, each with journal text and objectives over the story's facts, its
-// rewards (effects on facts) and where it goes next; a .dialogue.json file is a conversation of
-// lines, each said by someone, with choices whose conditions and effects read and change facts.
-// The story's facts live in a QuestLog component (usually the player's) with the quests it has
-// started; NPC brains read and change them as facts named story.<name>, so quests, conversations
-// and NPCs move each other along. A Conversation component on the listener keeps where a
-// conversation is. Text is translated through l10n, as Godot's tr.
-//
-// check_story finds quests that can't be finished and lines no conversation reaches, from what
-// every file can set.
+// NPCs' stories: questlines and conversations. A .quest.json file is a questline of stages, each
+// with journal text and objectives over the story's facts, its rewards (effects on facts) and where
+// it goes next; a .dialogue.json file is a conversation of lines, each said by someone, with
+// choices whose conditions and effects read and change facts. The story's facts live in a QuestLog
+// component (usually the player's) with the quests it has started; NPC brains read and change them
+// as facts named story.<name>, so quests, conversations and NPCs move each other along. A
+// Conversation component on the listener keeps where a conversation is. Text is translated through
+// l10n. check_story finds quests that can't be finished and lines no conversation reaches, from
+// what every file can set.
 
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"

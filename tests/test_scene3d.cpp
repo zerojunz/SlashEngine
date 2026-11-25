@@ -131,7 +131,7 @@ bool near(Vec3 a, Vec3 b) {
            std::abs(a.z - b.z) < 1e-5F;
 }
 
-// How many of a mesh's triangles around the origin wind clockwise seen from outside, as Godot's
+// How many of a mesh's triangles around the origin wind clockwise seen from outside, as
 // front faces do, and how many the other way; triangles with no area count as neither.
 std::pair<std::size_t, std::size_t> windings(const scene3d::MeshData& mesh) {
     std::size_t clockwise = 0;
@@ -155,11 +155,11 @@ std::pair<std::size_t, std::size_t> windings(const scene3d::MeshData& mesh) {
 
 } // namespace
 
-TEST_CASE("primitive meshes have Godot's corners, normals, texture coordinates and winding") {
+TEST_CASE("primitive meshes have their corners, normals, texture coordinates and winding") {
     const scene3d::MeshData box = scene3d::box_mesh({});
     CHECK(box.vertices.size() == 24);
     CHECK(box.indices.size() == 36);
-    // Godot's first corners: the front's top left, then the back's.
+    // The first corners: the front's top left, then the back's.
     CHECK(near(vec(box.vertices[0].position), {-0.5F, 0.5F, 0.5F}));
     CHECK(near(vec(box.vertices[0].normal), {0.0F, 0.0F, 1.0F}));
     CHECK(box.vertices[0].tangent == std::array<float, 4>{1.0F, 0.0F, 0.0F, 1.0F});
@@ -213,7 +213,7 @@ TEST_CASE("primitive meshes have Godot's corners, normals, texture coordinates a
     CHECK(scene3d::make_mesh(world::TorusGeometry{}).value().vertices.size() == 65 * 33);
 }
 
-TEST_CASE("Transform3D trees place, hide and order entities as Godot's Node3D") {
+TEST_CASE("Transform3D trees place, hide and order entities") {
     Scene scene;
     const entt::entity child =
         scene.create("child", R"({"Transform3D": {"position": [0, 0, -1]}})");
@@ -286,7 +286,7 @@ TEST_CASE("the current camera, its view and the Environment3D") {
     scene3d::Environment env = scene3d::environment(scene.world, clear);
     CHECK(env.background.g == doctest::Approx(0.2));
     CHECK(env.ambient == std::array<float, 3>{0.0F, 0.0F, 0.0F});
-    // A color background lights what it surrounds, as Godot's ambient source "background".
+    // A color background lights what it surrounds, as the ambient source "background".
     scene.create("env", R"({"Environment3D": {"background_mode": "color",
         "background_color": [0, 0, 1, 1], "background_energy_multiplier": 0.5}})");
     env = scene3d::environment(scene.world, clear);
@@ -485,7 +485,7 @@ TEST_CASE("meshes that can't draw are reported, in the world and in scene files"
     CHECK(errors[0].path == "/entities/cube/components/Model3D");
 }
 
-TEST_CASE("a soft body's mesh draws where its points are, as Godot's SoftBody3D") {
+TEST_CASE("a soft body's mesh draws where its points are") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
     scene.create("env", R"({"Environment3D": {"background_mode": "color",
@@ -656,7 +656,7 @@ TEST_CASE("the Environment3D's tonemap, glow and adjustments post-process the 3D
 TEST_CASE("the Environment3D's sky and fog, and the suns its sky shows") {
     Scene scene;
     const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
-    // A sky background with no sky material is Godot's default procedural sky. Ambient light from
+    // A sky background with no sky material is the default procedural sky. Ambient light from
     // it is ambient_light_color, mixed with the sky's light.
     const entt::entity env = scene.create("env", R"({"Environment3D": {
         "background_mode": "sky", "background_energy_multiplier": 2, "sky_custom_fov": 50,
@@ -717,7 +717,7 @@ TEST_CASE("the Environment3D's sky and fog, and the suns its sky shows") {
     CHECK(read.sky_texture_field == "/components/SkyPanorama/panorama");
 
     // Fog, as its fields say. Over a color background it is a sky of that color, which the
-    // background's energy multiplies twice, as Godot's.
+    // background's energy multiplies twice.
     auto& settings = scene.world.ecs().get<world::Environment3D>(env);
     CHECK_FALSE(read.fog.enabled);
     settings.fog_enabled = true;
@@ -775,7 +775,7 @@ TEST_CASE("the Environment3D's sky and fog, and the suns its sky shows") {
     CHECK(lit[0].direction == std::array<float, 3>{0.0F, 0.0F, -1.0F});
 }
 
-TEST_CASE("camera attributes expose the 3D world, as Godot's CameraAttributesPractical") {
+TEST_CASE("camera attributes expose the 3D world") {
     Scene scene;
     const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
     const entt::entity camera = scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");
@@ -870,7 +870,7 @@ TEST_CASE("camera attributes expose the 3D world, as Godot's CameraAttributesPra
     CHECK(frame->scene.post.auto_exposure_version != environment);
 }
 
-TEST_CASE("camera attributes blur near and far, as Godot's depth of field") {
+TEST_CASE("camera attributes blur near and far") {
     Scene scene;
     const entt::entity camera = scene.create("camera", R"({"Transform3D": {}, "Camera3D": {},
         "CameraLens": {"dof_blur_far_enabled": true, "dof_blur_far_distance": 6,
@@ -935,7 +935,7 @@ TEST_CASE("a captured frame blurs what is past dof_blur_far_distance") {
     const std::array<int, 64> blurred = row();
     CHECK(blurred.at(edge - 1) < 255);
     CHECK(blurred.at(edge + 2) > 0);
-    // From 5 meters it blurs only the background: the cube stays sharp, and as in Godot the
+    // From 5 meters it blurs only the background: the cube stays sharp, and the
     // background beside it takes a trace of its light.
     scene.world.ecs().get<world::CameraLens>(env).dof_blur_far_distance = 5.0F;
     const std::array<int, 64> behind = row();
@@ -1126,7 +1126,7 @@ TEST_CASE("ReflectionProbes reach the frame largest first, with cubes in one atl
     REQUIRE(reflections.probes.size() == 2);
     const render::ReflectionProbe3D& large = reflections.probes.at(0);
     const render::ReflectionProbe3D& small = reflections.probes.at(1);
-    // The size is the probe's own: its node's scale is left out, as Godot's.
+    // The size is the probe's own: its node's scale is left out.
     CHECK(large.size == std::array{10.0F, 4.0F, 10.0F});
     CHECK(large.origin_offset == std::array{0.0F, 1.0F, 0.0F});
     CHECK(large.blend_distance == 2.0F);
@@ -1156,7 +1156,7 @@ TEST_CASE("ReflectionProbes reach the frame largest first, with cubes in one atl
     CHECK(frame->scene.reflections.probes.size() == 3);
 }
 
-TEST_CASE("Decals reach the frame in Forward+, their textures by path") {
+TEST_CASE("Decals reach the frame in the clustered renderer, their textures by path") {
     Scene scene;
     std::map<std::string, std::shared_ptr<const render::Image>, std::less<>> images;
     images["red.png"] = std::make_shared<const render::Image>(
@@ -1211,7 +1211,7 @@ TEST_CASE("Decals reach the frame in Forward+, their textures by path") {
     CHECK(decal.emission_energy == 2.0F);
     CHECK(decal.modulate == std::array{1.0F, 0.5F, 0.5F, 1.0F});
     CHECK(decal.albedo_mix == 0.5F);
-    // Fades are kept in Godot's ranges.
+    // Fades are kept in their ranges.
     CHECK(decal.normal_fade == 1.0F);
     CHECK(decal.upper_fade == 0.0F);
     CHECK(decal.lower_fade == 0.5F);
@@ -1220,7 +1220,7 @@ TEST_CASE("Decals reach the frame in Forward+, their textures by path") {
     CHECK(decal.distance_fade_length == 5.0F);
     CHECK(decal.cull_mask == 3U);
     CHECK(decal.sorting_offset == 1.5F);
-    // Compatibility draws no decals, as Godot's.
+    // Compatibility draws no decals.
     frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {}, {},
                              render::RenderMethod::Compatibility);
     CHECK(frame->scene.decals.decals.empty());
@@ -1273,7 +1273,8 @@ TEST_CASE("decals whose textures overflow the atlas are reported, and those befo
     }
 }
 
-TEST_CASE("FogVolumes reach the frame's volumetric fog in Forward+, with their FogMaterials") {
+TEST_CASE("FogVolumes reach the frame's volumetric fog in the clustered renderer, with their "
+          "FogMaterials") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {}, "Camera3D": {"cull_mask": 3}})");
     scene.create("env", R"({"Environment3D": {"volumetric_fog_enabled": true}})");
@@ -1297,8 +1298,8 @@ TEST_CASE("FogVolumes reach the frame's volumetric fog in Forward+, with their F
     CHECK(volumes[0].shape == render::FogVolumeShape::Box);
     CHECK(volumes[0].transform.at(12) == 1.0F);
     CHECK(volumes[0].transform.at(14) == -5.0F);
-    // Sizes and the material's falloff and fade are kept at 0 or more, as Godot's setters keep
-    // them; with no FogVolumeLook, Godot's default one fills the volume.
+    // Sizes and the material's falloff and fade are kept at 0 or more; with no FogVolumeLook,
+    // the default one fills the volume.
     CHECK(volumes[0].size == std::array{4.0F, 0.0F, 2.0F});
     CHECK_FALSE(volumes[0].material);
     CHECK(volumes[1].shape == render::FogVolumeShape::Ellipsoid);
@@ -1308,7 +1309,7 @@ TEST_CASE("FogVolumes reach the frame's volumetric fog in Forward+, with their F
     CHECK(volumes[1].emission == std::array{0.0F, 1.0F, 0.0F});
     CHECK(volumes[1].height_falloff == 0.0F);
     CHECK(volumes[1].edge_fade == 0.5F);
-    // Compatibility draws no volumetric fog, as Godot's.
+    // Compatibility draws no volumetric fog.
     frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {}, {},
                              render::RenderMethod::Compatibility);
     CHECK(frame->scene.volumetric_fog.volumes.empty());
@@ -1407,7 +1408,7 @@ TEST_CASE("a captured frame adapts to the 3D world's brightness over game time")
 TEST_CASE("the sky lights and is reflected in meshes by the Environment3D's sources") {
     Scene scene;
     const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
-    // A sky background lights and is reflected, as Godot's "background" sources.
+    // A sky background lights and is reflected, as the "background" sources.
     const entt::entity env =
         scene.create("env", R"({"Environment3D": {"background_mode": "sky"}})");
     scene3d::Environment read = scene3d::environment(scene.world, clear);
@@ -1452,7 +1453,7 @@ TEST_CASE("the sky lights and is reflected in meshes by the Environment3D's sour
     CHECK(read.sky.kind == render::SkyKind::Color);
     CHECK(read.radiance.reflections);
 
-    // A size that isn't one of Godot's is reported, and drawn at 256.
+    // A size that isn't one of the sizes is reported, and drawn at 256.
     settings.sky_radiance_size = 100;
     read = scene3d::environment(scene.world, clear);
     REQUIRE(read.problems.size() == 1);

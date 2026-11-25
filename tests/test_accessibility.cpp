@@ -14,10 +14,8 @@
 #include <string_view>
 #include <utility>
 
-// The accessibility tree, as Godot 4.5's controls fill DisplayServer's in
-// NOTIFICATION_ACCESSIBILITY_UPDATE (scene/main/node.cpp, canvas_item.cpp, scene/gui/control.cpp,
-// base_button.cpp, button.cpp, check_box.cpp, label.cpp, line_edit.cpp, range.cpp, slider.cpp,
-// scroll_container.cpp, option_button.cpp and popup_menu.cpp), and the actions they take.
+// The accessibility tree the controls fill in on an accessibility update, and the actions they
+// take.
 
 namespace command = slash::command;
 namespace json = slash::json;
@@ -301,7 +299,7 @@ TEST_CASE("ui.accessibility_action scrolls a ScrollBox by pages and into view") 
     s.ok("ui.accessibility_action",
          R"({"id": "scroll", "action": "set_scroll_offset", "value": [0, 0]})");
     CHECK(scrolled() == 0);
-    // scroll_into_view scrolls only a ScrollBox that is the control's parent, as Godot's:
+    // scroll_into_view scrolls only a ScrollBox that is the control's parent:
     // "b" is the list's child, so nothing moves.
     s.ok("ui.accessibility_action", R"({"id": "b", "action": "scroll_into_view"})");
     CHECK(scrolled() == 0);

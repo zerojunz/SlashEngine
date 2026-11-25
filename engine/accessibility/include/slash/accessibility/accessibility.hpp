@@ -17,10 +17,10 @@
 struct SDL_Window;
 union SDL_Event;
 
-// The platform side of accessibility, as Godot's AccessibilityDriverAccessKit: AccessKit's
-// adapters hand the controls' accessibility tree (ui::accessibility_tree) to UI Automation on
-// Windows, the macOS accessibility API and AT-SPI on Linux, so Narrator, NVDA, VoiceOver and
-// Orca read a game's controls, and what they ask of them goes to ui::accessibility_action.
+// The platform side of accessibility: AccessKit's adapters hand the controls' accessibility tree
+// (ui::accessibility_tree) to UI Automation on Windows, the macOS accessibility API and AT-SPI on
+// Linux, so Narrator, NVDA, VoiceOver and Orca read a game's controls, and what they ask of them
+// goes to ui::accessibility_action.
 //
 //   // Before the window is first shown, as Windows needs:
 //   auto backend = accessibility::Backend::attach(window, "My Game");
@@ -108,8 +108,8 @@ struct Request {
 // turn scroll offsets back into the viewport's units.
 Result<void> perform(world::World& world, const Request& request, double scale = 1.0);
 
-// AccessKit's adapter on a game's window, as Godot's driver makes one per window: the
-// subclassing adapter on Windows' HWND and macOS's NSWindow, and the AT-SPI adapter on Linux.
+// AccessKit's adapter on a game's window, one per window: the subclassing adapter on Windows' HWND
+// and macOS's NSWindow, and the AT-SPI adapter on Linux.
 class Backend {
 public:
     // The adapter for a window, which on Windows must not have been shown yet. Null where this

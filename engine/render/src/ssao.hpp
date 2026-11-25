@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "post_shading.hpp"
@@ -10,21 +11,21 @@
 #include <string_view>
 #include <vector>
 
-// What every device shares to work out a Forward+ frame's screen-space ambient occlusion, as
-// Godot 4.6's SSEffects does with Intel's ASSAO: the passes of shaders/ssao.hlsl, the textures
-// they draw, their uniforms, and their CPU twins, which the software device uses. A prepass draws
-// the opaque meshes' depth and view-space normals; the depth is made linear and split into four
-// slices of every other pixel (deinterleaved), each at up to four levels; each slice's occlusion is
-// gathered from its depths, blurred along edges and put back together at the frame's size, which
-// the meshes' color pass reads.
+// What every device shares to work out a clustered frame's screen-space ambient occlusion with
+// Intel's ASSAO: the passes of shaders/ssao.hlsl, the textures they draw, their uniforms, and their
+// CPU twins, which the software device uses. A prepass draws the opaque meshes' depth and
+// view-space normals; the depth is made linear and split into four slices of every other pixel
+// (deinterleaved), each at up to four levels; each slice's occlusion is gathered from its depths,
+// blurred along edges and put back together at the frame's size, which the meshes' color pass
+// reads.
 //
-// Godot's compute shaders sample with its hardware samplers; these passes load texels and filter
-// them in code, so every device draws the same values: a nearest sample's texel and a gather's
-// footprint are worked out in integers (as Godot's would be for a frame of even width and
-// height), and bilinear samples are weighed in floats.
+// These passes load texels and filter them in code instead of with hardware samplers, so every
+// device draws the same values: a nearest sample's texel and a gather's footprint are worked out in
+// integers (as a sampler's would be for a frame of even width and height), and bilinear samples are
+// weighed in floats.
 namespace slash::render::detail {
 
-// Whether a scene's frame draws SSAO: in Forward+ only, as Godot's.
+// Whether a scene's frame draws SSAO: in the clustered renderer only.
 [[nodiscard]] inline bool uses_ssao(const Scene3D& scene) {
     return scene.method == RenderMethod::ForwardPlus && scene.ssao.enabled;
 }
@@ -96,7 +97,7 @@ struct SsaoStep {
 };
 
 // A frame's SSAO: the size of each texture it draws (0 x 0 for those it doesn't), the levels of
-// depth it makes, and its passes in order, as Godot's downsample_depth and generate_ssao.
+// depth it makes, and its passes in order.
 struct SsaoPlan {
     std::array<PostSize, kSsaoTextures> sizes{};
     std::uint32_t levels = 1;
@@ -105,10 +106,10 @@ struct SsaoPlan {
 [[nodiscard]] SsaoPlan ssao_plan(const SsaoSettings& settings, std::uint32_t width,
                                  std::uint32_t height);
 
-// The passes' uniforms: b0 in space3. Godot's push constants for each of its shaders, gathered.
+// The passes' uniforms: b0 in space3. The push constants for each of the shaders, gathered.
 struct SsaoUniforms {
-    // The pass, Godot's shader quality (one less than the setting, at least 0), the slice and the
-    // depth level.
+    // The pass, the shader quality (one less than the setting, at least 0), the slice and the depth
+    // level.
     std::array<std::uint32_t, 4> options{};
     // The frame's width and height, and the depth's at level 0.
     std::array<std::uint32_t, 4> frame{};

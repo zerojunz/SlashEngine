@@ -1,7 +1,7 @@
 // FSR 2's sharpening pass (ffx_fsr2_rcas.h): the accumulate pass's color sharpened with FSR 1's
-// robust contrast-adaptive sharpening, denoised, as FSR 2's copy of ffx_fsr1.h has it; or copied
-// as it is where Godot turns sharpening off (a sharpness of 0), as the accumulate pass writes the
-// output itself then. Keep it in step with src/fsr2.cpp, its CPU twin.
+// robust contrast-adaptive sharpening, denoised, as FSR 2's copy of ffx_fsr1.h has it; or copied as
+// it is where sharpening is off (a sharpness of 0), as the accumulate pass writes the output itself
+// then. Keep it in step with src/fsr2.cpp, its CPU twin.
 //
 // Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 //

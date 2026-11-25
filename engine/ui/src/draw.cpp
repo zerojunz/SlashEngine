@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
@@ -109,9 +110,9 @@ private:
     std::size_t canvas_ = 0;
 };
 
-// ---- Flat style boxes, as Godot's StyleBoxFlat::draw (scene/resources/style_box_flat.cpp) ----
+// ---- Flat style boxes ----
 
-// A rect as Godot's Rect2: a position and a size.
+// A rect: a position and a size.
 struct Area {
     float x = 0.0F;
     float y = 0.0F;
@@ -293,7 +294,7 @@ void rounded_rectangle(Mesh& mesh, Area style, const Four& corner_radius, Area r
     }
 }
 
-// Godot's adapt_values: shrinks a pair of opposite borders or corners to fit a width.
+// Shrinks a pair of opposite borders or corners to fit a width.
 void adapt_values(std::size_t a, std::size_t b, Four& adapted, const Four& values, float width,
                   float max_a, float max_b) {
     const float sum = values[a] + values[b];
@@ -452,7 +453,7 @@ void draw_flat(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) 
                        std::ranges::all_of(style.corner_radius, [](int r) { return r <= 0; }) &&
                        style.skew == Vec2{};
     if (plain) {
-        // Godot's triangles for a rect with no corners, border, shadow or skew cover just the
+        // The triangles for a rect with no corners, border, shadow or skew cover just the
         // rect, so it is one quad.
         const Rect bounds{rect.x - style.expand_margin[kLeft], rect.y - style.expand_margin[kTop],
                           rect.x + rect.w + style.expand_margin[kRight],
@@ -478,8 +479,8 @@ void draw_flat(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) 
     drawer.triangles({}, vertices);
 }
 
-// StyleBoxLine::draw: a rect of its thickness along the top of the rect, or down its left side,
-// grown at both ends, in whole pixels as Godot's Rect2i keeps it.
+// A line style box: a rect of its thickness along the top of the rect, or down its left side,
+// grown at both ends, in whole pixels.
 void draw_line(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) {
     const StyleBox& style = box.style;
     float x = std::trunc(box.position.x);
@@ -502,8 +503,7 @@ void draw_line(Drawer& drawer, const Box& box, const Placed& placed, Vec4 tint) 
     }
 }
 
-// ---- Texture style boxes, as Godot's nine-patch drawing (map_ninepatch_axis in the canvas
-// shaders) ----
+// ---- Texture style boxes: nine-patch drawing ----
 
 // A stretch of a nine-patch along one axis: where it draws and the texture pixels it shows,
 // from the region's start.
@@ -693,7 +693,7 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
             const auto before = std::ranges::lower_bound(spaces, glyph.x) - spaces.begin();
             Vec2 at{pen.x + glyph.x + (stretch * static_cast<float>(before)), pen.y + glyph.y};
             if (snap && !info.msdf) {
-                // Glyph images are made for whole pixels, so they draw on them, as Godot's do.
+                // Glyph images are made for whole pixels, so they draw on them.
                 const Vec2 screen = placed.transform.apply(at);
                 at = at + Vec2{std::floor(screen.x + 0.5F) - screen.x,
                                std::floor(screen.y + 0.5F) - screen.y};
@@ -715,7 +715,7 @@ void draw_label_pass(Drawer& drawer, DrawList& list, text::Fonts& fonts, const L
             source.source = DrawCall::Source::Atlas;
             source.page = image->page;
             if (info.msdf) {
-                // Godot's outline sizes are four times the pixels they widen by.
+                // The outline sizes are four times the pixels they widen by.
                 source.field = {.pixel_range = static_cast<float>(info.msdf_pixel_range),
                                 .outline = static_cast<float>(outline) / 4.0F / image->scale};
             }
@@ -988,7 +988,7 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
             }
             finish(placed, calls_before, vertices_before, false);
         }
-        // Then what the controls this one ends draw over their children, as Godot draws a
+        // Then what the controls this one ends draw over their children, like a
         // ScrollBox's scroll bars, which are its last children.
         const auto after = over.find(index);
         if (after == over.end()) {
@@ -1041,8 +1041,8 @@ DrawList draw_calls(const Layout& layout, const world::World& world, text::Fonts
         draw_label(*layout.drag->text, placed);
         finish(placed, calls_before, vertices_before, false);
     }
-    // The popup menus open, over every control, as Godot draws embedded windows over the
-    // viewport's canvas: the panel, then the items cut to the list's room, then the scroll bar.
+    // The popup menus open, drawn over every control: the panel, then the items cut to the list's
+    // room, then the scroll bar.
     for (const PopupView& popup : layout.popups) {
         if (!world.valid(popup.owner)) {
             continue;

@@ -7,7 +7,7 @@
 #include <string_view>
 #include <utility>
 
-// What a TLS connection trusts and shows, as Godot's TLSOptions: for wss:// WebSockets.
+// What a TLS connection trusts and shows: for wss:// WebSockets.
 namespace slash::net {
 
 struct TlsOptions {
@@ -51,8 +51,8 @@ struct SelfSignedCertificate {
     std::string private_key;
     std::string certificate;
 };
-// Makes one, as Godot's Crypto.generate_self_signed_certificate, with an elliptic curve key
-// (P-256) where Godot's is RSA: for tests and servers on a local network, whose clients pass its
+// Makes one, with an elliptic curve key
+// (P-256): for tests and servers on a local network, whose clients pass its
 // certificate as their trusted chain. Dates are "YYYYMMDDhhmmss"; a client checks the name
 // against the CN (common name). Fails where this build has no TLS (the web).
 Result<SelfSignedCertificate>

@@ -1,6 +1,6 @@
 # What drawing into an OpenXR headset (engine/xr/src/openxr_graphics.cpp) needs of SDL3: the
-# runtime picks the GPU and, on Vulkan, makes the instance and the device, as Godot's
-# OpenXRVulkanExtension does through its VulkanHooks and its OpenXRD3D12Extension through the
+# runtime picks the GPU and, on Vulkan, makes the instance and the device, through hooks, and on
+# Direct3D 12 through the
 # adapter's LUID. SDL 3.6 makes the OpenXR instance itself (SDL_openxr.h); until SlashEngine moves
 # to it, these hooks keep the instance the engine's.
 #

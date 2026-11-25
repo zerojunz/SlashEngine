@@ -51,7 +51,7 @@ int byte(float value) {
 }
 
 // The sky's color where it looks along eye, worked out on the CPU at the target's top left, in
-// sRGB as Compatibility draws it (Forward+ leaves it linear for its post pass).
+// sRGB as Compatibility draws it (the clustered renderer leaves it linear for its post pass).
 Float3 sky_color(Scene3D scene, const Float3& eye) {
     scene.method = render::RenderMethod::Compatibility;
     const detail::SkyUniforms uniforms = detail::sky_uniforms(scene, 8, 8);
@@ -66,7 +66,7 @@ bool draws_as_compatibility(const RenderDevice& device) {
            device.backend() == render::Backend::OpenGlEs;
 }
 
-// An sRGB color after the sky's trip to linear and back, which Godot's approximations of the two
+// An sRGB color after the sky's trip to linear and back, which the approximations of the two
 // don't quite undo.
 Float3 round_trip(const Float3& color) {
     return detail::linear_to_srgb(detail::srgb_to_linear(color));
@@ -152,7 +152,7 @@ TEST_CASE("a procedural sky runs from its top through the horizon to the ground,
     check_color(sky_color(scene, {0.0F, 0.0F, -1.0F}), sky.sky_horizon_color);
 
     // The energy multiplies everything, and the background's energy too, before the sky's colors
-    // go linear, as Godot's Compatibility renderer multiplies them.
+    // go linear, as the compatibility renderer multiplies them.
     scene.sky.lights.clear();
     scene.sky.procedural.energy_multiplier = 0.5F;
     scene.sky.energy = 0.5F;
@@ -175,7 +175,7 @@ TEST_CASE("a physical sky scatters its sun's light") {
         {.direction = {0.0F, -up, across}, .energy = 1.0F, .angular_distance = 1.0F}};
     const Float3 zenith = sky_color(scene, {0.0F, 1.0F, 0.0F});
     CHECK(zenith[2] > zenith[0]);
-    // Its disk, lit by 0.757 times the sine of its height (Godot's sun energy), is many times
+    // Its disk, lit by 0.757 times the sine of its height (the sun energy), is many times
     // brighter than the sky round it, and warmer, its blue scattered away.
     const Float3 sun = sky_color(scene, {0.0F, up, -across});
     CHECK(sun[0] > 0.45F);
@@ -234,14 +234,14 @@ TEST_CASE("every device wraps a panorama all round") {
         // Turning the sky half round swaps them.
         west.sky.orientation = {-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1};
         CHECK(pixel(draw(*device, west), 8, 8) == std::array<int, 4>{255, 0, 0, 255});
-        // A panorama sky with no texture is black, as Godot's.
+        // A panorama sky with no texture is black.
         west.sky.panorama.panorama = render::TextureId::None;
         CHECK(pixel(draw(*device, west), 8, 8) == std::array<int, 4>{0, 0, 0, 255});
         device->destroy_texture(panorama.value());
     }
 }
 
-TEST_CASE("every device fogs meshes as Godot's Compatibility renderer does") {
+TEST_CASE("every device fogs meshes as the compatibility renderer does") {
     const render::Material3D white{.albedo = {1, 1, 1, 1}, .unshaded = true};
     const auto expect = [](float amount, float fog = 0.0F) {
         return byte(detail::linear_to_srgb({(1.0F - amount) + (fog * amount), 0.0F, 0.0F})[0]);
@@ -349,7 +349,7 @@ TEST_CASE("GPUs draw skies and fog as the software device does") {
     }
 }
 
-TEST_CASE("a radiance cube has Godot's levels and every API's faces") {
+TEST_CASE("a radiance cube has its levels and every API's faces") {
     // Down to faces 4 texels across.
     CHECK(detail::radiance_levels(32) == 4);
     CHECK(detail::radiance_levels(256) == 7);
@@ -391,7 +391,7 @@ TEST_CASE("a radiance is the sky drawn into a cube, blurred more each level") {
 }
 
 TEST_CASE("the sky's ggx_samples set how many samples each radiance level blurs with") {
-    // Godot's 32: 8, 16 and 32 samples for the first levels, four times as many for the roughest.
+    // 32: 8, 16 and 32 samples for the first levels, four times as many for the roughest.
     const auto samples = [](std::uint32_t level, std::uint32_t ggx) {
         return detail::radiance_uniforms(256, 7, level, ggx).params[3];
     };
@@ -464,7 +464,7 @@ TEST_CASE("every device reflects the sky's radiance in smooth metal") {
         REQUIRE(panorama.ok());
         // The mirror faces the camera, so it reflects what is behind it, toward +Z: the sky turned
         // so that +Z is its east, red, then its west, blue. Its ambient light is the sky's too,
-        // since Godot occludes reflections where there is no ambient light.
+        // since reflections are occluded where there is no ambient light.
         Scene3D scene = facing();
         scene.sky.panorama.panorama = panorama.value();
         scene.sky.orientation = {0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1};

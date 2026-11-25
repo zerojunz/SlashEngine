@@ -1,12 +1,13 @@
-// What the passes of AMD's FidelityFX Super Resolution 3.1's upscaler share (FidelityFX SDK
-// 1.1.4, gpu/fsr3upscaler): the uniforms, ffx_fsr3upscaler_common.h's helpers and
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// What the passes of AMD's FidelityFX Super Resolution 3.1's upscaler share (FidelityFX SDK 1.1.4,
+// gpu/fsr3upscaler): the uniforms, ffx_fsr3upscaler_common.h's helpers and
 // ffx_fsr3upscaler_sample.h's filters. AMD's passes are compute shaders; here each draws one
 // triangle over its target (the reconstruct pass alone is a compute shader, for its atomics), loads
 // texels and filters them in code, keeping every load inside its texture, so every device draws the
-// same values. The settings are those Godot gives FSR 2: HDR input, reversed depth, motion vectors
-// at the render size with the sky's worked out from the depth, no reactive or transparency and
-// composition mask, no auto exposure, a pre-exposure of 1 and a meter a unit. Keep these files in
-// step with src/fsr3.cpp, their CPU twin.
+// same values. The settings are: HDR input, reversed depth, motion vectors at the render size with
+// the sky's worked out from the depth, no reactive or transparency and composition mask, no auto
+// exposure, a pre-exposure of 1 and a meter a unit. Keep these files in step with src/fsr3.cpp,
+// their CPU twin.
 //
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
@@ -40,7 +41,7 @@ cbuffer Fsr3 : FSR3_UNIFORMS {
     // scatters), and 1 for an orthogonal camera, whose depth FSR 3's perspective formulas take as
     // linear here.
     int4 options;
-    // Godot's reprojection matrix by columns: clip space now to the frame before's.
+    // The reprojection matrix by columns: clip space now to the frame before's.
     float4 reprojection[4];
     float4 previous; // the frame before's jitter in render pixels, then nothing
 };
@@ -102,8 +103,7 @@ float MinDisocclusionAccumulation() {
     return -1.0 / 3.0;
 }
 
-// Godot's derive_motion_vector (motion_vector_inc.glsl): a render pixel's motion vector from its
-// depth, for one the prepass drew none for, as Godot does for FSR 2.
+// A render pixel's motion vector from its depth, for one the prepass drew none for.
 float2 DeriveMotionVector(float2 fUv, float fDepth) {
     float x = fUv.x * 2.0 - 1.0;
     float y = 1.0 - fUv.y * 2.0;

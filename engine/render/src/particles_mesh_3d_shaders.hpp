@@ -2324,13 +2324,13 @@ R"wgsl(      let v_167 = bitcast<f32>(data_1.m[(v.counts.z + (v_19 / 4u))][(v_19
 }
 )wgsl"};
 
-inline constexpr char kParticlesMesh3DHlsl[] = R"hlsl(// Places a draw pass's mesh at each particle of a 3D system, into the vertex buffer of the mesh
+inline constexpr char kParticlesMesh3DHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Places a draw pass's mesh at each particle of a 3D system, into the vertex buffer of the mesh
 // that draws them: a thread a vertex written, each as slash::render::Vertex3D lays it out (60
-// bytes), as Godot's particles copy shader and BaseMaterial3D's billboard and particle animation
-// code do. Its CPU twin is particle_mesh_vertices_3d in src/particles3d.cpp, which this follows
-// line for line; a change to one goes in the other. The source vertices are words in data, as
-// src/particle_layout_3d.cpp's pack_particle_vertices_3d lays them out, and keys are
-// particles_sort_3d.hlsl's for a pass drawn by view depth.
+// bytes), with the billboard and particle animation. Its CPU twin is particle_mesh_vertices_3d in
+// src/particles3d.cpp, which this follows line for line; a change to one goes in the other. The
+// source vertices are words in data, as src/particle_layout_3d.cpp's pack_particle_vertices_3d lays
+// them out, and keys are particles_sort_3d.hlsl's for a pass drawn by view depth.
 
 // What the 3D particle shaders share: the particle, as slash::render::Particle3D lays it out,
 // particles.hlsl's flags and bindings, and the vector and transform helpers of
@@ -2339,8 +2339,8 @@ inline constexpr char kParticlesMesh3DHlsl[] = R"hlsl(// Places a draw pass's me
 // What particles_process.hlsl and particles_draw.hlsl share: the particle, as
 // slash::render::Particle lays it out, and where SDL binds each kind of resource.
 
-// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity
-// its origin [x, y] and velocity [z, w]; custom Godot's CUSTOM and userdata its USERDATA1.
+// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity its
+// origin [x, y] and velocity [z, w]; custom the custom data and userdata its USERDATA1.
 struct Particle {
     float4 basis;
     float4 origin_velocity;
@@ -2369,7 +2369,7 @@ static const uint kParticleCycleShift = 16u;
 #endif
 
 // One particle (128 bytes): its transform's axes, each scaled, and its origin, their w 0; the
-// velocity its forces built up and its flags; its color; Godot's CUSTOM (angle, age, frame,
+// velocity its forces built up and its flags; its color; the custom data (angle, age, frame,
 // lifetime) and spare words.
 struct Particle3D {
     float4 x;
@@ -2540,7 +2540,7 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
     store(address + 52u, source_word(from + 13u));
     store(address + 56u, source_word(from + 14u));
     if ((particle.flags & kParticleActive) == 0u) {
-        // Folded onto one point, as Godot's zero scale.
+        // Folded onto one point, as a zero scale does.
         store_float3(address, float3(0.0, 0.0, 0.0));
         for (uint w = 3u; w < 13u; ++w) {
             store(address + (w * 4u), source_word(from + w));
@@ -2614,15 +2614,14 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
             placed.z = placed.z * length_of(model.z);
         }
     }
-    // Normals turn with the basis, as Godot's MODELVIEW_NORMAL_MATRIX: as it is for a billboard,
-    // by its inverse's transpose otherwise.
+    // Normals turn with the basis: as it is for a billboard, by its inverse's transpose otherwise.
     Affine turned = inverse(placed);
     float3 n = source_float3(from + 3u);
     float3 normal = billboard != kBillboardDisabled
                         ? unit(basis(placed, n))
                         : unit(float3(dot(turned.x, n), dot(turned.y, n), dot(turned.z, n)));
     float4 tint = clamp(particle.color, 0.0, 1.0);
-    // The frame a Particles billboard shows, as Godot's particle animation.
+    // The frame a Particles billboard shows.
     float h = frames.x;
     float vf = frames.y;
     float frame = 0.0;

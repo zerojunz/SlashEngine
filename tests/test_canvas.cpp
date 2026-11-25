@@ -184,7 +184,7 @@ TEST_CASE("sprite frames files are checked, and frame numbers need a sheet") {
     CHECK(idle.frames[0].frame == 3);
     CHECK(idle.frames[1].texture == "idle.png");
     CHECK(idle.frames[1].hframes == 1);
-    CHECK(idle.fps == doctest::Approx(5.0)); // Godot's default
+    CHECK(idle.fps == doctest::Approx(5.0)); // the default
     CHECK_FALSE(idle.loop);
 }
 
@@ -261,7 +261,7 @@ TEST_CASE("an Flipbook2D that can't play leaves its sprite alone") {
     CHECK(scene.sprite(missing).texture == "b.png");
 }
 
-TEST_CASE("sprite_quad places a sprite's frame like Godot's Sprite2D") {
+TEST_CASE("sprite_quad places a sprite's frame") {
     world::Sprite2D sprite;
     world::Transform2D at;
     at.position = {100.0F, 50.0F};
@@ -541,7 +541,7 @@ Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
 
 } // namespace
 
-TEST_CASE("sprites draw where Godot would put them, in z order, on the software device and a GPU") {
+TEST_CASE("sprites draw where the world puts them, in z order, on the software device and a GPU") {
     for (const auto& device : drawing_devices()) {
         CAPTURE(slash::render::backend_name(device->backend()));
         Scene scene;
@@ -1309,7 +1309,7 @@ TEST_CASE("triangulate fills simple polygons wound either way, and nothing witho
     CHECK(canvas::triangulate(std::vector<slash::Vec2>{{0, 0}, {5, 5}}).empty());
 }
 
-TEST_CASE("collision_shapes draws each shape as Godot's Visible Collision Shapes") {
+TEST_CASE("collision_shapes draws each shape the way the debug view does") {
     Scene scene;
     const auto byte = [](float channel) {
         return static_cast<std::uint8_t>(std::lround(std::clamp(channel, 0.0F, 1.0F) * 255.0F));

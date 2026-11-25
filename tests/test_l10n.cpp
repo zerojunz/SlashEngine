@@ -22,10 +22,8 @@
 #include <utility>
 #include <vector>
 
-// Localization, as Godot's TranslationServer, Translation, TranslationLoaderPO and
-// ResourceImporterCSVTranslation (core/string/translation*.cpp, core/string/plural_rules.cpp,
-// editor/import/resource_importer_csv_translation.cpp) and the controls' auto translation
-// (scene/main/node.cpp's can_auto_translate, scene/gui/control.cpp's is_layout_rtl).
+// Localization: the translation server, translations, PO and CSV files, plural rules, and the
+// controls' auto translation and layout direction.
 
 namespace command = slash::command;
 namespace json = slash::json;
@@ -154,7 +152,7 @@ constexpr std::string_view kMenuCsv = "keys,fr,ar\n"
 
 } // namespace
 
-TEST_CASE("locales are standardized and compared as Godot's TranslationServer") {
+TEST_CASE("locales are standardized and compared") {
     CHECK(l10n::standardize_locale("en-US") == "en_US");
     CHECK(l10n::standardize_locale("en-us") == "en"); // a country is upper case
     CHECK(l10n::standardize_locale("pt_BR") == "pt_BR");
@@ -189,7 +187,7 @@ TEST_CASE("locales are standardized and compared as Godot's TranslationServer") 
     CHECK_FALSE(l10n::is_locale_right_to_left("ja"));
 }
 
-TEST_CASE("plural rules pick forms as gettext's and Godot's PluralRules") {
+TEST_CASE("plural rules pick forms as gettext's do") {
     auto polish = l10n::PluralRules::parse(l10n::plural_rules_for("pl"));
     REQUIRE_MESSAGE(polish.ok(), polish.error().message);
     CHECK(polish.value().nplurals() == 3);
@@ -237,7 +235,7 @@ TEST_CASE("translations find messages by context and pick plural forms") {
     CHECK(*polish.plural_message("%d coin", 3) == "%d monety");
     CHECK(*polish.plural_message("%d coin", 5) == "%d monet");
     CHECK(polish.plural_message("%d coin", -1) == nullptr);
-    // A plural message read as a singular one gives its first form, as Godot's.
+    // A plural message read as a singular one gives its first form.
     CHECK(*polish.message("%d coin") == "%d moneta");
 
     // An override takes the place of the locale's own rule.
@@ -283,12 +281,12 @@ msgstr[2] "%d monet"
     REQUIRE(read.value().translations.size() == 1);
     const l10n::Translation& polish = read.value().translations[0];
     CHECK(polish.locale() == "pl");
-    // The header line, as Godot keeps it; PluralRules reads from its "nplurals=".
+    // The header line is kept; PluralRules reads from its "nplurals=".
     CHECK(polish.plural_rules_override().find("nplurals=3;") != std::string::npos);
     CHECK(*polish.message("Quit") == "Wyjdź");
     CHECK(polish.message("Options") == nullptr); // fuzzy entries are left out
     CHECK(*polish.message("Open", "door") == "Otwórz");
-    // An empty msgstr is kept, and lookups take it as missing, as Godot's.
+    // An empty msgstr is kept, and lookups take it as missing.
     REQUIRE(polish.message("Untranslated") != nullptr);
     CHECK(polish.message("Untranslated")->empty());
     CHECK(*polish.message("Line\nbreak \"quoted\"") == "Wiersz\nłamany \"cytat\"");
@@ -324,7 +322,7 @@ msgstr[2] "%d monet"
     CHECK(by_name.value().translations[0].messages().size() == 3);
 }
 
-TEST_CASE("CSV files read as Godot's CSV translation importer") {
+TEST_CASE("CSV files read as translations") {
     const std::string csv = "keys,?context,fr,_notes,es_MX,?plural\n"
                             "Play,,Jouer,the title button,Jugar,\n"
                             "Open,door,Ouvrir,,Abrir,\n"
@@ -372,7 +370,7 @@ TEST_CASE("CSV files read as Godot's CSV translation importer") {
     CHECK(none.value().problems.size() == 1);
 }
 
-TEST_CASE("placeholders are read as Godot's sprintf and format read them") {
+TEST_CASE("placeholders are read by sprintf and format") {
     const l10n::Placeholders found = l10n::placeholders_of("%d%% of %-5.2f by {name} {0} {} %q");
     CHECK(found.conversions == std::vector<std::string>{"%d", "%f"});
     CHECK(found.names == std::set<std::string>{"{name}", "{0}"});
@@ -383,7 +381,7 @@ TEST_CASE("placeholders are read as Godot's sprintf and format read them") {
     CHECK(l10n::placeholder_problem("Hi {name}", "Salut").empty());
 }
 
-TEST_CASE("pseudolocalization makes text as Godot's") {
+TEST_CASE("pseudolocalization makes text") {
     l10n::Pseudolocalization settings;
     CHECK(l10n::pseudolocalize(settings, "Start") == "[Ŝŧáŕŧ]");
     // Placeholders are kept.
@@ -442,8 +440,8 @@ TEST_CASE("controls show their text translated in the game's locale") {
     CHECK(l10n::locale(world) == "fr_BE");
     CHECK(l10n::tr(world, "Play") == "Jouer");
     CHECK(l10n::tr(world, "Credits") == "Credits");
-    // A disabled parent stops its children translating, unless one says always, as Godot's
-    // can_auto_translate; an option's own mode overrides its button's.
+    // A disabled parent stops its children translating, unless one says always; an option's own
+    // mode overrides its button's.
     CHECK(project.shown(ids) ==
           "play: Jouer; quit: Quit; inner: Play; always: Jouer; level: Facile");
     REQUIRE(project.call("ui.popup", R"({"id": "level"})").ok);
@@ -516,7 +514,7 @@ TEST_CASE("lookups take the best locale, then the fallback, then the source") {
     CHECK(l10n::tr(world, "Car") == "Coche"); // es scores 5, es_AR 4
     l10n::set_locale(world, "es_AR");
     CHECK(l10n::tr(world, "Car") == "Auto");
-    // The best match lacks it, so the next best answers, as Godot's.
+    // The best match lacks it, so the next best answers.
     CHECK(l10n::tr(world, "Bus") == "Autobús");
     CHECK(l10n::tr(world, "Truck") == "Lorry");
     l10n::set_locale(world, "ja");
@@ -542,7 +540,7 @@ TEST_CASE("plural lookups and pseudolocalization in a session") {
     CHECK(l10n::tr_n(world, "%d coin", "%d coins", 14) == "%d monet");
     CHECK(l10n::tr_n(world, "%d cat", "%d cats", 1) == "%d cat");
     CHECK(l10n::tr_n(world, "%d cat", "%d cats", 2) == "%d cats");
-    // tr pseudolocalizes, as Godot's; tr_n doesn't.
+    // tr pseudolocalizes; tr_n doesn't.
     CHECK(l10n::tr(world, "Start") == "[Ŝŧáŕŧ]");
     CHECK(project.shown(R"(["title"])") == "title: [Ŝŧáŕŧ]");
     command::Reply reply = project.call(
@@ -552,7 +550,7 @@ TEST_CASE("plural lookups and pseudolocalization in a session") {
     CHECK(reply.value.find("pseudolocalization")->as_bool());
 }
 
-TEST_CASE("layout direction follows Godot's root and forced settings") {
+TEST_CASE("layout direction follows the root and forced settings") {
     const std::string scene = R"({
         "root": {"components": {"Widget": {"children": ["ltr", "inherits"]}, "StackBox": {}}},
         "ltr": {"components": {"Widget": {"layout_direction": "ltr"}, "Label": {"text": "A"}}},
@@ -644,7 +642,7 @@ TEST_CASE("l10n.set_locale switches the game's language") {
     CHECK(reply.value.find("events")->as_array().size() == 2);
 }
 
-TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
+TEST_CASE("l10n.extract collects messages into a POT file") {
     constexpr std::string_view kPo =
         "msgid \"\"\n"
         "msgstr \"\"\n"
@@ -699,7 +697,7 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
                    });
     CHECK(reply.value.find("messages")->as_int() == 8);
 
-    // The POT file, as Godot writes one.
+    // The POT file.
     reply = project.call("l10n.extract", R"({"pot": "menu.pot"})");
     REQUIRE_MESSAGE(reply.ok, reply.message);
     auto pot = slash::platform::read_file((project.root / "menu.pot").string());

@@ -13,9 +13,9 @@
 #include <unordered_map>
 #include <vector>
 
-// The job system, as Godot's WorkerThreadPool: worker threads that run tasks, and group tasks
-// that run one function over many elements. Worlds run their threaded systems on it
-// (slash/world/world.hpp), and systems split their own work over it with parallel_for.
+// The job system: worker threads that run tasks, and group tasks that run one function over many
+// elements. Worlds run their threaded systems on it (slash/world/world.hpp), and systems split
+// their own work over it with parallel_for.
 namespace slash::jobs {
 
 using TaskId = std::uint64_t;
@@ -27,8 +27,8 @@ inline constexpr int kMaxThreads = 63;
 
 class Pool {
 public:
-    // A pool with this many worker threads, at most kMaxThreads. With none, every task runs on
-    // the thread that adds it, as Godot's pool does where there are no threads (the web).
+    // A pool with this many worker threads, at most kMaxThreads. With none, every task runs on the
+    // thread that adds it (the web has no threads).
     explicit Pool(int threads);
     // Runs the tasks still queued, then stops the threads.
     ~Pool();
@@ -40,8 +40,7 @@ public:
 
     [[nodiscard]] int thread_count() const noexcept { return static_cast<int>(threads_.size()); }
 
-    // Runs a task on a worker thread. Every task is waited for once with
-    // wait_for_task_completion, as in Godot.
+    // Runs a task on a worker thread. Every task is waited for once with wait_for_task_completion.
     TaskId add_task(std::function<void()> task);
     [[nodiscard]] bool is_task_completed(TaskId id) const;
     // Waits for the task to finish; one still queued runs on this thread instead.
@@ -90,15 +89,15 @@ private:
     bool stopping_ = false;
 };
 
-// The worker threads a max_threads setting makes: -1 for one per CPU core, as Godot's
-// threading/worker_pool/max_threads, and none on the web without threads.
+// The worker threads a max_threads setting makes: -1 for one per CPU core, and none on the web
+// without threads.
 [[nodiscard]] int thread_count_for(int max_threads);
 
 // The pool worlds use unless given another: made on first use, with the thread count configure
 // set.
 Pool& shared();
-// Sets the shared pool's max_threads, as project.json's threading.max_threads. It takes effect
-// only before the pool is first used, as Godot's setting takes a restart; returns whether it did.
+// Sets the shared pool's max_threads, as project.json's threading.max_threads. It takes effect only
+// before the pool is first used, as the setting takes a restart; returns whether it did.
 bool configure(int max_threads);
 
 // JSON Schema for the threading object in project.json.

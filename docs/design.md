@@ -6,13 +6,13 @@ Status: current · Updated: 2026-11-22
 
 ## Summary
 
-SlashEngine is a small C++20 game engine whose primary user is an AI agent: every scene is plain text, every engine object is introspectable, and every action an editor could take is a command an agent can call over MCP. It builds with CMake, runs on SDL3 plus a thin renderer, and talks to any LLM through one provider interface. Where a choice is open, the default is to follow Godot's approach, adapted for agents.
+SlashEngine is a small C++20 game engine whose primary user is an AI agent: every scene is plain text, every engine object is introspectable, and every action an editor could take is a command an agent can call over MCP. It builds with CMake, runs on SDL3 plus a thin renderer, and talks to any LLM through one provider interface. Where a choice is open, the default is to follow the approach of the MIT-licensed engine much of SlashEngine is ported from (see `THIRD_PARTY.md`), adapted for agents.
 
 **Goals**
 
 - An agent can create, inspect, edit, run and test a game without a GUI editor.
 - The engine and its tools run on macOS first, with Windows and Linux hosts after launch; games export to macOS, Windows, Linux, iOS, Android and web from day one.
-- Feature coverage close to Godot 4 in both 2D and 3D, with UE5-class features as a longer-term track, while staying lightweight: every feature is a module, so a minimal 2D build stays under 10 MB.
+- Broad feature coverage in both 2D and 3D, with UE5-class features as a longer-term track, while staying lightweight: every feature is a module, so a minimal 2D build stays under 10 MB.
 - Model agnostic: no engine feature depends on a specific AI vendor; local models work as well as hosted ones.
 - No proprietary code: the engine is Apache 2.0 and every dependency is under a permissive open-source license.
 
@@ -43,12 +43,12 @@ A single `cmake --preset dev && cmake --build --preset dev` must produce the eng
 
 SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and timers all go through it. Rendering sits on SDL3's GPU API (Vulkan, Metal, Direct3D 12) behind a thin `RenderDevice` interface of roughly a dozen calls, so the rest of the engine never touches a native graphics API directly. The device itself reaches past SDL3 only for what SDL3's GPU API doesn't offer: ray tracing and the upscalers below.
 
-- **Renderer shape.** A frame graph with two full pipelines. 2D: batched sprites, tilemaps, 2D lights and shadows, canvas shaders. 3D: clustered forward+ with PBR materials, cascaded shadows and post-processing, and global illumination. Shaders are written once in HLSL. SPIR-V (Vulkan) and MSL (Metal) are compiled from it ahead of time with glslang and SPIRV-Cross and committed, so building the engine needs no shader tools; Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with Windows, except the ray tracing shaders, which need shader model 6.5: Microsoft's DXC (NCSA) compiles them to signed DXIL in a CI workflow that builds it from pinned source, and the DXIL is committed. SDL_shadercross does the same job but has no release yet and needs DXC to read HLSL, so it can replace these tools later. Canvas materials are JSON node graphs compiled on load to a short program that one interpreter shader runs, so they hot reload and need no shader compiler on any platform, and the CPU runs the same program to check a material's colors without a screenshot. For what a graph can't say, a material names a game's own HLSL shader with Godot's `fragment()` and `vertex()`: slash-cli and slash-mcp link glslang, SPIRV-Cross and Tint to compile it for every backend and for a SPIR-V interpreter on the CPU, which the software device and `material.eval` run, and exports write the compiled code into the material file, so games ship no compiler. glslang's HLSL front end is deprecated upstream (glslang issue 4210), so it stays pinned; Slang, or DXC through SDL_shadercross, can replace it behind `render::set_shader_compiler`.
-- **Ray tracing, path tracing and upscaling.** SDL3's GPU API has no ray tracing, so, as Godot 4.7 does in its RenderingDevice, `RenderDevice` adds acceleration structures and ray queries implemented natively on Vulkan, Direct3D 12 and Metal, with a CPU twin on the software device so tests see the same pixels everywhere. The 3D renderer uses them for ray-traced shadows, reflections, ambient occlusion and GI, and falls back to its raster and probe paths where the hardware has none (the web, older phones). A GPU path tracer bakes lightmaps, as Godot's LightmapGI does, and renders progressive reference stills, so an agent can compare the real-time frame with ground truth. 3D can render at a lower resolution and upscale, as Godot's `scaling_3d` setting: FSR 1 and FSR 2/3 (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, then FSR 3 frame generation. The world already scales this way, with bilinear and FSR 1, under controls drawn at full size (`rendering.scaling`), and FSR 2.2 rebuilds the 3D world from jittered frames in Forward+. DLSS, XeSS and FSR 4 plug in through a `render::Upscaler` interface (see [No proprietary code](#no-proprietary-code)).
+- **Renderer shape.** A frame graph with two full pipelines. 2D: batched sprites, tilemaps, 2D lights and shadows, canvas shaders. 3D: clustered forward+ with PBR materials, cascaded shadows and post-processing, and global illumination. Shaders are written once in HLSL. SPIR-V (Vulkan) and MSL (Metal) are compiled from it ahead of time with glslang and SPIRV-Cross and committed, so building the engine needs no shader tools; Direct3D 12 compiles the HLSL at startup with `d3dcompiler_47.dll`, which comes with Windows, except the ray tracing shaders, which need shader model 6.5: Microsoft's DXC (NCSA) compiles them to signed DXIL in a CI workflow that builds it from pinned source, and the DXIL is committed. SDL_shadercross does the same job but has no release yet and needs DXC to read HLSL, so it can replace these tools later. Canvas materials are JSON node graphs compiled on load to a short program that one interpreter shader runs, so they hot reload and need no shader compiler on any platform, and the CPU runs the same program to check a material's colors without a screenshot. For what a graph can't say, a material names a game's own HLSL shader with `fragment()` and `vertex()` functions: slash-cli and slash-mcp link glslang, SPIRV-Cross and Tint to compile it for every backend and for a SPIR-V interpreter on the CPU, which the software device and `material.eval` run, and exports write the compiled code into the material file, so games ship no compiler. glslang's HLSL front end is deprecated upstream (glslang issue 4210), so it stays pinned; Slang, or DXC through SDL_shadercross, can replace it behind `render::set_shader_compiler`.
+- **Ray tracing, path tracing and upscaling.** SDL3's GPU API has no ray tracing, so `RenderDevice` adds acceleration structures and ray queries implemented natively on Vulkan, Direct3D 12 and Metal, with a CPU twin on the software device so tests see the same pixels everywhere. The 3D renderer uses them for ray-traced shadows, reflections, ambient occlusion and GI, and falls back to its raster and probe paths where the hardware has none (the web, older phones). A GPU path tracer bakes lightmaps and renders progressive reference stills, so an agent can compare the real-time frame with ground truth. 3D can render at a lower resolution and upscale: FSR 1 and FSR 2/3 (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, then FSR 3 frame generation. The world already scales this way, with bilinear and FSR 1, under controls drawn at full size (`rendering.scaling`), and FSR 2.2 rebuilds the 3D world from jittered frames in the clustered renderer. DLSS, XeSS and FSR 4 plug in through a `render::Upscaler` interface (see [No proprietary code](#no-proprietary-code)).
 - **Headless backend.** A null device that runs the full simulation with no window or GPU. This is how agents and CI run games, tests and replays on a server.
 - **Offscreen capture.** Any backend can render a frame to an image and return it as PNG. This is how an agent sees the game it is building.
-- **Web.** Web export ships at launch. SDL3's GPU API has no web backend, so SlashEngine has its own OpenGL ES 3.0 device behind the same interface, which is WebGL 2 in browsers and Godot's compatibility tier elsewhere (the `opengl_es` driver, and the `opengl` driver over desktop OpenGL 3.3, which games fall back to where no Vulkan, Metal or Direct3D 12 starts, as Godot's `fallback_to_opengl3`); its GLSL ES is compiled from the same HLSL ahead of time. Browsers that have WebGPU draw with a WebGPU device instead (Emscripten's emdawnwebgpu bindings), whose WGSL Tint compiles from the same HLSL's SPIR-V ahead of time; WebGL 2 is kept for the rest.
-- **Refresh rates.** The simulation ticks at a fixed rate while rendering runs at the display's rate and interpolates between ticks, so a 60 Hz simulation looks smooth on a 240 Hz display. As in Godot, a project sets a V-Sync mode (on, off, adaptive or mailbox) and a frame cap, a game's options menu can change both while it runs, and the engine reports the display's refresh rates. Variable refresh rate (G-Sync, FreeSync, Apple's ProMotion) is the display's job; the engine keeps it working by choosing a present mode and fullscreen mode that allow it. Phones render at 120 Hz where supported, and web games follow the browser's frame rate.
+- **Web.** Web export ships at launch. SDL3's GPU API has no web backend, so SlashEngine has its own OpenGL ES 3.0 device behind the same interface, which is WebGL 2 in browsers and the compatibility renderer's device elsewhere (the `opengl_es` driver, and the `opengl` driver over desktop OpenGL 3.3, which games fall back to where no Vulkan, Metal or Direct3D 12 starts); its GLSL ES is compiled from the same HLSL ahead of time. Browsers that have WebGPU draw with a WebGPU device instead (Emscripten's emdawnwebgpu bindings), whose WGSL Tint compiles from the same HLSL's SPIR-V ahead of time; WebGL 2 is kept for the rest.
+- **Refresh rates.** The simulation ticks at a fixed rate while rendering runs at the display's rate and interpolates between ticks, so a 60 Hz simulation looks smooth on a 240 Hz display. A project sets a V-Sync mode (on, off, adaptive or mailbox) and a frame cap, a game's options menu can change both while it runs, and the engine reports the display's refresh rates. Variable refresh rate (G-Sync, FreeSync, Apple's ProMotion) is the display's job; the engine keeps it working by choosing a present mode and fullscreen mode that allow it. Phones render at 120 Hz where supported, and web games follow the browser's frame rate.
 - **Determinism.** Fixed-timestep simulation, seeded RNG per world, and input recorded as events, so a replay file reproduces a run exactly. Agents rely on this to verify fixes.
 
 | Platform | Engine and tools run here | Export from a Mac uses |
@@ -62,102 +62,102 @@ SDL3 is the only platform layer: windowing, input, audio, file I/O, threads and 
 
 **Exporting.** `slash-cli export <platform>` (or the `export.run` command an agent calls over MCP) builds the game module, packs assets and signs the result. Because gameplay is compiled C++, every export is a real build for that platform, not a template plus scripts.
 
-- **Projects.** A game is a folder with a `project.json`, the equivalent of Godot's `project.godot`: name, identifier, version, main scene, window size and tick rate, checked against a schema the engine publishes.
+- **Projects.** A game is a folder with a `project.json`: name, identifier, version, main scene, window size and tick rate, checked against a schema the engine publishes.
 - **One entry point.** Every game executable starts in the same `main` built on SDL's main callbacks, so the loop is driven by the host where it must be (the browser, iOS) and by SDL elsewhere. The same executable runs headless with `--headless --ticks N` and prints a JSON summary, which is how exports are tested.
 - **How an export runs.** The project and every scene are validated, staged as the game's data, and built with CMake from the engine sources (`export/CMakeLists.txt`), then laid out for the platform: an app bundle on macOS (universal for release), an executable and `data` folder on Windows (C++ runtime linked statically) and Linux (built against a glibc 2.31 sysroot, using the player's libstdc++), and `index.html` with WebAssembly on the web. The full build log goes to a file; the caller gets a short JSON result, or the failing step with the end of the log.
 
 - **Toolchains on demand.** `slash-cli toolchain install` downloads and pins the open-source cross toolchains above, so one Mac can produce every build with no manual setup.
 - **CI as a second path.** `slash-cli init` also writes a GitHub Actions workflow that builds and runs headless tests for every platform on native runners, which is how Windows and Linux exports get tested before those hosts are supported.
-- **Signing.** As in Godot, each developer brings their own Apple team ID and certificates, Android keystore and Windows code-signing certificate. Export presets live in a text file (`export_presets.json`) that agents can edit, with secrets read from environment variables. macOS exports are always signed, ad hoc unless a preset names a Developer ID identity. The engine generates a throwaway debug keystore for Android test builds, and the project's own accounts sign only its sample games in CI.
+- **Signing.** Each developer brings their own Apple team ID and certificates, Android keystore and Windows code-signing certificate. Export presets live in a text file (`export_presets.json`) that agents can edit, with secrets read from environment variables. macOS exports are always signed, ad hoc unless a preset names a Developer ID identity. The engine generates a throwaway debug keystore for Android test builds, and the project's own accounts sign only its sample games in CI.
 - **Publishing to stores** (roadmap item 25, requested by the owner). `slash-cli publish <store>` (the `publish` command) uploads an export to itch.io through butler (MIT), to Steam through steamcmd with SteamPipe build files written from the presets, to the Epic Games Store through BuildPatchTool and to GOG through its Pipeline Builder, each run as a program of its own with credentials from the environment. Built-in `steamworks`, `eos` and `galaxy` SDK packages, pointed at the developer's own copy of each closed SDK, back the services API's achievements, leaderboards and cloud saves, so no vendor code enters the repo. Agents ask before uploading, since a store build is public. Linux builds run on Steam Deck as they are.
 
-## Feature parity with Godot and UE5
+## Feature coverage
 
-SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 features wherever an open-source path exists; UE5's flagship systems stay research. Every feature is a module exposed through reflection and the command API, so an agent can use it without an editor.
+SlashEngine covers the feature areas of a full 2D and 3D engine at launch and adds UE5 features wherever an open-source path exists; UE5's flagship systems stay research. Every feature is a module exposed through reflection and the command API, so an agent can use it without an editor.
 
-| Area | Godot 4 | UE5 | SlashEngine approach | Target |
-| --- | --- | --- | --- | --- |
-| Editor | Full GUI editor | Full GUI editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | Launch |
-| Gameplay code | GDScript, C#, GDExtension | Blueprints, C++ | C++ with hot reload; plugins as C++ modules with a stable C ABI | Launch |
-| Scenes and prefabs | Node scenes with inheritance | Levels, Blueprint actors | JSON scenes, prefabs with overrides, on EnTT | Launch |
-| 2D sprites and animation | Sprite2D, Flipbook2D | Paper2D | Batched sprites, sprite sheets, flipbooks | Launch |
-| Tilemaps | TileLayer2D, terrains | Paper2D tilemaps | Tilemap layers with terrain autotiling, stored as text | Launch |
-| 2D lighting | 2D lights, shadows, normal maps | None built in | 2D lights, occluders, normal-mapped sprites | Launch |
-| 2D physics | Godot Physics 2D | None built in | Box2D v3 | Launch |
-| 3D physics | Godot Physics, Jolt | Chaos | Jolt: rigid bodies, joints, character controller, vehicles | Launch |
-| 3D renderer | Forward+, Mobile, Compatibility | Deferred and forward | Clustered forward+ with PBR, plus a low-end path for web and mobile | Launch |
-| Shadows | Cascaded directional, omni, spot | Virtual shadow maps, cascades | Cascaded, omni and spot shadow maps | Launch |
-| Post-processing | Tonemap, glow, SSAO, SSR, DoF | Full post stack | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | Launch |
-| Materials and shaders | Shading language, visual shaders | Material editor | HLSL shaders plus a JSON material graph agents write directly | Launch |
-| Keyframe animation | Animator on any property | Sequencer | Keyframe tracks on any reflected property | Launch |
-| Skeletal animation | Skeleton3D, skins | Skeletal meshes | Skinned meshes, blending, root motion | Launch |
-| Animation blending | AnimationGraph, state machines, blend spaces | Animation Blueprints, Control Rig | Blend trees and state machines in text, two-bone and FABRIK IK | Launch |
-| Particles | GPU and CPU particles | Niagara | CPU and GPU particles, particle graphs in text | Launch |
-| Audio | Buses, effects, 3D audio | MetaSounds, spatial audio | miniaudio: buses, effects, 3D spatial audio | Launch |
-| Soundtracks | Interactive, synchronized and playlist streams (playback only) | MetaSounds, Quartz | Music planned in the storyboard, written as scores or generated, arranged into Godot's interactive music and checked by analysis, all through commands | Launch |
-| Input | Action maps, gamepads | Enhanced Input | Rebindable action maps over SDL3, injectable by agents | Launch |
-| Refresh rates and frame pacing | V-Sync modes, max FPS | V-Sync, max FPS, frame rate smoothing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | Launch |
-| UI | Control nodes, containers, themes | UMG | Retained UI with flexbox layout and themes, defined in text | Launch |
-| Text and fonts | Font rendering, BiDi, IME | Slate fonts, IME | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | Launch |
-| Navigation | Navigation meshes, avoidance | Nav mesh, AI controllers | Godot's navigation server, meshes baked on Recast, 2D and 3D, avoidance | Launch |
-| Asset import | glTF, FBX, OBJ, `.blend` through Blender, images, audio | FBX, glTF, USD | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | Launch |
-| Profiling | Profiler, debugger, monitors | Unreal Insights | Tracy, plus perf.stats over the command API | Launch |
-| Asset generation and library | Asset Library (add-ons, no generation) | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants and reviewed automatically | Launch |
-| Global illumination | SDFGI, VoxelLighting3D, BakedLighting3D | Lumen | Baked lightmaps and probe-based GI | Launch |
-| Ray tracing | Vulkan ray tracing in development (4.7) | Hardware ray tracing, Lumen's hardware path | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | Launch |
-| Path tracing | Path-traced lightmap baking (BakedLighting3D) | Path Tracer, GPU Lightmass | A GPU path tracer for baked lightmaps and progressive reference stills | Launch |
-| Upscaling and frame generation | FSR 1, FSR 2.2, MetalFX | TSR; DLSS, FSR and XeSS plugins | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | Launch |
-| Sky and volumetrics | Procedural sky, volumetric fog | Sky atmosphere, volumetric clouds | Physical sky, volumetric fog | Launch |
-| Decals | Decal node | Deferred decals | Clustered decals | Launch |
-| Networking | High-level multiplayer, ENet, WebSocket, WebRTC | Replication | ENet transport, replication driven by reflection, WebSocket for web | Launch |
-| Terrain | Plugins | Landscape | Heightmap terrain with splat materials and LOD | Launch |
-| Level geometry | CSG, BlockMap3D | Brushes, modeling tools | CSG and grid-based tile placement | Launch |
-| LOD and culling | Auto mesh LOD, occlusion culling | Nanite, HLOD | Generated LODs with meshoptimizer, occlusion culling | Launch |
-| XR | OpenXR | OpenXR | OpenXR | Launch |
-| Localization | Translation tables, gettext | Localization dashboard | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | Launch |
-| Video playback | Theora | Media Framework | AV1 through dav1d | Launch |
-| Accessibility | Screen reader support | Partial | AccessKit | Launch |
-| Storyboard | None built in | None built in | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | Launch |
-| Analytics, ads and in-app purchases | Plugins (Google Play Billing, StoreKit) | Online Subsystem, in-app purchase APIs | One cross-platform API and command set, like Unity's Analytics, Ads and IAP; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as adapters outside it | Launch |
-| Closed vendor SDKs | Android and iOS plugins, GDExtension | Plugins, ThirdParty modules, UPL | SDK packages: an `sdk.json` per SDK naming its binaries for each platform, fetched, checked and linked by exports, with JNI and Objective-C bridges and engine interfaces for the glue code | Launch |
-| One-command export | Export templates per platform | Packaging per platform | slash-cli export to macOS, Windows, Linux, iOS, Android and web | Launch |
-| Procedural generation | Noise textures | PCG framework | FastNoiseLite noise and noise and gradient textures, scatter rules agents write, `.pcg.json` graphs that drive every world tool, and procedural content imported from Blender, Houdini and terrain tools | Launch |
-| Large worlds | Double-precision builds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch (done before launch) |
-| Cinematics | Animator, cameras | Sequencer | Timeline tracks for cameras and events | After launch (done before launch) |
-| Cloth and soft bodies | SoftBody3D | Chaos Cloth | Jolt soft bodies | After launch (done before launch) |
-| Destruction | None built in | Chaos Destruction | Fracture and debris on Jolt | After launch (done before launch) |
-| Wind | Zone3D wind (soft bodies) | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | Launch |
-| Foliage | MultiMesh, plugins | Foliage tool, grass | Painted and scattered grass, flowers, shrubs, bushes, trees, moss and rocks kept per cell, instanced batches, impostors, wind bending and characters' interactions | Launch |
-| Light tools | Light temperature, projectors, physical units | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | Launch |
-| Quests, dialogue and NPC scripts | Plugins (Dialogic) | Plugins, Blueprints | Questlines, branching dialogue, movement schedules and per-NPC behavior as text files over the NPC planner's facts | Launch |
-| Hair and fur | None built in | Groom, hair physics | Groomed strands drawn as cards, strands or shells and simulated against the body, wind and skeleton | Launch |
-| Characters | None built in | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | Launch |
-| Fauna | None built in | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | Launch |
-| Vehicle design | WheeledBody3D, Wheel3D | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | Launch |
-| Damage design | None built in | Chaos Destruction, Geometry Collections | Real-time damage (fracture at the impact as it happens, re-fracture, stress through connected pieces, dents, tears, carving), plus damage profiles by material, damage states and optional authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | Launch |
-| VFX design | GpuEmitter3D, particle shaders | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets; particle simulation stages (neighbors, curl noise, collision, attributes and events) on CPU particles and, for the neighbor, curl, drag and speed stages, on every GPU device | Launch |
-| Fluids and smoke | None | Niagara Fluids (grids), Water | Gridless liquids and gases: position-based fluid particles, gas particles with temperature and vortices, screen-space liquid surfaces, Gerstner oceans with foam and buoyancy, in 2D and 3D | Launch |
-| Character anatomy and faces | Humanoid skeleton profile | MetaHuman Creator, Chaos Flesh | A full humanoid rig with fingers, eyes, jaw and twist bones; anatomical bones and muscles; `.face.json` faces sculpted by region controls and presets, skin detail, ARKit shapes, styled from the storyboard, in 2D and 3D | Launch |
-| One simulation | Jolt module (rigid, soft bodies, ragdolls, vehicles) | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, individual ragdoll profiles per character and creature (active ragdolls blending with animation, hit reactions, getting up), fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | Launch |
-| Style memory | None built in | None built in | Storyboard style references marked from scenes, assets, frames, materials and lighting, with measured fingerprints; style.check reports drift in numbers and words, prompts and checks every generator and tool, test.run fails drift | Launch |
-| Virtualized geometry | None built in | Nanite | Research spike: cluster hierarchies cut per camera on the CPU, culled and streamed in pages | Research |
-| Fully dynamic GI at UE quality | SDFGI (partial) | Lumen | Research spike: Godot's SDFGI on the CPU and in compute on Vulkan, Metal, Direct3D 12 and WebGPU | Research |
-| Digital humans | None built in | MetaHuman | Built by the character, face, anatomy and hair tools above; the research note records the parts they needed | Launch |
+| Area | UE5 | SlashEngine approach | Target |
+| --- | --- | --- | --- |
+| Editor | Full GUI editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | Launch |
+| Gameplay code | Blueprints, C++ | C++ with hot reload; plugins as C++ modules with a stable C ABI | Launch |
+| Scenes and prefabs | Levels, Blueprint actors | JSON scenes, prefabs with overrides, on EnTT | Launch |
+| 2D sprites and animation | Paper2D | Batched sprites, sprite sheets, flipbooks | Launch |
+| Tilemaps | Paper2D tilemaps | Tilemap layers with terrain autotiling, stored as text | Launch |
+| 2D lighting | None built in | 2D lights, occluders, normal-mapped sprites | Launch |
+| 2D physics | None built in | Box2D v3 | Launch |
+| 3D physics | Chaos | Jolt: rigid bodies, joints, character controller, vehicles | Launch |
+| 3D renderer | Deferred and forward | Clustered forward+ with PBR, plus a low-end path for web and mobile | Launch |
+| Shadows | Virtual shadow maps, cascades | Cascaded, omni and spot shadow maps | Launch |
+| Post-processing | Full post stack | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | Launch |
+| Materials and shaders | Material editor | HLSL shaders plus a JSON material graph agents write directly | Launch |
+| Keyframe animation | Sequencer | Keyframe tracks on any reflected property | Launch |
+| Skeletal animation | Skeletal meshes | Skinned meshes, blending, root motion | Launch |
+| Animation blending | Animation Blueprints, Control Rig | Blend trees and state machines in text, two-bone and FABRIK IK | Launch |
+| Particles | Niagara | CPU and GPU particles, particle graphs in text | Launch |
+| Audio | MetaSounds, spatial audio | miniaudio: buses, effects, 3D spatial audio | Launch |
+| Soundtracks | MetaSounds, Quartz | Music planned in the storyboard, written as scores or generated, arranged into the engine's interactive music and checked by analysis, all through commands | Launch |
+| Input | Enhanced Input | Rebindable action maps over SDL3, injectable by agents | Launch |
+| Refresh rates and frame pacing | V-Sync, max FPS, frame rate smoothing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | Launch |
+| UI | UMG | Retained UI with flexbox layout and themes, defined in text | Launch |
+| Text and fonts | Slate fonts, IME | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | Launch |
+| Navigation | Nav mesh, AI controllers | A navigation server, meshes baked on Recast, 2D and 3D, avoidance | Launch |
+| Asset import | FBX, glTF, USD | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | Launch |
+| Profiling | Unreal Insights | Tracy, plus perf.stats over the command API | Launch |
+| Asset generation and library | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants and reviewed automatically | Launch |
+| Global illumination | Lumen | Baked lightmaps and probe-based GI | Launch |
+| Ray tracing | Hardware ray tracing, Lumen's hardware path | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | Launch |
+| Path tracing | Path Tracer, GPU Lightmass | A GPU path tracer for baked lightmaps and progressive reference stills | Launch |
+| Upscaling and frame generation | TSR; DLSS, FSR and XeSS plugins | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | Launch |
+| Sky and volumetrics | Sky atmosphere, volumetric clouds | Physical sky, volumetric fog | Launch |
+| Decals | Deferred decals | Clustered decals | Launch |
+| Networking | Replication | ENet transport, replication driven by reflection, WebSocket for web | Launch |
+| Terrain | Landscape | Heightmap terrain with splat materials and LOD | Launch |
+| Level geometry | Brushes, modeling tools | CSG and grid-based tile placement | Launch |
+| LOD and culling | Nanite, HLOD | Generated LODs with meshoptimizer, occlusion culling | Launch |
+| XR | OpenXR | OpenXR | Launch |
+| Localization | Localization dashboard | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | Launch |
+| Video playback | Media Framework | AV1 through dav1d | Launch |
+| Accessibility | Partial | AccessKit | Launch |
+| Storyboard | None built in | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | Launch |
+| Analytics, ads and in-app purchases | Online Subsystem, in-app purchase APIs | One cross-platform API and command set, like Unity's Analytics, Ads and IAP; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as adapters outside it | Launch |
+| Closed vendor SDKs | Plugins, ThirdParty modules, UPL | SDK packages: an `sdk.json` per SDK naming its binaries for each platform, fetched, checked and linked by exports, with JNI and Objective-C bridges and engine interfaces for the glue code | Launch |
+| One-command export | Packaging per platform | slash-cli export to macOS, Windows, Linux, iOS, Android and web | Launch |
+| Procedural generation | PCG framework | FastNoiseLite noise and noise and gradient textures, scatter rules agents write, `.pcg.json` graphs that drive every world tool, and procedural content imported from Blender, Houdini and terrain tools | Launch |
+| Large worlds | World Partition, large world coordinates | Double-precision transforms, world streaming | After launch (done before launch) |
+| Cinematics | Sequencer | Timeline tracks for cameras and events | After launch (done before launch) |
+| Cloth and soft bodies | Chaos Cloth | Jolt soft bodies | After launch (done before launch) |
+| Destruction | Chaos Destruction | Fracture and debris on Jolt | After launch (done before launch) |
+| Wind | Wind Directional Source | One world wind field of sources and areas, read by vegetation shaders, soft bodies, cloth and particles | Launch |
+| Foliage | Foliage tool, grass | Painted and scattered grass, flowers, shrubs, bushes, trees, moss and rocks kept per cell, instanced batches, impostors, wind bending and characters' interactions | Launch |
+| Light tools | IES profiles, light functions, Lumen tuning | Temperature, projectors, IES profiles, light functions and `light.tune` toward `lighting.check` targets | Launch |
+| Quests, dialogue and NPC scripts | Plugins, Blueprints | Questlines, branching dialogue, movement schedules and per-NPC behavior as text files over the NPC planner's facts | Launch |
+| Hair and fur | Groom, hair physics | Groomed strands drawn as cards, strands or shells and simulated against the body, wind and skeleton | Launch |
+| Characters | MetaHuman, Mutable | Character recipes built into rigged models, kept distinct and held to the storyboard's design rules | Launch |
+| Fauna | Plugins, Mass AI | Distinct animals from creature recipes, with brains for flocking, grazing, fleeing and hunting, placed in habitats, reacting to characters | Launch |
+| Vehicle design | Chaos Vehicles | Cars, bikes, tracked vehicles, boats and aircraft from vehicle recipes, each with its own tuned physics (engine, gears, suspension, tires, buoyancy, lift), seats characters drive from and contacts that push and hurt characters and creatures | Launch |
+| Damage design | Chaos Destruction, Geometry Collections | Real-time damage (fracture at the impact as it happens, re-fracture, stress through connected pieces, dents, tears, carving), plus damage profiles by material, damage states and optional authored fracture patterns, connected and anchored pieces, terrain craters, with debris, decals and sounds | Launch |
+| VFX design | Niagara | Effect recipes layering particles, ribbons, flipbooks, decals, lights, distortion, camera shakes and sounds on one timeline, with parameters, attachment and budgets; particle simulation stages (neighbors, curl noise, collision, attributes and events) on CPU particles and, for the neighbor, curl, drag and speed stages, on every GPU device | Launch |
+| Fluids and smoke | Niagara Fluids (grids), Water | Gridless liquids and gases: position-based fluid particles, gas particles with temperature and vortices, screen-space liquid surfaces, Gerstner oceans with foam and buoyancy, in 2D and 3D | Launch |
+| Character anatomy and faces | MetaHuman Creator, Chaos Flesh | A full humanoid rig with fingers, eyes, jaw and twist bones; anatomical bones and muscles; `.face.json` faces sculpted by region controls and presets, skin detail, ARKit shapes, styled from the storyboard, in 2D and 3D | Launch |
+| One simulation | Chaos Physics, Chaos Fields, Chaos Cloth, Chaos Cache, Chaos Visual Debugger | Every tool's assets simulate in one Jolt space: shared physics materials and assets, individual ragdoll profiles per character and creature (active ragdolls blending with animation, hit reactions, getting up), fields acting on every kind of body, character cloth, substepping, recorded caches and a debugger record agents read | Launch |
+| Style memory | None built in | Storyboard style references marked from scenes, assets, frames, materials and lighting, with measured fingerprints; style.check reports drift in numbers and words, prompts and checks every generator and tool, test.run fails drift | Launch |
+| Virtualized geometry | Nanite | Research spike: cluster hierarchies cut per camera on the CPU, culled and streamed in pages | Research |
+| Fully dynamic GI at UE quality | Lumen | Research spike: SDF-based GI on the CPU and in compute on Vulkan, Metal, Direct3D 12 and WebGPU | Research |
+| Digital humans | MetaHuman | Built by the character, face, anatomy and hair tools above; the research note records the parts they needed | Launch |
 
-The Godot and UE5 columns come from their public feature lists, not a line-by-line audit; treat them as a starting checklist.
+The UE5 column comes from its public feature lists, not a line-by-line audit; treat them as a starting checklist.
 
 ## No proprietary code
 
 Every line in the repo is Apache 2.0 or comes from a dependency under a permissive open-source license, and CI fails any change that adds anything else.
 
-- **Allowed licenses:** MIT (with its variants, such as HarfBuzz's "Old MIT"), BSD, zlib, Apache 2.0, Boost, MIT-0, the FreeType License and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license. One exception, in the tools only: glslang, which slash-cli and slash-mcp link to compile a game's shaders as Godot's editor links it, has a parser Bison made, under GPL-3.0 with the Bison exception that lets it ship under any terms (approved by the owner, 2026-10-19). Unicode's permissive data license (Unicode-DFS-2016) is allowed too, for the unicode-ident crate in AccessKit's Linux build (approved by the owner, 2026-10-30); the Rust crates AccessKit is built from are held to the same list.
+- **Allowed licenses:** MIT (with its variants, such as HarfBuzz's "Old MIT"), BSD, zlib, Apache 2.0, Boost, MIT-0, the FreeType License and public domain. No GPL or LGPL in the runtime, so games built on SlashEngine can ship under any license. One exception, in the tools only: glslang, which slash-cli and slash-mcp link to compile a game's shaders, has a parser Bison made, under GPL-3.0 with the Bison exception that lets it ship under any terms (approved by the owner, 2026-10-19). Unicode's permissive data license (Unicode-DFS-2016) is allowed too, for the unicode-ident crate in AccessKit's Linux build (approved by the owner, 2026-10-30); the Rust crates AccessKit is built from are held to the same list.
 - **No copied engine code.** Nothing from UE5 or any other closed engine, including snippets from its source or docs. Godot is MIT, so its ideas and code may be borrowed with attribution in `THIRD_PARTY.md`.
 - **System APIs are linked, not shipped.** Win32, Direct3D, Metal, Vulkan drivers and mobile OS SDKs are called through SDL3; none of their code lives in the repo.
 - **Generators are called, not shipped.** The asset generator talks to image and audio models over HTTP, like `ai::Provider`, so no model or vendor SDK is in the repo. Each generated asset records its generator, model and license terms, because what a team may do with an asset depends on the service that made it.
 - **Store and ad SDKs follow the same rule.** StoreKit is an OS framework and Google Play Billing is fetched at export time with the Android SDK, so the repo holds only SlashEngine's glue for them. Ad network SDKs are proprietary, so their adapters live outside the repo, like console backends (decided by the owner).
 - **Vendor upscalers follow the same rule.** AMD's FSR 1, 2 and 3 are MIT code, so they are built in. NVIDIA's DLSS, Intel's XeSS and AMD's FSR 4 ship only as closed binaries under their vendors' licenses, so their adapters live outside the repo behind `render::Upscaler`, and a game that wants one adds it with its own copy of the vendor's SDK. Their frame generation, latency reduction (Reflex, Anti-Lag 2, XeLL) and DLSS Ray Reconstruction follow the same way, behind hooks of their own (roadmap item 26, requested by the owner).
 - **Closed SDKs plug in as SDK packages.** A game adds a closed SDK (an ad network, DLSS, Steamworks, a store or analytics service) as an SDK package in its own project: an `sdk.json` file naming the vendor's binaries for each platform, by URL and checksum or by a local path, and glue code that implements one of the engine's interfaces. Exports fetch, check and link them and list the closed SDKs each build includes. The engine ships the mechanism; no vendor's binaries or headers enter the repo (requested by the owner).
-- **Consoles live outside the repo.** PlayStation, Xbox and Switch SDKs are closed and under NDA, so, as with Godot, console ports are private backends built by licensed porting partners and offered to studios separately. They plug in behind the same `RenderDevice` and platform interfaces.
+- **Consoles live outside the repo.** PlayStation, Xbox and Switch SDKs are closed and under NDA, so console ports are private backends built by licensed porting partners and offered to studios separately. They plug in behind the same `RenderDevice` and platform interfaces.
 - **Enforced in CI.** Each dependency is pinned with its license in a manifest, and a license check runs on every PR.
 
 | Library | Used for | License |
@@ -170,8 +170,8 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | Jolt Physics | 3D physics, soft bodies | MIT |
 | Box2D v3 | 2D physics | MIT |
 | miniaudio | Audio | MIT-0 or public domain |
-| Recast | Baking navigation meshes (paths are Godot's own, as in Godot) | zlib |
-| Clipper2, PolyPartition | Baking 2D navigation polygons: merging, cutting and shrinking outlines, then splitting them into convex polygons, as Godot does | BSL-1.0, MIT |
+| Recast | Baking navigation meshes (paths are the engine's own) | zlib |
+| Clipper2, PolyPartition | Baking 2D navigation polygons: merging, cutting and shrinking outlines, then splitting them into convex polygons | BSL-1.0, MIT |
 | FreeType, HarfBuzz | Fonts and text shaping | FreeType License (BSD-style), MIT |
 | msdfgen | Multichannel signed distance field fonts | MIT |
 | Roboto | The default font | Apache 2.0 |
@@ -179,7 +179,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | meshoptimizer | LODs, mesh compression | MIT |
 | Manifold | CSG and parametric models | Apache 2.0 |
 | xatlas | UV unwrapping | MIT |
-| V-HACD | Convex decomposition into collision hulls, as Godot | BSD-3-Clause |
+| V-HACD | Convex decomposition into collision hulls | BSD-3-Clause |
 | ENet | Networking | MIT |
 | OpenXR SDK | XR | Apache 2.0 |
 | dav1d | Video | BSD |
@@ -234,7 +234,7 @@ Scenes, prefabs, materials and project settings are canonical JSON files (`.scen
 - **Canonical form.** Keys sorted, two-space indent, one entity per block, stable string IDs (`"player"`, `"enemy_03"`). A formatter rewrites any valid file to this form, so diffs stay small and merges stay sane.
 - **No binary in the source tree.** Textures and audio are referenced by path; imported caches live in a gitignored `.slash/` folder and rebuild on demand.
 - **Prefabs by reference.** An entity can `"extends"` a prefab and override fields, so an agent edits one file to change every instance.
-- **Parents by ID.** A `Transform2D` lists the entities placed in its space as `children`, by ID, as Godot's Node2D tree; the world stays flat (EnTT), and a parent is a field, not a container, so moving an entity between parents is one `component.set`.
+- **Parents by ID.** A `Transform2D` lists the entities placed in its space as `children`, by ID; the world stays flat (EnTT), and a parent is a field, not a container, so moving an entity between parents is one `component.set`.
 
 ### 2. Reflection and self-description
 
@@ -391,14 +391,14 @@ Generating an image or a sound costs a model call, time and often money, and age
 
 Generated 3D meshes are usually too dense, badly scaled, hard to edit and lit into their textures, so a raw model is rarely ready for a game. The library treats 3D generation as a pipeline that ends in a game-ready, reviewed asset:
 
-- **Parametric models first.** Many props, buildings and hard-surface objects are better written than generated. An agent writes a `.model.json` recipe (primitives, CSG on Manifold, extrusions, lathes, bevels, arrays, all with named parameters) and the engine builds the mesh. Recipes are small, exact and reproducible, and refining one means changing a number rather than generating again. This is Godot's CSG idea, written as text.
+- **Parametric models first.** Many props, buildings and hard-surface objects are better written than generated. An agent writes a `.model.json` recipe (primitives, CSG on Manifold, extrusions, lathes, bevels, arrays, all with named parameters) and the engine builds the mesh. Recipes are small, exact and reproducible, and refining one means changing a number rather than generating again. This is constructive solid geometry, written as text.
 - **Concept image, then model.** For organic shapes a generator makes a cheap 2D concept first. The agent reviews it, and only then is a 3D model made from the image. The image stays in the library as the model's parent.
-- **Game-ready cleanup.** Every generated or imported mesh is set to real-world scale, given a sensible pivot and up axis, reduced to a triangle budget (meshoptimizer), unwrapped (xatlas), rebaked into PBR textures with baked-in lighting removed, given LODs and given collision hulls (V-HACD, as Godot).
+- **Game-ready cleanup.** Every generated or imported mesh is set to real-world scale, given a sensible pivot and up axis, reduced to a triangle budget (meshoptimizer), unwrapped (xatlas), rebaked into PBR textures with baked-in lighting removed, given LODs and given collision hulls (V-HACD).
 - **Automatic review.** The engine renders turntable views headless, checks the geometry (budget, scale, holes, texel density) and asks a vision-capable model through `ai::Provider` whether the views match the request. The results are recorded with `asset.feedback`, and a failed check retries within a call budget the caller sets.
 - **Described in text.** Each model comes with its size, pivot, named parts, materials, triangle count and attachment points, so agents place and combine models without loading images.
 - **Parts, rigs and animation.** Named parts and attachment points let wheels turn, doors open and parts from different models combine. Characters are auto-rigged through a generator adapter and retargeted to one standard humanoid skeleton, so every animation in the library works on every character.
 - **One style per game.** The [storyboard](#storyboard)'s style section (palette, reference images, triangle and texel budgets) goes with every request and is refined from the assets agents accept, so a game's models match. Materials come from tileable PBR textures shared through the material graph rather than a unique texture per model.
-- **Imported assets are first-class.** Files from Blender and other tools, asset stores or a team's artists go into the library like generated ones: the same cleanup, text description, review and versions, plus a license the importer records. `.blend` files are converted by running the artist's own Blender in the background, as Godot does, so no Blender code is linked or shipped. Editing the source file makes a new version.
+- **Imported assets are first-class.** Files from Blender and other tools, asset stores or a team's artists go into the library like generated ones: the same cleanup, text description, review and versions, plus a license the importer records. `.blend` files are converted by running the artist's own Blender in the background, so no Blender code is linked or shipped. Editing the source file makes a new version.
 - **Blender as a generator.** Agents can build assets by running Blender headless with Python scripts. The script is saved with the result, so an asset can be rebuilt or tweaked later instead of made again from scratch.
 - **Complex assets are built from parts.** An asset can be made of other library assets, such as a building of walls, doors and props, or a character with outfits and accessories. Parts are referenced by hash, so shared parts are stored once, and updating a part offers new versions of everything that uses it. Each complex asset can have named variants (clean or damaged, seasons, team colors) and quality tiers per export preset, all built from one source. Checks for scale, material slot names, rigs, animation clips and missing parts run before an asset is saved and again in CI, which is what makes large assets reliable to rebuild.
 - **Scenes are assembled, not generated.** Agents place library assets with constraints (on the ground, not overlapping, along a path) instead of generating a whole scene as one mesh, so every piece stays editable and reusable.
@@ -430,7 +430,7 @@ What it cannot do: no tool can stop a model from inventing things in prose it wr
 
 ## Soundtracks
 
-A game's music has to fit its story, change with play and loop cleanly, and an agent cannot listen to it. So the soundtrack feature turns music into things an agent can read, write and check, and builds on the interactive music the engine already plays (Godot's playlist, synchronized and interactive streams in `.audio.json`). It adds no new music runtime.
+A game's music has to fit its story, change with play and loop cleanly, and an agent cannot listen to it. So the soundtrack feature turns music into things an agent can read, write and check, and builds on the interactive music the engine already plays (playlist, synchronized and interactive streams in `.audio.json`). It adds no new music runtime.
 
 - **Planned in the storyboard.** The storyboard gets a music section: themes for characters, places and factions (key, tempo, instruments, mood), a loudness target, and a cue sheet saying which cue plays in each scene, story beat and game state. `soundtrack.plan` drafts the cue sheet from the storyboard and the project's scenes, and `storyboard.check` reports scenes and story beats with no music.
 - **Scores as text.** Music an agent writes is a `.score.json` file: tracks of notes in beats with tempo, meter, key and named sections, plus MIDI import and export. Changing one bar or one instrument is an exact edit, not a new generation. `soundtrack.render` plays a score through a SoundFont synth (TinySoundFont) into one `.ogg` stem per track and fills in `bpm`, `beat_count` and `bar_beats`. By default it plays the engine's own General MIDI sounds, synthesized in code so every machine renders the same stems; a developer can name any SoundFont 2 file instead.
@@ -440,11 +440,11 @@ A game's music has to fit its story, change with play and loop cleanly, and an a
 
 ## Procedural generation
 
-Games often make their textures, terrain and props from rules rather than by hand, and agents are good at writing rules: a few numbers in a text file describe a whole forest or a marble texture, and changing one number is cheaper than generating an asset again. The engine follows Godot's noise module and adds the scatter rules Godot leaves to plugins (UE5's PCG framework is the model for those).
+Games often make their textures, terrain and props from rules rather than by hand, and agents are good at writing rules: a few numbers in a text file describe a whole forest or a marble texture, and changing one number is cheaper than generating an asset again. The engine has a noise module and scatter rules (UE5's PCG framework is the model for those).
 
-- **Noise as Godot has it.** `procedural::Noise` is Godot's `FastNoiseLite` resource on Auburn's FastNoiseLite (MIT): simplex, cellular, Perlin and value noise, fractals and domain warping, with Godot's settings and defaults. Gameplay code calls it while a game runs, and its numbers are the same on every machine.
-- **Procedural textures are files.** A `.texture.json` file is Godot's `NoiseTexture2D`, `GradientTexture1D` or `GradientTexture2D` as text, made when it loads, so it works wherever a texture path does (sprites, tile sets, materials, controls) and ships as a few lines rather than an image. `texture.generate` returns its size and per-channel statistics, samples given pixels and can bake it to a PNG, so an agent tunes a texture without looking at it.
-- **Made while the game runs.** Gameplay code can make textures and meshes at run time, as Godot's `ImageTexture`, `ArrayMesh` and `SurfaceTool`.
+- **Noise.** `procedural::Noise` runs Auburn's FastNoiseLite (MIT): simplex, cellular, Perlin and value noise, fractals and domain warping, with its settings and defaults. Gameplay code calls it while a game runs, and its numbers are the same on every machine.
+- **Procedural textures are files.** A `.texture.json` file is a noise or gradient texture (`noise`, `gradient_1d` or `gradient_2d`) as text, made when it loads, so it works wherever a texture path does (sprites, tile sets, materials, controls) and ships as a few lines rather than an image. `texture.generate` returns its size and per-channel statistics, samples given pixels and can bake it to a PNG, so an agent tunes a texture without looking at it.
+- **Made while the game runs.** Gameplay code can make textures and meshes at run time.
 - **Scatter rules.** Agents write rules that place prefabs or meshes over terrain, meshes, tile maps and areas by noise, density, slope and spacing, seeded so they repeat. A command writes the result as entities an agent can then edit, or a game runs the rules itself. Tile maps and terrains generate from noise files too.
 - **Every tool, procedurally.** Graphs of steps, as Unreal's PCG, drive the world tools too: foliage and grooms, fauna by habitat, characters with their routes and stories, vehicles, wind and physics fields, lights, effects, destructible props and fluids, in 2D and 3D, seeded so a world repeats and checked against budgets and navigation (roadmap item 21).
 - **Textures agents author (roadmap item 23).** A `.texture.json` file can also be a graph, as Substance Designer's and Houdini's COPs are: nodes over named parameters (noise, patterns, filters, height and normals, blends) with PBR outputs, baked in compute on every device with a CPU twin held to it, or compiled into a live shader whose parameters animations and gameplay code drive. `model.bake_maps` bakes a model's mesh maps on ray queries (occlusion, curvature, thickness, IDs, sky exposure, high to low detail). A `.paint.json` layer stack, as Substance Painter's, lays fills, graphs and generators over a model or sprite, masked by those maps and by part and material names, with strokes and decals as data and smart materials through `extends`. Every bake returns numbers (channel ranges, mask coverage, tiling, palette distance, texel density) before any picture, and `texture.check` holds graphs, stacks and their output to the storyboard. Weathering by gravity, wind and sky exposure, wear from gameplay damage, text and logo stamps, seeded variants, drafts from a prompt and Blender shader node import complete it. Strokes are written by agents; painting by hand waits for after launch.
@@ -452,11 +452,11 @@ Games often make their textures, terrain and props from rules rather than by han
 
 ## Languages
 
-Games ship in many languages, and the people and agents making them work in many languages too. Following Godot, the engine treats no language as special.
+Games ship in many languages, and the people and agents making them work in many languages too. The engine treats no language as special.
 
 - **Players pick a language.** A game starts in the player's OS language when it has a translation for it, and its options menu can switch language while it runs. Lookups fall back from `es-MX` to `es` to the game's source language. Each language can have its own fonts, and right-to-left languages lay out right to left.
 - **Typing works in every language.** Text fields support IME composition for Japanese, Chinese and Korean, with the candidate window placed at the field, and on-screen keyboards on phones. Fallback fonts cover scripts the main font lacks.
-- **Any source language.** Translation tables are CSV or gettext `.po` files, as in Godot, so translators can use the tools they already know. A game can be written in Japanese or Korean first and translated to English later.
+- **Any source language.** Translation tables are CSV or gettext `.po` files, so translators can use the tools they already know. A game can be written in Japanese or Korean first and translated to English later.
 - **Agents do the busywork.** `l10n.extract` collects every player-facing string from scenes and from `tr("...")` calls in C++. `l10n.translate` drafts translations through `ai::Provider`, using the storyboard's glossary and characters so names and tone stay consistent, and marks them for human review. `l10n.check` finds missing or stale keys, mismatched placeholders, text that overflows its UI box in the chosen font and glyphs a font lacks, and runs in the headless test command and CI. Pseudo-localization shows untranslated or clipped text before any real translation exists.
 - **Developers in any language.** Comments, scene text and storyboard entries can be in any language, and agents answer in the language they are asked in. Entity IDs, command names and error codes stay ASCII so every tool and terminal handles them, and readable names in any language go in fields beside them.
 
@@ -480,12 +480,12 @@ SlashEngine/
     audio/           # sound files and streams, the mixer, buses, effects, players
     video/           # AV1 video in IVF, WebM and Matroska
     services/        # ads, analytics, purchases, achievements and leaderboards
-    canvas/          # 2D drawing like Godot's canvas: sprites, materials, tilemaps, lights, particles
+    canvas/          # 2D drawing: sprites, materials, tilemaps, lights, particles
     text/            # fonts, shaping, line breaking and glyph atlases
     ui/              # controls, containers, themes, buttons, focus and text fields
     accessibility/   # screen readers through AccessKit
     animation/       # keyframe animations, animation trees, the systems that play them
-    scene3d/         # 3D nodes like Godot's: meshes, models, CSG, terrain, lights, characters
+    scene3d/         # 3D components: meshes, models, CSG, terrain, lights, characters
     physics2d/       # Box2D: bodies, joints, vehicles, ragdolls, cloth, destruction
     physics3d/       # Jolt: bodies, joints, vehicles, soft bodies, cloth, destruction
     navigation/      # navigation meshes, maps, paths, agents and avoidance
@@ -524,7 +524,7 @@ SlashEngine/
 4. **Export pipeline.** `slash-cli export` and toolchain install for all six platforms, plus the CI workflow. Exit: an empty project exports and passes headless tests everywhere. It comes this early so every later feature stays exportable. Built in two parts: (a) project files, the game runtime and exports for macOS, Windows, Linux and web on their own hosts, tested in CI; (b) iOS and Android, cross toolchains from a Mac, export presets with signing, and the `export.run` command.
 5. **2D feature set.** Systems, play and pause, event subscriptions, prefabs, asset handles with hot reload, the storyboard, dry runs, world snapshots and diffs, verified examples and the CI license check first; then the renderer, materials, sprites, keyframe animation, tilemaps, 2D lights, Box2D physics, particles, UI and text with IME input, audio, input injection, frame capture, replays with time travel, `run.until`, the debug overlay, `test.run` and frame summaries. Exit: an agent builds `samples/pong` and exports it to all six platforms.
 6. **Hot reload, AI and profiling.** Hot-reloadable C++ game module with `build.check`, SDK packages for closed vendor SDKs, `api.search`, `playtest.run` with tuning sweeps, Autopilot playtests and a built-in playtest agent, `ai::Provider` with three adapters and `ReplayProvider`, the asset library and generator for images and audio, storyboard review by a model and the project map, soundtracks, the job system, Tracy, `perf.stats` and the per-system memory report.
-7. **3D feature set.** Forward+ PBR renderer, shadows, post-processing, GI, ray tracing, path-traced lightmaps and reference stills, upscalers, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
+7. **3D feature set.** Clustered PBR renderer, shadows, post-processing, GI, ray tracing, path-traced lightmaps and reference stills, upscalers, sky, decals, LODs, Jolt physics, skeletal animation and blending, navigation, terrain, CSG, glTF and FBX import, and 3D in the asset library: parametric models, game-ready cleanup, automatic review, rigging and scene assembly. Exit: an agent builds a small 3D sample end to end.
 8. **Systems and platform services.** Networking, XR, localization, video, accessibility, procedural generation, and analytics, ads and in-app purchases behind one API with a headless test backend.
 
 Before launch, the agent-built worlds tool set (roadmap: [Agent-built worlds and smart NPCs](roadmap.md#agent-built-worlds-and-smart-npcs)): planning NPCs with stories, wind, style memory, one simulation with ragdoll profiles, foliage, light tools, hair, characters with faces and anatomy, fauna, vehicles, damage, visual effects, fluids and water, and procedural graphs that drive them all, each in 2D and 3D.

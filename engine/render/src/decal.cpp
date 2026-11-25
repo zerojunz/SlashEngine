@@ -1,9 +1,8 @@
-// Decals, as Godot 4.6's Forward+ renderer draws them: the atlas of their textures as
-// TextureStorage::update_decal_atlas packs it, the decals as update_decal_buffer places them, and
-// the CPU twin of the decal loop of scene_forward_clustered.glsl, which shaders/mesh.hlsl's
-// apply_decals follows. Godot samples the atlas with the GPU's derivatives of the pixel's place;
-// both twins work them out from the surface's plane instead, so that every device picks the same
-// levels. Float math, built with -ffp-contract=off.
+// Decals as the clustered renderer draws them: the atlas of their textures, the decals' places in
+// it, and the CPU twin of the decal loop, which shaders/mesh.hlsl's apply_decals follows. Both
+// twins work the pixel's place out from the surface's plane, not from the GPU's derivatives, so
+// that every device picks the same levels. Float math, built with -ffp-contract=off.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "decal.hpp"
 
@@ -105,8 +104,8 @@ bool finite(std::initializer_list<float> values) {
     return std::ranges::all_of(values, [](float value) { return std::isfinite(value); });
 }
 
-// decal_fade in shaders/mesh.hlsl: x to the power y, as Godot's pow, with 0 to the power 0 and
-// anything to the power 0 taken as 1 and 0 to any other power as 0.
+// decal_fade in shaders/mesh.hlsl: x to the power y, with 0 to the power 0 and anything to the
+// power 0 taken as 1 and 0 to any other power as 0.
 float fade_power(float x, float y) {
     if (y == 0.0F) {
         return 1.0F;
@@ -219,8 +218,8 @@ Float4 sample_decal(const DecalAtlas& atlas, std::uint32_t filter, std::array<fl
 }
 
 // surface_steps in shaders/mesh.hlsl: how far the point moves across a pixel to the right and down,
-// along the plane through it facing geometry, from the camera's rows; Godot takes these from the
-// GPU's derivatives.
+// along the plane through it facing geometry, from the camera's rows, not from the GPU's
+// derivatives.
 struct Steps {
     Float3 dx{};
     Float3 dy{};
@@ -256,7 +255,7 @@ bool has_rect(const Float4& rect) {
     return rect[0] != 0.0F || rect[1] != 0.0F || rect[2] != 0.0F || rect[3] != 0.0F;
 }
 
-// apply_decal in shaders/mesh.hlsl: one decal's textures over the surface, as Godot's loop body.
+// apply_decal in shaders/mesh.hlsl: one decal's textures over the surface.
 void apply_decal(const MeshDecalUniforms& decal, const DecalAtlas& atlas, std::uint32_t filter,
                  const Float3& world, const Float3& geometry, const Steps& steps,
                  DecalSurface& surface) {
@@ -536,8 +535,8 @@ std::optional<MeshDecalUniforms> projector_record(const Light3D& light, const De
     if (rect[2] == 0.0F || rect[3] == 0.0F) {
         return std::nullopt;
     }
-    // The light's space, as Godot's light_inverse: z back from its direction, y its up made
-    // square to that (or any square to it where they are parallel), x across.
+    // The light's space: z back from its direction, y its up made square to that (or any square to
+    // it where they are parallel), x across.
     const Float3 z = scale(normalize(light.direction), -1.0F);
     Float3 up = sub(light.up, scale(z, dot3(light.up, z)));
     if (!(dot3(up, up) > 1.0e-12F)) {
@@ -555,7 +554,7 @@ std::optional<MeshDecalUniforms> projector_record(const Light3D& light, const De
         record.rows.at(r) = {axis[0], axis[1], axis[2], -dot3(axis, place)};
     }
     record.rects[0] = rect;
-    // Godot's projection of twice the spot angle: x and y over the depth times its cotangent.
+    // The projection of twice the spot angle: x and y over the depth times its cotangent.
     const Vec2f cone = slash::cos_sin(std::clamp(light.spot_angle, 0.01F, 89.99F) *
                                       (std::numbers::pi_v<float> / 180.0F));
     const bool spot = light.type == LightType::Spot;
@@ -640,8 +639,8 @@ PlacedDecals place_decals(const Scene3D& scene, const DecalAtlas& atlas) {
                               1.0F - ((candidate.distance - decal.distance_fade_begin) /
                                       decal.distance_fade_length));
         }
-        // The box: the decal's transform times half its size times Godot's uv_xform, which takes
-        // x and z from 0 to 1 to -1 to 1. Its inverse, worked in doubles.
+        // The box: the decal's transform times half its size times the uv transform, which takes x
+        // and z from 0 to 1 to -1 to 1. Its inverse, worked in doubles.
         const Mat4& t = decal.transform;
         const std::array<double, 3> half{double{decal.size[0]} * 0.5, double{decal.size[1]} * 0.5,
                                          double{decal.size[2]} * 0.5};
@@ -745,7 +744,7 @@ void apply_decals(const MeshSceneUniforms& scene, const MeshMaps& maps, const Me
     for (std::uint32_t word = first >> 5U; word < (end + 31U) >> 5U; ++word) {
         std::uint32_t mask = clusters.cells[cell + word] & range_mask(word, first, end);
         while (mask != 0) {
-            // From the highest bit, as Godot's findMSB.
+            // From the highest bit.
             const auto bit = static_cast<std::uint32_t>(31 - std::countl_zero(mask));
             mask &= ~(1U << bit);
             const MeshDecalUniforms& decal = clusters.decals[(word * 32U) + bit];

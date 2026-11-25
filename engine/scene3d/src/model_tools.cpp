@@ -11,8 +11,8 @@ namespace slash::scene3d {
 namespace {
 
 // MikkTSpace's callbacks over deindexed triangles. Texture coordinates go in with v flipped,
-// since MikkTSpace takes v up, as Blender bakes normal maps; that gives the tangents and signs
-// Godot's SurfaceTool::generate_tangents makes.
+// since MikkTSpace takes v up, as Blender bakes normal maps; that gives the usual tangents
+// and signs.
 int faces(const SMikkTSpaceContext* context) {
     return static_cast<int>(static_cast<Triangles*>(context->m_pUserData)->indices.size() / 3);
 }

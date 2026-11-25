@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -11,10 +13,10 @@
 #include <string_view>
 #include <vector>
 
-// OpenXR, as Godot's OpenXR module: an XR interface over the Khronos loader, which finds the
+// OpenXR: an XR interface over the Khronos loader, which finds the
 // headset's runtime (SteamVR, Meta's, Monado, Windows Mixed Reality, ...). It makes an instance
 // and a session for project.json's xr.openxr settings, follows the session's states, keeps the
-// head and controller trackers up to date from Godot's default action map and locates each eye's
+// head and controller trackers up to date from the default action map and locates each eye's
 // view. Games start it when xr.openxr.enabled is set.
 //
 //   if (auto started = xr::use_openxr_interface(world); !started) { log the error }
@@ -37,10 +39,10 @@ namespace slash::xr {
 // it for a stand-in runtime; it does nothing where openxr_available() is false.
 void set_openxr_runtime(std::string_view manifest);
 
-// Godot's OpenXRAction::ActionType.
+// The type of an action.
 enum class ActionType : std::uint8_t { Bool, Float, Vector2, Pose, Haptic };
 
-// One of an action map's actions, as Godot's OpenXRAction: a name the trackers' inputs and poses
+// One of an action map's actions: a name the trackers' inputs and poses
 // take (pose actions drop "_pose": "aim_pose" is the pose "aim", "default_pose" "default") and
 // the top-level paths it is on, such as "/user/hand/left".
 struct MapAction {
@@ -48,31 +50,31 @@ struct MapAction {
     ActionType type = ActionType::Bool;
     std::vector<std::string> toplevel_paths;
 };
-// An action's input or output paths on a controller, as Godot's OpenXRIPBinding.
+// An action's input or output paths on a controller.
 struct MapBinding {
     std::string action;
     std::vector<std::string> paths;
 };
-// A controller the action map suggests bindings for, as Godot's OpenXRInteractionProfile. A
+// A controller the action map suggests bindings for. A
 // profile that needs an extension is left out when the runtime lacks it.
 struct MapProfile {
     std::string path; // e.g. "/interaction_profiles/oculus/touch_controller"
     std::string extension;
     std::vector<MapBinding> bindings;
 };
-// Godot's OpenXRActionMap: one action set and the profiles it suggests.
+// An action map: one action set and the profiles it suggests.
 struct ActionMap {
-    std::string action_set = "godot";
-    std::string localized_name = "Godot action set";
+    std::string action_set = "game";
+    std::string localized_name = "Game actions";
     std::vector<MapAction> actions;
     std::vector<MapProfile> profiles;
 };
-// Godot's default action map (OpenXRActionMap::create_default_action_sets): triggers, grips,
+// The default action map: triggers, grips,
 // thumbsticks, buttons, the default, aim, grip and palm poses and haptics on both hands, bound
-// for the controllers of OpenXR 1.0 and the vendor extensions Godot binds.
+// for the controllers of OpenXR 1.0 and the vendor extensions.
 [[nodiscard]] const ActionMap& default_action_map();
 
-// Godot's OpenXRInterface::SessionState.
+// The state of an OpenXR session.
 enum class SessionState : std::uint8_t {
     Unknown,
     Idle,
@@ -112,7 +114,7 @@ struct OpenXRDevice {
     std::string driver;
     const render::XrDeviceHooks* hooks = nullptr;
 };
-// Starts OpenXR to draw into the headset, as Godot does before it makes its rendering device:
+// Starts OpenXR to draw into the headset, before the rendering device is made:
 // the instance and system, with the graphics extension driver needs ("auto" is "d3d12" on
 // Windows, "metal" on macOS and "vulkan" elsewhere; "opengl" on Windows and Linux, "opengl_es"
 // on Android). Make the
@@ -130,11 +132,11 @@ struct OpenXRFrame {
     bool render = false;
     std::vector<render::TextureId> targets;
 };
-// Waits for the headset's next frame and begins it, as Godot's pre_render: once a drawn frame,
+// Waits for the headset's next frame and begins it: once a drawn frame,
 // before drawing the views. Nothing to draw where OpenXR isn't the primary interface drawing.
 Result<OpenXRFrame> begin_openxr_frame(world::World& world);
-// Copies the views' targets into the headset's swapchains and ends the frame, as Godot's
-// end_frame, after drawing them.
+// Copies the views' targets into the headset's swapchains and ends the frame,
+// after drawing them.
 Result<void> end_openxr_frame(world::World& world);
 
 } // namespace slash::xr

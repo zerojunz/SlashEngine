@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "mesh_shading.hpp"
@@ -10,33 +11,33 @@
 #include <span>
 #include <vector>
 
-// What every Forward+ device shares to make volumetric fog (VolumetricFog3D, in mesh.hpp) as
-// Godot 4.6's Fog::volumetric_fog_update makes it: the froxel volume's size, the uniforms of
-// shaders/volumetric_fog.hlsl's passes, and their CPU twins, which the software device runs and
-// which follow the shader line for line in float math. The volume is a storage buffer of a float4
-// a froxel, in rows across, then down, then slices deeper, rather than Godot's 3D textures, so
-// that the meshes' fragment stage, whose sixteen samplers are taken, reads it as a buffer and
-// filters it itself, as every device does the same way. Built with -ffp-contract=off.
+// What every clustered-renderer device shares to make volumetric fog (VolumetricFog3D, in
+// mesh.hpp): the froxel volume's size, the uniforms of shaders/volumetric_fog.hlsl's passes, and
+// their CPU twins, which the software device runs and which follow the shader line for line in
+// float math. The volume is a storage buffer of a float4 a froxel, in rows across, then down, then
+// slices deeper, rather than a 3D texture, so that the meshes' fragment stage, whose sixteen
+// samplers are taken, reads it as a buffer and filters it itself, as every device does the same
+// way. Built with -ffp-contract=off.
 namespace slash::render::detail {
 
 // The most froxels a volume holds: 16 bytes each, a storage buffer of kMaxStorageBytes.
 inline constexpr std::size_t kMaxFogFroxels = std::size_t{1} << 23U;
 // The fog passes' threads in a group, across and down (one deep).
 inline constexpr std::uint32_t kFogThreads = 8;
-// Godot's TEMPORAL_FRAMES: the Halton points the froxels are jittered through.
+// The Halton points the froxels are jittered through.
 inline constexpr std::uint32_t kFogTemporalFrames = 16;
 
 // The passes of shaders/volumetric_fog.hlsl, in the order a frame runs them: each froxel's light
 // and density, the blur across and down (with use_filter), and the gathering along each column.
 enum class FogPass : std::uint8_t { Density, FilterX, FilterY, Integrate };
 
-// The froxels a frame of width x height takes across, down and deep, as Godot's
-// RenderForwardClustered::_update_volumetric_fog sizes them (depth trimmed to kMaxFogFroxels).
+// The froxels a frame of width x height takes across, down and deep (depth trimmed to
+// kMaxFogFroxels).
 [[nodiscard]] std::array<std::uint32_t, 3>
 fog_volume_size(const VolumetricFogSettings& settings, std::uint32_t width, std::uint32_t height);
 
-// Whether a frame of the scene has volumetric fog: Forward+ with it on, and not a reflection
-// probe's capture, as Godot's probes are drawn without it.
+// Whether a frame of the scene has volumetric fog: the clustered renderer with it on, and not a
+// reflection probe's capture, which is drawn without it.
 [[nodiscard]] bool uses_volumetric_fog(const Scene3D& scene);
 // Sets the meshes' uniforms for a frame whose fog volume is size.
 void set_volumetric_fog(MeshSceneUniforms& lights, const Scene3D& scene,
@@ -52,8 +53,8 @@ struct FogClock {
 };
 
 // A fog volume as the density pass reads it from the frame's items (fog_items; kFogVolumeItems
-// float4s in shaders/volumetric_fog.hlsl's load_volume): its place and shape, the froxels it
-// fills as Godot's volumetric_fog_update picks them, and its material.
+// float4s in shaders/volumetric_fog.hlsl's load_volume): its place and shape, the froxels it fills,
+// and its material.
 struct FogVolumeUniforms {
     Mat4 to_local{};   // the world to the volume's space
     Float4 position{}; // its place in the world, then its shape (FogVolumeShape)
@@ -74,8 +75,7 @@ inline constexpr std::size_t kFogVoxelGIItems = sizeof(MeshVoxelGIUniforms) / si
 struct FogUniforms {
     // Froxels across, down and deep, then the pass (FogPass).
     std::array<std::uint32_t, 4> size{};
-    // The view's half extents at the camera's near plane (x, y), as Godot's fog_frustum_size_begin,
-    // and at length (z, w).
+    // The view's half extents at the camera's near plane (x, y), and at length (z, w).
     Float4 frustum{};
     Float4 params{};     // length, detail spread, the far plane's distance, anisotropy
     Float4 scattering{}; // the albedo, linear, times density; then density
@@ -107,17 +107,16 @@ static_assert(sizeof(FogUniforms) == 368 + (80 * kMaxDirectionalLights3D));
 static_assert(sizeof(FogUniforms) <= 4096);
 
 // The froxels from corner to corner_end (past it) that a fog volume of the scene's fills in a fog
-// of size, as Godot's volumetric_fog_update picks
-// them: the volume's corners' froxels, or the whole view across while the camera's near plane is
+// of size: the volume's corners' froxels, or the whole view across while the camera's near plane is
 // near its box; none (corner_end not past corner on some axis) when the corners share a froxel.
 [[nodiscard]] std::array<std::array<std::int32_t, 3>, 2>
 fog_volume_froxels(const Scene3D& scene, const FogVolume3D& volume,
                    const std::array<std::uint32_t, 3>& size);
 
-// The fog's uniforms for a frame of the scene drawn at width x height, whose meshes take lights
-// and clusters, as Godot's volumetric_fog_update sets them for the density pass, and moves clock
-// on to the frame. A frame reprojects the clock's last when its fog asks to and the clock has
-// one of the same size; its Halton point is the clock's frame's.
+// The fog's uniforms for a frame of the scene drawn at width x height, whose meshes take lights and
+// clusters, for the density pass, and moves clock on to the frame. A frame reprojects the clock's
+// last when its fog asks to and the clock has one of the same size; its Halton point is the clock's
+// frame's.
 [[nodiscard]] FogUniforms volumetric_fog_uniforms(const Scene3D& scene,
                                                   const MeshSceneUniforms& lights,
                                                   std::uint32_t width, std::uint32_t height,
@@ -171,8 +170,8 @@ struct FogVolume {
                                        const Float4& volumetric_fog, std::array<float, 2> uv,
                                        float view_depth);
 
-// The sky's color seen through the fog's whole length at a place on the screen, as Godot's sky
-// shader takes volumetric fog, by sky_affect (volumetric_fog's w).
+// The sky's color seen through the fog's whole length at a place on the screen, as the sky shader
+// takes volumetric fog, by sky_affect (volumetric_fog's w).
 [[nodiscard]] Float3 fog_sky(std::span<const Float4> fog, const std::array<std::uint32_t, 3>& size,
                              const Float4& volumetric_fog, std::array<float, 2> uv,
                              const Float3& sky);

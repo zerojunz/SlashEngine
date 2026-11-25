@@ -204,7 +204,7 @@ TEST_CASE("terrain_indices makes Terrain3D's mesher's triangles, stitched at sea
         REQUIRE(indices.size() == triangles * 3);
         std::set<std::uint32_t> used;
         for (std::size_t i = 0; i < indices.size(); i += 3) {
-            // Every triangle is clockwise seen from above, Godot's front faces.
+            // Every triangle is clockwise seen from above, as front faces.
             CHECK(winding(16, indices[i], indices[i + 1], indices[i + 2]) < 0.0F);
             used.insert(indices.begin() + static_cast<std::ptrdiff_t>(i),
                         indices.begin() + static_cast<std::ptrdiff_t>(i + 3));

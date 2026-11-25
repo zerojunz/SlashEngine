@@ -1,6 +1,7 @@
-// The graphics extensions OpenXR sessions draw with, ported from Godot's modules/openxr/extensions
-// (OpenXRVulkanExtension, OpenXRD3D12Extension, OpenXROpenGLExtension): each function names the
-// one it follows. Metal's follows the extension's specification in the same shape.
+// The graphics extensions OpenXR sessions draw with (Vulkan, D3D12 and OpenGL): each function
+// names the reference function it follows.
+// Metal's follows the extension's specification in the same shape.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "openxr_graphics.hpp"
 
 #include <vulkan/vulkan_core.h>
@@ -466,7 +467,7 @@ private:
 #endif
 
 #if defined(__APPLE__)
-// XR_KHR_metal_enable, written as Godot's other graphics extensions are: the runtime names the
+// XR_KHR_metal_enable, written like the other graphics extensions: the runtime names the
 // MTLDevice, the session takes the device's command queue, and swapchains are MTLTextures.
 class Metal final : public OpenXRGraphics {
 public:

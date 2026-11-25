@@ -5470,8 +5470,8 @@ inline constexpr char kParticlesStages3DHlsl[] = R"hlsl(// Simulation stages on 
 // What particles_process.hlsl and particles_draw.hlsl share: the particle, as
 // slash::render::Particle lays it out, and where SDL binds each kind of resource.
 
-// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity
-// its origin [x, y] and velocity [z, w]; custom Godot's CUSTOM and userdata its USERDATA1.
+// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity its
+// origin [x, y] and velocity [z, w]; custom the custom data and userdata its USERDATA1.
 struct Particle {
     float4 basis;
     float4 origin_velocity;
@@ -5500,7 +5500,7 @@ static const uint kParticleCycleShift = 16u;
 #endif
 
 // One particle (128 bytes): its transform's axes, each scaled, and its origin, their w 0; the
-// velocity its forces built up and its flags; its color; Godot's CUSTOM (angle, age, frame,
+// velocity its forces built up and its flags; its color; the custom data (angle, age, frame,
 // lifetime) and spare words.
 struct Particle3D {
     float4 x;

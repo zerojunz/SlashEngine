@@ -1,9 +1,9 @@
 // FSR 2's luminance pass (ffx_fsr2_compute_luminance_pyramid.h), drawing the level of the log luma
 // pyramid that the accumulate pass reads shading changes from. AMD's single pass downsampler makes
-// every level, for an auto exposure Godot doesn't turn on; this pass draws only that level, 1/32
-// of the render size, each texel the average of the 32x32 log lumas under it (none outside the
-// render size), as the downsampler's averages of averages come to. Keep it in step with
-// src/fsr2.cpp, its CPU twin.
+// every level, for an auto exposure that is off here; this pass draws only that level, 1/32 of the
+// render size, each texel the average of the 32x32 log lumas under it (none outside the render
+// size), as the downsampler's averages of averages come to. Keep it in step with src/fsr2.cpp, its
+// CPU twin.
 //
 // Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 //

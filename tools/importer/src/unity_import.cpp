@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "unity_import.hpp"
 
 #include "common.hpp"
@@ -560,7 +561,7 @@ json::Value pad_motion(std::string_view axis, int value) {
     return binding;
 }
 
-// The Godot key names project.json takes for keys both input systems name the same way.
+// The key names project.json takes for keys both input systems name the same way.
 std::string common_key(std::string_view name) {
     if (name.size() == 1 && name[0] >= 'a' && name[0] <= 'z') {
         return {static_cast<char>(name[0] - 'a' + 'A')};
@@ -775,7 +776,7 @@ json::Value control_binding(std::string_view path, std::string& why) {
         return nullptr;
     }
     if (device == "Touchscreen" || device == "Pointer" || device == "Pen") {
-        // Taps and presses: touches press the left mouse button, as Godot emulates the mouse.
+        // Taps and presses: touches press the left mouse button.
         if (control.ends_with("press") || control.ends_with("tap") || control == "tip") {
             return mouse_binding("left");
         }
@@ -1410,7 +1411,7 @@ private:
             importer->integer_at("textureSettings.filterMode", 1) == 0 ? "nearest" : "linear";
         base.fallback_shape = importer->flag_at("spriteGenerateFallbackPhysicsShape", true);
         // A secondary texture named _NormalMap is the sprites' normal map, laid out as the
-        // texture, as Godot's CanvasTexture takes one.
+        // texture.
         if (const Node* secondary = importer->path("spriteSheet.secondaryTextures")) {
             for (const Node& entry : secondary->items) {
                 const auto ref = ref_at(entry, "texture");
@@ -1738,7 +1739,7 @@ private:
                 const double resonance = setting("resonance");
                 if (resonance > 1.0) {
                     problems_.add("filter resonance above 1", where,
-                                  "a filter's resonance goes up to 1, as Godot's");
+                                  "a filter's resonance goes up to 1");
                 }
                 out["resonance"] = tidy(std::clamp(resonance, 0.0, 1.0));
             }
@@ -1748,7 +1749,7 @@ private:
             const double decay = std::clamp(setting("decay") / 100.0, 0.0, 1.0);
             if (delay > 1500.0) {
                 problems_.add("echo delay above 1500 ms", where,
-                              "a delay's echoes come at most 1500 ms apart, as Godot's");
+                              "a delay's echoes come at most 1500 ms apart");
             }
             out["type"] = "delay";
             out["dry"] = tidy(std::clamp(setting("drymix") / 100.0, 0.0, 1.0));
@@ -1766,7 +1767,7 @@ private:
                 out["tap1_pan"] = 0.0;
             }
         } else if (name == "Distortion") {
-            // Unity's distortion is the waveshaper Godot's waveshape mode is.
+            // Unity's distortion is the engine's waveshape mode.
             out["type"] = "distortion";
             out["mode"] = "waveshape";
             out["drive"] = tidy(std::clamp(setting("level"), 0.0, 1.0));
@@ -1800,7 +1801,7 @@ private:
             const double attack = setting(duck ? "attacktime" : "attack");
             if (attack > 2.0) {
                 problems_.add("compressor attack above 2 ms", where,
-                              "a compressor's attack_us goes up to 2000, as Godot's");
+                              "a compressor's attack_us goes up to 2000");
             }
             // The Duck Volume's ratio may be written as a percentage.
             double ratio = duck ? setting("ratio") : 2.5;
@@ -1825,7 +1826,7 @@ private:
             }
         } else if (name == "SFX Reverb") {
             // Freeverb's combs, about 1378 samples long at 44.1 kHz, take decay time T when each
-            // pass keeps 10^(-3 * 0.03125 / T) of the sound; Godot's room_size sets that from
+            // pass keeps 10^(-3 * 0.03125 / T) of the sound; room_size sets that from
             // 0.7 to 0.98.
             const double decay = std::clamp(setting("decaytime"), 0.1, 20.0);
             const double feedback = std::pow(10.0, -3.0 * 0.03125 / decay);
@@ -1839,11 +1840,12 @@ private:
                 (setting("reflectdelay") + setting("reverbdelay")) * 1000.0, 20.0, 500.0));
             out["predelay_feedback"] = 0.0;
         } else if (name == "Pitch Shifter") {
-            // Both are Bernsee's phase vocoder: Unity's overlap is Godot's oversampling, from 4.
+            // Both are Bernsee's phase vocoder: Unity's overlap is the engine's oversampling, from
+            // 4.
             const double overlap = setting("overlap");
             if (overlap < 4.0) {
                 problems_.add("pitch shifter overlap below 4", where,
-                              "a pitch shift oversamples at least 4 times, as Godot's");
+                              "a pitch shift oversamples at least 4 times");
             }
             std::int64_t fft_size = 256;
             while (fft_size < 4096 && static_cast<double>(fft_size) < setting("fftsize")) {
@@ -1859,9 +1861,9 @@ private:
             return std::nullopt;
         } else {
             static const std::map<std::string_view, std::string_view> kWhys{
-                {"Flange", "Godot's effects have no flanger"},
-                {"Normalize", "Godot's effects have no normalizer"},
-                {"ParamEQ", "Godot's EQs have fixed bands; one movable band doesn't convert"},
+                {"Flange", "the engine's audio effects have no flanger"},
+                {"Normalize", "the engine's audio effects have no normalizer"},
+                {"ParamEQ", "the engine's EQs have fixed bands; one movable band doesn't convert"},
             };
             const auto it = kWhys.find(name);
             why = it != kWhys.end() ? std::string(it->second) : "an audio plugin's effect";
@@ -3157,7 +3159,7 @@ private:
 
     // --- Converting objects ---
 
-    // A 3D object's place in its parent's space, in Godot's axes: Unity's mirrored in x.
+    // A 3D object's place in its parent's space, in the engine's axes: Unity's mirrored in x.
     struct Place3D {
         std::array<double, 3> position{};
         Quaternion rotation{0.0, 0.0, 0.0, 1.0};
@@ -3319,7 +3321,7 @@ private:
         }
         physics(ctx, rigidbody, colliders, effector, out);
         joints(ctx, found_joints, rigidbody, out);
-        // A body only reports what it touches when asked to, as Godot's RigidBody2D does.
+        // A body only reports what it touches when asked to.
         if (const auto body = out.components.find("RigidBody2D");
             out.collisions && body != out.components.end()) {
             body->second["contact_monitor"] = true;
@@ -3431,7 +3433,7 @@ private:
             return "line and trail renderers don't convert";
         }
         if (type.find("Joint2D") != std::string_view::npos) {
-            return "Godot's joints are PinJoint2D, DampedSpringJoint2D and GrooveJoint2D, which "
+            return "the engine's joints are PinJoint2D, SpringJoint2D and TrackJoint2D, which "
                    "HingeJoint2D, SpringJoint2D and SliderJoint2D become";
         }
         return {};
@@ -3556,10 +3558,9 @@ private:
         if (body.integer_at("m_MaskInteraction", 0) != 0) {
             problems_.add("sprite mask interaction", ctx.where, "sprite masks aren't supported");
         }
-        // Sprite2D passes its z_index, visibility and color to the entities under it, as Godot's
-        // CanvasItem does, and Unity's SpriteRenderer doesn't; so an object with children draws its
-        // sprite on a child entity of its own, as does a sprite drawn at another scale than the
-        // project's.
+        // Sprite2D passes its z_index, visibility and color to the entities under it, and Unity's
+        // SpriteRenderer doesn't; so an object with children draws its sprite on a child entity of
+        // its own, as does a sprite drawn at another scale than the project's.
         const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
         const bool scaled = found != nullptr && std::abs(found->ppu - ppu_) > 1e-6;
         const bool parent = std::ranges::any_of(go.children, [&](int child) {
@@ -3645,7 +3646,7 @@ private:
         const double spatial = body.number_at("panLevelCustomCurve.m_Curve.0.value", 0.0);
         std::string kind = "AudioStreamPlayer";
         if (spatial > 0.0 && three_d) {
-            // Unity's logarithmic rolloff is Godot's inverse distance from MinDistance, never
+            // Unity's logarithmic rolloff is the inverse distance from MinDistance, never
             // louder than at it.
             kind = "AudioStreamPlayer3D";
             player["unit_size"] = body.number_at("MinDistance", 1.0);
@@ -4233,7 +4234,7 @@ private:
             added[piece.component] = std::move(piece.fields);
             out.added.emplace_back("shape_" + std::to_string(++extra), std::move(added));
         }
-        // Triggers on a body: an Area2D child entity, as Godot keeps areas apart from bodies.
+        // Triggers on a body: a Zone2D child entity, apart from the body's own.
         int trigger_count = 0;
         for (Piece& piece : triggers) {
             json::Object added;
@@ -4253,8 +4254,8 @@ private:
 
     // --- 2D lights ---
 
-    // URP's 2D lights shade as Godot's do with a CanvasModulate for the global light and a
-    // PointLight2D in add mode for each other light: what they light gets its color times the
+    // URP's 2D lights shade with an AmbientTint2D for the global light and a PointLight2D in add
+    // mode for each other light: what they light gets its color times the
     // ambient color plus each light's color, energy and texture there. Each light's shape and
     // falloff become its texture, white with the light's strength in its alpha.
     static constexpr std::uint32_t kLightTextureSize = 256;
@@ -4648,7 +4649,7 @@ private:
             light["shadow_enabled"] = true;
             if (shadow_strength < 0.995) {
                 problems_.add("Light 2D shadow strength below 1", ctx.where,
-                              "Godot's 2D shadows block all of a light");
+                              "the engine's 2D shadows block all of a light");
             }
             const double softness =
                 version < 2 ? 0.0 : std::clamp(body.number_at("m_ShadowSoftness", 0.3), 0.0, 1.0);
@@ -4660,7 +4661,7 @@ private:
         if (version == 0 ? body.number_at("m_LightVolumeIntensity") > 0.0
                          : body.flag_at("m_LightVolumeEnabled")) {
             problems_.add("volumetric Light 2D", ctx.where,
-                          "Godot's 2D lights light what they fall on, not the air");
+                          "the engine's 2D lights light what they fall on, not the air");
         }
         if (body.integer_at("m_BlendStyleIndex", 0) != 0) {
             problems_.add("Light 2D blend style", ctx.where,
@@ -4722,7 +4723,7 @@ private:
         out.components["CanvasModulate"] = std::move(modulate);
     }
 
-    // A ShadowCaster2D as Godot's LightOccluder2D: its own shape, or the shape of the collider or
+    // A ShadowCaster2D as an Occluder2D: its own shape, or the shape of the collider or
     // sprite it takes its shape from.
     void shadow_caster(const Component& component, const Context& ctx, Converted& out) {
         const Node& body = component.body;
@@ -4738,7 +4739,7 @@ private:
             }
             if (casting == 0) {
                 problems_.add("ShadowCaster2D that shadows only itself", ctx.where,
-                              "Godot's occluders shadow what is behind them");
+                              "the engine's occluders shadow what is behind them");
                 return;
             }
         } else if (!body.flag_at("m_CastsShadows", true)) {
@@ -5463,7 +5464,7 @@ private:
             return look;
         }
         if (ref->guid == kBuiltinSprites) {
-            // Unity's built-in sprites aren't open source; its rounded ones draw as Godot's
+            // Unity's built-in sprites aren't open source; its rounded ones draw as
             // rounded style boxes.
             switch (ref->file_id) {
             case kUiSprite:
@@ -5617,8 +5618,8 @@ private:
     }
 
     // A Selectable's look per state (normal, hover, pressed, disabled and focus) as style boxes:
-    // Unity's color tint or sprite swap on its target graphic. Focus draws over the others, as
-    // Godot's; it is the selected look, or nothing when that is the normal one.
+    // Unity's color tint or sprite swap on its target graphic. Focus draws over the others;
+    // it is the selected look, or nothing when that is the normal one.
     std::array<json::Value, 5> selectable_styles(const Node& body, const ImageLook& look,
                                                  const std::string& where) {
         const double multiplier = body.number_at("m_Colors.m_ColorMultiplier", 1.0);
@@ -5784,8 +5785,8 @@ private:
         }
     };
 
-    // A UI object as a control: its RectTransform as Control's anchors and offsets, its graphic
-    // as what the control draws, and its selectable, layout and mask as Godot's.
+    // A UI object as a widget: its RectTransform as Widget's anchors and offsets, its graphic
+    // as what the widget draws, and its selectable, layout and mask as widget settings.
     void ui_object(const Context& ctx, const UiParts& parts, Converted& out) {
         Expanded& file = *ctx.file;
         GameObject& go = file.objects[static_cast<std::size_t>(ctx.index)];
@@ -5936,7 +5937,7 @@ private:
                 const double dx = body.number_at("m_EffectDistance.x", 1.0);
                 const double dy = body.number_at("m_EffectDistance.y", -1.0);
                 if (known_script(*effect)->name == "Outline") {
-                    // Godot's outline strokes a quarter of outline_size each side of the edge.
+                    // The outline strokes a quarter of outline_size each side of the edge.
                     control["theme_override_colors"]["font_outline_color"] = color_json(color);
                     control["theme_override_constants"]["outline_size"] = static_cast<std::int64_t>(
                         std::lround(4.0 * std::max(std::abs(dx), std::abs(dy))));
@@ -6033,7 +6034,7 @@ private:
         }
         navigation(body, file, control);
         ui_calls(body, "onValueChanged", "toggled", ctx);
-        // Unity's default toggle, its built-in box and checkmark, is Godot's CheckBox.
+        // Unity's default toggle, its built-in box and checkmark, is a CheckBox.
         const int graphic = object_at(file, body, "graphic");
         const int target = object_at(file, body, "m_TargetGraphic");
         const auto builtin = [&](int index, std::int64_t id) {
@@ -6116,8 +6117,7 @@ private:
             fields["vertical"] = true;
         }
         if (direction == 1 || direction == 3) {
-            problems_.add("reversed Slider", ctx.where,
-                          "it fills left to right, or bottom to top, as Godot's");
+            problems_.add("reversed Slider", ctx.where, "it fills left to right, or bottom to top");
         }
         if (!body.flag_at("m_Interactable", true)) {
             fields["editable"] = false;
@@ -6135,7 +6135,7 @@ private:
                 background = child;
             }
         }
-        // Godot draws the track as thick as its style's minimum size: the background's
+        // The track is drawn as thick as its style's minimum size: the background's
         // thickness, as content margins either side.
         const bool vertical = direction >= 2;
         const auto thick = [&](json::Value style) {
@@ -6187,8 +6187,8 @@ private:
         const double size = std::clamp(body.number_at("m_Size", 0.2), 0.0, 1.0);
         const double value = std::clamp(body.number_at("m_Value"), 0.0, 1.0);
         const std::int64_t direction = body.integer_at("m_Direction", 0);
-        // Unity's value goes from 0 to 1 whatever the size; Godot's from min to max - page. A
-        // vertical bar's 1 is at the top, Godot's 0.
+        // Unity's value goes from 0 to 1 whatever the size; the engine's from min to max - page. A
+        // vertical bar's 1 is at the top, the engine's 0.
         const bool reversed = direction == 1 || direction == 2;
         fields["max_value"] = 1.0;
         fields["page"] = tidy(size);
@@ -6347,9 +6347,9 @@ private:
         out.components[lines ? "TextEdit" : "LineEdit"] = std::move(fields);
     }
 
-    // A Dropdown or TMP_Dropdown is Godot's OptionButton: its options and the one shown, its
+    // A Dropdown or TMP_Dropdown becomes a Dropdown: its options and the one shown, its
     // background's styles and its caption's look. Its caption, arrow and template are part of
-    // it; its list draws with the PopupMenu theme.
+    // it; its list draws with the PopupList theme.
     void ui_dropdown(const Context& ctx, const Component& dropdown, bool tmp, const ImageLook& look,
                      bool image_drawn, json::Value& control, Converted& out) {
         Expanded& file = *ctx.file;
@@ -6538,7 +6538,7 @@ private:
             }
         }
         if (const Component* fitter = parts.get("ContentSizeFitter"); enabled(fitter)) {
-            // Godot's controls are at least their content's minimum size: a rect of no size at
+            // A widget is at least its content's minimum size: a rect of no size at
             // the pivot grows to it.
             const Node& rect = transform_of(go)->body;
             const double vx = rect.number_at("m_Pivot.x", 0.5);
@@ -6816,10 +6816,10 @@ private:
         return 0.0;
     }
 
-    // Unity's HingeJoint2D, SpringJoint2D and SliderJoint2D as Godot's PinJoint2D,
-    // DampedSpringJoint2D and GrooveJoint2D, each on an entity under the joint's object. The
-    // joint joins the connected body (or the world) as node_a to the object's own body as
-    // node_b, so Unity's joint angles keep their sign with y down.
+    // Unity's HingeJoint2D, SpringJoint2D and SliderJoint2D as PinJoint2D,
+    // SpringJoint2D and TrackJoint2D, each on an entity under the joint's object. The
+    // joint joins the connected body (or the world) as body_a to the object's own body as
+    // body_b, so Unity's joint angles keep their sign with y down.
     void joints(const Context& ctx, const std::vector<const Component*>& found,
                 const Component* rigidbody, Converted& out) {
         const Expanded& file = *ctx.file;
@@ -6886,8 +6886,7 @@ private:
                         body.number_at("m_AngleLimits.m_UpperAngle") * std::numbers::pi / 180.0;
                     if (lower > 0.0 || upper < 0.0) {
                         problems_.add("hinge limits on one side of where it starts", ctx.where,
-                                      "limits keep the angle it starts at between them, as "
-                                      "Godot's");
+                                      "limits keep the angle it starts at between them");
                     }
                     fields["angular_limit_enabled"] = true;
                     fields["angular_limit_lower"] = tidy_angle(std::clamp(lower, -3.1, 0.0));
@@ -6959,8 +6958,8 @@ private:
                 fields["initial_offset"] = tidy(std::clamp(at - lower, 0.0, upper - lower) * scale);
                 if ((rigidbody->body.integer_at("m_Constraints", 0) & 4) == 0) {
                     problems_.add("SliderJoint2D", ctx.where,
-                                  "the body turns freely along the groove, as on Godot's "
-                                  "GrooveJoint2D; freezing its rotation keeps it straight");
+                                  "the body turns freely along the groove, as on a "
+                                  "TrackJoint2D; freezing its rotation keeps it straight");
                 }
                 if (body.flag_at("m_UseMotor")) {
                     problems_.add("SliderJoint2D motor", ctx.where, "a GrooveJoint2D has no motor");
@@ -6999,7 +6998,7 @@ private:
     };
 
     // A tile of a tile set the import writes: one sprite, and an alternative for each other look
-    // cells give it, as Godot's alternative tiles.
+    // cells give it.
     struct TileOut {
         const Sprite* sprite = nullptr;
         std::string source;
@@ -7009,7 +7008,7 @@ private:
         std::map<TileLook, int> alternatives;
         // Polygons by collider type and shift.
         std::map<std::pair<std::int64_t, std::array<double, 2>>, json::Array> collision;
-        // An AnimatedTile's frames, as Godot lays them out after the tile: how many, how many to
+        // An AnimatedTile's frames, laid out after the tile: how many, how many to
         // a row (0: all in one) and the texture cells between them; each lasts duration seconds.
         int frames = 1;
         int columns = 0;
@@ -7153,7 +7152,7 @@ private:
         plan.height = static_cast<double>(y);
         plan.set.tile_size = plan.swap ? Vec2i{y, x} : Vec2i{x, y};
         if (plan.layout == 1) {
-            // Unity's odd rows (columns, swizzled) sit over; Godot's stacked_offset layout moves
+            // Unity's odd rows (columns, swizzled) sit over; the stacked_offset layout moves
             // its even ones, and rows here have the other parity.
             plan.set.shape = canvas::TileShape::Hexagon;
             plan.set.layout = canvas::TileLayout::StackedOffset;
@@ -7545,7 +7544,7 @@ private:
         add_file(set.path, text);
     }
 
-    // A cell's matrix as its tile's turns, as Godot's cell transform flags: flip_h, flip_v and
+    // A cell's matrix as its tile's turns: flip_h, flip_v and
     // transpose, the axes swapped before the flips. nullopt for a matrix that scales, skews or
     // turns by other than quarter turns.
     static std::optional<std::array<bool, 3>> tile_turns(const Node* matrix) {
@@ -7630,7 +7629,7 @@ private:
         return out;
     }
 
-    // How frames at these texture cells follow one another as Godot's do: the frames per row
+    // How frames at these texture cells follow one another: the frames per row
     // (0: one row) and the cells between them; nullopt if they don't.
     static std::optional<std::pair<int, std::array<std::int64_t, 2>>>
     frame_layout(const std::vector<std::array<std::int64_t, 2>>& cells) {
@@ -7664,7 +7663,7 @@ private:
         return std::pair{columns, gap};
     }
 
-    // Gives a tile an AnimatedTile's frames, if they lie in the tile's source as Godot's do.
+    // Gives a tile an AnimatedTile's frames, if they lie in the tile's source in order.
     void animate(TileSetOut& set, TileOut& tile, const AnimatedTileAsset& animation,
                  double frame_rate, const std::string& where) {
         std::vector<std::array<std::int64_t, 2>> cells;
@@ -7691,7 +7690,7 @@ private:
         if (!layout) {
             problems_.add("animated tiles whose sprites aren't in order along the texture's grid",
                           where,
-                          "frames follow each other along rows, as Godot's; they show their "
+                          "frames follow each other along rows; they show their "
                           "first frame");
             return;
         }
@@ -7725,7 +7724,7 @@ private:
     }
 
     // Takes the animation off tiles whose frames cover texture cells other tiles or their frames
-    // do, as Godot's has_room_for_tile forbids.
+    // do, which a tile set doesn't allow.
     void settle_animations(TileSetOut& set, const std::string& where) {
         std::set<std::pair<std::string, std::array<std::int64_t, 2>>> covered;
         for (const auto& [key, tile] : set.tiles) {
@@ -8647,7 +8646,7 @@ private:
 
         // 3D: what moves an object's Transform3D, mirrored in x as the scene is: positions' x
         // negated, and turns about y and z backwards, so Unity's Euler angles (applied z, x, then
-        // y, as Godot's YXZ ones) are [x, -y, -z]. On a model's instance, a path below the
+        // y, the YXZ order) are [x, -y, -z]. On a model's instance, a path below the
         // Animator's object names a node of the model, which a node track moves.
         const auto on_node = [&](const std::string& target) {
             return space == ClipSpace::Model && !target.empty();
@@ -8925,7 +8924,7 @@ private:
     };
 
     // The node of a model a Unity name names: as the model names it, or with the characters
-    // Godot's importer changes made "_".
+    // the model importer changes made "_".
     static int node_named(const scene3d::Model& model, std::string name) {
         if (const int found = scene3d::find_node(model, name); found >= 0) {
             return found;
@@ -9025,7 +9024,7 @@ private:
         return 2.0 * std::atan2(std::hypot(turn[0], turn[1], turn[2]), std::abs(turn[3]));
     }
 
-    // The rotation weight of the way from a to b, the shorter way, as Godot's slerp.
+    // The rotation weight of the way from a to b, the shorter way.
     static Quaternion slerp(const Quaternion& a, Quaternion b, double weight) {
         double dot = (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
         if (dot < 0.0) {
@@ -9433,7 +9432,7 @@ private:
             return;
         }
         const ModelClip& settings = *found;
-        // The model names its takes as Godot names animations, with some characters made "_".
+        // The model names its takes as the engine names animations, with some characters made "_".
         const auto plain = [](std::string name) {
             for (char& c : name) {
                 if (std::string_view(".:@/\"%,[").find(c) != std::string_view::npos) {
@@ -9912,7 +9911,7 @@ private:
     using AddAnimation = std::function<std::string(ObjectRef, double, const std::string&,
                                                    const std::string&, const std::string&)>;
 
-    // A blend tree as a blend space over its motions, as Godot's BlendSpace1D and BlendSpace2D:
+    // A blend tree as a blend space over its motions:
     // each an Animation node naming the animation add makes of its clip, or a blend space of its
     // own. Null when no motion converts, and the motion's node when only one does. first is the
     // first clip's animation; blends gets each blend space's parameters, under path.
@@ -10046,7 +10045,7 @@ private:
             } else {
                 problems_.add("Animator 2D blend tree", here,
                               "the blend space blends the three motions around the position, in "
-                              "triangles as Godot's; Unity weighs every motion by gradient bands");
+                              "triangles; Unity weighs every motion by gradient bands");
             }
         }
         const bool plane = !y.empty() || discrete;
@@ -10732,7 +10731,7 @@ private:
                 problems_.add("Animator root motion", where,
                               "the AnimationTree takes the " + root_node +
                                   " node's motion out of the pose into root_motion_position and "
-                                  "root_motion_rotation, as Godot's does; gameplay code moves "
+                                  "root_motion_rotation; gameplay code moves "
                                   "the object by them, as Unity's Animator did");
             }
         }
@@ -11317,12 +11316,12 @@ private:
 
     // --- 3D ---
 
-    // Unity's axes are left-handed and Godot's right-handed: a 3D scene converts mirrored in x,
-    // which keeps every picture as Unity draws it. Unity's cameras, lights and quads face down
-    // their +z, Godot's down -z, so they turn half a turn about y.
+    // Unity's axes are left-handed and the engine's right-handed: a 3D scene converts mirrored in
+    // x, which keeps every picture as Unity draws it. Unity's cameras, lights and quads face down
+    // their +z, the engine's down -z, so they turn half a turn about y.
     static constexpr Quaternion kHalfTurn{0.0, 1.0, 0.0, 0.0};
 
-    // a, then b in a's space: the Hamilton product a * b, as Godot's Quaternion multiplies.
+    // a, then b in a's space: the Hamilton product a * b.
     static Quaternion multiply(const Quaternion& a, const Quaternion& b) {
         const auto [ax, ay, az, aw] = a;
         const auto [bx, by, bz, bw] = b;
@@ -11696,7 +11695,7 @@ private:
         }
     }
 
-    // Render layers from an object's layer: Unity has 32, Godot 20.
+    // Render layers from an object's layer: Unity has 32, the engine 20.
     json::Value render_layers(std::int64_t layer, const std::string& where) {
         if (layer < 0 || layer >= 20) {
             problems_.add("object on a layer past 19", where,
@@ -12680,7 +12679,7 @@ private:
         return points;
     }
 
-    // A Unity Gradient as Godot's points: Unity keeps its color and alpha keys apart, so a point
+    // A Unity Gradient as gradient points: Unity keeps its color and alpha keys apart, so a point
     // goes at each key of either, with both there.
     json::Array gradient_points(const Node& gradient, const std::string& where) {
         constexpr double kMostTime = 65535.0;
@@ -12876,7 +12875,7 @@ private:
         }
     }
 
-    // A MinMaxGradient's colors: the color, or Godot's initial color ramp, which picks a color
+    // A MinMaxGradient's colors: the color, or the initial color ramp, which picks a color
     // along it at random as Unity's random colors do.
     void start_color(const Node* color, json::Value& particles, const std::string& where) {
         if (color == nullptr) {
@@ -12917,8 +12916,8 @@ private:
         }
     }
 
-    // The modules of Unity's particle systems that have nothing like them in Godot's
-    // CPUParticles3D, by the name Unity's inspector gives each.
+    // The modules of Unity's particle systems that have nothing like them in
+    // Emitter3D, by the name Unity's inspector gives each.
     static constexpr std::array<std::pair<std::string_view, std::string_view>, 14> kParticleModules{
         {{"VelocityModule", "Velocity over Lifetime"},
          {"ClampVelocityModule", "Limit Velocity over Lifetime"},
@@ -12935,7 +12934,7 @@ private:
          {"LightsModule", "Lights"},
          {"TrailModule", "Trails"}}};
 
-    // A ParticleSystem and its renderer as Godot's CPUParticles3D, with the mesh it draws at each
+    // A ParticleSystem and its renderer as an Emitter3D, with the mesh it draws at each
     // particle and its material: on the object, or on an entity under it when the object draws a
     // mesh of its own. Particles leave along the shape's +z, mirrored in x as the scene is.
     void particles_3d(const Context& ctx, const Parts3D& parts, Converted& out) {
@@ -13027,8 +13026,8 @@ private:
         }
         particles["gravity"] = triple(gravity);
 
-        // Emission: Godot emits amount particles each lifetime, Unity a rate each second and its
-        // bursts.
+        // Emission: the engine emits amount particles each lifetime, Unity a rate each second
+        // and its bursts.
         const Node& emission = module("EmissionModule");
         const bool emits = emission.flag_at("enabled", true);
         const Spread rate = emits ? spread_of(emission.get("rateOverTime"), 10.0) : Spread{};
@@ -13086,7 +13085,7 @@ private:
             particles["speed_scale"] = tidy_number(scale);
         }
         if (const std::int64_t space = system.integer_at("moveWithTransform", 0); space == 0) {
-            // Godot's local particles fall along the object's axes, Unity's along the world's:
+            // Local particles fall along the object's axes, Unity's along the world's:
             // gravity turns into the object's.
             particles["local_coords"] = true;
             Quaternion turn{0.0, 0.0, 0.0, 1.0};
@@ -13191,7 +13190,7 @@ private:
         }
         for (const auto& [name, label] : kParticleModules) {
             if (module(name).flag_at("enabled")) {
-                report("particle " + std::string(label), "Godot's CPUParticles3D has none");
+                report("particle " + std::string(label), "Emitter3D has none");
             }
         }
 
@@ -13320,7 +13319,7 @@ private:
         }
     }
 
-    // A texture sheet animation as Godot's: the frames of a grid of tiles, played through as many
+    // A texture sheet animation: the frames of a grid of tiles, played through as many
     // times as Unity's cycles over each life, or a frame held.
     void texture_sheet(const Node& sheet, json::Value& particles, json::Value& material,
                        const std::string& where) {
@@ -13758,9 +13757,10 @@ private:
     }
 
     // A reflection probe, as a ReflectionProbe. Unity's box is centered at its object's position
-    // plus m_BoxOffset and drawn from the object's position; Godot's is centered on its node and
-    // drawn from origin_offset, so an offset box goes on an entity of its own, moved by the offset
-    // and drawing from back where the object is. Unity's probes light nothing but reflections.
+    // plus m_BoxOffset and drawn from the object's position; the engine's is centered on its node
+    // and drawn from origin_offset, so an offset box goes on an entity of its own, moved by the
+    // offset and drawing from back where the object is. Unity's probes light nothing but
+    // reflections.
     void reflection_probe_3d(const Component& component, const Context& ctx, const Place3D& place,
                              Converted& out) {
         const Node& body = component.body;
@@ -13794,7 +13794,7 @@ private:
         if (const double blend = body.number_at("m_BlendDistance", 1.0); blend != 1.0) {
             probe["blend_distance"] = std::max(blend, 0.0);
         }
-        // Unity's cube sees as far as its far clip; Godot's as far as its box's sides or
+        // Unity's cube sees as far as its far clip; the engine's as far as its box's sides or
         // max_distance.
         probe["max_distance"] = std::max(body.number_at("m_FarClip", 1000.0), 0.0);
         if (body.flag_at("m_BoxProjection")) {
@@ -13816,11 +13816,13 @@ private:
         }
         if (place.rotation != Quaternion{0.0, 0.0, 0.0, 1.0}) {
             problems_.add("turned reflection probe", ctx.where,
-                          "Unity's box stays square to the world; Godot's turns with its node");
+                          "Unity's box stays square to the world; "
+                          "the engine's turns with its node");
         }
         if (place.scale != std::array<double, 3>{1.0, 1.0, 1.0}) {
             problems_.add("scaled reflection probe", ctx.where,
-                          "its box is m_BoxSize; Godot's probes aren't scaled with their node");
+                          "its box is m_BoxSize; the engine's probes aren't "
+                          "scaled with their node");
         }
         json::Object parts;
         parts["ReflectionProbe"] = std::move(probe);
@@ -14139,7 +14141,7 @@ private:
             added["CollisionShape3D"] = std::move(solid[i]);
             out.added.emplace_back("shape_" + std::to_string(++extra), std::move(added));
         }
-        // Triggers on a body: an Area3D child entity, as Godot keeps areas apart from bodies.
+        // Triggers on a body: a Zone3D child entity, apart from the body's own.
         int trigger_count = 0;
         for (json::Value& shape : triggers) {
             json::Object added;
@@ -14312,7 +14314,7 @@ private:
             if (sx != 1.0 || sy != 1.0) {
                 material["uv1_scale"] = triple({sx, sy, 1.0});
             }
-            // Unity's texture coordinates start at the bottom, Godot's at the top.
+            // Unity's texture coordinates start at the bottom, the engine's at the top.
             if (const double y = 1.0 - sy - oy; ox != 0.0 || tidy_number(y) != 0.0) {
                 material["uv1_offset"] = triple({ox, y, 0.0});
             }
@@ -14438,8 +14440,8 @@ private:
     // A skybox material as the sky's component and its fields, or nullopt.
     std::optional<std::pair<std::string, json::Value>> sky_material(const ObjectRef& ref,
                                                                     const std::string& where) {
-        // Unity's procedural sky scatters the sun's light through the air in HDR. Godot's physical
-        // sky does too, but is dim without HDR, so it becomes a ProceduralSkyMaterial's gradient
+        // Unity's procedural sky scatters the sun's light through the air in HDR.
+        // SkyScattering does too, but is dim without HDR, so it becomes a SkyGradient's gradient
         // in the colors Unity's draws with its default settings: its tint scales the sky's colors
         // and its exposure, 1.3 by default, the sky's energy.
         const auto procedural = [&](const MaterialFile* file) {
@@ -14503,7 +14505,7 @@ private:
             return procedural(&*file);
         }
         if (file->textures.contains("_MainTex") && file->numbers.contains("_Mapping")) {
-            // A panoramic sky. Unity's longitude turns from x towards z and Godot's from -z
+            // A panoramic sky. Unity's longitude turns from x towards z and the engine's from -z
             // towards x; in mirrored axes they agree a quarter turn apart.
             if (file->number("_Mapping", 1.0) != 1.0 || file->number("_ImageType", 0.0) != 0.0) {
                 problems_.add("panoramic skybox layout", file->path,

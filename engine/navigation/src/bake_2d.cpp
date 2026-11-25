@@ -1,8 +1,7 @@
-// Baking 2D navigation polygons, as Godot 4.6's NavMeshGenerator2D
-// (modules/navigation/2d/nav_mesh_generator_2d.cpp, generator_bake_from_source_geometry_data):
-// Clipper2 merges the traversable outlines, takes the obstructions out, shrinks the rest by
-// agent_radius and takes carving obstacles out, then polypartition splits it into convex polygons
-// or triangles.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Baking 2D navigation polygons: Clipper2 merges the traversable outlines, takes the obstructions
+// out, shrinks the rest by agent_radius and takes carving obstacles out, then polypartition splits
+// it into convex polygons or triangles.
 
 #include "slash/navigation/navigation.hpp"
 
@@ -30,14 +29,14 @@ PathD path_of(const std::vector<Vec2>& outline) {
     return path;
 }
 
-// A polygon tree's outlines and holes as polypartition takes them: outlines counterclockwise,
-// holes clockwise, as Godot's generator_recursive_process_polytree_items.
+// A polygon tree's outlines and holes as polypartition takes them: outlines counterclockwise, holes
+// clockwise.
 void add_polytree_items(std::list<TPPLPoly>& polygons, const Clipper2Lib::PolyPathD& item) {
     TPPLPoly polygon;
     polygon.Init(static_cast<long>(item.Polygon().size()));
     int j = 0;
     for (const Clipper2Lib::PointD& point : item.Polygon()) {
-        // Through float, as Godot's points are Vector2.
+        // Through float, as the points are floats.
         polygon[j].x = static_cast<float>(point.x);
         polygon[j].y = static_cast<float>(point.y);
         ++j;
@@ -101,7 +100,7 @@ Result<NavigationPolygon> bake(const NavigationPolygon& settings,
 
     const bool has_rect = settings.baking_rect_size.x > 0.0F && settings.baking_rect_size.y > 0.0F;
     if (has_rect) {
-        // Godot clips to the rect with its corners cut to whole pixels.
+        // The clip to the rect has its corners cut to whole pixels.
         const Vec2 offset = settings.baking_rect_offset;
         const Vec2 position = settings.baking_rect_position;
         const Vec2 size = settings.baking_rect_size;

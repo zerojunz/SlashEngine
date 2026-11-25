@@ -1,7 +1,9 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 // What the animation module's sources share: files read for checks, the cache of loaded
-// libraries both systems play from, Godot's float comparisons and key searches, and the
+// libraries both systems play from, float comparisons and key searches, and the
 // triangulation of blend spaces.
 
 #include "slash/animation/animation.hpp"
@@ -23,35 +25,35 @@
 
 namespace slash::animation::detail {
 
-// Godot's CMP_EPSILON, and its comparisons with it, as Math:: and Animation:: have them.
+// The epsilon for approximate comparisons, and the comparisons that use it.
 inline constexpr double kCmpEpsilon = 0.00001;
 [[nodiscard]] bool is_equal_approx(double a, double b);
 [[nodiscard]] bool is_zero_approx(double value);
-// The same on floats, as Godot compares weights, which are real_t.
+// The same on floats, for weights, which are real_t.
 [[nodiscard]] bool is_equal_approx(float a, float b);
 [[nodiscard]] bool is_zero_approx(float value);
 [[nodiscard]] bool is_less_approx(double a, double b);
 [[nodiscard]] bool is_less_or_equal_approx(double a, double b);
 [[nodiscard]] bool is_greater_approx(double a, double b);
 [[nodiscard]] bool is_greater_or_equal_approx(double a, double b);
-// Godot's Math::fposmod and Math::pingpong.
+// Floored modulo and ping-pong.
 [[nodiscard]] double fposmod(double x, double y);
 [[nodiscard]] double pingpong(double value, double length);
 
-// Godot's Variant::zero for the values fields take: what a deterministic tree gives a value
+// The zero for the values fields take: what a deterministic tree gives a value
 // track no animation plays, without a RESET animation; null for values it leaves alone.
 [[nodiscard]] json::Value zero_of(const json::Value& value);
 
-// Which end of a loop playback crossed in a tick, as Godot's Animation::LoopedFlag.
+// Which end of a loop playback crossed in a tick.
 enum class LoopedFlag : std::uint8_t { None, End, Start };
 
 // The keys of a track that playback passed in a tick that ended at time after moving delta, in
-// the order it passed them, as Godot's Animation::track_get_key_indices_in_range: those after
+// the order it passed them: those after
 // where it was, up to and including where it got to, round a loop's end.
 [[nodiscard]] std::vector<const Key*> keys_in_range(const Track& track, double length,
                                                     LoopMode loop, double time, double delta,
                                                     LoopedFlag looped);
-// The key at a time, as Godot's Animation::track_find_key: exactly there, or else the last one
+// The key at a time: exactly there, or else the last one
 // at or before it (nearest); null for none.
 [[nodiscard]] const Key* find_key(const Track& track, double length, double time, bool nearest,
                                   bool limit);
@@ -135,11 +137,11 @@ private:
     std::map<std::string, UsedModel, std::less<>> models_;
 };
 
-// One audio track's tick, as Godot's AnimationMixer::_blend_process takes it: the owner (the
+// One audio track's tick: the owner (the
 // player or tree playing it), the entity whose audio player it plays on, where the animation is,
 // how much it counts, and the key to start, if any (seeked starts it from the middle).
 // What plays an animation's audio tracks: an Animator or an AnimationGraph, which an entity
-// can have both of, as Godot's are nodes of their own.
+// can have both of, as nodes of their own.
 enum class Mixer : std::uint8_t { Player, Tree };
 struct AudioTrackTick {
     entt::entity owner = entt::null;
@@ -170,20 +172,20 @@ void sweep_audio(world::World& world);
 // Forgets every stream, for World::reset_state.
 void reset_audio(world::World& world);
 
-// Plays an animation on an animation track's player, as Godot's AnimationPlayer::play: another
+// Plays an animation on an animation track's player: another
 // animation starts from its start (its end, playing backward), the same one goes on, or starts
 // again once it ended; "[stop]" stops it and moves it back to the start, as stop() does.
 Result<void> play_started(world::World& world, LibraryCache& cache, entt::entity entity,
                           const std::string& name);
 // Seeks an animation track's player to where the animation a key started since seconds ago is,
-// as Godot's mixer seeks an animation track's Animator: sets what its tracks set there,
+// as a mixer seeks an animation track's Animator: sets what its tracks set there,
 // and those of the players its own animation tracks start, depth players down. False for
 // "[stop]", an animation the player lacks, or, unless past_end, one that doesn't loop and ended
 // since.
 Result<bool> seek_started(world::World& world, LibraryCache& cache, entt::entity entity,
                           const std::string& name, double since, int depth, bool past_end);
 
-// Godot's Delaunay2D::triangulate, as AnimationNodeBlendSpace2D adds its triangles: each sorted,
+// Delaunay triangulation, for adding a blend space's triangles: each sorted,
 // the same three points only once, in the order it made them.
 [[nodiscard]] std::vector<std::array<int, 3>> delaunay(const std::vector<Vec2>& input);
 

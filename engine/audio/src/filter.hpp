@@ -1,10 +1,12 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include <cstdint>
 
 namespace slash::audio {
 
-// Godot's AudioFilterSW (servers/audio/audio_filter_sw.h): a biquad filter's coefficients from a
+// A biquad filter's coefficients from a
 // mode, cutoff, resonance and gain, and a processor that runs one channel through them.
 class Filter {
 public:
@@ -72,7 +74,7 @@ public:
     void set_stages(int stages) { stages_ = stages; }
 
     void prepare_coefficients(Coeffs* coeffs) const;
-    // The filter's power at a frequency, as Godot's get_response.
+    // The filter's power at a frequency.
     [[nodiscard]] float response(float freq, const Coeffs& coeffs) const;
 
 private:

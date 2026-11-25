@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -12,18 +13,15 @@
 #include <utility>
 #include <vector>
 
-// The navigation map and its path queries, ported from Godot 4.6's navigation module
-// (modules/navigation_3d: nav_utils_3d.h, 3d/nav_region_builder_3d.cpp,
-// 3d/nav_map_builder_3d.cpp, 3d/nav_mesh_queries_3d.cpp and servers/nav_heap.h). Everything is in
-// 3D: a 2D map's points are (x, 0, y), as Godot's 2D server mapped them before 4.5, so the two
-// share this code. Floats only, built without fused multiply-adds, so paths are the same bits on
-// every platform.
+// The navigation map and its path queries. Everything is in 3D: a 2D map's points are (x, 0, y), so
+// the two share this code. Floats only, built without fused multiply-adds, so paths are the same
+// bits on every platform.
 namespace slash::navigation::detail {
 
 inline constexpr float kCmpEpsilon = 0.00001F;
 inline constexpr float kFloatMax = std::numeric_limits<float>::max();
 
-// ---- Godot's Vector3 math, in the same order of operations.
+// ---- Vector3 math, in a fixed order of operations.
 
 inline float dot(Vec3 a, Vec3 b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
@@ -83,7 +81,7 @@ Vec3 closest_point_on_face(Vec3 v0, Vec3 v1, Vec3 v2, Vec3 point);
 // Face3::get_area.
 float face_area(Vec3 v0, Vec3 v1, Vec3 v2);
 
-// Godot's AABB, for a region's bounds.
+// An axis-aligned box, for a region's bounds.
 struct Aabb {
     Vec3 position;
     Vec3 size;
@@ -128,8 +126,8 @@ struct Connection {
     Vec3 pathway_end;
 };
 
-// An edge's ends rounded to the map's cells, as Godot's PointKey (21, 22 and 21 bits of x, y and
-// z, which wrap past them) and EdgeKey (the smaller key first).
+// An edge's ends rounded to the map's cells: a point key (21, 22 and 21 bits of x, y and z, which
+// wrap past them) and an edge key (the smaller key first).
 struct EdgeKey {
     std::uint64_t a = 0;
     std::uint64_t b = 0;
@@ -150,8 +148,7 @@ struct ConnectableEdge {
     Vec3 pathway_end;
 };
 
-// A region or link as a map sees it, as Godot's NavBaseIteration3D. Its polygons point back at
-// it, so it never moves.
+// A region or link as a map sees it. Its polygons point back at it, so it never moves.
 struct Base {
     Base() = default;
     Base(const Base&) = delete;
@@ -183,7 +180,7 @@ struct RegionSource {
     std::vector<std::vector<int>> polygons;
 };
 
-// A region's polygons joined where they share edges, as Godot's NavRegionIteration3D.
+// A region's polygons joined where they share edges.
 struct Region : Base {
     float surface_area = 0.0F;
     Aabb bounds;
@@ -198,14 +195,14 @@ struct Region : Base {
 // range are left empty.
 std::shared_ptr<const Region> build_region(const RegionSource& source, Vec3 merge_cell_size);
 
-// A link between two points, as Godot's NavLinkIteration3D.
+// A link between two points.
 struct Link : Base {
     bool bidirectional = true;
     Vec3 start_position;
     Vec3 end_position;
 };
 
-// ---- The map, as Godot's NavMapIteration3D and NavMapBuilder3D.
+// ---- The map.
 
 struct MapBuild {
     bool use_edge_connections = true;
@@ -214,7 +211,7 @@ struct MapBuild {
     Vec3 up{0.0F, 1.0F, 0.0F};
 };
 
-// One polygon's place in an A* search, as Godot's NavigationPoly.
+// One polygon's place in an A* search.
 struct NavigationPoly {
     const Polygon* poly = nullptr;
     std::uint32_t traversable_poly_index = std::numeric_limits<std::uint32_t>::max();
@@ -239,8 +236,8 @@ struct NavigationPoly {
     }
 };
 
-// Godot's Heap (servers/nav_heap.h): a max-heap by NavPolyTravelCostGreaterThan, so its top is
-// the polygon cheapest to reach, telling each polygon where it is.
+// A max-heap by travel cost, so its top is the polygon cheapest to reach, telling each polygon
+// where it is.
 class Heap {
 public:
     static constexpr std::uint32_t kInvalidIndex = std::numeric_limits<std::uint32_t>::max();
@@ -273,7 +270,7 @@ struct Map {
     int edge_free_count = 0;
     int edge_merge_errors = 0;
 
-    // A path query's working space, as Godot's PathQuerySlot.
+    // A path query's working space.
     mutable std::vector<NavigationPoly> path_corridor;
     mutable Heap traversable_polys;
 };
@@ -281,7 +278,7 @@ struct Map {
 // NavMapBuilder3D::build_navmap_iteration over map.regions and map.links.
 void build_map(Map& map, const MapBuild& build);
 
-// ---- Queries, as Godot's NavMeshQueries3D.
+// ---- Queries.
 
 enum class PostProcessing : std::uint8_t { CorridorFunnel, EdgeCentered, None };
 

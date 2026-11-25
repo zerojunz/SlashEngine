@@ -119,7 +119,7 @@ Vec3 vec(const std::array<float, 3>& v) {
     return {v[0], v[1], v[2]};
 }
 
-// The volume a mesh's collision triangles enclose; positive when they face out with Godot's
+// The volume a mesh's collision triangles enclose; positive when they face out with the
 // clockwise winding.
 double volume(const scene3d::CsgMesh& mesh) {
     double sum = 0.0;
@@ -152,7 +152,7 @@ std::vector<std::string> messages(const std::vector<scene3d::Problem>& problems)
 
 } // namespace
 
-TEST_CASE("a CSG box is Godot's: 12 triangles, flat normals, clockwise faces") {
+TEST_CASE("a CSG box has 12 triangles, flat normals, clockwise faces") {
     Scene scene;
     const entt::entity box =
         scene.create("box", R"({"Transform3D": {}, "SolidBox3D": {"size": [2, 1, 4]}})");
@@ -214,7 +214,7 @@ TEST_CASE(
     CHECK(volume(*mesh) == doctest::Approx(1.0));
 }
 
-TEST_CASE("a SolidGroup3D whose first child subtracts makes nothing, as Godot's") {
+TEST_CASE("a SolidGroup3D whose first child subtracts makes nothing") {
     Scene scene;
     const entt::entity root = scene.create("root", R"({"Transform3D": {}, "SolidGroup3D": {}})");
     const entt::entity a =
@@ -250,7 +250,7 @@ TEST_CASE("CSG faces keep their shape's material wherever they end up") {
     const auto mesh = scene.mesh(root);
     CHECK(mesh->problems.empty());
     REQUIRE(mesh->surfaces.size() == 2);
-    // The box's faces first, with Godot's default material, then the hole's walls in red.
+    // The box's faces first, with the default material, then the hole's walls in red.
     CHECK_FALSE(mesh->surfaces[0].material.standard);
     REQUIRE(mesh->surfaces[1].material.standard);
     CHECK(mesh->surfaces[1].material.standard->albedo_color == slash::Vec4{1.0F, 0.0F, 0.0F, 1.0F});
@@ -271,7 +271,7 @@ TEST_CASE("smooth CSG shapes share normals at their corners, and flip_faces turn
         scene.create("ball", R"({"Transform3D": {}, "SolidSphere3D": {"radius": 2}})");
     auto mesh = scene.mesh(ball);
     CHECK(mesh->problems.empty());
-    // Godot's sphere: rings * radial_segments * 2 - radial_segments * 2 triangles.
+    // A sphere: rings * radial_segments * 2 - radial_segments * 2 triangles.
     CHECK(mesh->triangles == (6 * 12 * 2) - (12 * 2));
     REQUIRE(mesh->surfaces.size() == 1);
     for (const auto& vertex : mesh->surfaces[0].vertices) {
@@ -288,7 +288,7 @@ TEST_CASE("smooth CSG shapes share normals at their corners, and flip_faces turn
     }
 }
 
-TEST_CASE("CSG cylinders, cones and tori have Godot's triangles") {
+TEST_CASE("CSG cylinders, cones and tori have their triangles") {
     Scene scene;
     const entt::entity cylinder =
         scene.create("cylinder", R"({"Transform3D": {}, "SolidCylinder3D": {}})");
@@ -365,7 +365,7 @@ TEST_CASE("SolidExtrusion3D pushes a polygon along -z, or spins it around y") {
           "/components/SolidExtrusion3D/polygon: has 2 points; a polygon needs at least 3");
 }
 
-TEST_CASE("triangulate follows Godot's ear clipping") {
+TEST_CASE("triangulate clips ears") {
     CHECK(scene3d::triangulate({{0, 0}, {1, 0}, {1, 1}, {0, 1}}) ==
           std::vector<int>{3, 0, 1, 1, 2, 3});
     CHECK(scene3d::triangulate({{0, 0}, {0, 1}, {1, 1}, {1, 0}}) ==
@@ -549,7 +549,7 @@ TEST_CASE("navigation bakes take a CSG root's mesh, and its collision only when 
     CHECK(nearest < 1.5F);
 }
 
-TEST_CASE("CSG roots draw as Godot's root shapes, the same pixels as a primitive mesh") {
+TEST_CASE("CSG roots draw as root shapes, the same pixels as a primitive mesh") {
     const auto draw = [](bool csg) {
         Scene scene;
         scene.create("camera",
@@ -595,7 +595,7 @@ TEST_CASE("CSG roots draw as Godot's root shapes, the same pixels as a primitive
     scene.adopt(root, door);
     const auto device = render::create_null_device();
     scene3d::Renderer renderer(*device, nullptr);
-    // Two surfaces: the root's material and the door's faces, in Godot's default material.
+    // Two surfaces: the root's material and the door's faces, in the default material.
     REQUIRE(renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}).has_value());
     CHECK(renderer.meshes() == 2);
     CHECK(renderer.meshes_kept() == 2);

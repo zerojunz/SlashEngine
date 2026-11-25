@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "internal.hpp"
 
 #include "slash/core/json.hpp"
@@ -69,7 +71,7 @@ double pingpong(double value, double length) {
 
 namespace {
 
-// Godot's Animation::_track_get_key_indices_in_range: the keys after from_time up to and
+// The keys after from_time up to and
 // including to_time, or from to_time back to and including from_time when backward.
 void keys_between(const std::vector<Key>& keys, double from_time, double to_time, bool backward,
                   std::vector<const Key*>& out) {
@@ -114,7 +116,7 @@ void keys_between(const std::vector<Key>& keys, double from_time, double to_time
     }
 }
 
-// Godot's Animation::_find: the key at a time, within CMP_EPSILON, or else the one before it
+// The key at a time, within kCmpEpsilon, or else the one before it
 // (after it when backward); -1 before the first, or for one outside the animation with limit.
 int find_index(const std::vector<Key>& keys, double length, double time, bool backward,
                bool limit) {
@@ -514,7 +516,7 @@ float length_squared(Vec2 v) {
     return (v.x * v.x) + (v.y * v.y);
 }
 
-// Godot's Delaunay2D::create_triangle: the triangle with its circumcircle.
+// The triangle with its circumcircle.
 Triangle create_triangle(const std::vector<Vec2>& vertices, int a, int b, int c) {
     Triangle triangle{.points = {a, b, c}, .circum_center = {}, .circum_radius_squared = 0.0F};
     const Vec2 origin = vertices[static_cast<std::size_t>(a)];

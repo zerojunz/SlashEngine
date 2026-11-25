@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "ssr.hpp"
 
 #include "forward_post.hpp"
@@ -22,7 +23,7 @@ namespace {
 
 using Float2 = std::array<float, 2>;
 
-// Godot's M_PI in screen_space_reflection.glsl.
+// Pi.
 constexpr float kPi = std::numbers::pi_v<float>;
 constexpr float kLn2 = std::numbers::ln2_v<float>;
 constexpr Float3 kLuminance{0.2126F, 0.7152F, 0.0722F};
@@ -32,7 +33,7 @@ constexpr std::array<float, 7> kFilterWeights{
     0.18987923288883812F, 0.1315141208431224F, 0.07130343198685299F};
 // The filter's rows reach this many rows past each edge of the level.
 constexpr int kFilterBorder = 3;
-// Mip levels are stored as a fraction of 14 in a byte, as Godot's.
+// Mip levels are stored as a fraction of 14 in a byte.
 constexpr float kMipScale = 14.0F;
 
 // The index of column x of row y in rows of the given width.
@@ -140,8 +141,8 @@ Float4 texel4(const SsrImage& image, int x, int y) {
     return out;
 }
 
-// A linearly filtered sample at a texture coordinate, with clamped edges, as Godot's samplers
-// with REPEAT_DISABLED take it.
+// A linearly filtered sample at a texture coordinate, with clamped edges, as samplers with repeat
+// disabled take it.
 Float4 bilinear(const SsrImage& image, Float2 uv) {
     const float px = (uv[0] * static_cast<float>(image.width)) - 0.5F;
     const float py = (uv[1] * static_cast<float>(image.height)) - 0.5F;
@@ -185,8 +186,8 @@ Float4 trilinear(std::span<const SsrImage* const> levels, Float2 uv, float lod) 
     return out;
 }
 
-// A pixel's roughness from the normal-roughness buffer's alpha: Godot keeps dynamic objects'
-// roughness flipped above half, which these never are.
+// A pixel's roughness from the normal-roughness buffer's alpha: dynamic objects' roughness is
+// flipped above half, which these never are.
 float decode_roughness(float alpha) {
     float roughness = alpha;
     if (roughness > 0.5F) {
@@ -211,8 +212,8 @@ float depth_at(const SsrUniforms& u, const SsrInputs& inputs, int x, int y) {
 
 // --- The pyramid, as screen_space_reflection_downsample.glsl and _hiz.glsl ---
 
-// The source pixels a texel of the next level covers, in the order Godot's shaders read them:
-// 2x2, then the third column and row of a source of odd width or height.
+// The source pixels a texel of the next level covers, in the order the shaders read them: 2x2, then
+// the third column and row of a source of odd width or height.
 std::vector<std::array<int, 2>> footprint(std::uint32_t flags) {
     std::vector<std::array<int, 2>> out{{0, 0}, {1, 0}, {0, 1}, {1, 1}};
     const bool odd_width = (flags & kSsrOddWidth) != 0U;
@@ -676,7 +677,7 @@ PostSize level_size(PostSize size, std::uint32_t level) {
     return {std::max(1U, size.width >> level), std::max(1U, size.height >> level)};
 }
 
-// Godot's store_camera's matrices are this file's Mat4s, in doubles while they are worked out.
+// The camera's matrices are this file's Mat4s, in doubles while they are worked out.
 using DMat4 = std::array<double, 16>;
 
 DMat4 to_double(const Mat4& m) {
@@ -818,8 +819,8 @@ SsrStep ssr_last_frame_step() {
 }
 
 SsrCamera ssr_camera(const Scene3D& scene) {
-    // Godot's set_depth_correction flips y, so the corrected projection's y runs down the screen
-    // as texture coordinates do; its depth is already reversed and from 0 to 1 here.
+    // The depth correction flips y, so the corrected projection's y runs down the screen as texture
+    // coordinates do; its depth is already reversed and from 0 to 1 here.
     SsrCamera out{.projection = scene.projection, .camera = scene.camera};
     for (std::size_t column = 0; column < 4; ++column) {
         out.projection.at((column * 4) + 1) = -out.projection.at((column * 4) + 1);

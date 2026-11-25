@@ -25,7 +25,7 @@ struct CleanupOptions {
     // ModelSummary::pivot: [0.5, 0, 0.5] stands it on the ground, centered.
     std::optional<Vec3> pivot{}; // NOLINT(readability-redundant-member-init)
     // The most triangles it may have: each surface is simplified with meshoptimizer's
-    // simplifier, as Godot's importer simplifies LODs, to its share; 0 for none.
+    // simplifier to its share; 0 for none.
     std::size_t triangles = 0;
     // Gives each surface whose vertices all have one texture coordinate (none, in effect) its
     // own, unwrapped with xatlas as lightmap UVs are, so textures and painted detail can map.

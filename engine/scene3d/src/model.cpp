@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/model.hpp"
 
 #include "model_internal.hpp"
@@ -37,8 +38,8 @@
 namespace slash::scene3d {
 namespace {
 
-// The extensions a model may require: those load_model reads, and Godot's lights, which it
-// leaves out as it leaves out cameras.
+// The extensions a model may require: those load_model reads, and lights, which it leaves out
+// as it leaves out cameras.
 constexpr std::array<std::string_view, 7> kRequirable{"EXT_mesh_gpu_instancing",
                                                       "KHR_lights_punctual",
                                                       "KHR_materials_emissive_strength",
@@ -169,10 +170,10 @@ Result<render::Image> embedded_image(const cgltf_options& options, const cgltf_i
     return render::decode_image(bytes);
 }
 
-// Godot's GLTFTextureSampler::get_filter_mode and get_wrap_mode, on a material's albedo texture.
+// The filter and wrap modes of a material's albedo texture sampler.
 void apply_sampler(const cgltf_sampler* sampler, world::Surface3D& standard) {
     if (sampler == nullptr) {
-        return; // Godot's default sampler: linear with mipmaps, repeating
+        return; // the default sampler: linear with mipmaps, repeating
     }
     switch (sampler->min_filter) {
     case cgltf_filter_type_nearest:
@@ -200,7 +201,6 @@ int image_of(const cgltf_data& data, const cgltf_texture_view& view) {
     return static_cast<int>(view.texture->image - data.images);
 }
 
-// Godot's GLTFDocument::_parse_materials.
 ModelMaterial material_of(const cgltf_data& data, std::size_t index) {
     const cgltf_material& in = data.materials[index];
     ModelMaterial out;
@@ -258,7 +258,7 @@ ModelMaterial material_of(const cgltf_data& data, std::size_t index) {
     }
     out.emission_image = image_of(data, in.emissive_texture);
     if (out.emission_image >= 0) {
-        // Godot's importer adds the texture to black, leaving emissiveFactor out.
+        // The texture is added to black, and emissiveFactor is left out.
         standard.emission_enabled = true;
         standard.emission = {0.0F, 0.0F, 0.0F, 1.0F};
     }
@@ -291,7 +291,7 @@ std::vector<float> floats(const cgltf_accessor& accessor) {
     return out;
 }
 
-// A primitive's triangles as a surface with Godot's clockwise winding; nullopt for points and
+// A primitive's triangles as a surface with clockwise winding; nullopt for points and
 // lines, which don't draw.
 Result<std::optional<ModelSurface>>
 surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::string& where) {
@@ -352,8 +352,7 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
         }
     }
 
-    // Joints and weights, four a vertex or eight with a second set, normalized to add up to 1,
-    // as Godot's GLTFDocument::_parse_meshes reads them.
+    // Joints and weights, four a vertex or eight with a second set, normalized to add up to 1.
     const cgltf_accessor* joints = attribute(primitive, cgltf_attribute_type_joints);
     const cgltf_accessor* weights = attribute(primitive, cgltf_attribute_type_weights);
     if (joints != nullptr && weights != nullptr) {
@@ -435,8 +434,8 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
                               " draw");
     }
 
-    // Morph targets' offsets, as Godot's GLTFDocument::_parse_meshes reads a primitive's
-    // targets into blend shapes; vertices remember where they came from while normals and
+    // Morph targets' offsets, read from a primitive's targets into blend shapes; vertices
+    // remember where they came from while normals and
     // tangents are made, so the offsets follow them.
     std::vector<SurfaceBlendShape> shapes(primitive.targets_count);
     for (cgltf_size t = 0; t < primitive.targets_count; ++t) {
@@ -479,7 +478,7 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
             dummy_tangents(triangles);
         }
     }
-    // Godot's importer swaps each triangle's last two corners, for its clockwise front faces.
+    // Each triangle's last two corners are swapped, for clockwise front faces.
     for (std::size_t i = 0; i + 2 < triangles.indices.size(); i += 3) {
         std::swap(triangles.indices[i + 1], triangles.indices[i + 2]);
     }
@@ -502,8 +501,7 @@ world::Affine3D affine_of(const std::array<float, 16>& m) {
     return out;
 }
 
-// The scene's nodes in tree order, parents first, and the meshes they place, as Godot's
-// GLTFDocument::_parse_nodes and _assign_node_names make them.
+// The scene's nodes in tree order, parents first, and the meshes they place.
 struct SceneReader {
     const cgltf_data& data;
     Model& model;
@@ -623,8 +621,8 @@ struct SceneReader {
     }
 };
 
-// The skins whose joints are all in the scene, as Godot's GLTFDocument::_parse_skins reads
-// them; a part whose skin is left out draws where its node puts it.
+// The skins whose joints are all in the scene; a part whose skin is
+// left out draws where its node puts it.
 void read_skins(const cgltf_data& data, const SceneReader& scene, Model& model) {
     std::vector<int> made(data.skins_count, -1);
     for (cgltf_size i = 0; i < data.skins_count; ++i) {
@@ -692,7 +690,7 @@ std::array<float, 4> normalized_rotation(std::array<float, 4> q) {
 }
 
 // A channel of a node's morph target weights as a blend shape track for each of its mesh's
-// shapes, as Godot's _import_animation makes them: keys as they are, or a cubic spline baked
+// shapes: keys as they are, or a cubic spline baked
 // into linear keys at 30 a second.
 void read_weights(const cgltf_animation_sampler& sampler, std::size_t node, const ModelMesh& mesh,
                   std::vector<BlendShapeTrack>& tracks, float& end) {
@@ -754,10 +752,9 @@ void read_weights(const cgltf_animation_sampler& sampler, std::size_t node, cons
     }
 }
 
-// The model's animations, as Godot's GLTFDocument::_parse_animations and _import_animation make
-// them: a track per channel that moves a node of the scene, and one per blend shape for a
-// channel of a node's morph target weights, cubic splines baked into linear keys at 30 a second,
-// Godot's default bake rate.
+// The model's animations: a track per channel that moves a node of the scene, and one per blend
+// shape for a channel of a node's morph target weights, cubic splines baked into linear keys at
+// 30 a second.
 void read_animations(const cgltf_data& data, const SceneReader& scene, Model& model) {
     NameSet taken;
     for (cgltf_size i = 0; i < data.animations_count; ++i) {
@@ -873,7 +870,7 @@ void read_animations(const cgltf_data& data, const SceneReader& scene, Model& mo
             }
             out.tracks.push_back(std::move(channel.track));
         }
-        // Godot's shortest animation length.
+        // The shortest animation length.
         out.length = std::max(static_cast<double>(end), 0.001);
         model.animations.push_back(std::move(out));
     }
@@ -882,8 +879,8 @@ void read_animations(const cgltf_data& data, const SceneReader& scene, Model& mo
 } // namespace
 
 std::string unique_name(NameSet& taken, std::string_view name, bool animation) {
-    // Godot's String::validate_node_name, with AnimationLibrary::validate_library_name's
-    // characters for animations: those a name can't have become underscores.
+    // The characters a name can't have become underscores; an animation's name can't also have
+    // ',' or '['.
     std::string base(name);
     for (char& c : base) {
         if (c == '.' || c == ':' || c == '@' || c == '/' || c == '"' || c == '%' ||
@@ -988,7 +985,7 @@ Result<Model> read_gltf(std::string_view bytes, std::string_view path, const Mod
     for (cgltf_size i = 0; i < data->materials_count; ++i) {
         model.materials.push_back(material_of(*data, i));
     }
-    // A primitive with corner colors multiplies them into its albedo, as Godot's importer does.
+    // A primitive with corner colors multiplies them into its albedo.
     std::optional<int> colored_default;
     for (cgltf_size i = 0; i < data->meshes_count; ++i) {
         const cgltf_mesh& mesh = data->meshes[i];
@@ -1023,7 +1020,7 @@ Result<Model> read_gltf(std::string_view bytes, std::string_view path, const Mod
             }
             out.surfaces.push_back(std::move(made));
         }
-        // Its blend shapes, named as Godot's importer names them, with the mesh's weights.
+        // Its blend shapes, named, with the mesh's weights.
         std::size_t shapes = 0;
         for (const ModelSurface& surface : out.surfaces) {
             shapes = std::max(shapes, surface.blend_shapes.size());
@@ -1040,7 +1037,7 @@ Result<Model> read_gltf(std::string_view bytes, std::string_view path, const Mod
         }
         model.meshes.push_back(std::move(out));
     }
-    // The scene's nodes, or with no scene every node without a parent, as Godot's importer.
+    // The scene's nodes, or with no scene every node without a parent.
     const cgltf_scene* scene = data->scene;
     if (scene == nullptr && data->scenes_count > 0) {
         scene = &data->scenes[0];
@@ -1063,7 +1060,7 @@ Result<Model> read_gltf(std::string_view bytes, std::string_view path, const Mod
     return model;
 }
 
-// Gives each surface its LODs, as Godot's importer does with meshes/generate_lods on: a mesh a
+// Gives each surface its LODs, with meshes/generate_lods on: a mesh a
 // skin deforms as the first part drawing it with that skin places it at rest.
 void add_lods(Model& model) {
     std::vector<world::Affine3D> globals;
@@ -1398,7 +1395,7 @@ ModelSummary summarize(const Model& model) {
             taken[joint] = true;
         }
     }
-    // Nor are the nodes collision came from, which Godot's importer makes static bodies.
+    // Nor are the nodes collision came from, which become static bodies.
     for (const ModelCollision& collision : model.collision) {
         if (collision.node_index >= 0 &&
             static_cast<std::size_t>(collision.node_index) < taken.size()) {

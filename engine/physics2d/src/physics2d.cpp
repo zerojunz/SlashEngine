@@ -162,7 +162,7 @@ struct RayQuery {
 float closest_hit(b2ShapeId shape, b2Vec2 point, b2Vec2 normal, float fraction, void* context) {
     auto& query = *static_cast<RayQuery*>(context);
     const ShapeInfo* info = info_of(shape);
-    // A ray that starts inside a shape comes with no normal; it doesn't hit, as in Godot.
+    // A ray that starts inside a shape comes with no normal; it doesn't hit.
     if (!accepts(info, *query.filter) || (normal.x == 0.0F && normal.y == 0.0F)) {
         return -1.0F;
     }

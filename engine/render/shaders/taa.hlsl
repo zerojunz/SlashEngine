@@ -1,10 +1,10 @@
-// Temporal antialiasing for a Forward+ frame's 3D world, as Godot 4.6's TAA resolve
-// (servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl, MIT, Copyright (c) 2016-2022
-// Panos Karabelas, based on Spartan Engine's TAA): the frame, drawn with its camera jittered,
-// blended with the frame before's result, moved by the prepass's motion vectors and clipped to the
-// colors around each pixel. Godot's compute shader runs as a pass that draws one triangle over its
-// target; it loads texels and filters the history in code, keeping every load inside its texture,
-// so every device draws the same values. Keep it in step with src/taa.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Temporal antialiasing for a clustered frame's 3D world (MIT, Copyright (c) 2016-2022 Panos
+// Karabelas, based on Spartan Engine's TAA): the frame, drawn with its camera jittered, blended
+// with the frame before's result, moved by the prepass's motion vectors and clipped to the colors
+// around each pixel. The pass draws one triangle over its target; it loads texels and filters the
+// history in code, keeping every load inside its texture, so every device draws the same values.
+// Keep it in step with src/taa.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -64,8 +64,8 @@ float3 reinhard_inverse(float3 sdr) {
     return sdr / (1.0 - sdr);
 }
 
-// The history filtered linearly at uv, clamped to its edges, as Godot's linear sampler with
-// repeat disabled reads it.
+// The history filtered linearly at uv, clamped to its edges, as a linear sampler with repeat
+// disabled reads it.
 float3 history_linear(float2 uv) {
     float2 position = uv * float2(size.xy) - 0.5;
     float2 base = floor(position);
@@ -76,8 +76,7 @@ float3 history_linear(float2 uv) {
     return lerp(top, bottom, f.y);
 }
 
-// Godot's sample_catmull_rom_9: the history at uv, filtered with a Catmull-Rom spline over 4x4
-// texels in nine linear reads.
+// The history at uv, filtered with a Catmull-Rom spline over 4x4 texels in nine linear reads.
 float3 sample_catmull_rom_9(float2 uv, float2 resolution) {
     float2 sample_pos = uv * resolution;
     float2 texPos1 = floor(sample_pos - 0.5) + 0.5;
@@ -107,7 +106,7 @@ float3 sample_catmull_rom_9(float2 uv, float2 resolution) {
     return max(result, 0.0);
 }
 
-// Godot's clip_aabb, from Playdead's "Temporal Reprojection Anti-Aliasing".
+// Clips to the box, from Playdead's "Temporal Reprojection Anti-Aliasing".
 float3 clip_aabb(float3 aabb_min, float3 aabb_max, float3 p, float3 q) {
     float3 r = q - p;
     float3 rmax = aabb_max - p;
@@ -147,7 +146,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     float3 color_history = sample_catmull_rom_9(uv_reprojected, resolution);
 
     // get_closest_pixel_velocity_3x3: the motion of the neighbor of least depth. With reversed
-    // depth, as Godot 4.6 has it, that is the farthest.
+    // depth, that is the farthest.
     float min_depth = 1.0;
     int2 min_pos = pos_screen;
     [unroll] for (uint i = 0u; i < 9u; ++i) {

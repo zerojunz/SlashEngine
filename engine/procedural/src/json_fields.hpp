@@ -1,6 +1,6 @@
 #pragma once
 
-// Schema fields and readers the procedural files share: each field optional with Godot's default,
+// Schema fields and readers the procedural files share: each field optional with a default,
 // enums as snake_case names.
 
 #include "slash/core/json.hpp"

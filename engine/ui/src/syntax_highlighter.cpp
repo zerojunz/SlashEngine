@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "syntax_highlighter.hpp"
 
 #include "slash/core/text.hpp"
@@ -9,7 +10,7 @@
 namespace slash::ui {
 namespace {
 
-// Godot's Color(): opaque black, which a keyword's color can't be and colors start from.
+// Opaque black, which a keyword's color can't be and colors start from.
 constexpr Vec4 kNoColor{0.0F, 0.0F, 0.0F, 1.0F};
 
 bool is_digit(char32_t c) {
@@ -39,7 +40,7 @@ std::pair<std::u32string, std::u32string> split_key(const std::string& key) {
 
 // Why add_color_region refuses keys, or "".
 std::string key_error(const std::u32string& start, const std::u32string& end) {
-    // Godot takes an empty start key, which then starts a region at every symbol.
+    // An empty start key would start a region at every symbol.
     if (start.empty()) {
         return "a color region needs a start key";
     }
@@ -109,7 +110,7 @@ Vec4 CodeHighlight::keyword(std::u32string_view str, int from, int to) const {
 }
 
 ColorMap CodeHighlight::line(std::u32string_view str, int& region) const {
-    // Godot's Dictionary, whose keys go in as the columns grow.
+    // The colors by column, whose keys go in as the columns grow.
     std::map<int, Vec4> color_map;
     bool prev_is_char = false;
     bool prev_is_number = false;

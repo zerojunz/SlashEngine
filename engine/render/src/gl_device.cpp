@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "gl_device.hpp"
 
 #include "checks.hpp"
@@ -334,8 +335,8 @@ std::string_view api_name(GlApi api) {
 }
 
 // The APIs a driver tries, in order: "opengl" is OpenGL 3.3, falling back to OpenGL ES 3.0 where
-// that doesn't start, as Godot's opengl3 driver falls back to GLES; "opengl_es" is only OpenGL
-// ES 3.0, which is all the web, Android and iOS have.
+// that doesn't start; "opengl_es" is only OpenGL ES 3.0, which is all the web, Android and iOS
+// have.
 std::vector<GlApi> gl_apis(std::string_view driver) {
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
     (void)driver;
@@ -753,7 +754,7 @@ public:
             return checked.error();
         }
         if (shader.type == ShaderType::Compositor) {
-            // OpenGL draws Compatibility, which runs no compositor effects (as Godot's), so the
+            // OpenGL draws the compatibility renderer, which runs no compositor effects, so the
             // shader is only kept by its ID.
             const auto id = static_cast<ShaderId>(next_shader_++);
             compositor_shaders_.insert(id);
@@ -1109,8 +1110,8 @@ public:
         in_frame_ = true;
         frame_ = frame;
         if (frame_.scene) {
-            // OpenGL ES 3.0 has no storage buffers for Forward+'s clusters, so OpenGL is always
-            // Godot's Compatibility renderer.
+            // OpenGL ES 3.0 has no storage buffers for the clustered renderer's clusters, so OpenGL
+            // is always the compatibility renderer.
             frame_.scene->method = RenderMethod::Compatibility;
         }
         frame_framebuffer_ = framebuffer;
@@ -1290,7 +1291,7 @@ public:
     }
 
     // The context and what an OpenXR runtime's graphics binding needs of it (XR_KHR_opengl_enable,
-    // XR_MNDX_egl_enable), as Godot's OpenXROpenGLExtension reads them from its display server.
+    // XR_MNDX_egl_enable).
     [[nodiscard]] NativeDevice native_device() const override {
         make_current();
         NativeDevice native{.backend = backend(), .device = context_};
@@ -1800,7 +1801,7 @@ private:
         return log;
     }
 
-    // Godot's canvas blend modes, for straight-alpha colors.
+    // The canvas blend modes, for straight-alpha colors.
     void set_blend(BlendMode mode) const {
         switch (mode) {
         case BlendMode::Mix:
@@ -2007,7 +2008,7 @@ private:
             return {};
         }
         if (shadow_sampler_ == 0) {
-            // Each tap compares four texels and blends the results, as Godot's shadow sampler.
+            // Each tap compares four texels and blends the results.
             gl_.gen_samplers(1, &shadow_sampler_);
             for (const auto& [name, value] :
                  {std::pair{gl::kTextureMinFilter, gl::kLinear},
@@ -2439,8 +2440,8 @@ private:
         return {};
     }
 
-    // The scene's radiance, as Godot's Compatibility renderer draws its radiance map: the sky into
-    // each face of the raw cube, its mipmaps, then each level of each face filtered from it.
+    // The scene's radiance, as the compatibility renderer draws its radiance map: the sky into each
+    // face of the raw cube, its mipmaps, then each level of each face filtered from it.
     void draw_radiance(const Scene3D& scene) {
         const std::uint32_t size = radiance_.size;
         const std::uint32_t levels = radiance_levels(size);

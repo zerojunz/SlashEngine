@@ -1,12 +1,12 @@
-// Cel shading, as Godot's light(): each light's diffuse light cut into flat steps, a sharp
-// highlight, and a rim of light where the surface turns away from the camera.
+// Cel shading in light(): each light's diffuse light cut into flat steps, a sharp highlight,
+// and a rim of light where the surface turns away from the camera.
 void fragment() {
     ALBEDO = tint.rgb;
     ROUGHNESS = 0.5;
 }
 
 void light() {
-    // NORMAL, LIGHT and VIEW are in view space, as Godot's; ATTENUATION has the shadows in it.
+    // NORMAL, LIGHT and VIEW are in view space; ATTENUATION has the shadows in it.
     float lit = saturate(dot(NORMAL, LIGHT)) * ATTENUATION;
     float stepped = floor(lit * steps + 0.5) / steps;
     DIFFUSE_LIGHT += stepped * LIGHT_COLOR / PI;

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // Projections, the mesh shader's uniforms and its CPU twin (shade_mesh), which follows
 // shaders/mesh.hlsl line for line in float math. pow is exp(y * ln(x)) through core/math, so the
 // software device's meshes are the same pixels on every machine.
@@ -185,8 +186,8 @@ struct Layers {
     Float3 geometry{};
     Float3 tangent{};
     Float3 binormal{};
-    // Forward+'s transmittance: on, through skin's profile, its color (alpha times the subsurface
-    // strength and the light's attenuation), depth and boost.
+    // The clustered renderer's transmittance: on, through skin's profile, its color (alpha times
+    // the subsurface strength and the light's attenuation), depth and boost.
     bool transmittance = false;
     bool skin = false;
     Float4 transmittance_color{};
@@ -330,9 +331,9 @@ float smooth(float edge0, float edge1, float x) {
     return t * t * (3.0F - (2.0F * t));
 }
 
-// sample_shadow in shaders/mesh.hlsl, Godot's: the shadow at a point through a matrix into an
-// atlas, from 1, 5 or 13 samples a texel apart; each sample's coordinate kept within clamp's
-// low and high corners when it is given.
+// sample_shadow in shaders/mesh.hlsl: the shadow at a point through a matrix into an atlas, from 1,
+// 5 or 13 samples a texel apart; each sample's coordinate kept within clamp's low and high corners
+// when it is given.
 float sample_shadow(const detail::ShadowAtlas& atlas, const Mat4& matrix, const Float3& point,
                     float texel, float taps, const Float4* clamp) {
     const Float4 at = transform(matrix, {point[0], point[1], point[2], 1.0F});
@@ -351,7 +352,7 @@ float sample_shadow(const detail::ShadowAtlas& atlas, const Mat4& matrix, const 
     float sum = tap(0.0F, 0.0F);
     if (taps > 12.0F) {
         sum += tap(2.0F, 0.0F) + tap(-2.0F, 0.0F) + tap(0.0F, 2.0F) + tap(0.0F, -2.0F);
-        // Godot stops early where the far samples agree.
+        // It stops early where the far samples agree.
         if (sum <= 0.000001F) {
             return 0.0F;
         }
@@ -370,7 +371,7 @@ float sample_shadow(const detail::ShadowAtlas& atlas, const Mat4& matrix, const 
 }
 
 // directional_shadow in shaders/mesh.hlsl: a directional light's shadow at a pixel, its cascade
-// picked by view depth, as Godot's scene.glsl picks it.
+// picked by view depth.
 float directional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Float3& world,
                          const Float3& normal, const Float3& toward_light) {
     const detail::MeshShadowUniforms& u = *maps.uniforms;
@@ -426,7 +427,7 @@ float positional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Fl
         } else {
             face = local[2] > 0.0F ? 4 : 5;
         }
-        taps = 1.0F; // Godot samples an omni light's cube once
+        taps = 1.0F; // an omni light's cube is sampled once
     }
     const float shadow = sample_shadow(maps.positional, s.faces.at(face), point, s.params[2], taps,
                                        &s.rects.at(face));
@@ -869,8 +870,8 @@ SpatialUniforms spatial_uniforms(const Mat4& view, const Mat4& projection,
     out.projection = projection;
     out.inv_projection = to_floats(inverse_matrix(projection));
     out.viewport = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
-    // The instance's normal model is the cofactors, signed by the determinant; Godot's
-    // MODEL_NORMAL_MATRIX is the inverse transpose, the cofactors over the determinant.
+    // The instance's normal model is the cofactors, signed by the determinant; MODEL_NORMAL_MATRIX
+    // is the inverse transpose, the cofactors over the determinant.
     const Mat4& m = instance.model;
     const float determinant = (m[0] * ((m[5] * m[10]) - (m[9] * m[6]))) -
                               (m[4] * ((m[1] * m[10]) - (m[9] * m[2]))) +
@@ -1041,8 +1042,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
                          srgb_to_linear_exact(fog.light_color[2]) * fog.light_energy,
                          fog.depth ? 2.0F : 1.0F};
         out.fog = {fog.density, fog.sun_scatter, fog.height, fog.height_density};
-        // As Godot's: depth fog ends at the far plane when its end is 0 or less, and begins
-        // before it ends.
+        // Depth fog ends at the far plane when its end is 0 or less, and begins before it ends.
         const float far = far_plane(scene.projection);
         const float end = fog.depth_end > 0.0F ? fog.depth_end : far;
         out.fog_depth = {std::min(fog.depth_begin, end - 0.001F), end, fog.depth_curve, 0.0F};
@@ -1055,7 +1055,8 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         out.sky_rows = {Float4{o[0], o[4], o[8], 0.0F}, Float4{o[1], o[5], o[9], 0.0F},
                         Float4{o[2], o[6], o[10], 0.0F}};
     }
-    // Every pixel takes these lights; Forward+'s omni and spot lights are in its clusters.
+    // Every pixel takes these lights; the clustered renderer's omni and spot lights are in its
+    // clusters.
     const std::vector<int> slots = shadow_slots(scene);
     const std::vector<int> rays = ray_shadow_slots(scene);
     std::size_t count = 0;
@@ -1077,7 +1078,7 @@ MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot, int
     Float3 direction = normalize(light.direction);
     float type = 0.0F;
     if (light.type == LightType::Directional) {
-        direction = scale(direction, -1.0F); // toward the light, as Godot's node's +Z
+        direction = scale(direction, -1.0F); // toward the light
     } else {
         type = light.type == LightType::Omni ? 1.0F : 2.0F;
     }
@@ -1408,7 +1409,7 @@ Float3 lightmap_light(const MeshSurfaceUniforms& surface, const FloatImage& imag
                       std::array<float, 2> uv) {
     Float3 light{};
     if (surface.lightmap[1] != 0.0F && image.width > 0 && image.height > 0) {
-        // Godot's textureArray_bicubic: a cubic B-spline as four bilinear taps.
+        // A cubic B-spline as four bilinear taps.
         const auto w0 = [](float a) {
             return (1.0F / 6.0F) * ((a * ((a * (-a + 3.0F)) - 3.0F)) + 1.0F);
         };
@@ -1763,14 +1764,13 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         return std::nullopt;
     }
     float alpha = found->alpha;
-    // Fogged unless the material disables it, then linear for Forward+, or times the exposure,
-    // tonemapped unless the post pass does it, and as sRGB.
+    // Fogged unless the material disables it, then linear for the clustered renderer, or times the
+    // exposure, tonemapped unless the post pass does it, and as sRGB.
     const auto finish = [&](Float3 lit) {
         const bool fog_on = (flags & kMeshDisableFog) == 0;
         if (scene.volumetric_fog[0] != 0.0F && fog_on && maps.uniforms != nullptr) {
-            // Forward+'s volumetric fog, as Godot's scene_forward_clustered.glsl blends it: the
-            // plain fog as the light it adds and how much it lets through, seen through the
-            // volumetric fog in front.
+            // The clustered renderer's volumetric fog: the plain fog as the light it adds and how
+            // much it lets through, seen through the volumetric fog in front.
             Float4 fog{0.0F, 0.0F, 0.0F, 1.0F};
             if (scene.fog_color[3] != 0.0F) {
                 const Float4 plain = fog_process(scene, pixel.world);
@@ -1820,11 +1820,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         emitted = scale(srgb_to_linear(emitted), surface.emission[3]);
     }
-    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
-    // terrain's along its shape's.
+    // Shadows offset the point they sample along the vertex normal; a terrain's along its shape's.
     const Float3 geometry =
         terrain ? frame_direction(pixel, ground.shape) : normalize(pixel.normal);
-    // Forward+'s decals change the surface before it is lit, as Godot's, with the vertex normal
+    // The clustered renderer's decals change the surface before it is lit, with the vertex normal
     // turned to the pixel's side.
     DecalSurface decaled{.base = found->base,
                          .normal = found->normal,
@@ -1850,10 +1849,9 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const float roughness = decaled.roughness;
     const Float3& normal = decaled.normal;
     emitted = decaled.emitted;
-    // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
-    // with the decals' ambient occlusion, and their direct light by its light affect times its AO
-    // channel affect.
-    // A game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
+    // SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light, with the
+    // decals' ambient occlusion, and their direct light by its light affect times its AO channel
+    // affect. A game's shader starts them at its AO and AO_LIGHT_AFFECT.
     float ao = decaled.ao;
     float ao_light_affect = pixel.game ? pixel.game->emission[3] : 0.0F;
     const bool opaque = (flags & kMeshHasAlpha) == 0 || (flags & kMeshAlphaScissor) != 0;
@@ -1878,8 +1876,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const float dielectric = 0.16F * specular * specular;
     const Float3 f0 = lerp3({dielectric, dielectric, dielectric}, base, metallic);
 
-    // material_layers in shaders/mesh.hlsl: an anisotropic highlight runs along Godot's default
-    // flow map, the tangent turned by its (1, 128 / 255) texel.
+    // material_layers in shaders/mesh.hlsl: an anisotropic highlight runs along the default flow
+    // map, the tangent turned by its (1, 128 / 255) texel.
     Layers layers{
         .rim = surface.lightmap[2],
         .rim_tint = surface.lightmap[3],
@@ -1909,12 +1907,12 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     }
 
     LightSum light_sum;
-    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED,
-    // from the ALPHA its fragment() gave, which it may change; it may also discard the pixel.
+    // A game's light() lights the pixel in place of light_compute, from the ALPHA its fragment()
+    // gave, which it may change; it may also discard the pixel.
     float light_alpha = pixel.game ? pixel.game->albedo[3] : alpha;
     bool discarded = false;
-    // The rim and the transmittance fade with distance (rim_fade) but not in shadow, as Godot's;
-    // the transmittance takes the depth the light's shadow map in slot sees (-1 for none).
+    // The rim and the transmittance fade with distance (rim_fade) but not in shadow; the
+    // transmittance takes the depth the light's shadow map in slot sees (-1 for none).
     const auto compute = [&](const Float3& toward, const Float3& light_color, float attenuation,
                              float specular_amount, bool directional, float rim_fade, float slot) {
         if (!pixel.game_light) {
@@ -1955,9 +1953,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         if ((static_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
             return;
         }
-        // shadow[1] holds 1 for a baked light, plus twice its projector's place after the
-        // decals. A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC
-        // lights.
+        // shadow[1] holds 1 for a baked light, plus twice its projector's place after the decals. A
+        // baked light's light is in the lightmap already, so such lights are skipped.
         const auto light_bits = static_cast<std::uint32_t>(light.shadow[1]);
         if ((light_bits & 1U) != 0 && lightmapped) {
             return;
@@ -2043,10 +2040,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         alpha = light_alpha;
     }
 
-    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
-    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
-    // A lightmapped pixel's ambient light is its lightmap's, and a captured one's its light
-    // probes', either standing in for the scene's and the probes', as Godot's USE_LIGHTMAP.
+    // Light from the sky's radiance: reflections by roughness and ambient light by the normal, then
+    // specular occlusion and Lazarov's environment BRDF. A lightmapped pixel's ambient light is its
+    // lightmap's, and a captured one's its light probes', either standing in for the scene's and
+    // the probes'.
     auto ambient_light = Float3{scene.ambient[0], scene.ambient[1], scene.ambient[2]};
     if (lightmapped) {
         ambient_light = pixel.lightmap;
@@ -2060,7 +2057,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                           dot3(xyz(scene.sky_rows[2]), v)};
         };
         if (scene.sky[1] != 0.0F) {
-            // An anisotropic surface reflects about a normal bent along its highlight, as Godot's.
+            // An anisotropic surface reflects about a normal bent along its highlight.
             Float3 bent = normal;
             if (layers.anisotropy != 0.0F) {
                 const Float3& direction =
@@ -2083,8 +2080,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
         }
         if (scene.sky[1] != 0.0F && layers.clearcoat > 0.0F) {
-            // The clearcoat's reflection of the sky, about the geometry's normal, over what it
-            // lets through: Godot's layer with an IOR of 1.5.
+            // The clearcoat's reflection of the sky, about the geometry's normal, over what it lets
+            // through: a layer with an IOR of 1.5.
             const float coat_n_dot_v = std::max(dot3(geometry, view), 0.0001F);
             Float3 ray = sub(scale(geometry, 2.0F * dot3(geometry, view)), view);
             ray = lerp3(ray, geometry, layers.clearcoat_roughness * layers.clearcoat_roughness);
@@ -2099,17 +2096,17 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                                              horizon * horizon * fc * scene.sky[2]));
         }
     }
-    // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and reflections
-    // go over the sky's by how much of them its cascades hold (gi.glsl's sdfgi_process, run on
-    // the prepass by run_sdfgi), and VoxelGIs go over it.
+    // The clustered renderer's SDFGI lights a pixel: its ambient light and reflections go over the
+    // sky's by how much of them its cascades hold (run on the prepass by run_sdfgi), and VoxelGIs
+    // go over it.
     if (opaque && !maps.sdfgi.empty() && !lightmapped && !captured) {
         const std::size_t at = ((std::size_t{pixel.y} * maps.ao_width) + pixel.x) * 8;
         const std::span<const float, 8> buffer(maps.sdfgi.subspan(at, 8));
         ambient_light = lerp3(ambient_light, {buffer[0], buffer[1], buffer[2]}, buffer[3]);
         reflected = lerp3(reflected, {buffer[4], buffer[5], buffer[6]}, buffer[7]);
     }
-    // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
-    // reflections go over the sky's by how much of their cones met something.
+    // The clustered renderer's VoxelGIs light a pixel: their ambient light and reflections go over
+    // the sky's by how much of their cones met something.
     if (scene.voxel_gi[0] != 0.0F && surface.voxel_gi[0] > 0.0F && pixel.voxel_gi != nullptr &&
         !lightmapped && !captured) {
         const VoxelGILight gi = trace_voxel_gis(surface, scene.voxel_gi[1] != 0.0F, *pixel.voxel_gi,
@@ -2117,8 +2114,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         ambient_light = lerp3(ambient_light, xyz(gi.ambient), gi.ambient[3]);
         reflected = lerp3(reflected, xyz(gi.reflection), gi.reflection[3]);
     }
-    // Forward+'s reflection probes, as Godot's scene_forward_clustered.glsl takes them: where
-    // they reach, their reflections and ambient light go over the sky's by how much they cover.
+    // The clustered renderer's reflection probes: where they reach, their reflections and ambient
+    // light go over the sky's by how much they cover.
     if (scene.reflections[0] > 0.0F && !maps.probes.empty() && maps.probe_cubes != nullptr) {
         const ProbeLight probe =
             reflect_probes(maps.probes, *maps.probe_cubes, scene.reflections[2], pixel.world,
@@ -2162,8 +2159,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             reflected.at(i) *= occlusion * ((env_x * f0.at(i)) + (env_y * env_g));
         }
     } else {
-        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
-        // the sky's by its premultiplied alpha.
+        // SSR: the reflection, faded out toward the trace's roughness cutoff, put over the sky's by
+        // its premultiplied alpha.
         const float fade =
             smoothstep(0.0F, 1.0F, 1.0F - std::clamp((roughness - 0.6F) / 0.1F, 0.0F, 1.0F));
         const float cover = ssr[3] * fade;

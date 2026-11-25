@@ -1129,6 +1129,6 @@ inline constexpr int kLightmapLightHlslSlots[][2] = {{0, -1}, {1, -1}, {2, -1}, 
 inline constexpr std::uint32_t kLightmapLightHlslSamplers = 0;
 
 // The FNV-1a hash of the GLSL it was made from.
-inline constexpr std::uint64_t kLightmapLightHlslFrom = 0x2aa2f31d3c9ce0a4ULL;
+inline constexpr std::uint64_t kLightmapLightHlslFrom = 0x61889a866c91718dULL;
 
 } // namespace slash::render::shaders

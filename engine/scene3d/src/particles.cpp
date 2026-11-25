@@ -21,9 +21,8 @@
 #include <string>
 #include <utility>
 
-// Ported from Godot 4.6's scene/3d/cpu_particles_3d.cpp (_particles_process) and
-// scene/resources/material.cpp (BaseMaterial3D's billboard and particle animation code), MIT
-// licensed. Emission timing and random values follow Emitter2D's port
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Emission timing and random values follow Emitter2D's port
 // (engine/canvas/src/particles.cpp), so the two behave alike tick for tick.
 namespace slash::scene3d {
 namespace {
@@ -34,7 +33,7 @@ using world::GradientPoint;
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
 constexpr float kRadiansPerDegree = std::numbers::pi_v<float> / 180.0F;
-constexpr float kCmpEpsilon = 0.00001F; // Godot's CMP_EPSILON
+constexpr float kCmpEpsilon = 0.00001F; // the epsilon for approximate comparisons
 constexpr int kMaxAmount = 65536;
 
 // The random values each particle takes when it is emitted.
@@ -96,13 +95,13 @@ float length(Vec3 v) {
     return std::sqrt(dot(v, v));
 }
 
-// v at length 1, as Godot's Vector3::normalized: the zero vector stays zero.
+// v at length 1: the zero vector stays zero.
 Vec3 normalized(Vec3 v) {
     const float l = length(v);
     return l > 0.0F ? Vec3{v.x / l, v.y / l, v.z / l} : Vec3{};
 }
 
-// Godot's Basis::orthonormalize: Gram-Schmidt over the columns, x first.
+// Orthonormalizes a basis: Gram-Schmidt over the columns, x first.
 void orthonormalize(Affine3D& basis) {
     basis.x = normalized(basis.x);
     basis.y = normalized(basis.y - (basis.x * dot(basis.x, basis.y)));
@@ -110,7 +109,7 @@ void orthonormalize(Affine3D& basis) {
         normalized(basis.z - (basis.x * dot(basis.x, basis.z)) - (basis.y * dot(basis.y, basis.z)));
 }
 
-// v turned by angle radians about a unit axis, as Godot's Vector3::rotate.
+// v turned by angle radians about a unit axis.
 Vec3 rotated(Vec3 v, Vec3 axis, float angle) {
     const Vec2 cs = cos_sin(angle);
     return (v * cs.x) + (cross(axis, v) * cs.y) + (axis * (dot(axis, v) * (1.0F - cs.x)));
@@ -177,7 +176,7 @@ Vec4 multiply(Vec4 a, Vec4 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
 }
 
-// Turns a color's hue by an angle in radians, as Godot's particles do: a rotation about the
+// Turns a color's hue by an angle in radians: a rotation about the
 // gray axis in YIQ space, applied through its transpose (Basis::xform_inv).
 Vec4 turn_hue(Vec4 color, float radians) {
     if (radians == 0.0F) {
@@ -251,8 +250,7 @@ struct Slot {
     Particle3D particle;
     bool alive = false;
     std::array<float, kValueCount> random{};
-    // Its pick of color_initial_ramp times its point's color, Godot's start_color_rand and
-    // base_color.
+    // Its pick of color_initial_ramp times its point's color.
     Vec4 tint{1.0F, 1.0F, 1.0F, 1.0F};
     // What a ParticleSimulation3D keeps: its attributes, and whether it was alive and how old at
     // the last tick's stages, which tell starts and deaths.
@@ -282,7 +280,7 @@ constexpr std::size_t kMaxExtra = 4096;
 
 // The second each slot emits at in a cycle, as Emitter2D's: evenly over the cycle, moved
 // later at random by up to a slot's share times randomness, and squeezed toward the cycle's start
-// by explosiveness, as Godot's restart_phase.
+// by explosiveness.
 double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cycle,
                  std::uint32_t slot) {
     const Emitter3D& s = *settings.component;
@@ -307,7 +305,7 @@ public:
     // Moves the emitter on by seconds of game time. Returns whether a one_shot's cycle ended.
     bool step(Emitter& e, float seconds) const {
         if (e.slots.size() != settings_.amount) {
-            // A new amount starts over, as in Godot.
+            // A new amount starts over.
             e.slots.assign(settings_.amount, Slot{});
             e.time = 0.0;
         }
@@ -409,8 +407,8 @@ public:
     }
 
 private:
-    // The velocity a particle starts with before its emission shape and the entity turn it, as
-    // Godot's spread: in the xy plane with disable_z, else a cone about direction flattened
+    // The velocity a particle starts with before its emission shape and the entity turn it: in
+    // the xy plane with disable_z, else a cone about direction flattened
     // toward the plane across its y.
     [[nodiscard]] Vec3 start_velocity(const Slot& slot) const {
         const auto r = [&](Value v) { return slot.random.at(v); };
@@ -436,7 +434,7 @@ private:
         return ((binormal * spread.x) + (normal * spread.y) + (forward * spread.z)) * speed;
     }
 
-    // Where a particle starts in the entity's space, as Godot's emission shapes; it may turn its
+    // Where a particle starts in the entity's space; it may turn its
     // velocity and tint it.
     [[nodiscard]] Vec3 start_position(Slot& slot, Vec3& velocity) const {
         const auto r = [&](Value v) { return slot.random.at(v); };
@@ -446,7 +444,7 @@ private:
             const Vec2 turn = cos_sin(kTau * r(kShapeB));
             const float radius = s_.emission_sphere_radius * std::sqrt(1.0F - (s * s));
             const Vec3 surface{radius * turn.x, radius * turn.y, s_.emission_sphere_radius * s};
-            // As Godot, a point inside the sphere is a straight blend toward its surface.
+            // A point inside the sphere is a straight blend toward its surface.
             return shape == "sphere" ? surface * r(kShapeC) : surface;
         }
         if (shape == "box") {
@@ -461,7 +459,7 @@ private:
             if (shape == "directed_points" && at < s_.emission_normals.size()) {
                 const Vec3 normal = s_.emission_normals[at];
                 if (s_.particle_flag_disable_z) {
-                    // The normal is the velocity's x axis, as Godot's Transform2D.
+                    // The normal is the velocity's x axis.
                     velocity = Vec3{normal.x, normal.y, 0.0F} * velocity.x +
                                Vec3{normal.y, -normal.x, 0.0F} * velocity.y;
                 } else {
@@ -521,7 +519,7 @@ private:
         if (s_.local_space) {
             p.transform.origin = position;
         } else {
-            // As Godot, it starts with the entity's basis, which its flags may turn later.
+            // It starts with the entity's basis, which its flags may turn later.
             p.transform = transform_;
             p.transform.origin = transform_.apply(position);
             velocity = transform_.basis(velocity);
@@ -535,8 +533,8 @@ private:
         slot.alive = true;
     }
 
-    // Moves a particle on by seconds and works out its look at its new age, as Godot's
-    // Emitter3D: forces change its velocity, orbiting turns it about the emitter, damping
+    // Moves a particle on by seconds and works out its look at its new age: forces change its
+    // velocity, orbiting turns it about the emitter, damping
     // slows it, its flags turn it, its scale sizes it, then it moves by its velocity.
     void advance(Slot& slot, float seconds) const {
         Particle3D& p = slot.particle;
@@ -570,7 +568,7 @@ private:
         if (flat) {
             force = force + (normalized({-diff.y, diff.x, 0.0F}) * tangential);
         } else {
-            // Round the entity across gravity, as Godot's: none without gravity.
+            // Round the entity across gravity: none without gravity.
             force =
                 force + (normalized(cross(normalized(diff), normalized(s_.gravity))) * tangential);
         }
@@ -616,7 +614,7 @@ private:
         scale = {std::max<real_t>(scale.x * base, kCmpEpsilon),
                  std::max<real_t>(scale.y * base, kCmpEpsilon),
                  std::max<real_t>(scale.z * base, kCmpEpsilon)};
-        // As Godot's Basis::scale, which scales its rows: along the world's axes.
+        // Scales its rows: along the world's axes.
         for (Vec3* axis : {&p.transform.x, &p.transform.y, &p.transform.z}) {
             *axis = {axis->x * scale.x, axis->y * scale.y, axis->z * scale.z};
         }
@@ -720,7 +718,7 @@ std::vector<Particle3D> live(const Emitter& emitter, std::string_view draw_order
         }
     }
     if (draw_order == "lifetime") {
-        // The oldest first, so the youngest draw last, as Godot's SortLifetime.
+        // The oldest first, so the youngest draw last.
         std::ranges::stable_sort(
             out, [](const Particle3D& a, const Particle3D& b) { return a.age > b.age; });
     }
@@ -787,7 +785,7 @@ struct ParticleSystem3D {
         }
         for (const Run& each : runs) {
             if (each.ended) {
-                // As Godot, a one_shot stops emitting when its cycle ends.
+                // A one_shot stops emitting when its cycle ends.
                 each.component->emitting = false;
                 each.emitter->was_emitting = false;
             }

@@ -1,10 +1,10 @@
-// Systems on the job system's threads, as Godot's WorkerThreadPool and sub-thread process groups.
+// Systems on the job system's threads.
 //
 // A meadow: plants grow and drop seeds, grazers get hungry, wander and eat. grow and hunger are
-// threaded systems whose reads and writes don't clash, so they run at the same time; wander
-// writes the transforms grow reads, so it runs after them; graze is an ordinary system. grow
-// shares its plants out over the pool with parallel_for and makes seedlings through
-// World::defer. The same ticks run with no worker threads and with four, and come out the same.
+// threaded systems whose reads and writes don't clash, so they run at the same time; wander writes
+// the transforms grow reads, so it runs after them; graze is an ordinary system. grow shares its
+// plants out over the pool with parallel_for and makes seedlings through World::defer. The same
+// ticks run with no worker threads and with four, and come out the same.
 
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"

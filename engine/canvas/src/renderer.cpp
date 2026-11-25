@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/distortion.hpp"
@@ -85,8 +86,8 @@ render::Mat4 matrix(const world::Affine2D& t) {
 }
 
 // Where a Parallax2D's repeat draws its children, as offsets in their canvas's pixels for a
-// Parallax2D whose global transform is global, in the order Godot's canvas_render_items draws
-// them, the first place included; empty when it doesn't repeat.
+// Parallax2D whose global transform is global, in the order they are drawn, the first place
+// included; empty when it doesn't repeat.
 std::vector<Vec2> repeat_offsets(const world::Parallax2D& parallax, const world::Affine2D& global) {
     const Vec2 size{std::max<real_t>(parallax.repeat_size.x, 0.0F),
                     std::max<real_t>(parallax.repeat_size.y, 0.0F)};
@@ -236,7 +237,7 @@ Result<std::array<render::Vertex2D, 6>> sprite_quad(const world::Sprite2D& sprit
     float u1 = (cell_x + cell_w) / width;
     float v0 = cell_y / height;
     float v1 = (cell_y + cell_h) / height;
-    // As in Godot, flipping mirrors the texture in place; the rectangle stays where it is.
+    // Flipping mirrors the texture in place; the rectangle stays where it is.
     if (sprite.flip_h) {
         std::swap(u0, u1);
     }
@@ -301,8 +302,8 @@ Inherited inherited(const world::World& world, const world::Tree2D& tree, entt::
         const auto* transform = ecs.try_get<world::Transform2D>(of);
         return transform != nullptr && transform->top_level;
     };
-    // Godot's top-level items hang from the canvas, not their parents: no z_index or tint
-    // comes past one, though hiding a parent still hides it.
+    // Top-level items hang from the canvas, not their parents: no z_index or tint comes past one,
+    // though hiding a parent still hides it.
     bool add_z = !top_level(entity);
     bool add_tint = add_z;
     for (entt::entity up = tree.parent(entity); up != entt::null; up = tree.parent(up)) {
@@ -1857,8 +1858,8 @@ void CanvasRenderer::gather_water(DrawState& state) {
     }
 }
 
-// Polygon2D: its polygon, or each of its polygons, cut into triangles as Godot's Polygon2D
-// draws them, colored by vertex_colors (or color) and textured by uv in the texture's pixels.
+// Polygon2D: its polygon, or each of its polygons, cut into triangles, colored by vertex_colors (or
+// color) and textured by uv in the texture's pixels.
 void CanvasRenderer::gather_polygons(DrawState& state) {
     const world::World& world = state.world;
     const CanvasOptions& options = state.options;
@@ -2276,8 +2277,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const world::Tree2D tree(world);
     // A canvas shader's WIND is the wind at its node, as the wind system blows it.
     const NodeWind wind(world, tree);
-    // The Parallax2D whose repeat an entity's drawing takes, the nearest of it and its parents
-    // that repeats, as Godot's repeat_source_item; null for none.
+    // The Parallax2D whose repeat an entity's drawing takes, the nearest of it and its parents that
+    // repeats; null for none.
     const bool parallaxes = !ecs.view<const world::Parallax2D>().empty();
     std::unordered_map<entt::entity, entt::entity> sources;
     const auto repeat_source = [&](entt::entity entity) -> entt::entity {
@@ -2286,7 +2287,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         const auto [found, added] = sources.try_emplace(entity, entt::null);
         if (added) {
-            // Not past a top_level entity, which hangs from the canvas as Godot's.
+            // Not past a top_level entity, which hangs from the canvas.
             for (entt::entity up = entity; up != entt::null; up = tree.transform_parent(up)) {
                 if (const auto* parallax = ecs.try_get<world::Parallax2D>(up);
                     parallax != nullptr &&
@@ -2299,8 +2300,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         return found->second;
     };
     // Whether a repeating Parallax2D wrapped round in the last tick: drawn part of the way from
-    // where it was, it would slide back across a repeat, so it draws where it is, as Godot
-    // doesn't interpolate a Parallax2D.
+    // where it was, it would slide back across a repeat, so it draws where it is, as a Parallax2D
+    // isn't interpolated.
     const auto wrapped = [&](entt::entity source) {
         const auto before = previous_parallax_.find(source);
         const auto* transform = ecs.try_get<world::Transform2D>(source);
@@ -2382,7 +2383,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         warn_once(entity_name(world, unseen.entity), unseen.message, "id", "a 3D node can't draw");
     }
     // What the world is seen through: the current camera's view, part of the way from the one
-    // before the last tick, as Godot interpolates its canvas transform.
+    // before the last tick.
     world::CameraView view = world::camera_view(world, tree, viewport);
     if (options.interpolation < 1.0 && view.camera != entt::null &&
         view.camera == previous_view_.camera) {
@@ -2413,8 +2414,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         }
         return found->second;
     };
-    // Draws the vertices from first on again at each repeat of the Parallax2D the entity is
-    // under, as Godot's canvas_render_items records an item once for each.
+    // Draws the vertices from first on again at each repeat of the Parallax2D the entity is under.
     const auto repeat = [&](entt::entity entity, std::size_t first) {
         const entt::entity source = repeat_source(entity);
         if (source == entt::null || first >= vertices.size()) {
@@ -2616,7 +2616,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const auto t = static_cast<float>(std::clamp(options.interpolation, 0.0, 1.0));
         const std::size_t first = vertices.size();
         for (const Particle& particle : live) {
-            // The frame its animation is on, as Godot's particle animation picks it.
+            // The frame its animation is on.
             auto frame = static_cast<int>(std::floor(particle.frame * static_cast<float>(total)));
             frame = emitter.anim_loop ? ((frame % total) + total) % total
                                       : std::clamp(frame, 0, total - 1);
@@ -3035,8 +3035,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .look = {}});
                 run = items.size() - 1;
             }
-            // The tile's region on its cell, moved by its texture origin and turned as Godot's
-            // draw_tile turns it: transposed (the texture's x and y swapped), then flipped.
+            // The tile's region on its cell, moved by its texture origin and turned: transposed
+            // (the texture's x and y swapped), then flipped.
             const TileLook look = tile_look(*set.value(), tile);
             rgba = {to_byte(tint.x * look.modulate.x), to_byte(tint.y * look.modulate.y),
                     to_byte(tint.z * look.modulate.z), to_byte(tint.w * look.modulate.w)};

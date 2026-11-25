@@ -1,5 +1,4 @@
-// l10n.check: what a game's translations get wrong. Godot leaves this to the eye (its editor's
-// pseudolocalization and a play in each language); this reads the translation files against the
+// l10n.check: what a game's translations get wrong. It reads the translation files against the
 // messages l10n.extract finds, and lays out every scene in each language to see what doesn't fit.
 #include "l10n_check.hpp"
 

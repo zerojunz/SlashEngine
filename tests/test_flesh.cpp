@@ -266,7 +266,7 @@ TEST_CASE("flesh: a 3D anatomy has every bone and muscle on both sides, on the r
         CHECK_MESSAGE(muscle.rings[3].ru > 0.0F, muscle.name);
     }
     // The biceps runs down the front of the upper arm, from the shoulder to the forearm, and its
-    // left one is on the body's left (+x, as Godot's humanoid faces +z).
+    // left one is on the body's left (+x, as the humanoid faces +z).
     const world::AnatomyMuscle* biceps = muscle_named(anatomy, "biceps_left");
     REQUIRE(biceps != nullptr);
     CHECK(biceps->origin_bone == "LeftUpperArm");

@@ -73,7 +73,7 @@ private:
     std::uint32_t height_ = 0;
 };
 
-// Stretches the render over the screen, filtered: Godot's bilinear mode. Scaling down by up to 2
+// Stretches the render over the screen, filtered: the bilinear mode. Scaling down by up to 2
 // averages the texels under each pixel.
 class Bilinear final : public Upscaler {
 public:
@@ -92,8 +92,8 @@ private:
     Target input_;
 };
 
-// AMD's FidelityFX Super Resolution 1, as Godot's fsr mode: EASU scales the render up into a
-// texture of the screen's size, then RCAS sharpens it as it draws over the screen.
+// AMD's FidelityFX Super Resolution 1, the fsr mode: EASU scales the render up into a texture of
+// the screen's size, then RCAS sharpens it as it draws over the screen.
 class Fsr final : public Upscaler {
 public:
     Result<TextureId> input(RenderDevice& device, const UpscaleSize& size) override {
@@ -162,9 +162,9 @@ private:
     ShaderId rcas_shader_ = ShaderId::None;
 };
 
-// Apple's MetalFX spatial scaler, as Godot's metalfx_spatial mode, on a device that has it: the
-// device scales the render up into a texture of the screen's size, which draws over the screen.
-// The world is drawn as it shows (its colors aren't linear), so it scales perceptually.
+// Apple's MetalFX spatial scaler, the metalfx_spatial mode, on a device that has it: the device
+// scales the render up into a texture of the screen's size, which draws over the screen. The world
+// is drawn as it shows (its colors aren't linear), so it scales perceptually.
 class MetalFxSpatial final : public Upscaler {
 public:
     Result<TextureId> input(RenderDevice& device, const UpscaleSize& size) override {
@@ -394,8 +394,8 @@ void clear_added_upscalers() {
 
 namespace {
 
-// Whether a frame can upscale its 3D in the device, as Godot's temporal modes do: in Forward+, at a
-// scale under 1, on a device that draws Forward+.
+// Whether a frame can upscale its 3D in the device, as the temporal modes do: in the clustered
+// renderer, at a scale under 1, on a device that draws it.
 bool temporal_frame(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
     const Backend backend = device.backend();
     return scaling.scale < 1.0F && method == RenderMethod::ForwardPlus &&

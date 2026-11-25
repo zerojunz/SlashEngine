@@ -1,6 +1,5 @@
-// Mesh LODs, as Godot 4.6's importer generates them (ImporterMesh::generate_lods in
-// scene/resources/3d/importer_mesh.cpp), with meshoptimizer 1.0's simplifier, and as its renderers
-// pick one (RenderForwardClustered::_fill_render_list and MeshStorage::mesh_surface_get_lod).
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Mesh LODs, generated with meshoptimizer 1.0's simplifier, and the pick of one for a draw.
 
 #include "slash/core/bits.hpp"
 #include "slash/core/math.hpp"
@@ -24,10 +23,10 @@ namespace slash::scene3d {
 namespace {
 
 constexpr float kPi = std::numbers::pi_v<float>;
-constexpr float kCmpEpsilon = 0.00001F;                   // Godot's CMP_EPSILON
+constexpr float kCmpEpsilon = 0.00001F;                   // the epsilon for approximate comparisons
 constexpr float kCmpEpsilon2 = kCmpEpsilon * kCmpEpsilon; // and CMP_EPSILON2
 
-// Godot's Vector3 as a HashMap key: equal when each part is, so 0 and -0 are one key.
+// A Vector3 as a hash map key: equal when each part is, so 0 and -0 are one key.
 struct PositionHash {
     std::size_t operator()(const std::array<float, 3>& p) const noexcept {
         std::size_t hash = 0;
@@ -104,7 +103,7 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
                         static_cast<float>(skinned.z)};
     }
 
-    // Godot's importer keeps colors only where the file has them; a surface all white has none.
+    // Colors are kept only where the file has them; a surface all white has none.
     const bool colors = std::ranges::any_of(vertices, [](const render::Vertex3D& v) {
         return v.rgba != std::array<std::uint8_t, 4>{255, 255, 255, 255};
     });
@@ -136,7 +135,7 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
             if (is_uvs_close && is_uv2s_close && is_normals_close && is_tang_aligned &&
                 is_col_close) {
                 vertex_remap.push_back(first);
-                // As Godot adds them: the normal of the corner merged into, again.
+                // The normal of the corner merged into, again.
                 for (std::size_t c = 0; c < 3; ++c) {
                     merged_normals[first].at(c) += other.normal.at(c);
                 }

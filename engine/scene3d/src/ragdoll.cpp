@@ -25,7 +25,7 @@
 
 // Ragdoll3D: SlashEngine's own profiles and states, after Unreal's physics assets (PhAT's bodies
 // fitted to bones), its Physical Animation component (muscles as drives toward the animated pose)
-// and the usual hit reaction, fall and get-up loop of games built on them, made of Godot 4.6's
+// and the usual hit reaction, fall and get-up loop of games built on them, made of
 // BoneSimulation3D and SimulatedBone3D.
 namespace slash::scene3d {
 

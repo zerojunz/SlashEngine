@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -14,14 +15,14 @@
 #include <string_view>
 #include <vector>
 
-// 3D physics on Jolt Physics, as Godot 4.4's Jolt module (modules/jolt_physics). The components
+// 3D physics on Jolt Physics. The components
 // are in slash/world/components.hpp: StaticBody3D, MovingBody3D, RigidBody3D, CharacterMover3D
 // and Zone3D make an entity a body or an area, and Collider3D gives it shapes.
 //
 // The "physics3d" system keeps a Jolt physics system in step with the components, as the 2D one
 // does Box2D's world: each tick it creates, changes and removes bodies to match them, steps Jolt,
-// writes rigid bodies' transforms and velocities back, moves character bodies with Godot's
-// move_and_slide (on Godot's Jolt motion tests) and emits body_entered, body_exited,
+// writes rigid bodies' transforms and velocities back, moves character bodies with
+// move_and_slide (on Jolt motion tests) and emits body_entered, body_exited,
 // area_entered and area_exited events. The components are the truth, so commands, undo and
 // snapshots work on physics as on anything else.
 //
@@ -29,14 +30,13 @@
 // calls in the same order everywhere, so a scene simulates the same on every machine.
 namespace slash::physics3d {
 
-// The project's physics_3d settings, as Godot's physics/3d and physics/jolt_physics_3d project
-// settings.
+// The project's physics_3d settings.
 struct Settings {
     float gravity = 9.8F; // meters per second squared
     Vec3 gravity_vector{0.0F, -1.0F, 0.0F};
     float linear_damp = 0.1F;  // what RigidBody3D's linear_damp combines with
     float angular_damp = 0.1F; // what RigidBody3D's angular_damp combines with
-    // Whether Zone3D detects static bodies, which Godot's Jolt module leaves off.
+    // Whether Zone3D detects static bodies. Off by default.
     bool areas_detect_static_bodies = false;
     // Collision steps each physics tick takes, as Chaos's substeps: more keep fast, small or
     // stacked bodies steadier, at that many times the cost.
@@ -46,7 +46,7 @@ struct Settings {
     // Counted in pieces, not time, so replays repeat.
     int break_budget = 0;
 
-    // Godot's physics/jolt_physics_3d/simulation settings, by their names there.
+    // Jolt's simulation settings.
     int velocity_steps = 10; // solver iterations for velocities each step
     int position_steps = 2;  // solver iterations for positions each step
     // How much of the penetration the position steps take out each step (0 to 1).
@@ -79,16 +79,16 @@ struct Settings {
     bool use_enhanced_internal_edge_removal = true;
     // The radius, in meters, of a soft body's or cloth's points when they collide.
     float soft_body_point_radius = 0.01F;
-    // Godot's motion_queries settings: the passes and the share of each overlap a character's
+    // The motion_queries settings: the passes and the share of each overlap a character's
     // move takes to push out of what it overlaps, and whether it skips inner edges.
     int recovery_iterations = 4;
     float recovery_amount = 0.4F;
     bool motion_use_enhanced_internal_edge_removal = true;
-    // Godot's collisions settings: the share of a convex shape's smallest extent its margin may
+    // The collisions settings: the share of a convex shape's smallest extent its margin may
     // take, and the angle in radians between faces under which a mesh's edge counts as smooth.
     float collision_margin_fraction = 0.08F;
     float active_edge_threshold = 0.87266463F; // 50 degrees
-    // Godot's limits settings: a world boundary shape's size in meters, the fastest bodies may
+    // The limits settings: a world boundary shape's size in meters, the fastest bodies may
     // move (meters and radians per second), how many bodies, body pairs and contact
     // constraints a space holds, and Jolt's scratch memory for a step in megabytes (more comes
     // from the heap).
@@ -133,26 +133,26 @@ struct RayHit {
     std::string surface;
 };
 
-// The first thing a ray from from to to hits, as Godot's intersect_ray. Shapes the ray starts
+// The first thing a ray from from to to hits. Shapes the ray starts
 // inside and the backs of concave faces are not hit.
 [[nodiscard]] std::optional<RayHit> raycast(world::World& world, Vec3 from, Vec3 to,
                                             const QueryFilter& filter = {});
 
-// Entities whose shapes contain a point, as Godot's intersect_point, sorted by ID.
+// Entities whose shapes contain a point, sorted by ID.
 [[nodiscard]] std::vector<entt::entity> overlap_point(world::World& world, Vec3 point,
                                                       const QueryFilter& filter = {},
                                                       std::size_t max_results = 32);
 
 // Entities whose shapes overlap a shape placed at position and rotation (radians, as
-// Transform3D's), as Godot's intersect_shape, sorted by ID. The shape's own position and
+// Transform3D's), sorted by ID. The shape's own position and
 // rotation apply too.
 [[nodiscard]] std::vector<entt::entity> overlap_shape(world::World& world,
                                                       const world::Collider3D& shape, Vec3 position,
                                                       Vec3 rotation, const QueryFilter& filter = {},
                                                       std::size_t max_results = 32);
 
-// The point of an area's or body's shapes nearest to point, as Godot's
-// get_closest_point_to_object_volume: point itself when it is inside a convex shape, else the
+// The point of an area's or body's shapes nearest to point: point itself when it is inside a
+// convex shape, else the
 // nearest point on one; the entity's position when it has no convex shapes. nullopt when it is
 // no 3D body or area.
 [[nodiscard]] std::optional<Vec3> closest_point(world::World& world, entt::entity entity,
@@ -167,7 +167,7 @@ struct Contacts {
 };
 [[nodiscard]] Contacts contacts(world::World& world, entt::entity entity);
 
-// The gravity on a body and the damping that slows it, as Godot's get_gravity and the body's
+// The gravity on a body and the damping that slows it, from the body's
 // total damping: from the areas whose space overrides reach it, highest priority first, then
 // the project's physics_3d settings. A rigid body's gravity_scale and own damping are in them.
 struct Gravity {
@@ -179,7 +179,7 @@ struct Gravity {
 // nullopt when the entity is no 3D body.
 [[nodiscard]] std::optional<Gravity> gravity(world::World& world, entt::entity entity);
 
-// Where a soft body's mesh is, as Godot's SoftBody3D::get_point_transform gives each point:
+// Where a soft body's mesh is, giving each point:
 // each mesh vertex's place in world space after the last step, and whether its body sleeps.
 // nullopt when the entity has no soft body.
 struct SoftBodyPoints {
@@ -203,10 +203,10 @@ std::vector<int> tear_cloth(world::World& world, entt::entity entity, Vec3 cente
 // Whether an entity is a 3D body or area now, as the next step sees it.
 [[nodiscard]] bool has_body(const world::World& world, entt::entity entity);
 
-// Pushes a rigid body at the next physics step, as Godot's apply_impulse: impulse in
+// Pushes a rigid body at the next physics step: impulse in
 // kilogram-meters per second, at offset meters from its position.
 void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 offset = {});
-// Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
+// Turns a rigid body at the next physics step.
 void apply_torque_impulse(world::World& world, entt::entity entity, Vec3 impulse);
 
 // Breaks a Destructible3D into its pieces now, as running out of health does: the entity goes,
@@ -278,7 +278,7 @@ std::string deform_body(world::World& world, entt::entity entity,
 std::vector<std::string> settle_group(world::World& world, std::string_view group);
 
 // The convex hull of points as triangles, three points each, wound clockwise as seen from
-// outside, as Godot's faces are: what a convex_polygon shape bakes into a navigation mesh as.
+// outside: what a convex_polygon shape bakes into a navigation mesh as.
 // Empty when the points don't span a volume.
 [[nodiscard]] std::vector<Vec3> convex_hull_triangles(std::span<const Vec3> points);
 

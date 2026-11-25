@@ -6581,17 +6581,17 @@ inline constexpr char kRayLightGlsl[] = R"glsl(#version 460
 #endif
 #extension GL_EXT_nonuniform_qualifier : require
 
-// Ray-traced reflections on a GPU that traces rays (RenderDevice::ray_tracing), after Forward+'s
-// prepass: the hardware twin of run_ray_reflections in src/ray_shadows.cpp, which the software
-// device runs and which holds the steps' reasons. Each pixel the prepass drew smoother than
-// kRayReflectionCutoff is put back in the world from its depth, moved off its surface along its
-// normal, and sends size.z rays reflected about GGX's visible normals for its roughness through
+// Ray-traced reflections on a GPU that traces rays (RenderDevice::ray_tracing), after the clustered
+// renderer's prepass: the hardware twin of run_ray_reflections in src/ray_shadows.cpp, which the
+// software device runs and which holds the steps' reasons. Each pixel the prepass drew smoother
+// than kRayReflectionCutoff is put back in the world from its depth, moved off its surface along
+// its normal, and sends size.z rays reflected about GGX's visible normals for its roughness through
 // the frame's acceleration structure. What a ray meets first is shaded as path_reflection in
 // src/path_trace.cpp shades it: its surface from its draw's material, vertices and textures
-// (surface_pixel in src/mesh.cpp), what it gives off, what the frame's lights send it through
-// their shadows (light_reach and light_compute), and the environment's light along its normal and
-// mirror direction. The light the rays bring back, divided by the rays sent, and the share that
-// met something go in reflection_image, which the screen texture's layer 1 takes as SSR's.
+// (surface_pixel in src/mesh.cpp), what it gives off, what the frame's lights send it through their
+// shadows (light_reach and light_compute), and the environment's light along its normal and mirror
+// direction. The light the rays bring back, divided by the rays sent, and the share that met
+// something go in reflection_image, which the screen texture's layer 1 takes as SSR's.
 //
 // Built as three pipelines by kPass. The first traces the reflections. The second traces each
 // pixel's ambient light, the twin of run_ray_gi's first step: gi.x rays cosine weighted over the
@@ -6744,9 +6744,9 @@ void basis(vec3 n, out vec3 t, out vec3 b) {
     b = vec3(c, sign_z + (n.y * n.y * a), -n.y);
 }
 
-// GGX's microfacet normals as v sees them, about n: sample_visible_normal in src/path_trace.cpp.
-vec3 s)glsl"
-    R"glsl(ample_visible_normal(vec3 n, vec3 v, float alpha, float u1, float u2) {
+// GGX's microfacet normals as v sees them, about n: sample_visible_normal in src/path_tra)glsl"
+    R"glsl(ce.cpp.
+vec3 sample_visible_normal(vec3 n, vec3 v, float alpha, float u1, float u2) {
     vec3 t;
     vec3 b;
     basis(n, t, b);
@@ -6944,9 +6944,9 @@ vec3 light_compute(vec3 n, vec3 l, vec3 v, vec3 light_color, float attenuation, 
     vec3 specular = vec3(0.0);
     if (metallic < 1.0) {
         float fd90_minus_1 = (2.0 * c_l_dot_h * c_l_dot_h * roughness) - 0.5;
-        float fd_v = 1.0 + (fd90_minus_1 * schlick_fresnel(c_n_dot_v));
-)glsl"
-    R"glsl(        float fd_l = 1.0 + (fd90_minus_1 * schlick_fresnel(c_n_dot_l));
+        float fd_v = 1.0 + (fd90_minus_1 * schlick_fresnel)glsl"
+    R"glsl((c_n_dot_v));
+        float fd_l = 1.0 + (fd90_minus_1 * schlick_fresnel(c_n_dot_l));
         diffuse = light_color * ((1.0 / kPi) * fd_v * fd_l * c_n_dot_l * attenuation);
     }
     if (roughness > 0.0) {
@@ -7153,8 +7153,8 @@ bool surface_at(uvec2 pixel, out vec3 origin, out vec3 normal, out vec3 near) {
     if (!(depth > 0.0)) {
         return false;
     }
-    vec2 ndc = vec2()glsl"
-    R"glsl(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
+    ve)glsl"
+    R"glsl(c2 ndc = vec2(((float(pixel.x) + 0.5) / float(size.x) * 2.0) - 1.0,
                     1.0 - ((float(pixel.y) + 0.5) / float(size.y) * 2.0));
     vec4 clip = to_world * vec4(ndc, depth, 1.0);
     vec3 world = clip.xyz / clip.w;
@@ -7351,8 +7351,8 @@ vec4 trace_path(float x, float y, uint seed, inout uint counter) {
              (met.f0.z + ((1.0 - met.f0.z) * fresnel))) /
             3.0;
         float total = diffuse_weight + specular_weight;
-        if (!(total > 0.0)))glsl"
-    R"glsl( {
+        if (!)glsl"
+    R"glsl((total > 0.0)) {
             break;
         }
         float specular_share = specular_weight / total;

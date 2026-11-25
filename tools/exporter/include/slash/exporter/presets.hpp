@@ -11,9 +11,8 @@
 #include <string_view>
 #include <vector>
 
-// Export presets live in export_presets.json at the project root, like Godot's
-// export_presets.cfg. Each preset names a platform and how to build and sign for it:
-//
+// Export presets live in export_presets.json at the project root. Each preset names a platform
+// and how to build and sign for it:
 //   {
 //     "format": 1,
 //     "presets": {
@@ -24,7 +23,6 @@
 //       }
 //     }
 //   }
-//
 // Secrets never go in the file. Passwords and keys come from environment variables, listed in
 // the schema's descriptions, so the file can be committed and edited by agents.
 namespace slash::exporter {

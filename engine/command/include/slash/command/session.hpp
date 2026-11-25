@@ -155,10 +155,10 @@ public:
     // Appends text to an append-only log, such as the storyboard journal. Undo leaves logs alone.
     Result<void> stage_append(std::string_view path, std::string_view text);
 
-    // Undo for changes outside the world, like Godot's UndoRedo: a command that changes files
-    // records the call that reverses it and the call that makes it again. Undo and redo run those
-    // calls as one staged change; if one fails, for example because the file changed since,
-    // nothing changes and undo reports why.
+    // Undo for changes outside the world: a command that changes files records the call that
+    // reverses it and the call that makes it again. Undo and redo run those calls as one staged
+    // change; if one fails, for example because the file changed since, nothing changes and undo
+    // reports why.
     void add_undo_call(std::string command, json::Value undo_params, json::Value redo_params);
     // Undo for a file a command staged: undo puts back the text it had before (removing it when
     // before is nullopt, as the command made it), and redo writes after again. Either fails and

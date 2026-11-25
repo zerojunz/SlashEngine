@@ -27,7 +27,7 @@ bool is_field(const Node& node) {
     return node.role == "text_field" || node.role == "multiline_text_field";
 }
 
-// Godot's roles as the widgets TalkBack knows, as AccessKit's Android adapter names them.
+// The roles as the widgets TalkBack knows, as AccessKit's Android adapter names them.
 std::string_view android_class(const Node& node) {
     if (node.role == "button" && node.checked) {
         return "android.widget.ToggleButton";

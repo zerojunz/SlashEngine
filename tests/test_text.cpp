@@ -364,7 +364,7 @@ TEST_CASE("box fonts are placeholder fonts made in code") {
     CHECK(fonts.face_info(layout.glyphs[0].face).path == "boxes.ttf");
 }
 
-TEST_CASE("tab stops set each tab's advance as Godot's shaped_text_tab_align") {
+TEST_CASE("tab stops set each tab's advance") {
     MemoryFiles files;
     files.write("boxes.ttf", bytes_of(text::box_font(U"abc ")));
     asset::Assets assets(files.source());
@@ -593,7 +593,7 @@ TEST_CASE("character breaks keep accents, emoji sequences, flags and Hangul syll
     CHECK(text::character_breaks(U"각가") == Breaks{3, 4});
 }
 
-TEST_CASE("a shaped line gives carets, selections, hit tests and words as Godot's TextServer") {
+TEST_CASE("a shaped line gives carets, selections, hit tests and words") {
     MemoryFiles files;
     files.write("boxes.ttf", bytes_of(text::box_font(U"abcd ")));
     files.write("hebrew.ttf", bytes_of(text::box_font(kHebrew, "Hebrew Boxes")));

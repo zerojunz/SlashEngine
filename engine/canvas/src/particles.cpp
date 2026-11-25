@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/particles.hpp"
 
 #include "slash/canvas/gpu_particles.hpp"
@@ -195,8 +196,7 @@ Vec4 multiply(Vec4 a, Vec4 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
 }
 
-// Turns a color's hue by an angle in radians, as Godot's particles do: a rotation about the
-// gray axis in YIQ space.
+// Turns a color's hue by an angle in radians: a rotation about the gray axis in YIQ space.
 Vec4 turn_hue(Vec4 color, float radians) {
     if (radians == 0.0F) {
         return color;
@@ -292,9 +292,8 @@ struct Emitter {
 // The most particles events start in an emitter at once, beyond its amount.
 constexpr std::size_t kMaxExtra = 4096;
 
-// The second each slot emits at in a cycle, as Godot spreads them: evenly over the cycle,
-// moved later at random by up to a slot's share times randomness, and squeezed toward the
-// cycle's start by explosiveness.
+// The second each slot emits at in a cycle: evenly over the cycle, moved later at random by up to a
+// slot's share times randomness, and squeezed toward the cycle's start by explosiveness.
 double emit_time(const Settings& settings, std::uint32_t seed, std::uint32_t cycle,
                  std::uint32_t slot) {
     const Emitter2D& s = *settings.component;
@@ -319,7 +318,7 @@ public:
     // Moves the emitter on by seconds of game time. Returns whether a one_shot's cycle ended.
     bool step(Emitter& e, float seconds) const {
         if (e.slots.size() != settings_.amount) {
-            // A new amount starts over, as in Godot.
+            // A new amount starts over.
             e.slots.assign(settings_.amount, Slot{});
             e.time = 0.0;
         }
@@ -364,8 +363,8 @@ public:
         for (std::size_t i = 0; i < e.slots.size(); ++i) {
             Slot& slot = e.slots[i];
             const auto index = static_cast<std::uint32_t>(i);
-            // When this slot emits during the step, if it does: how long ago, and in which cycle.
-            // As Godot, a step covers from its start up to, but not including, its end.
+            // When this slot emits during the step, if it does: how long ago, and in which cycle. A
+            // step covers from its start up to, but not including, its end.
             std::optional<std::pair<double, std::uint32_t>> emitted;
             if (emitting) {
                 const double at = emit_time(settings_, seed_, old_cycle, index);
@@ -453,7 +452,7 @@ private:
                 count - 1, static_cast<std::size_t>(r(kPoint) * static_cast<float>(count)));
             position = s_.emission_points[at];
             if (shape == "directed_points" && at < s_.emission_normals.size()) {
-                // As Godot: the normal is the velocity's x axis.
+                // The normal is the velocity's x axis.
                 const Vec2 normal = normalized(s_.emission_normals[at]);
                 velocity = (normal * velocity.x) + (Vec2{normal.y, -normal.x} * velocity.y);
             }
@@ -472,9 +471,9 @@ private:
         slot.alive = true;
     }
 
-    // Moves a particle on by seconds and works out its look at its new age, as Godot's
-    // Emitter2D: forces change its velocity, orbiting turns it about the emitter, damping
-    // slows it, then it moves by its velocity.
+    // Moves a particle on by seconds and works out its look at its new age: forces change its
+    // velocity, orbiting turns it about the emitter, damping slows it, then it moves by its
+    // velocity.
     void advance(Slot& slot, float seconds) const {
         Particle& p = slot.particle;
         p.age += seconds;
@@ -661,7 +660,7 @@ struct ParticleSystem {
         }
         for (const Run& each : runs) {
             if (each.ended) {
-                // As Godot, a one_shot stops emitting when its cycle ends.
+                // A one_shot stops emitting when its cycle ends.
                 each.component->emitting = false;
                 each.emitter->was_emitting = false;
             }

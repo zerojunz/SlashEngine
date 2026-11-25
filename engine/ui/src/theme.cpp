@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "internal.hpp"
 
 #include "slash/core/text.hpp"
@@ -16,12 +17,11 @@
 #include <utility>
 #include <vector>
 
-// Themes as Godot's Theme resource (scene/resources/theme.cpp) and its default theme
-// (scene/theme/default_theme.cpp).
+// Themes and the default theme.
 namespace slash::ui {
 namespace {
 
-// Each control type and the type it is built on, as Godot's classes.
+// Each control type and the type it is built on.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 40> kTypes{{
     {"Widget", ""},
     {"Label", "Widget"},
@@ -61,7 +61,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 40> kTypes{{
     {"VFlowContainer", "FlowBox"},
     {"PanelBox", "Container"},
     {"ScrollBox", "Container"},
-    // Windows in Godot, not controls.
+    // Windows, not controls.
     {"PopupList", ""},
     {"TooltipPanel", ""},
 }};
@@ -69,7 +69,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 40> kTypes{{
 constexpr std::array<std::string_view, 6> kKinds{"colors",     "constants", "fonts",
                                                  "font_sizes", "icons",     "styles"};
 
-// Godot's make_flat_stylebox: a rounded rect with content margins and smooth corners.
+// A rounded rect with content margins and smooth corners.
 StyleBox flat_style(Vec4 color, std::array<float, 4> margins, int corner_radius,
                     bool draw_center = true, int border_width = 0) {
     StyleBox style;
@@ -91,7 +91,7 @@ StyleBox flat_style(Vec4 color, float margin, int corner_radius, bool draw_cente
 
 } // namespace
 
-// Godot's default theme, each type's own items.
+// The default theme, each type's own items.
 const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
     static const std::map<std::string, ThemeItems, std::less<>> kThemes = [] {
         constexpr int kSeparation = 4;
@@ -416,7 +416,7 @@ const std::map<std::string, ThemeItems, std::less<>>& own_defaults() {
 const ThemeItems& optional_items(std::string_view type) {
     static const ThemeItems kNone;
     // Button's hover_pressed style is used when a theme has one, else pressed is, and a state's
-    // _mirrored style in place of its own when the button lays out right to left, as Godot's.
+    // _mirrored style in place of its own when the button lays out right to left.
     static const ThemeItems kButton = [] {
         ThemeItems items;
         StyleBox empty;

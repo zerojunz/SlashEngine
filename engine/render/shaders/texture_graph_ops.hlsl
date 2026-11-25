@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // A texture graph pass's ops (slash/render/texture_graph.hpp), included once a pass with the pass
 // described by macros; texture_graph_common.hlsl comes first. run_texture_graph in
 // src/texture_graph.cpp is the CPU twin: a change to an op goes in both.
@@ -122,7 +123,7 @@ float TG(ramp_offset)(uint i) {
     return TG(param)(kTgRampAt + 1u + i * 5u);
 }
 
-// The ramp in the params, as Godot's Gradient with linear interpolation in sRGB.
+// The ramp in the params, as a Gradient with linear interpolation in sRGB.
 float4 TG(ramp)(float offset) {
     int count = clamp(tg_to_int(TG(param)(kTgRampAt)), 0, (int)kTgRampPoints);
     if (count == 0) {
@@ -165,7 +166,7 @@ fnl_state TG(warp_state)() {
     state.domain_warp_type = tg_to_int(TG(param)(13u));
     state.domain_warp_amp = TG(param)(14u);
     state.frequency = TG(param)(15u);
-    // Godot's _convert_domain_warp_fractal_type_enum: none, progressive, independent.
+    // The domain warp fractal type: none, progressive, independent.
     int fractal = tg_to_int(TG(param)(16u));
     state.fractal_type = fractal == 1   ? FNL_FRACTAL_DOMAIN_WARP_PROGRESSIVE
                          : fractal == 2 ? FNL_FRACTAL_DOMAIN_WARP_INDEPENDENT
@@ -176,7 +177,7 @@ fnl_state TG(warp_state)() {
     return state;
 }
 
-// Godot's FastNoiseLite::get_noise_2d: the offset added, the domain warped, then the noise.
+// The offset added, the domain warped, then the noise.
 float TG(noise_at)(fnl_state noise, fnl_state warp, float x, float y) {
     x += TG(param)(20u);
     y += TG(param)(21u);
@@ -190,9 +191,9 @@ float TG(noise_at)(fnl_state noise, fnl_state warp, float x, float y) {
 #endif
 
 #if TG_OP < 0 || TG_OP == 1
-// The noise pass's value at a pixel: as Godot's Noise::_generate_seamless_image places it when
-// seamless (the CPU twin's seamless_noise), without its 8-bit steps. The places it reads are
-// gathered first so the noise is sampled at one call site, which keeps the shader small.
+// The noise pass's value at a pixel: placed as the seamless image places it when seamless (the CPU
+// twin's seamless_noise), without its 8-bit steps. The places it reads are gathered first so the
+// noise is sampled at one call site, which keeps the shader small.
 float TG(noise_value)(int x, int y) {
     fnl_state noise = TG(noise_state)();
     fnl_state warp = TG(warp_state)();
@@ -210,10 +211,10 @@ float TG(noise_value)(int x, int y) {
     int src_h = height + skirt_h;
     bool in_x = seamless && x >= half_w && x < half_w + skirt_w;
     bool in_y = seamless && y >= half_h && y < half_h + skirt_h;
-    // Without seams, [0] is the pixel's own place. The source image read as Godot's img_buff, with each mode's modulo: [0] both alternate,
-    // [1] x alternate, [2] y alternate, [3] neither.
-    // One call site in a loop kept as a loop, and no array it indexes, so a live graph's shader
-    // holds the noise once rather than four times.
+    // Without seams, [0] is the pixel's own place. The source image read with each mode's modulo:
+    // [0] both alternate, [1] x alternate, [2] y alternate, [3] neither. One call site in a loop
+    // kept as a loop, and no array it indexes, so a live graph's shader holds the noise once rather
+    // than four times.
     float v0 = 0.0;
     float v1 = 0.0;
     float v2 = 0.0;

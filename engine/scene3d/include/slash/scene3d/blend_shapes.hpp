@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-// Blend shapes (morph targets), as Godot's ArrayMesh blend shapes, Model3D's
-// blend_shapes/<name> properties and its AnimationMixer's blend shape tracks:
+// Blend shapes (morph targets), as Model3D's blend_shapes/<name> properties and the blend shape
+// tracks of its clips set them:
 //
 //   std::map<std::string, float> weights =
 //       scene3d::blend_shape_weights(model, clips, instance.blend_shapes, load);
@@ -27,7 +27,7 @@ namespace slash::scene3d {
 
 // The weight of each of a model's blend shapes, by name, as an entity draws it: the weight its
 // mesh gives the shape, or the one set (Model3D's blend_shapes) gives that name, then
-// moved by the clips' blend shape tracks as Godot's AnimationMixer blends them, each clip moving
+// moved by the clips' blend shape tracks, each clip moving
 // its weight of the way from that value to its track's (a clip's node_weights, by the name of
 // the node a track's shape is on, take the place of its weight). A clip plays from its source or
 // its model loaded with load, as pose_of plays them. Names that no mesh of the model has are
@@ -41,10 +41,10 @@ blend_shape_weights(const Model& model, std::span<const ClipSample> clips,
 [[nodiscard]] std::vector<float> mesh_weights(const ModelMesh& mesh,
                                               const std::map<std::string, float>& weights);
 
-// Whether any weight moves a vertex: Godot's skeleton shader skips weights within 0.0001 of 0.
+// Whether any weight moves a vertex: weights within 0.0001 of 0 are skipped.
 [[nodiscard]] bool any_blend(std::span<const float> weights);
 
-// A surface's vertices moved by its blend shapes, as Godot's skeleton shader moves them: each
+// A surface's vertices moved by its blend shapes: each
 // position plus each shape's offset times its weight, and each normal and tangent the same way,
 // then normalized (a tangent keeps its sign). weights are mesh_weights' for its mesh.
 void blend_vertices(const ModelSurface& surface, std::span<const float> weights,

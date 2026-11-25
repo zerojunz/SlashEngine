@@ -28,8 +28,9 @@ using render::Material3D;
 using render::RenderDevice;
 using render::Vertex3D;
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has neither FSR 2 nor FSR 3.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has neither FSR 2
+// nor FSR 3.
 inline std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());

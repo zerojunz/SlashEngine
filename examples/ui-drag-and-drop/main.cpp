@@ -1,14 +1,14 @@
-// Tooltips and drag and drop, as Godot's: main.scene.json is an inventory. Three slots, a sword
-// in the first and a potion in the second, and a trash bin. The items' DragAndDrop components
-// say what dragging them carries ({"kind": "item", "id": ...}) and which hidden control follows
-// the pointer meanwhile; the slots and the bin take anything of kind "item". Each item and the
-// bin have a tooltip_text. The inventory system below is the game's part: when an item is
-// dropped, it moves it into the slot (swapping with the item there) or throws it away.
+// Tooltips and drag and drop: main.scene.json is an inventory. Three slots, a sword in the first
+// and a potion in the second, and a trash bin. The items' DragAndDrop components say what dragging
+// them carries ({"kind": "item", "id": ...}) and which hidden control follows the pointer
+// meanwhile; the slots and the bin take anything of kind "item". Each item and the bin have a
+// tooltip_text. The inventory system below is the game's part: when an item is dropped, it moves it
+// into the slot (swapping with the item there) or throws it away.
 //
-// This program works the inventory as an agent does over MCP or JSON-RPC: it rests the mouse on
-// the sword until its tooltip shows, drags the sword to the empty slot with input.inject, drags
-// the potion onto it with ui.drag, cancels a drag with a right click and throws the sword away,
-// reading the drag events with events.read and the result with ui.layout and entity.get.
+// This program works the inventory as an agent does over MCP or JSON-RPC: it rests the mouse on the
+// sword until its tooltip shows, drags the sword to the empty slot with input.inject, drags the
+// potion onto it with ui.drag, cancels a drag with a right click and throws the sword away, reading
+// the drag events with events.read and the result with ui.layout and entity.get.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

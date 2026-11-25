@@ -366,7 +366,7 @@ TEST_CASE("project.json's rendering.scaling is read and checked") {
     };
     project["rendering"]["scaling"] = parse(R"({"mode": "fsr2", "scale": 0.67})");
     CHECK(slash::runtime::validate_project(project).empty());
-    // Godot's MetalFX modes are valid everywhere: where MetalFX isn't, they fall back.
+    // The MetalFX modes are valid everywhere: where MetalFX isn't, they fall back.
     project["rendering"]["scaling"] = parse(R"({"mode": "metalfx_temporal", "scale": 0.67})");
     CHECK(slash::runtime::validate_project(project).empty());
     auto error = first_error(R"({"mode": "metalfx_temporl"})");
@@ -456,12 +456,11 @@ TEST_CASE("display.set changes the render scale, and frame.capture and display.l
         CHECK(captured.find("upscaler")->as_string() == "bilinear");
         CHECK(*captured.find("colors") ==
               parse("[[0.251, 0.251, 0.251, 1], [0.749, 0.749, 0.749, 1]]"));
-        // fsr2 scales only the 3D world: a world without one scales with bilinear, as Godot's
-        // falls back.
+        // fsr2 scales only the 3D world: a world without one scales with bilinear.
         ok("display.set", R"({"scaling": {"mode": "fsr2"}})");
         captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
         CHECK(captured.find("upscaler")->as_string() == "bilinear");
-        // MetalFX's modes fall back as Godot's do where MetalFX isn't: the spatial one to FSR, and
+        // MetalFX's modes fall back where MetalFX isn't: the spatial one to FSR, and
         // the temporal one to FSR 2, which here is bilinear too.
         ok("display.set", R"({"scaling": {"mode": "metalfx_spatial"}})");
         captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");

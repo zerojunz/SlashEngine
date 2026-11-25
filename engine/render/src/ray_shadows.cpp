@@ -26,7 +26,7 @@ constexpr float kR2X = 0.7548776662F;
 constexpr float kR2Y = 0.5698402910F;
 // What occlusion rays' hashes take in place of a light's slot.
 constexpr std::uint32_t kOcclusionSeed = 0xA0U;
-// The most a pixel's occlusion takes away, as Godot's SSAO holds it.
+// The most a pixel's occlusion takes away.
 constexpr float kMostObscurance = 0.98F;
 // What reflection rays' hashes take in place of a light's slot.
 constexpr std::uint32_t kReflectionSeed = 0xB0U;

@@ -236,7 +236,7 @@ TEST_CASE("input event errors give the path and the closest name") {
             .size() == 1);
 }
 
-TEST_CASE("bindings match events as Godot's action_match") {
+TEST_CASE("bindings match events") {
     const input::Event save = binding(R"({"type": "key", "key": "S", "ctrl": true})");
     // The binding's modifiers must be held; more are fine unless the match is exact.
     CHECK(input::match(save, event(R"({"type": "key", "key": "S", "ctrl": true,
@@ -374,7 +374,7 @@ TEST_CASE("gamepad axes press actions past their deadzone") {
     CHECK_FALSE(input::is_action_pressed(in.world, "right"));
     CHECK(input::get_axis(in.world, "left", "right") == doctest::Approx(-0.5));
     CHECK(input::get_joy_axis(in.world, 0, input::JoyAxis::LeftX) == doctest::Approx(-0.6));
-    // ui_left's deadzone is Godot's 0.5.
+    // ui_left's deadzone is 0.5.
     CHECK(input::is_action_pressed(in.world, "ui_left"));
     CHECK(input::get_action_strength(in.world, "ui_left") == doctest::Approx(0.2));
 
@@ -516,7 +516,7 @@ TEST_CASE("an input snapshot puts the queue and what is held back") {
     CHECK(input::queued(in.world) == 1);
 }
 
-TEST_CASE("project.json input adds actions to Godot's ui_* ones") {
+TEST_CASE("project.json input adds actions to the ui_* ones") {
     const json::Value project = parse(R"({
         "format": 1, "name": "Platformer", "main_scene": "main.scene.json",
         "input": {
@@ -626,7 +626,7 @@ TEST_CASE("SdlReader turns SDL events into input events") {
     CHECK(events[1].button == input::MouseButton::Xbutton1);
     CHECK(events[1].double_click);
     CHECK(events[1].position == Vec2{40.0F, 30.0F});
-    // The wheel presses and releases its button, as Godot's does.
+    // The wheel presses and releases its button.
     CHECK(events[2].button == input::MouseButton::WheelDown);
     CHECK(events[2].pressed);
     CHECK(events[2].factor == 2.0F);

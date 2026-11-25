@@ -181,7 +181,7 @@ TEST_CASE("a bone attachment goes where its bone is posed, carrying what hangs u
     REQUIRE(hit.has_value());
     CHECK(hit->entity == scene.world.find("sword"));
 
-    // A bone's scale scales it, as Godot's set_transform.
+    // A bone's scale scales it.
     scene.world.ecs().get<world::Skeleton3D>(arm).bone_scales["Hand"] = {2.0F, 2.0F, 2.0F};
     scene.step();
     CHECK(near(scene.transform("grip").scale, {2.0F, 2.0F, 2.0F}));

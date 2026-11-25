@@ -140,18 +140,18 @@ namespace {
 
 // Textures are 8-bit RGBA, or the compressed formats the GPU samples.
 constexpr WGPUTextureFormat kTextureFormat = WGPUTextureFormat_RGBA8Unorm;
-// A Forward+ frame's world and glow's levels are half floats, as Godot's Forward+ buffers.
+// A clustered frame's world and glow's levels are half floats.
 constexpr WGPUTextureFormat kHdrFormat = WGPUTextureFormat_RGBA16Float;
-// Auto exposure's luminance textures: one float a texel, as Godot's. WebGPU filters no floats, so
-// passes only load them.
+// Auto exposure's luminance textures: one float a texel. WebGPU filters no floats, so passes only
+// load them.
 constexpr WGPUTextureFormat kLuminanceFormat = WGPUTextureFormat_R32Float;
-// The radiance's cubes are RGB10A2, as Godot's.
+// The radiance's cubes are RGB10A2.
 constexpr WGPUTextureFormat kRadianceFormat = WGPUTextureFormat_RGB10A2Unorm;
 // Meshes draw over 32-bit float depth, which every WebGPU device has and suits reversed depth.
 constexpr WGPUTextureFormat kDepthFormat = WGPUTextureFormat_Depth32Float;
-// Forward+'s normal-roughness prepass draws into bytes.
+// The clustered renderer's normal-roughness prepass draws into bytes.
 constexpr WGPUTextureFormat kNormalFormat = WGPUTextureFormat_RGBA8Unorm;
-// TAA's motion vectors are two half floats, as Godot's velocity buffer.
+// TAA's motion vectors are two half floats.
 constexpr WGPUTextureFormat kVelocityFormat = WGPUTextureFormat_RG16Float;
 // The largest shadow atlas: WebGPU's default maxTextureDimension2D.
 constexpr std::uint32_t kMaxShadowAtlas = 8192;
@@ -167,8 +167,7 @@ constexpr std::uint32_t kSdfgiScreenLayers = 7;
 // maxComputeWorkgroupsPerDimension.
 constexpr std::uint32_t kMaxWorkgroups = 65535;
 
-// FSR 2's passes, other than the reconstruct pass, and the formats each draws into, as Godot's FSR
-// 2 effect makes its textures.
+// FSR 2's passes, other than the reconstruct pass, and the formats each draws into.
 enum class Fsr2Pass : std::uint8_t { Luma, Dilate, DepthClip, Lock, Accumulate, Rcas };
 constexpr std::size_t kFsr2Passes = 6;
 constexpr std::array kFsr2LumaTargets{WGPUTextureFormat_R16Float};
@@ -401,7 +400,7 @@ WGPUStringView text_view(std::string_view text) {
     return {.data = text.data(), .length = text.size()};
 }
 
-// Godot's canvas blend modes, for straight-alpha colors.
+// The canvas blend modes, for straight-alpha colors.
 WGPUBlendState blend_state(BlendMode mode) {
     WGPUBlendState blend{};
     blend.color.operation = WGPUBlendOperation_Add;
@@ -2518,7 +2517,7 @@ public:
             velocity = generation->velocity.view;
         }
         if (ssao || ssr || velocity != nullptr || sdfgi_work_.has_value() || effect_normals) {
-            // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
+            // FSR 2 works the sky's motion vectors out from the depth.
             encode_prepass(encoder, mesh_uniforms, velocity, taa == nullptr && fsr2 != nullptr);
         } else if (fsr2 != nullptr) {
             // A frame with no meshes is all sky.
@@ -2742,7 +2741,7 @@ private:
         std::vector<WGPUTextureView> textures;
         std::uint32_t uniforms = 0;
     };
-    // What a Forward+ frame draws with: the world's texture of half floats, and auto exposure's
+    // What a clustered frame draws with: the world's texture of half floats, and auto exposure's
     // luminance textures and measured brightness, made with the first frame that uses it: whether
     // it holds one yet, and the version it was measured for. Glow's and depth of field's textures
     // are the frame graph's.
@@ -2867,7 +2866,7 @@ private:
         CullMode cull = CullMode::Back;
         bool blended = false;             // an Alpha material's, which writes no depth
         BlendMode blend = BlendMode::Mix; // when blended
-        bool clustered = false;           // Forward+'s, which reads the clusters
+        bool clustered = false;           // clustered, which reads the clusters
         ShaderId game = ShaderId::None;   // a game's spatial shader's fragment stages
         MeshPass pass = MeshPass::Color;  // the prepass's only with a game's shader
         WGPURenderPipeline pipeline = nullptr;
@@ -3030,10 +3029,10 @@ private:
     };
 
     // A game's shader: the material shader's stages with the game's code in them. A spatial
-    // shader's fragment is the Compatibility renderer's, and it has Forward+'s and the prepasses'
-    // too; its vertex stages, the motion prepass's and its shadow passes' stages only where it
-    // runs them (a vertex(), or ALPHA_SCISSOR_THRESHOLD for the shadows), else the mesh shader's
-    // draw.
+    // shader's fragment is the compatibility renderer's, and it has the clustered renderer's and
+    // the prepasses' too; its vertex stages, the motion prepass's and its shadow passes' stages
+    // only where it runs them (a vertex(), or ALPHA_SCISSOR_THRESHOLD for the shadows), else the
+    // mesh shader's draw.
     struct GameShader {
         ShaderType type = ShaderType::Canvas;
         WGPUShaderModule vertex = nullptr;
@@ -3413,8 +3412,8 @@ private:
         const std::array mesh_instances{storage_entry(6, true, WGPUShaderStage_Vertex),
                                         storage_entry(7, true, WGPUShaderStage_Vertex)};
         mesh_instances_layout_ = layout(mesh_instances);
-        // Forward+'s clusters: the lights, then each tile's words, the reflection probes, the
-        // decals, the decals' atlas and the fog, with the instances.
+        // The clustered renderer's clusters: the lights, then each tile's words, the reflection
+        // probes, the decals, the decals' atlas and the fog, with the instances.
         const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
                                        storage_entry(1, true, WGPUShaderStage_Fragment),
                                        storage_entry(2, true, WGPUShaderStage_Fragment),
@@ -3448,8 +3447,9 @@ private:
         const std::array post_uniforms{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(PostUniforms))};
         post_uniforms_layout_ = layout(post_uniforms);
-        // Forward+'s post passes bind thirteen textures, so their samplers come 16 after them.
-        // The brightness, luminance and depth textures are floats, which they load unfiltered.
+        // The clustered renderer's post passes bind thirteen textures, so their samplers come 16
+        // after them. The brightness, luminance and depth textures are floats, which they load
+        // unfiltered.
         std::array<WGPUBindGroupLayoutEntry, kForwardPostTextures * 2> forward_textures{};
         for (std::uint32_t slot = 0; slot < kForwardPostTextures; ++slot) {
             forward_textures.at(slot) = texture_entry(slot);
@@ -4409,7 +4409,7 @@ private:
             return;
         }
         if (shadow_sampler_ == nullptr) {
-            // Each tap compares four texels and blends the results, as Godot's shadow sampler.
+            // Each tap compares four texels and blends the results, as a shadow sampler does.
             WGPUSamplerDescriptor info = WGPU_SAMPLER_DESCRIPTOR_INIT;
             info.minFilter = WGPUFilterMode_Linear;
             info.magFilter = WGPUFilterMode_Linear;
@@ -4793,9 +4793,9 @@ private:
         return bind_group(layout, entries);
     }
 
-    // Records the scene's radiance, as Godot's Compatibility renderer draws its radiance map: the
-    // sky into each face of the raw cube, its mipmaps, each texel the mean of the four under it
-    // (WebGPU makes none itself), then each level of each face filtered from it.
+    // Records the scene's radiance map: the sky into each face of the raw cube, its mipmaps, each
+    // texel the mean of the four under it (WebGPU makes none itself), then each level of each face
+    // filtered from it.
     void encode_radiance(WGPUCommandEncoder encoder, const Scene3D& scene,
                          const RadianceOffsets& at) {
         const std::uint32_t levels = radiance_levels(radiance_.size);
@@ -5018,8 +5018,8 @@ private:
     }
 
     // The pipeline drawing a material's meshes into a target format, made the first time a frame
-    // needs it: it culls as the material says, and an Alpha material's blends and writes no
-    // depth. A clustered one lights them with Forward+'s clusters.
+    // needs it: it culls as the material says, and an Alpha material's blends and writes no depth.
+    // A clustered one lights them with the clustered renderer's clusters.
     WGPURenderPipeline mesh_pipeline_for(WGPUTextureFormat format, const Material3D& material,
                                          bool clustered) {
         const bool blended = material.transparency == Transparency::Alpha;
@@ -5270,9 +5270,9 @@ private:
         return at;
     }
 
-    // Builds the frame's Forward+ clusters and copies them, the frame's reflection probes and
-    // decals and, when it changes, the decals' atlas to the GPU, bound as a group made again when a
-    // buffer grows.
+    // Builds the frame's clusters and copies them, the frame's reflection probes and decals and,
+    // when it changes, the decals' atlas to the GPU, bound as a group made again when a buffer
+    // grows.
     void upload_clusters(WGPUBuffer fog, bool instances_grew) {
         decal_atlas_.update(*frame_.scene);
         const DecalAtlas& atlas = decal_atlas_.atlas();
@@ -5712,9 +5712,9 @@ private:
         make_depth_target(width, height);
     }
 
-    // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
-    // fragment stage giving each pixel's diffuse light and strength, where the opaque pass left
-    // its depth, writing none.
+    // The pipeline drawing meshes that cull as cull says into the subsurface pass: the clustered
+    // renderer's fragment stage giving each pixel's diffuse light and strength, where the opaque
+    // pass left its depth, writing none.
     WGPURenderPipeline subsurface_pipeline_for(CullMode cull) {
         for (const MeshPipeline& made : mesh_pipelines_) {
             if (made.cull == cull && made.pass == MeshPass::Subsurface) {
@@ -7514,12 +7514,12 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
-    // FSR 2's passes, as Godot's FSR 2 effect dispatches them, their uniforms at uniforms (the
-    // passes', then the reconstruct pass's two steps'): the world, drawn at the render size with
-    // jitter, upscaled by the depth buffer, the prepass's motion vectors and the target's frames
-    // before into Forward+'s world at the frame's size, which the post passes read. The frames
-    // before keep the camera the frame was seen from without its jitter, view_projection; a reset
-    // frame starts them at 0, as the software device's.
+    // FSR 2's passes, their uniforms at uniforms (the passes', then the reconstruct pass's two
+    // steps'): the world, drawn at the render size with jitter, upscaled by the depth buffer, the
+    // prepass's motion vectors and the target's frames before into the clustered renderer's world
+    // at the frame's size, which the post passes read. The frames before keep the camera the frame
+    // was seen from without its jitter, view_projection; a reset frame starts them at 0, as the
+    // software device's.
     void encode_fsr2(WGPUCommandEncoder encoder, Fsr2Frames& frames,
                      const std::array<std::uint32_t, 5>& uniforms, const Mat4& view_projection,
                      const std::array<float, 2>& jitter) {
@@ -7983,8 +7983,8 @@ private:
     }
 
     // The format the sky and meshes draw in, for a frame whose target has frame's: half floats for
-    // Forward+, whose post passes draw them over the target; RGBA8 for a Compatibility scene the
-    // post passes process; otherwise the target's own.
+    // the clustered renderer, whose post passes draw them over the target; RGBA8 for a
+    // compatibility scene the post passes process; otherwise the target's own.
     static WGPUTextureFormat world_format(const Scene3D& scene, WGPUTextureFormat frame) {
         if (scene.method == RenderMethod::ForwardPlus) {
             return kHdrFormat;
@@ -7992,8 +7992,8 @@ private:
         return post_processes(scene.post) ? kTextureFormat : frame;
     }
 
-    // The texture the sky and meshes draw into, and what it is cleared to: for Forward+ the
-    // clear color made linear.
+    // The texture the sky and meshes draw into, and what it is cleared to: for the clustered
+    // renderer the clear color made linear.
     [[nodiscard]] WGPUTextureView world_view(const Scene3D& scene) const {
         if (scene.capture) {
             return probe_raw_.faces.at(scene.capture->face);
@@ -8066,7 +8066,8 @@ private:
         forward_targets_.height = 0;
     }
 
-    // Forward+'s post pipeline for a target format, made the first time a frame needs it.
+    // The clustered renderer's post pipeline for a target format, made the first time a frame needs
+    // it.
     WGPURenderPipeline forward_pipeline_for(WGPUTextureFormat format) {
         for (const auto& [made, pipeline] : forward_pipelines_) {
             if (made == format) {
@@ -8261,8 +8262,8 @@ private:
             scene_world = resource(DofTexture::Out);
         }
         GraphResource brightness = kNoResource;
-        // As Godot's Luminance::luminance_reduction: the last pass moves from the last frame's
-        // brightness, then the brightness texture and the last level swap.
+        // The last pass moves from the last frame's brightness, then the brightness texture and the
+        // last level swap.
         const bool luminance = post.auto_exposure && !forward_targets_.luminance.empty();
         if (luminance) {
             const bool set = !forward_targets_.measured ||
@@ -9004,7 +9005,7 @@ private:
     std::unordered_map<MeshId, Mesh> meshes_;
     std::uint32_t next_mesh_ = 1;
     std::vector<MeshPipeline> mesh_pipelines_;
-    // The frame's Forward+ clusters, the buffers they are copied to and the group binding them.
+    // The frame's clusters, the buffers they are copied to and the group binding them.
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
     StorageBuffer fog_items_; // volumetric fog's volumes and VoxelGIs (fog_items)
@@ -9081,7 +9082,7 @@ private:
     std::array<WGPURenderPipeline, 3> motion_pipelines_{}; // TAA's prepass's, by CullMode
     WGPURenderPipeline taa_pipeline_ = nullptr;
     // Subsurface scattering's blur across and its blur down adding to the world (made for the
-    // world's format, kHdrFormat in Forward+); its textures are the frame graph's.
+    // world's format, kHdrFormat in the clustered renderer); its textures are the frame graph's.
     WGPURenderPipeline subsurface_pipeline_ = nullptr;
     WGPURenderPipeline subsurface_add_pipeline_ = nullptr;
     // Each target's frames before for TAA, by the target.

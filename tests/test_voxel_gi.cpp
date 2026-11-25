@@ -124,7 +124,7 @@ scene3d::VoxelGILight sun(bool shadow) {
 
 } // namespace
 
-TEST_CASE("VoxelLighting3D octrees are as big as Godot's for a box and its subdiv") {
+TEST_CASE("VoxelLighting3D octrees are as big as a box and its subdiv") {
     CHECK(scene3d::voxel_gi_subdiv("64") == 6);
     CHECK(scene3d::voxel_gi_subdiv("512") == 9);
     CHECK(scene3d::voxel_gi_subdiv("100") == 0);
@@ -152,7 +152,7 @@ TEST_CASE("VoxelLighting3D octrees are as big as Godot's for a box and its subdi
     CHECK(far.z == doctest::Approx(32.0F));
 }
 
-TEST_CASE("a VoxelLighting3D voxelizes meshes into an octree of cells, as Godot's Voxelizer") {
+TEST_CASE("a VoxelLighting3D voxelizes meshes into an octree of cells") {
     world::Surface3D red;
     red.albedo_color = {1.0F, 0.2F, 0.2F, 1.0F};
     world::PlaneGeometry plane;
@@ -390,7 +390,7 @@ TEST_CASE("omni and spot lights reach a VoxelLighting3D's cells as far as their 
     CHECK(texel(cone, 0, 10, 16, 10)[0] == 0);
 }
 
-TEST_CASE("a VoxelLighting3D bakes the static meshes in its box, as Godot's VoxelGI::bake") {
+TEST_CASE("a VoxelLighting3D bakes the static meshes in its box") {
     Scene scene;
     scene.create("floor", R"({"Transform3D": {"position": [0, -0.96875, 0]},
         "Model3D": {}, "PlaneGeometry": {"size": [2.96875, 2.96875]}})");
@@ -483,8 +483,7 @@ TEST_CASE("a VoxelLighting3D's texture packs into an atlas, each level's slices 
     CHECK_FALSE(scene3d::voxel_gi_atlas({}).ok());
 }
 
-TEST_CASE(
-    "moving meshes plot their light into a VoxelLighting3D's texture, as Godot's dynamic objects") {
+TEST_CASE("moving meshes plot their light into a VoxelLighting3D's texture") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
     const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
     scene3d::VoxelGISettings settings;
@@ -555,7 +554,7 @@ TEST_CASE(
     CHECK(red[2] == 0);
 }
 
-TEST_CASE("a moving mesh's material culls its faces as Godot's material pass does") {
+TEST_CASE("a moving mesh's material culls its faces") {
     const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
     const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
     scene3d::VoxelGISettings settings;
@@ -573,7 +572,7 @@ TEST_CASE("a moving mesh's material culls its faces as Godot's material pass doe
         return texel(out, 0, 32, 40, 32);
     };
     // Culling its back, it is drawn only from above, where its front faces; culling its front,
-    // only from below, lit by its own normal as Godot leaves it.
+    // only from below, lit by its own normal.
     const auto back = plot("back");
     CAPTURE(int{back[0]});
     CHECK(back[3] >= 120);
@@ -722,7 +721,7 @@ std::array<int, 2> differences(const render::Image& a, const render::Image& b) {
 
 } // namespace
 
-TEST_CASE("meshes take ambient light and reflections from a VoxelLighting3D's cones, as Godot's") {
+TEST_CASE("meshes take ambient light and reflections from a VoxelLighting3D's cones") {
     const auto software = render::create_software_device();
     const LitVoxelGI gi = lit_voxel_gi();
     const render::Image traced = draw_voxel_gi(*software, gi);
@@ -932,7 +931,7 @@ TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {
     CHECK(differences(draw_world(*device, renderer, gi.scene.world), plotted)[0] > 50);
 }
 
-TEST_CASE("every Forward+ device traces VoxelGIs as the software device does") {
+TEST_CASE("every clustered-renderer device traces VoxelGIs as the software device does") {
     const auto software = render::create_software_device();
     const LitVoxelGI gi = lit_voxel_gi();
     for (const bool high_quality : {false, true}) {

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -48,9 +49,9 @@ inline constexpr std::array<std::string_view, 5> kImageSuffixes{".png", ".bmp", 
                                                               std::uint32_t height,
                                                               std::span<const std::uint8_t> texels);
 
-// The image resized to width by height pixels with a Lanczos filter of three lobes, as Godot's
-// Image::resize with INTERPOLATE_LANCZOS, with colors weighted by alpha so transparent pixels
-// don't darken the edges. The same pixels on every machine. Blocks are left out.
+// The image resized to width by height pixels with a Lanczos filter of three lobes, with colors
+// weighted by alpha so transparent pixels don't darken the edges. The same pixels on every machine.
+// Blocks are left out.
 [[nodiscard]] Image resize_image(const Image& image, std::uint32_t width, std::uint32_t height);
 
 // Encodes an image as a PNG file's bytes.
@@ -90,13 +91,12 @@ struct HdrImage {
 // machine. Values below 0 and NaN are written as 0, and values past 1e38 as 1e38.
 [[nodiscard]] Result<std::string> encode_hdr(const HdrImage& image);
 
-// The ambient light a scene's lit surfaces take from each direction they face, as a panorama
-// width by height texels, linear: its ambient color times its energy, mixed with its sky's
-// radiance at the blurriest level by Radiance3D's ambient_mix where Radiance3D.ambient is set, as
-// the devices light a surface by its normal. Godot's LightmapGI takes its environment so
-// (environment_bake_panorama) for rays that leave the scene. Texel (x, y) holds the direction at
-// angle 2 pi (x + 0.5) / width about y from +z toward +x and pi (y + 0.5) / height down from +y,
-// as Godot's lightmapper looks a direction up. sky_texel samples the sky's texture at a panorama
+// The ambient light a scene's lit surfaces take from each direction they face, as a panorama width
+// by height texels, linear: its ambient color times its energy, mixed with its sky's radiance at
+// the blurriest level by Radiance3D's ambient_mix where Radiance3D.ambient is set, as the devices
+// light a surface by its normal. The lightmapper takes its environment so for rays that leave the
+// scene. Texel (x, y) holds the direction at angle 2 pi (x + 0.5) / width about y from +z toward +x
+// and pi (y + 0.5) / height down from +y. sky_texel samples the sky's texture at a panorama
 // coordinate, as a device would.
 [[nodiscard]] HdrImage
 ambient_panorama(const Scene3D& scene, std::uint32_t width, std::uint32_t height,

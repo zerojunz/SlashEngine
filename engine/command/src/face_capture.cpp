@@ -18,9 +18,8 @@
 #include <vector>
 
 // animation.import_face_capture: a face capture app's recording as a .anim.json animation of blend
-// shape tracks. SlashEngine's own (Godot reads face tracking live only): it reads the CSV files
-// Live Link Face and similar ARKit apps write, a time column then a column of weights per ARKit
-// shape, and names each track as XRFace3D would drive the shape.
+// shape tracks. It reads the CSV files Live Link Face and similar ARKit apps write, a time column
+// then a column of weights per ARKit shape, and names each track as XRFace3D would drive the shape.
 namespace slash::command {
 namespace {
 

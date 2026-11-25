@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -13,20 +14,18 @@
 #include <span>
 #include <vector>
 
-// GPU particles in 3D, as Godot's GPUParticles3D with a ParticleProcessMaterial: a system is a
-// buffer of particles that steps run, each restarting the particles whose turn in the emission
-// cycle has come and moving every live one by the process material's rules, as Godot's
-// particles shader and the code ParticleProcessMaterial::_update_shader generates for 3D do.
-// A system draws as a mesh at each particle, as Godot's particles copy shader places a draw
-// pass's instances: RenderDevice::fill_particle_mesh fills a mesh with a copy of the draw pass's
-// vertices per particle, turned, scaled and colored by it.
+// GPU particles in 3D: a system is a buffer of particles that steps run, each restarting the
+// particles whose turn in the emission cycle has come and moving every live one by the process
+// material's rules. A system draws as a mesh at each particle, placed as a draw pass's instances:
+// RenderDevice::fill_particle_mesh fills a mesh with a copy of the draw pass's vertices per
+// particle, turned, scaled and colored by it.
 //
 // process_particles_3d and particle_mesh_vertices_3d are the CPU twins every device runs, the same
 // bits on every platform.
 namespace slash::render {
 
-// How many sides a curve of a process material has: Godot's CurveTexture gives each of x, y and
-// z the same value, and its CurveXYZTexture a curve each. None of the three is no curve.
+// How many sides a curve of a process material has: a single curve gives each of x, y and z the
+// same value, and an XYZ curve a curve each. None of the three is no curve.
 struct ParticleCurve3 {
     std::array<ParticleCurve, 3> axes;
 
@@ -36,9 +35,9 @@ struct ParticleCurve3 {
     bool operator==(const ParticleCurve3&) const = default;
 };
 
-// How particles start and move in 3D: Godot's ParticleProcessMaterial, as its generated shader
-// runs it without particle_flag_disable_z (and with it, flattened onto the xy plane). Angles
-// are in degrees and lengths in meters.
+// How particles start and move in 3D, as its generated shader runs it without
+// particle_flag_disable_z (and with it, flattened onto the xy plane). Angles are in degrees and
+// lengths in meters.
 struct ParticleProcess3D {
     EmissionShape emission_shape = EmissionShape::Point;
     Vec3f emission_shape_offset;
@@ -68,8 +67,8 @@ struct ParticleProcess3D {
     std::array<ParticleCurve, kParticleParams> param_curve;
     // Scales each axis over the particle's life.
     ParticleCurve3 scale_curve;
-    // Turns per second about each axis through velocity_pivot, times orbit_velocity; as Godot's,
-    // particles orbit in 3D only with a curve (and a single curve turns them about all three).
+    // Turns per second about each axis through velocity_pivot, times orbit_velocity; particles
+    // orbit in 3D only with a curve (and a single curve turns them about all three).
     ParticleCurve3 orbit_velocity_curve;
     // Meters per second along each axis over the particle's life, times a directional_velocity
     // picked between min and max; in the emitter's space with directional_velocity_global.
@@ -78,7 +77,7 @@ struct ParticleProcess3D {
     ParticleCurve3 directional_velocity_curve;
     bool directional_velocity_global = false;
     // Scales each axis by the particle's speed: its curve's offset is the speed over
-    // scale_over_velocity_max - scale_over_velocity_min, in meters per second, as Godot's.
+    // scale_over_velocity_max - scale_over_velocity_min, in meters per second.
     float scale_over_velocity_min = 0.0F;
     float scale_over_velocity_max = 0.0F;
     ParticleCurve3 scale_over_velocity_curve;
@@ -98,10 +97,9 @@ struct ParticleProcess3D {
     float turbulence_noise_scale = 9.0F;
     Vec3f turbulence_noise_speed;
     float turbulence_noise_speed_random = 0.2F;
-    // Attractors push the particles (Godot's attractor_interaction_enabled).
+    // Attractors push the particles (attractor_interaction).
     bool attractor_interaction = true;
-    // What a particle does when it touches a collider, as Godot's collision_mode, and how it
-    // bounces and slides when Rigid.
+    // What a particle does when it touches a collider, and how it bounces and slides when Rigid.
     ParticleCollision collision_mode = ParticleCollision::Disabled;
     float collision_friction = 0.0F;  // of the speed along the surface lost, 0 to 1
     float collision_bounce = 0.0F;    // of the speed into the surface sent back, 0 to 1
@@ -125,13 +123,13 @@ struct ParticleField3D {
     bool operator==(const ParticleField3D&) const = default;
 };
 
-// The shapes of Godot's GPUParticlesAttractor3D.
+// The shapes of an attractor.
 enum class AttractorShape3D : std::uint8_t { Sphere, Box, VectorField };
 
-// An attractor a step's particles feel, as Godot's particles storage hands one to its particles
-// shader: its transform in the particles' space with its basis made orthonormal, the half size
-// of its box (or its radius, in x, y and z) scaled by its transform, and its settings. A vector
-// field's field is shared by every step that uses it.
+// An attractor a step's particles feel, as the particles shader takes it: its transform in the
+// particles' space with its basis made orthonormal, the half size of its box (or its radius, in x,
+// y and z) scaled by its transform, and its settings. A vector field's field is shared by every
+// step that uses it.
 struct ParticleAttractor3D {
     AttractorShape3D shape = AttractorShape3D::Sphere;
     ParticleTransform transform = kParticleIdentity;
@@ -144,10 +142,10 @@ struct ParticleAttractor3D {
     bool operator==(const ParticleAttractor3D&) const = default;
 };
 
-// A ParticleColliderSdf3D's signed distance field, as its baked Texture3D holds it: width by
-// height by depth cells over its box, x fastest, then y, then z, each the distance from the
-// cell's center to the nearest surface in meters of the collider's unscaled space (less than 0
-// inside one) as a half float's bits, as Godot's RH texels.
+// A ParticleColliderSdf3D's signed distance field, as its baked Texture3D holds it: width by height
+// by depth cells over its box, x fastest, then y, then z, each the distance from the cell's center
+// to the nearest surface in meters of the collider's unscaled space (less than 0 inside one) as a
+// half float's bits.
 struct ParticleSdf3D {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
@@ -157,10 +155,9 @@ struct ParticleSdf3D {
     bool operator==(const ParticleSdf3D&) const = default;
 };
 
-// A ParticleColliderHeight3D's heights, as Godot draws its depth texture from above:
-// width by height texels over its box's x and z, x fastest, from its -x -z corner, each the
-// height of the highest surface over the texel's center, from 0 at the box's bottom (or nothing
-// there) to 1 at its top.
+// A ParticleColliderHeight3D's heights, drawn as a depth texture from above: width by height texels
+// over its box's x and z, x fastest, from its -x -z corner, each the height of the highest surface
+// over the texel's center, from 0 at the box's bottom (or nothing there) to 1 at its top.
 struct ParticleHeightField3D {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
@@ -169,14 +166,13 @@ struct ParticleHeightField3D {
     bool operator==(const ParticleHeightField3D&) const = default;
 };
 
-// The shapes of Godot's GPUParticlesCollision3D.
+// The shapes of a collider.
 enum class ColliderShape3D : std::uint8_t { Sphere, Box, Sdf, HeightField };
 
-// A collider a step's particles touch, as Godot's particles storage hands one to its particles
-// shader: its transform in the particles' space with its basis made orthonormal, and the half
-// size of its box (or its radius, in x, y and z) scaled by its transform. An SDF's distances
-// are times scale, the average of its transform's scale; fields and height fields are shared by
-// every step that uses them.
+// A collider a step's particles touch, as the particles shader takes it: its transform in the
+// particles' space with its basis made orthonormal, and the half size of its box (or its radius, in
+// x, y and z) scaled by its transform. An SDF's distances are times scale, the average of its
+// transform's scale; fields and height fields are shared by every step that uses them.
 struct ParticleCollider3D {
     ColliderShape3D shape = ColliderShape3D::Sphere;
     ParticleTransform transform = kParticleIdentity;
@@ -188,13 +184,13 @@ struct ParticleCollider3D {
     bool operator==(const ParticleCollider3D&) const = default;
 };
 
-// The most colliders one step takes, as Godot's MAX_COLLIDERS; of them at most one height field.
+// The most colliders one step takes; of them at most one height field.
 inline constexpr std::size_t kMaxParticleColliders3D = 32;
 // The most cells an SDF holds (128 a side) and texels a height field holds (1024 a side).
 inline constexpr std::size_t kMaxParticleSdfCells3D = std::size_t{1} << 21U;
 inline constexpr std::size_t kMaxParticleHeightTexels3D = std::size_t{1} << 20U;
 
-// The most attractors one step takes, as Godot's MAX_ATTRACTORS.
+// The most attractors one step takes.
 inline constexpr std::size_t kMaxParticleAttractors3D = 32;
 // The most texels a vector field holds.
 inline constexpr std::size_t kMaxParticleFieldTexels3D = std::size_t{1} << 18U;
@@ -203,14 +199,14 @@ inline constexpr std::size_t kMaxParticleFieldTexels3D = std::size_t{1} << 18U;
 inline constexpr std::uint32_t kMaxParticleNeighbors3D = 32;
 
 // Simulation stages a step runs on its particles after moving them, after Unreal's Niagara
-// simulation stages (Godot has none), as world::run_stages runs them over CPU particles: each
-// live particle feels the nearest max_neighbors live ones within neighbor_radius (found by
-// sorting the particles along a Morton curve of cells of that size and looking up the cells
-// round each with binary searches, no grid kept), which push it apart (separation), pull it
-// toward their middle (cohesion) and turn it toward their mean velocity (alignment); then curl
-// noise swirls it, drag slows it and the speed limits hold it, the change in its velocity moving
-// it this step too. Neighbors are measured in the particles' space, flat ones (the process's
-// disable_z) in the xy plane. A particle's userdata.x is how many neighbors it felt.
+// simulation stages, as world::run_stages runs them over CPU particles: each live particle feels
+// the nearest max_neighbors live ones within neighbor_radius (found by sorting the particles along
+// a Morton curve of cells of that size and looking up the cells round each with binary searches, no
+// grid kept), which push it apart (separation), pull it toward their middle (cohesion) and turn it
+// toward their mean velocity (alignment); then curl noise swirls it, drag slows it and the speed
+// limits hold it, the change in its velocity moving it this step too. Neighbors are measured in the
+// particles' space, flat ones (the process's disable_z) in the xy plane. A particle's userdata.x is
+// how many neighbors it felt.
 struct ParticleStages3D {
     float neighbor_radius = 0.0F; // 0: no neighbors
     std::uint32_t max_neighbors = 16;
@@ -253,11 +249,10 @@ struct ParticleStep3D {
     bool emitting = true;
     bool fractional_delta = true;
     bool clear = false;
-    // What pushes the particles in this step (Godot's FrameParams attractors).
+    // What pushes the particles in this step (attractors).
     std::vector<ParticleAttractor3D> attractors;
-    // What the particles collide with in this step (Godot's FrameParams colliders), and how
-    // near a particle comes to one before it touches, in meters (GpuEmitter3D's
-    // collision_base_size).
+    // What the particles collide with in this step (colliders), and how near a particle comes to
+    // one before it touches, in meters (GpuEmitter3D's collision_base_size).
     std::vector<ParticleCollider3D> colliders;
     float collision_size = 0.01F;
     // The simulation stages run after the step (a ParticleSimulation3D beside the emitter).
@@ -266,11 +261,11 @@ struct ParticleStep3D {
     bool operator==(const ParticleStep3D&) const = default;
 };
 
-// One 3D particle, laid out as the GPU keeps it (128 bytes), as Godot's ParticleData: its
-// transform's axes (scaled) and origin, each a Vec4 whose w is 0, the velocity its forces built
-// up (Godot's VELOCITY, which disable_velocity leaves out of its motion), its flags, its color
-// and Godot's CUSTOM: its angle in radians, its age as a fraction of the system's lifetime, its
-// frame from 0 to 1 and its own lifetime as a fraction of the system's.
+// One 3D particle, laid out as the GPU keeps it (128 bytes): its transform's axes (scaled) and
+// origin, each a Vec4 whose w is 0, the velocity its forces built up (the velocity, which
+// disable_velocity leaves out of its motion), its flags, its color and its custom data: its angle
+// in radians, its age as a fraction of the system's lifetime, its frame from 0 to 1 and its own
+// lifetime as a fraction of the system's.
 struct Particle3D {
     Vec4 x{1.0F, 0.0F, 0.0F, 0.0F};
     Vec4 y{0.0F, 1.0F, 0.0F, 0.0F};
@@ -318,7 +313,7 @@ struct ParticleContact3D {
 [[nodiscard]] Vec3f particle_attraction_3d(std::span<const ParticleAttractor3D> attractors,
                                            Vec3f position);
 
-// The order particles draw in, as Godot's GPUParticles3D::DrawOrder.
+// The order particles draw in.
 enum class ParticleOrder3D : std::uint8_t {
     Index,
     Lifetime,        // oldest first
@@ -326,8 +321,7 @@ enum class ParticleOrder3D : std::uint8_t {
     ViewDepth,       // farthest from the camera first
 };
 
-// How each particle's transform is turned before its mesh is placed, as Godot's
-// GPUParticles3D::TransformAlign.
+// How each particle's transform is turned before its mesh is placed.
 enum class ParticleAlign : std::uint8_t {
     Disabled,
     ZBillboard,            // its z axis toward the camera, its y up the screen
@@ -338,13 +332,12 @@ enum class ParticleAlign : std::uint8_t {
 // How a draw pass's material faces the camera, as a Surface3D's billboard_mode.
 enum class ParticleBillboard : std::uint8_t { Disabled, Enabled, FixedY, Particles };
 
-// How a system's particles place a draw pass's mesh (fill_particle_mesh), as Godot's particles
-// copy shader and Surface3D's vertex code do: each particle in draw order takes as many
-// vertices as the pass has, placed by its transform (turned as align says and moved on along its
-// velocity by remainder seconds), then by transform, then faced to the camera as billboard
-// says, colored by its color, its texture coordinates showing its frame of
-// h_frames by v_frames with Particles. A particle not live has its vertices folded onto one
-// point, so it draws nothing.
+// How a system's particles place a draw pass's mesh (fill_particle_mesh): each particle in draw
+// order takes as many vertices as the pass has, placed by its transform (turned as align says and
+// moved on along its velocity by remainder seconds), then by transform, then faced to the camera as
+// billboard says, colored by its color, its texture coordinates showing its frame of h_frames by
+// v_frames with Particles. A particle not live has its vertices folded onto one point, so it draws
+// nothing.
 struct ParticleMeshDraw3D {
     ParticleOrder3D order = ParticleOrder3D::Index;
     std::uint32_t lifetime_split = 0; // particle_lifetime_split for the system's phase
@@ -352,8 +345,8 @@ struct ParticleMeshDraw3D {
     ParticleAlign align = ParticleAlign::Disabled;
     // The emitter's transform for particles in its space (local_coords), else the identity.
     ParticleTransform transform = kParticleIdentity;
-    // The camera's z axis (pointing back at it) and y axis: the z in the particles' own space,
-    // as Godot's sort_direction, and the y as it is, as its align_up.
+    // The camera's z axis (pointing back at it) and y axis: the z in the particles' own space, the
+    // sort direction, and the y as it is, the align up.
     Vec3f sort_direction{0.0F, 0.0F, 1.0F};
     Vec3f align_up{0.0F, 1.0F, 0.0F};
     // Where the camera is, for billboards.
@@ -366,9 +359,9 @@ struct ParticleMeshDraw3D {
     // The material's uv1_scale and uv1_offset, applied before the frame moves them.
     std::array<float, 2> uv_scale{1.0F, 1.0F};
     std::array<float, 2> uv_offset{0.0F, 0.0F};
-    // The box the mesh is drawn in, which orders it among blended draws and culls its shadows:
-    // the emitter's visibility box, in the mesh's space, as Godot's visibility_aabb. A box whose
-    // low is above its high, as by default, is the box round the vertices made.
+    // The box the mesh is drawn in, which orders it among blended draws and culls its shadows: the
+    // emitter's visibility box, in the mesh's space. A box whose low is above its high, as by
+    // default, is the box round the vertices made.
     std::array<float, 3> box_low{1.0F, 1.0F, 1.0F};
     std::array<float, 3> box_high{0.0F, 0.0F, 0.0F};
 
@@ -378,9 +371,9 @@ struct ParticleMeshDraw3D {
     bool operator==(const ParticleMeshDraw3D&) const = default;
 };
 
-// The particle draw slot slot of total shows, as Godot's particles copy shader picks it: slot
-// itself in Index order (and ViewDepth, whose sort comes after), or along the emission cycle from
-// lifetime_split (particle_lifetime_split for the system's phase).
+// The particle draw slot slot of total shows: slot itself in Index order (and ViewDepth, whose sort
+// comes after), or along the emission cycle from lifetime_split (particle_lifetime_split for the
+// system's phase).
 [[nodiscard]] std::uint32_t particle_draw_index_3d(std::uint32_t slot, std::uint32_t total,
                                                    ParticleOrder3D order,
                                                    std::uint32_t lifetime_split);
@@ -395,7 +388,7 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
 // NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
 enum class Particles3DId : std::uint32_t { None = 0 };
 
-// The most particles a 3D system holds, as Godot's GPUParticles3D.
+// The most particles a 3D system holds.
 inline constexpr std::uint32_t kMaxParticles3D = 1000000;
 
 namespace detail {

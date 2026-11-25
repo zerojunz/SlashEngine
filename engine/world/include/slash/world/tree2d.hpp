@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -13,57 +14,54 @@ namespace slash::world {
 
 class World;
 
-// A 2D affine transform, as Godot's Transform2D: a point p goes to x * p.x + y * p.y + origin.
+// A 2D affine transform: a point p goes to x * p.x + y * p.y + origin.
 struct Affine2D {
     Vec2 x{1.0F, 0.0F};
     Vec2 y{0.0F, 1.0F};
     Vec2 origin;
 
     [[nodiscard]] Vec2 apply(Vec2 p) const;
-    // This transform after o, as Godot's operator*: a parent's times its child's.
+    // This transform after o: a parent's times its child's.
     [[nodiscard]] Affine2D operator*(const Affine2D& o) const;
-    // The transform that undoes this one, as Godot's affine_inverse; itself if it can't be undone.
+    // The transform that undoes this one; itself if it can't be undone.
     [[nodiscard]] Affine2D inverse() const;
 
     friend bool operator==(const Affine2D&, const Affine2D&) = default;
 };
 
-// A Transform2D's matrix, as Godot's Transform2D(rotation, scale, skew, position). Its children
-// play no part. The same bits on every platform.
+// A Transform2D's matrix. Its children play no part. The same bits on every platform.
 [[nodiscard]] Affine2D affine(const Transform2D& transform);
-// A matrix's parts as Godot's get_origin, get_rotation, get_scale and get_skew, with no
-// children. The same bits on every platform.
+// A matrix's parts, get_rotation, get_scale and get_skew, with no children. The same bits on every
+// platform.
 [[nodiscard]] Transform2D parts(const Affine2D& matrix);
 
-// Where 2D entities are in the world, as Godot's tree of Node2Ds: an entity in another's
-// Transform2D children is placed in its parent's space. A child listed by two parents keeps the
-// first in the order entities were made; a parent that is its own descendant is left a root.
-// Make one, use it and drop it: it reads the parents as they were when it was made, and the
-// transforms as they are when asked.
+// Where 2D entities are in the world: an entity in another's Transform2D children is placed in its
+// parent's space. A child listed by two parents keeps the first in the order entities were made; a
+// parent that is its own descendant is left a root. Make one, use it and drop it: it reads the
+// parents as they were when it was made, and the transforms as they are when asked.
 class Tree2D {
 public:
     explicit Tree2D(const World& world);
 
     // The entity whose children list it, or null for a root.
     [[nodiscard]] entt::entity parent(entt::entity entity) const;
-    // The entity whose space it is placed in: its parent, or null for a root or a top_level
-    // entity, as Godot's get_parent_item.
+    // The entity whose space it is placed in: its parent, or null for a root or a top_level entity.
     [[nodiscard]] entt::entity transform_parent(entt::entity entity) const;
     // Whether any entity has a parent: with none, every global transform is the entity's own.
     [[nodiscard]] bool nested() const { return !parents_.empty(); }
-    // The entity's Transform2D after its parents', as Godot's get_global_transform: a root's
-    // own exactly (with no children), and Transform2D{} for an entity without one.
+    // The entity's Transform2D after its parents': a root's own exactly (with no children), and
+    // Transform2D{} for an entity without one.
     [[nodiscard]] Transform2D global(entt::entity entity) const;
     [[nodiscard]] Affine2D global_affine(entt::entity entity) const;
-    // Moves the entity so its global position is this, as Godot's set_global_position.
+    // Moves the entity so its global position is this.
     void set_global_position(World& world, entt::entity entity, Vec2 position) const;
-    // Turns the entity so its global rotation is this, as Godot's set_global_rotation: its own
-    // rotation is this less its parent's global rotation.
+    // Turns the entity so its global rotation is this: its own rotation is this less its parent's
+    // global rotation.
     void set_global_rotation(World& world, entt::entity entity, float rotation) const;
-    // Where the entity draws among others of the same z_index, lowest first: the roots in the
-    // order entities were made, each followed by its children in list order, theirs after
-    // them. An entity with no Transform2D is a root. A top_level entity and the entities under
-    // it draw after the rest of its tree, as Godot raises top-level items in tree order.
+    // Where the entity draws among others of the same z_index, lowest first: the roots in the order
+    // entities were made, each followed by its children in list order, theirs after them. An entity
+    // with no Transform2D is a root. A top_level entity and the entities under it draw after the
+    // rest of its tree.
     [[nodiscard]] std::uint64_t draw_key(entt::entity entity) const;
 
 private:

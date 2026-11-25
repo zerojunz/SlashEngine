@@ -15,7 +15,7 @@
 // engine/physics3d, which knows none, builds the bodies and joints from it.
 namespace slash::world {
 
-// What a physical bone's body is, as Godot's PhysicalBone3D sets its body mode.
+// What a simulated bone's body is.
 enum class PhysicalBoneMode : std::uint8_t {
     // A static body that collides: a bone with no simulator.
     Static,

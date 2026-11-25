@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "post_shading.hpp"
@@ -11,12 +12,12 @@
 #include <span>
 #include <vector>
 
-// What every device shares to post-process a Forward+ frame's 3D world, as Godot's Forward+
-// renderer does: the uniforms of shaders/forward_post.hlsl, glow's levels, auto exposure's
-// luminance textures, and the CPU twins of its passes, which the software device uses. The sky
-// and meshes draw linear colors into a texture of half floats; with auto exposure, the luminance
-// passes measure its brightness into a 1 x 1 texture of floats; glow blurs it into up to seven
-// levels, and the tonemap pass draws it over the frame's target.
+// What every device shares to post-process a clustered frame's 3D world: the uniforms of
+// shaders/forward_post.hlsl, glow's levels, auto exposure's luminance textures, and the CPU twins
+// of its passes, which the software device uses. The sky and meshes draw linear colors into a
+// texture of half floats; with auto exposure, the luminance passes measure its brightness into a 1
+// x 1 texture of floats; glow blurs it into up to seven levels, and the tonemap pass draws it over
+// the frame's target.
 namespace slash::render::detail {
 
 // forward_post.hlsl's passes: glow's first level from the world, each next level from the one
@@ -110,9 +111,9 @@ struct HdrImage {
 // nothing over it comes back out of the tonemap pass the color it was.
 [[nodiscard]] Float4 forward_clear(const Color& clear);
 
-// Glow's levels for a frame of width x height, as Godot's RenderSceneBuffersRD sizes its second
-// blur texture's mipmaps: half the frame's size, then half again for each next one, at least 1 x 1,
-// and how many of them the scene's glow draws (to the last level of more than 0.01, at least one).
+// Glow's levels for a frame of width x height: half the frame's size, then half again for each next
+// one, at least 1 x 1, and how many of them the scene's glow draws (to the last level of more than
+// 0.01, at least one).
 struct GlowPlan {
     std::uint32_t count = 0;
     std::array<PostSize, kMaxGlowLevels> sizes{};
@@ -120,9 +121,8 @@ struct GlowPlan {
 [[nodiscard]] GlowPlan forward_glow_plan(const PostProcess& post, std::uint32_t width,
                                          std::uint32_t height);
 
-// Auto exposure's luminance textures for a frame of width x height, as Godot's
-// Luminance::LuminanceBuffers: the frame's size divided by 8, rounded down and at least 1, again
-// and again to 1 x 1. Each luminance pass draws the next.
+// Auto exposure's luminance textures for a frame of width x height: the frame's size divided by 8,
+// rounded down and at least 1, again and again to 1 x 1. Each luminance pass draws the next.
 [[nodiscard]] std::vector<PostSize> luminance_plan(std::uint32_t width, std::uint32_t height);
 
 // A pass's uniforms, for a target of target_width x target_height in a frame of frame_width x
@@ -154,15 +154,13 @@ struct DofStep {
     bool second = false; // a box's or hexagon's second pass
 };
 
-// Whether the post-process uses depth of field: far or near blur by more than 0, as Godot's
-// camera_attributes_uses_dof.
+// Whether the post-process uses depth of field: far or near blur by more than 0.
 [[nodiscard]] bool uses_dof(const PostProcess& post);
 
-// Depth of field's passes for a frame of width x height, as Godot's BokehDOF::bokeh_dof_compute:
-// each pixel's blur size into a copy of the world; a box or hexagon in two passes at half size,
-// then a composite (very_low and low), or at full size, the second into the result (medium and
-// high); or a circle at half size, then a composite. Empty without depth of field, or for frames
-// under 8 x 8 pixels, as Godot's.
+// Depth of field's passes for a frame of width x height: each pixel's blur size into a copy of the
+// world; a box or hexagon in two passes at half size, then a composite (very_low and low), or at
+// full size, the second into the result (medium and high); or a circle at half size, then a
+// composite. Empty without depth of field, or for frames under 8 x 8 pixels.
 [[nodiscard]] std::vector<DofStep> dof_plan(const PostProcess& post, std::uint32_t width,
                                             std::uint32_t height);
 

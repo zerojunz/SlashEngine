@@ -1,8 +1,8 @@
-// Drawing the world at a lower resolution and scaling it up to the window, as Godot's
-// rendering/scaling_3d settings, while the controls stay sharp at the window's size.
+// Drawing the world at a lower resolution and scaling it up to the window, while the controls stay
+// sharp at the window's size.
 //
-// project.json's rendering.scaling draws this game's world at half size and scales it up with
-// AMD's FidelityFX Super Resolution 1. An agent changes the settings while the game runs with
+// project.json's rendering.scaling draws this game's world at half size and scales it up with AMD's
+// FidelityFX Super Resolution 1. An agent changes the settings while the game runs with
 // display.set, which slash-cli run --serve adds, and frame.capture shows what each draws. A game
 // can add an upscaler of its own with render::add_upscaler: here a nearest-neighbor one for pixel
 // art. Everything draws on the CPU, so the output is the same on every machine.
@@ -175,7 +175,7 @@ int main() {
     call(session, "display.set", R"({"scaling": {"upscaler": "pixel", "scale": 0.25}})");
     call(session, "frame.capture", points);
 
-    // MetalFX's spatial scaler where the device has it; here, as Godot falls back, FSR.
+    // MetalFX's spatial scaler where the device has it; here, FSR.
     call(session, "display.set", R"({"scaling": {"mode": "metalfx_spatial", "upscaler": ""}})");
     call(session, "frame.capture", points);
 

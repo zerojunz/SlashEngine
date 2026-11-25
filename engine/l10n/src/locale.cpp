@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/l10n/locale.hpp"
 
 #include <algorithm>
@@ -13,7 +15,7 @@
 namespace slash::l10n {
 namespace {
 
-// The tables of Godot 4.6's core/string/locales.h that reading locales needs.
+// The tables that reading locales needs.
 
 // Windows' locale codes that don't follow ISO 639-1, and "C", an unset locale.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kLocaleRenames{{
@@ -68,7 +70,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kLocaleVa
     {"tradnl", "es"},
 }};
 
-// ISO 15924 script codes, as Godot's script_list (its names left out).
+// ISO 15924 script codes (their names left out).
 constexpr std::string_view kScripts =
     "Adlm Afak Aghb Ahom Arab Armi Armn Avst Bali Bamu Bass Batk Beng Bhks Blis Bopo Brah Brai "
     "Bugi Buhd Cakm Cans Cari Cham Cher Chrs Cirt Copt Cpmn Cprt Cyrl Deva Diak Dogr Dsrt Dupl "
@@ -145,7 +147,7 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 30> kPluralR
     {"cy", "nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n==3 ? 3 : n==6 ? 4 : 5);"},
 }};
 
-// Parts of text between separators, empty ones included, as Godot's String::split.
+// Parts of text between separators, empty ones included.
 std::vector<std::string_view> split(std::string_view text, char separator) {
     std::vector<std::string_view> parts;
     std::size_t start = 0;
@@ -328,7 +330,7 @@ int compare_locales(std::string_view a, std::string_view b) {
     if (a == b) {
         return 10; // Exact match.
     }
-    // Godot keeps a cache of these; a lookup reads at most a few locales, so this one doesn't.
+    // A lookup reads at most a few locales, so there is no cache of them.
     const Locale locale_a = Locale::parse(a, true);
     const Locale locale_b = Locale::parse(b, true);
     if (locale_a == locale_b) {

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "procedural.hpp"
 
 #include "slash/asset/assets.hpp"
@@ -414,7 +415,7 @@ std::vector<float> sample_noise_source(const NoiseSource& source, int x, int y, 
             values.push_back(value);
         }
     }
-    // As Godot's Noise::_get_image, in floats rather than bytes.
+    // In floats rather than bytes.
     for (float& value : values) {
         if (source.normalize) {
             value = high == low ? 0.0F : std::clamp((value - low) / (high - low), 0.0F, 1.0F);

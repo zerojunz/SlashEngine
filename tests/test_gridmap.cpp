@@ -227,9 +227,9 @@ Rgba pixel(const render::Image& image, std::uint32_t x, std::uint32_t y) {
 
 } // namespace
 
-TEST_CASE("a cell's orientation is one of Godot's 24 turns") {
+TEST_CASE("a cell's orientation is one of 24 turns") {
     CHECK(scene3d::orientation_basis(0) == world::Affine3D{});
-    // 16, 10 and 22 turn 90, 180 and 270 degrees about y, as Godot's editor does with S.
+    // 16, 10 and 22 turn 90, 180 and 270 degrees about y.
     const auto turned = [](int orientation, Vec3 v) {
         return scene3d::orientation_basis(orientation).basis(v);
     };
@@ -359,7 +359,7 @@ TEST_CASE("validate_grid_cells finds every error, each with its JSON Pointer") {
           "/floors/0/rows/1: is 3 characters, not a whole number of 2-character keys");
 }
 
-TEST_CASE("cells and points convert as Godot's map_to_local and local_to_map") {
+TEST_CASE("cells and points convert to and from local space") {
     world::BlockMap3D map = grid(R"({"cell_size": [2, 1, 3]})");
     CHECK(scene3d::map_to_local(map, {1, -1, 2}) == Vec3{3.0F, -0.5F, 7.5F});
     CHECK(scene3d::local_to_map(map, {3.0F, -0.5F, 7.5F}) == Vec3i{1, -1, 2});
@@ -372,7 +372,7 @@ TEST_CASE("cells and points convert as Godot's map_to_local and local_to_map") {
     CHECK(near(placed.x, {0, 0, -0.5F}));
     CHECK(near(placed.y, {0, 0.5F, 0}));
     CHECK(placed.origin == Vec3{3.0F, -1.0F, 7.5F});
-    // Octants of 8 cells each way, the cells below 0 in their own, as Godot's.
+    // Octants of 8 cells each way, the cells below 0 in their own.
     const auto octant = [&](int x) { return scene3d::octant_of(map, {x, 0, 0}).x; };
     CHECK(octant(0) == 0);
     CHECK(octant(7) == 0);
@@ -451,7 +451,7 @@ TEST_CASE("a BlockMap3D's octants merge their cells' meshes by material, kept un
     const auto [floor_low, floor_high] = bounds(first.surfaces[1].mesh);
     CHECK(near(floor_low, {0, 0.8F, 2}));
     CHECK(near(floor_high, {2, 1, 4}));
-    // The ramp's triangle is the model's, in Godot's default material, casting no shadow.
+    // The ramp's triangle is the model's, in the default material, casting no shadow.
     const scene3d::GridSurface& ramp = first.surfaces[2];
     CHECK_FALSE(ramp.mesh.material.standard);
     CHECK(ramp.cast_shadow == "off");
@@ -517,7 +517,7 @@ TEST_CASE("orientation and cell_scale turn and scale items; mirrored ones keep f
         const Vec3 b = vec(surface.vertices[surface.indices[i + 1]].position);
         const Vec3 c = vec(surface.vertices[surface.indices[i + 2]].position);
         const Vec3 n = vec(surface.vertices[surface.indices[i]].normal);
-        CHECK(dot(cross(b - a, c - a), n) < 0.0F); // clockwise from outside, as Godot's
+        CHECK(dot(cross(b - a, c - a), n) < 0.0F); // clockwise from outside
         CHECK(dot(n, a - Vec3{1, 1, 1}) > 0.0F);   // normals point out of the box
     }
 }
@@ -563,7 +563,7 @@ TEST_CASE("a BlockMap3D's cells' shapes are a static body that bodies rest on an
                     "legend": {"f": "floor", "b": "block"},
                     "floors": [{"y": 0, "rows": ["fff", "fff", "fff"]},
                                {"y": 1, "origin": [1, 1], "rows": ["b"]}]}})");
-    // A body is only stopped by what its mask names, as in Godot.
+    // A body is only stopped by what its mask names.
     scene.create("crate", R"({"Transform3D": {"position": [-2, 3, -2]},
         "RigidBody3D": {"collision_mask": 2}, "Collider3D": {}})");
     scene.create("ghost", R"({"Transform3D": {"position": [2, 3, -2]}, "RigidBody3D": {},

@@ -1,7 +1,8 @@
-// Godot's color conversions and tonemappers (drivers/gles3/shaders/tonemap_inc.glsl), which
-// mesh.hlsl and post.hlsl share. Keep it in step with tonemap in src/post.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Color conversions and tonemappers, which mesh.hlsl and post.hlsl share. Keep it in step with
+// tonemap in src/post.cpp, its CPU twin.
 
-// Godot's approximations of the sRGB curves, for colors from 0 to 1.
+// Approximations of the sRGB curves, for colors from 0 to 1.
 float3 srgb_to_linear(float3 color) {
     return color * (color * (color * 0.305306011 + 0.682171111) + 0.012522878);
 }
@@ -38,7 +39,7 @@ float3 tonemap_filmic(float3 color, float white) {
 }
 
 // From https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl (MIT License), as
-// Godot adapts it, with an exposure bias of 1.8 in the first matrix.
+// adapted here, with an exposure bias of 1.8 in the first matrix.
 float3 tonemap_aces(float3 color, float white) {
     const float bias = 1.8;
     const float A = 0.0245786;
@@ -69,7 +70,7 @@ float3 agx_contrast_approx(float3 x) {
            27.069 * x4 * x2;
 }
 
-// Godot's simplification of EaryChow's AgX, as Blender uses it
+// A simplification of EaryChow's AgX, as Blender uses it
 // (https://github.com/EaryChow/AgX_LUT_Gen/blob/main/AgXBasesRGB.py).
 float3 tonemap_agx(float3 color) {
     // Linear sRGB to linear Rec. 2020 with AgX's inset, and back with its outset; the rows are

@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "internal.hpp"
 
 #include "slash/xr/face.hpp"
@@ -27,7 +29,7 @@ float tangent(float degrees) {
     return turn.y / turn.x;
 }
 
-// The poses Godot's default action map gives each controller.
+// The poses the default action map gives each controller.
 constexpr std::array<std::string_view, 4> kHandPoses{"default", "aim", "grip", "palm"};
 
 world::Affine3D at(Vec3 position) {

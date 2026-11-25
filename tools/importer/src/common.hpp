@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -14,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-// What the Godot and Unity importers share: paths and names, reports and storyboard tasks.
+// What the importers share: paths and names, reports and storyboard tasks.
 namespace slash::importer {
 
 // --- Paths and names ---
@@ -69,16 +70,14 @@ bool remove_pointer(json::Value& root, std::string_view pointer);
 // 1.5707963267948966 or 1.5707962513.
 [[nodiscard]] double tidy_number(double value);
 
-// A rotation as Godot's Quaternion keeps it: x, y, z and w.
+// A rotation as a quaternion: x, y, z and w.
 using Quaternion = std::array<double, 4>;
 
-// The Euler angles of an orthonormal basis, given by rows, as Godot's Basis::get_euler for
-// EulerOrder::YXZ.
+// The Euler angles of an orthonormal basis, given by rows, in YXZ order.
 [[nodiscard]] std::array<double, 3> basis_euler(const std::array<std::array<double, 3>, 3>& m);
-// The YXZ Euler angles of a rotation's quaternion, as Godot's Basis(Quaternion) then
-// Basis::get_euler find them, tidied.
+// The YXZ Euler angles of a rotation's quaternion, tidied.
 [[nodiscard]] std::array<double, 3> quaternion_euler(const Quaternion& q);
-// The quaternion of YXZ Euler angles, as Godot's Quaternion::from_euler.
+// The quaternion of YXZ Euler angles.
 [[nodiscard]] Quaternion euler_quaternion(const std::array<double, 3>& euler);
 
 // --- The destination ---

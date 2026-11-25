@@ -19,14 +19,14 @@
 #include <string_view>
 #include <vector>
 
-// Fluids and smoke with no grids, after Niagara's fluids and Unreal's water tools (Godot has
-// none), built on particles: liquids are position-based fluids (Macklin and Müller's density
-// constraint, with XSPH viscosity, cohesion for surface tension and vorticity confinement), gases
-// are particles carrying temperature, smoke density and fuel that rise by buoyancy, cool, burn
-// and swirl around vortex particles. Neighbors are found along a Morton curve (NeighborIndex),
-// never in a grid. 2D fluids are 3D ones at z 0. Built with -ffp-contract=off and with no libm
-// but square roots, and the work split over the job pool by particle, so a fluid steps the same
-// bits on any number of threads and every platform.
+// Fluids and smoke with no grids, after Niagara's fluids and Unreal's water tools, built on
+// particles: liquids are position-based fluids (Macklin and Müller's density constraint, with XSPH
+// viscosity, cohesion for surface tension and vorticity confinement), gases are particles carrying
+// temperature, smoke density and fuel that rise by buoyancy, cool, burn and swirl around vortex
+// particles. Neighbors are found along a Morton curve (NeighborIndex), never in a grid. 2D fluids
+// are 3D ones at z 0. Built with -ffp-contract=off and with no libm but square roots, and the work
+// split over the job pool by particle, so a fluid steps the same bits on any number of threads and
+// every platform.
 namespace slash::world {
 
 inline constexpr std::string_view kFluidSuffix = ".fluid.json";

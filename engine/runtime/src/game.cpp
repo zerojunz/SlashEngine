@@ -110,7 +110,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         return render::uses_opengl(driver);
     };
 #if defined(__linux__) && !defined(__ANDROID__)
-    // The project's display server first, then the other, as Godot's driver.linuxbsd.
+    // The project's display server first, then the other.
     config.video_drivers =
         project.value().linux_display_driver == "wayland" ? "wayland,x11" : "x11,wayland";
 #endif
@@ -141,7 +141,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
                                                    "\"slash-cli build\"");
         }
     }
-    // Plugins, as Godot loads extensions before the main scene: their components and systems.
+    // Plugins, loaded before the main scene: their components and systems.
     if (!game->project_.plugins.empty()) {
         game->plugins_ = std::make_unique<plugin::Plugins>(game->components_);
         const plugin::LoadOptions load{.linked = options.plugins,
@@ -165,9 +165,8 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         return loop.error();
     }
     game->loop_ = std::make_unique<platform::Loop>(std::move(loop).value());
-    // A game that enables XR draws into the headset through OpenXR, as Godot starts its OpenXR
-    // interface: the runtime picks the GPU and makes the device. One whose headset won't start
-    // goes on without it; headless runs have none.
+    // A game that enables XR draws into the headset through OpenXR: the runtime picks the GPU and
+    // makes the device. One whose headset won't start goes on without it; headless runs have none.
     // Headless, it only looks for the runtime, so exports' tests show whether one is found.
     std::optional<xr::OpenXRDevice> headset;
     if (game->project_.xr.enabled && !game->platform_.headless()) {
@@ -345,8 +344,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
             audio_input_ = std::make_unique<audio::SdlInput>();
             audio::set_input_device(world_, audio_input_.get());
         }
-        // Screen readers read and work the controls, as Godot's AccessKit driver serves them,
-        // unless the project's ui.accessibility_support turns that off.
+        // Screen readers read and work the controls, unless the project's ui.accessibility_support
+        // turns that off.
         if (project_.accessibility_support != "disabled") {
             screen_reader_ = accessibility::Backend::attach(platform_.window(), project_.name);
         }
@@ -439,8 +438,8 @@ void Game::draw() {
     }
 }
 
-// Each of the headset's views, as Godot's XR viewport draws them: into the view's target from
-// the eye's place, then handed to the runtime. The window still shows the current camera.
+// Each of the headset's views: into the view's target from the eye's place, then handed to the
+// runtime. The window still shows the current camera.
 void Game::draw_headset(const canvas::CanvasOptions& window) {
     auto frame = xr::begin_openxr_frame(world_);
     if (!frame) {

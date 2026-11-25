@@ -2,7 +2,7 @@
 
 #include <string>
 
-// The language the player set on their machine, as Godot's OS::get_locale.
+// The language the player set on their machine.
 namespace slash::platform {
 
 // The first of the operating system's preferred locales (SDL_GetPreferredLocales), as

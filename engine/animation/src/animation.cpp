@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/animation/animation.hpp"
 
 #include "internal.hpp"
@@ -294,7 +296,7 @@ double wrap_angle(double angle) {
     return std::fmod(std::fmod(angle + std::numbers::pi, kTau) + kTau, kTau) - std::numbers::pi;
 }
 
-// Godot's ease curve: the weight x, from 0 to 1, shaped by c.
+// An ease curve: the weight x, from 0 to 1, shaped by c.
 double ease(double x, double c) {
     x = std::clamp(x, 0.0, 1.0);
     if (c > 0.0) {
@@ -326,7 +328,7 @@ double cubic(double pre, double from, double to, double post, double weight, dou
     return lerp(b1, b2, to_t == 0.0 ? 0.5 : t / to_t);
 }
 
-// Godot's Vector2::bezier_interpolate of one coordinate: the point at t on the cubic curve from
+// One coordinate of a bezier interpolation: the point at t on the cubic curve from
 // start to end with controls a and b.
 double bezier_point(double start, double a, double b, double end, double t) {
     const double omt = 1.0 - t;
@@ -337,7 +339,7 @@ double bezier_point(double start, double a, double b, double end, double t) {
     return (start * omt3) + (a * omt2 * t * 3.0) + (b * omt * t2 * 3.0) + (end * t3);
 }
 
-// A bezier track's value at a time, as Godot's Animation::bezier_track_interpolate: the curve
+// A bezier track's value at a time: the curve
 // from the key at or before it toward the next, its out handle and the next key's in handle as
 // controls, found at the time by ten halvings of the curve's parameter.
 json::Value bezier_value(const std::vector<Key>& keys, double time) {
@@ -347,7 +349,7 @@ json::Value bezier_value(const std::vector<Key>& keys, double time) {
     if (keys.size() == 1) {
         return value_at(0);
     }
-    // Godot's Animation::_find: the key at the time, else the last before it.
+    // The key at the time, else the last before it.
     std::size_t idx = keys.size();
     for (std::size_t i = 0; i < keys.size(); ++i) {
         if (detail::is_equal_approx(time, keys[i].time)) {

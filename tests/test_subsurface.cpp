@@ -33,8 +33,9 @@ using Mat4 = std::array<float, 16>;
 
 namespace {
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has no subsurface scattering.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has no subsurface
+// scattering.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -204,7 +205,7 @@ Image draw_ball(RenderDevice& device, const Ball& ball) {
 
 // A white slab, thickness meters deep, facing the camera, lit only from behind by a directional
 // light, with the transmittance on or off: the middle pixel of its front face. The light is
-// turned a little so that no pixel looks straight into it, where Godot's half vector is 0.
+// turned a little so that no pixel looks straight into it, where the half vector is 0.
 std::array<int, 4> through_slab(RenderDevice& device, float thickness, bool transmittance,
                                 bool shadow) {
     auto target = device.create_texture({.width = 15, .height = 15, .render_target = true});
@@ -239,7 +240,7 @@ std::array<int, 4> through_slab(RenderDevice& device, float thickness, bool tran
 
 } // namespace
 
-TEST_CASE("subsurface scattering settings read project.json's as Godot's") {
+TEST_CASE("subsurface scattering settings read project.json's") {
     const render::SubsurfaceSettings defaults;
     CHECK(defaults.quality == render::SubsurfaceQuality::Low);
     CHECK(defaults.scale == 0.05F);
@@ -259,7 +260,7 @@ TEST_CASE("subsurface scattering settings read project.json's as Godot's") {
     CHECK(detail::subsurface_samples(render::SubsurfaceQuality::High) == 13);
 }
 
-TEST_CASE("only lit, opaque materials in Forward+ frames scatter under their surface") {
+TEST_CASE("only lit, opaque materials in clustered-renderer frames scatter under their surface") {
     render::Scene3D scene;
     scene.method = render::RenderMethod::ForwardPlus;
     CHECK(detail::uses_subsurface(scene));
@@ -283,7 +284,7 @@ TEST_CASE("only lit, opaque materials in Forward+ frames scatter under their sur
     CHECK(!detail::draws_subsurface({}));
 }
 
-TEST_CASE("the subsurface blur spreads light by Jimenez's kernels, as Godot's") {
+TEST_CASE("the subsurface blur spreads light by Jimenez's kernels") {
     constexpr std::uint32_t kWidth = 32;
     const std::vector<float> depth(kWidth, 0.5F);
 
@@ -342,7 +343,7 @@ TEST_CASE("the subsurface blur spreads light by Jimenez's kernels, as Godot's") 
     CHECK(spread[(16 + 11) * 4] == 0.0F);
 }
 
-TEST_CASE("every Forward+ device scatters light under a material's surface") {
+TEST_CASE("every clustered-renderer device scatters light under a material's surface") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image plain = draw_ball(*device, {.subsurface = 0.0F});

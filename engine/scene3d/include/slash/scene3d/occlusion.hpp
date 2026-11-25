@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -16,31 +17,29 @@ namespace slash::world {
 class World;
 }
 
-// Occlusion culling, as Godot 4.6's: Occluder3D's shapes (scene/3d/
-// occluder_instance_3d.cpp) and its raycasting culler (modules/raycast/raycast_occlusion_cull.cpp
-// over servers/rendering/renderer_scene_occlusion_cull.h). Each frame a ray is cast from the camera
-// through each texel of a small depth buffer into the occluders' triangles; a mesh whose bounds lie
-// behind every texel they cover is hidden. Godot casts with Embree, which SlashEngine doesn't
-// build: OccluderScene is a bounding volume hierarchy over the triangles, casting on the CPU with
-// the same results in any order, so frames cull the same on every platform.
+// Occlusion culling: Occluder3D's shapes and a raycasting culler. Each frame a ray is cast from
+// the camera through each texel of a small depth buffer into the occluders' triangles; a mesh
+// whose bounds lie behind every texel they cover is hidden. OccluderScene is a bounding volume
+// hierarchy over the triangles, casting on the CPU with the same results in any order, so frames
+// cull the same on every platform.
 namespace slash::scene3d {
 
 struct Problem; // scene3d.hpp's
 
-// An occluder's triangles, as Godot's Occluder3D keeps them: every three indices a triangle.
+// An occluder's triangles: every three indices a triangle.
 struct OccluderMesh {
     std::vector<Vec3> vertices;
     std::vector<int> indices;
 };
 
-// The triangles of an Occluder3D's shape in its own space, as Godot's _update_arrays:
+// The triangles of an Occluder3D's shape in its own space:
 // QuadOccluder3D's and BoxOccluder3D's (size), SphereOccluder3D's rings (radius),
 // PolygonOccluder3D's polygon turned clockwise and cut into triangles, or ArrayOccluder3D's
 // vertices and indices. An error for a polygon that can't be cut or indices out of range.
 [[nodiscard]] Result<OccluderMesh> occluder_mesh(const world::Occluder3D& occluder);
 
-// Each Occluder3D that can't be used, for scene validate: as Godot's configuration
-// warnings, a shape with fewer than three points or indices, a polygon that can't be cut into
+// Each Occluder3D that can't be used, for scene validate: a shape with fewer than three points
+// or indices, a polygon that can't be cut into
 // triangles and indices out of range.
 [[nodiscard]] std::vector<Problem> check_occluders(const world::World& world);
 
@@ -48,8 +47,8 @@ struct OccluderMesh {
 [[nodiscard]] std::vector<std::array<Vec3, 3>> occluder_triangles(const world::World& world,
                                                                   const world::Tree3D& tree);
 
-// Occluders' triangles in a bounding volume hierarchy, for casting rays into them as Godot's
-// Embree scene. Faces block rays from either side, as Embree's do without back face culling.
+// Occluders' triangles in a bounding volume hierarchy, for casting rays into them.
+// Faces block rays from either side.
 class OccluderScene {
 public:
     // Builds the hierarchy over triangles, or none when it holds the same triangles already.
@@ -83,12 +82,12 @@ struct OcclusionCamera {
     bool orthogonal = false;
 };
 
-// The number of threads Godot's buffer is sized for: Godot multiplies
-// rendering/occlusion_culling/occlusion_rays_per_thread by its worker threads, and SlashEngine by
-// this, so the buffer is the same size on every machine.
+// The number of threads the buffer is sized for: rendering/occlusion_culling/
+// occlusion_rays_per_thread is multiplied by this, not by the worker threads, so the buffer is
+// the same size on every machine.
 inline constexpr int kOcclusionThreads = 8;
 
-// Godot's hierarchical depth buffer of the distances its rays travel, each level half the last's
+// The hierarchical depth buffer of the distances its rays travel, each level half the last's
 // size keeping the farthest of the texels under it, down to one texel.
 class OcclusionBuffer {
 public:
@@ -106,18 +105,17 @@ public:
     // The distance a level's texel holds, x from the left and y from the bottom.
     [[nodiscard]] float depth(std::size_t level, int x, int y) const;
 
-    // Casts the buffer's rays from camera into scene and fills its levels, as
-    // RaycastOcclusionCull::buffer_update: through each texel's middle on the near plane, moved by
-    // Godot's jitter for frame when jitter is on (a pattern of nine frames, two thirds of a texel
-    // across).
+    // Casts the buffer's rays from camera into scene and fills its levels: through each texel's
+    // middle on the near plane, moved by the jitter for frame when jitter is on (a pattern of
+    // nine frames, two thirds of a texel across).
     void update(const OccluderScene& scene, const OcclusionCamera& camera, std::uint64_t frame,
                 bool jitter);
 
-    // Whether the box (in the world) is hidden from the camera of the last update, as Godot's
-    // HZBuffer::_is_occluded: its nearest point's distance lies beyond every texel its corners'
+    // Whether the box (in the world) is hidden from the camera of the last update: its nearest
+    // point's distance lies beyond every texel its corners'
     // rectangle covers, at the finest level that takes at most 512 texels in all. With jitter, a
     // box seen in one frame isn't hidden again until nine frames have passed (timeout, which
-    // starts at 0), as Godot's occlusion timers, so the jitter doesn't make meshes flicker.
+    // starts at 0), so the jitter doesn't make meshes flicker.
     [[nodiscard]] bool occluded(const Bounds& box, std::uint64_t& timeout) const;
 
 private:
@@ -131,10 +129,10 @@ private:
     bool jitter_ = false;
 };
 
-// An Occluder3D's shape baked from the meshes around it, as Godot's
-// OccluderInstance3D::bake_scene: every visible Model3D whose layers meet its bake_mask and
+// An Occluder3D's shape baked from the meshes around it: every visible Model3D whose layers
+// meet its bake_mask and
 // whose material is opaque, read through models, placed in the occluder's space, each surface
-// simplified by meshoptimizer to bake_simplification_distance (Godot's _bake_surface) and its
+// simplified by meshoptimizer to bake_simplification_distance and its
 // repeated points and triangles merged away (SurfaceTool::strip_mesh_arrays). What can't be read
 // is a problem.
 [[nodiscard]] OccluderMesh bake_occluder(const world::World& world, entt::entity occluder,

@@ -1,6 +1,6 @@
-// Character movement, as Godot's CharacterBody2D.move_and_slide, on Box2D's collision tools: its
-// manifolds find what the character touches, its plane solver pushes it out of what it overlaps
-// and its shape casts find what it would hit.
+// Character movement on Box2D's collision tools: its manifolds find what the character touches, its
+// plane solver pushes it out of what it overlaps and its shape casts find what it would hit.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "polygon.hpp"
 #include "space.hpp"
@@ -26,16 +26,15 @@ using world::Collider2D;
 using world::PolygonCollider2D;
 using world::Transform2D;
 
-// Godot's CMP_EPSILON.
+// The epsilon for approximate comparisons.
 constexpr float kEpsilon = 0.00001F;
-// Godot adds this to floor_max_angle and wall_min_slide_angle, so a surface right at the limit
+// This is added to floor_max_angle and wall_min_slide_angle, so a surface right at the limit
 // counts.
 constexpr float kFloorAngleThreshold = 0.01F;
 // How rounded a polygon character's corners are as it moves, in pixels: enough for its sweeps to
 // stop it just touching what it hits, too little to see.
 constexpr float kSkin = 1.0F;
-// How far from a one-way shape's up side a surface may face and still hold a character, as
-// Godot's: 45 degrees.
+// How far from a one-way shape's up side a surface may face and still hold a character: 45 degrees.
 constexpr float kOneWayCos = 0.7071F;
 // How much a motion must go into a surface it touches for that surface to stop it.
 constexpr float kOppose = 0.001F;
@@ -44,7 +43,7 @@ bool zero_approx(b2Vec2 v) {
     return std::abs(v.x) < kEpsilon && std::abs(v.y) < kEpsilon;
 }
 
-// Godot's Vector2::slide: v without its part along the unit vector n.
+// v without its part along the unit vector n.
 b2Vec2 slide(b2Vec2 v, b2Vec2 n) {
     return b2MulSub(v, b2Dot(v, n), n);
 }
@@ -254,16 +253,16 @@ float min_separation(const b2Manifold& manifold, int* deepest = nullptr) {
     return separation;
 }
 
-// Whether a one-way shape holds a character touching it along normal (from the shape) at a
-// depth, as Godot's: the character comes from within 45 degrees of its up side and is no deeper
-// than the shape's margin or its own, whichever is more.
+// Whether a one-way shape holds a character touching it along normal (from the shape) at a depth:
+// the character comes from within 45 degrees of its up side and is no deeper than the shape's
+// margin or its own, whichever is more.
 bool one_way_holds(b2ShapeId shape, const ShapeInfo& info, b2Vec2 normal, float depth,
                    float margin) {
     const b2Vec2 up = b2RotateVector(b2Body_GetRotation(b2Shape_GetBody(shape)), info.one_way_up);
     return b2Dot(normal, up) >= kOneWayCos && depth <= std::max(info.one_way_margin, margin);
 }
 
-// What one move found, as Godot's KinematicCollision2D.
+// What one move found.
 struct MotionResult {
     bool collided = false;
     b2Vec2 travel = b2Vec2_zero;    // how far it moved, recovery included
@@ -308,9 +307,8 @@ bool collect_candidate(b2ShapeId shape, void* context) {
     return true;
 }
 
-// Moves a character's shape through a Box2D world, as Godot's move_and_collide. What is within
-// the margin counts as touching, though never less than Box2D's linear slop: its shape casts
-// stop that close.
+// Moves a character's shape through a Box2D world. What is within the margin counts as touching,
+// though never less than Box2D's linear slop: its shape casts stop that close.
 class Mover {
 public:
     Mover(b2WorldId world, entt::entity self, const MoverShape& shape, std::uint32_t mask,
@@ -365,8 +363,7 @@ public:
                 result = collided(hit->shape, hit->normal, hit->point);
                 result.remainder = b2MulSV(1.0F - fraction, motion);
             } else {
-                // Resting against something counts too, as Godot's recovery_as_collision; what
-                // it moves away from doesn't.
+                // Resting against something counts too; what it moves away from doesn't.
                 contacts = touching(exclude);
                 const Contact* rest = nullptr;
                 for (const Contact& contact : contacts) {
@@ -539,7 +536,7 @@ private:
     float margin_;
 };
 
-// One move_and_slide: Godot's algorithm (scene/2d/physics/character_body_2d.cpp), step for step.
+// One move_and_slide.
 class Slide {
 public:
     Slide(Mover& mover, const CharacterMover2D& character, float seconds)
@@ -620,7 +617,7 @@ private:
         platform_layer_ = result.collider_layer;
     }
 
-    // Godot's _set_collision_direction: whether the surface is a floor, a wall or a ceiling.
+    // Whether the surface is a floor, a wall or a ceiling.
     void set_direction(const MotionResult& result) {
         if (grounded_ && b2Dot(result.normal, up_) >= floor_cos_) {
             floor_ = true;
@@ -788,14 +785,13 @@ private:
         }
     }
 
-    // Where a floor snap would land, as Godot's _apply_floor_snap test: none if nothing is
-    // within floor_snap_length below.
+    // Where a floor snap would land: none if nothing is within floor_snap_length below.
     [[nodiscard]] MotionResult snap_test() const {
         const float length = std::max(character_.floor_snap_length, margin_);
         return mover_.move(b2MulSV(-length, up_), true);
     }
 
-    // Godot's _on_floor_if_snapped: whether a snap would land on a floor.
+    // Whether a snap would land on a floor.
     [[nodiscard]] bool on_floor_if_snapped(bool was_on_floor, bool vel_dir_facing_up) const {
         if (floor_ || !was_on_floor || vel_dir_facing_up) {
             return false;
@@ -804,8 +800,8 @@ private:
         return result.collided && b2Dot(result.normal, up_) >= floor_cos_;
     }
 
-    // Godot's _snap_on_floor: a character that was on a floor and isn't going up stays on it
-    // if it is within floor_snap_length; with wall_as_floor, on anything but a ceiling.
+    // A character that was on a floor and isn't going up stays on it if it is within
+    // floor_snap_length; with wall_as_floor, on anything but a ceiling.
     void snap_on_floor(bool was_on_floor, bool vel_dir_facing_up, bool wall_as_floor) {
         if (floor_ || !was_on_floor || vel_dir_facing_up) {
             return;
@@ -877,8 +873,8 @@ private:
     bool floor_ = false;
     bool wall_ = false;
     bool ceiling_ = false;
-    // Godot's floor_normal is the last move's until this one resets it, so the constant speed
-    // down a slope can follow it.
+    // The floor normal is the last move's until this one resets it, so the constant speed down a
+    // slope can follow it.
     b2Vec2 floor_normal_;
     b2Vec2 wall_normal_ = b2Vec2_zero;
     entt::entity platform_ = entt::null;

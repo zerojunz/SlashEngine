@@ -44,7 +44,7 @@ namespace slash::procedural {
 
 inline constexpr std::string_view kPcgSuffix = ".pcg.json";
 
-// A point: where, its turn (radians, Godot's YXZ; the 2D rotation in z), its uniform scale, its
+// A point: where, its turn (radians, YXZ order; the 2D rotation in z), its uniform scale, its
 // density (0 to 1, which filters read and noise sets), the ground's normal under it and a seed
 // of its own that its random choices hash.
 struct PcgPoint {

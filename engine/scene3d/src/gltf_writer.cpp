@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "model_internal.hpp"
 
 #include "slash/core/json.hpp"
@@ -22,8 +23,7 @@
 #include <utility>
 #include <vector>
 
-// Models written as glTF 2.0, as Godot's GLTFDocument exports a scene (_serialize_nodes,
-// _serialize_meshes, _serialize_materials, _serialize_images), and as load_model reads them back.
+// Models written as glTF 2.0, as load_model reads them back.
 namespace slash::scene3d {
 namespace {
 
@@ -34,7 +34,7 @@ constexpr int kUnsignedByte = 5121;
 constexpr int kArrayBuffer = 34962;
 constexpr int kElementArrayBuffer = 34963;
 
-// Godot's Color::srgb_to_linear, for one channel.
+// sRGB to linear, for one channel.
 float srgb_to_linear(float c) {
     return c < 0.04045F
                ? c * (1.0F / 12.92F)
@@ -262,7 +262,7 @@ struct Writer {
         return add("images", std::move(out));
     }
 
-    // Godot's GLTFTextureSampler: the material's filter and repeat, as glTF's sampler.
+    // The material's filter and repeat, as glTF's sampler.
     int sampler(const world::Surface3D& standard) {
         const std::string& filter = standard.filter;
         const bool nearest = filter.starts_with("nearest");
@@ -322,7 +322,7 @@ struct Writer {
         return std::optional<int>(index);
     }
 
-    // Godot's GLTFDocument::_serialize_materials, undoing what material_of reads.
+    // Material serialization, undoing what material_of reads.
     Result<json::Value> material(const ModelMaterial& in) {
         const world::Surface3D& standard = in.standard;
         json::Value out = json::Object{};
@@ -384,7 +384,7 @@ struct Writer {
                 return emission.error();
             }
             if (const std::optional<int> index = emission.value()) {
-                // The texture is the emission, as Godot's importer reads it.
+                // The texture is the emission.
                 out["emissiveTexture"]["index"] = *index;
                 out["emissiveFactor"] = json::Array{1.0, 1.0, 1.0};
             } else {
@@ -413,7 +413,7 @@ struct Writer {
     }
 
     // A collision shape's triangles as a mesh of positions only, placed by where, in glTF's
-    // counter-clockwise order, as Godot's importer reads them back by their node's hint.
+    // counter-clockwise order, read back by their node's hint.
     int collision_mesh(const ModelCollision& collision, const world::Affine3D& where) {
         std::vector<float> positions;
         positions.reserve(collision.points.size() * 3);
@@ -451,7 +451,7 @@ struct Writer {
 
     // The model's skins, their joints the nodes of the same index, and its animations, a
     // channel and a sampler per track; an animation that loops without a name that says so
-    // takes Godot's "-loop" hint.
+    // takes the "-loop" hint.
     void skins_and_animations() {
         for (const ModelSkin& in : model.skins) {
             json::Value skin = json::Object{};
@@ -767,7 +767,7 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
             mesh["name"] = in.name;
         }
         mesh["primitives"] = std::move(primitives);
-        // Blend shapes' weights, and their names as Blender's exporter and Godot's write them.
+        // Blend shapes' weights, and their names as Blender's exporter writes them.
         if (!in.blend_shapes.empty()) {
             json::Array weights;
             json::Array names;

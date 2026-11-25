@@ -1,6 +1,5 @@
-// Music, as Godot's interactive_music module (modules/interactive_music): AudioStreamPlaylist,
-// AudioStreamSynchronized and AudioStreamInteractive and their playbacks, ported from Godot's
-// audio_stream_playlist.cpp, audio_stream_synchronized.cpp and audio_stream_interactive.cpp.
+// Music: playlist, synchronized and interactive streams and their playbacks.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/audio/audio.hpp"
 
@@ -62,7 +61,7 @@ instantiate_all(const std::vector<std::shared_ptr<const Stream>>& streams, int m
 
 // ---- Playlists ----
 
-// Godot's AudioStreamPlaybackPlaylist: each stream for its length in turn, the one before fading
+// A playlist playback: each stream for its length in turn, the one before fading
 // out over the start of the next.
 class PlaylistPlayback final : public Playback {
 public:
@@ -136,7 +135,7 @@ public:
         int done = 0;
         while (done < frames) {
             const int to_mix = std::min(frames - done, kMixBufferSize);
-            // As Godot's, the streams of a playlist play at their own speed.
+            // The streams of a playlist play at their own speed.
             static_cast<void>(current().mix(mix_buffer_.data(), 1.0F, to_mix));
             if (fade_index_ != -1) {
                 static_cast<void>(playbacks_[static_cast<std::size_t>(fade_index_)]->mix(
@@ -144,7 +143,7 @@ public:
             }
             offset_ += time_dec * to_mix;
             for (int i = 0; i < to_mix; ++i) {
-                // As Godot's, this frame is the last stream's even when the next starts here.
+                // This frame is the last stream's even when the next starts here.
                 Frame out = mix_buffer_[static_cast<std::size_t>(i)];
                 stream_todo_ -= time_dec;
                 if (stream_todo_ < 0 && !next_stream(i, to_mix)) {
@@ -168,7 +167,7 @@ public:
     }
 
 private:
-    static constexpr int kMixBufferSize = 128; // Godot's MIX_BUFFER_SIZE
+    static constexpr int kMixBufferSize = 128; // frames per mix
     static constexpr std::size_t kMaxChanges = 64;
 
     // Stream index starting, after stream index from (-1 as the playlist starts).
@@ -294,7 +293,7 @@ public:
         return 0.0;
     }
     [[nodiscard]] bool has_loop() const override { return loop_; }
-    // Godot's music streams keep AudioStream's default: play() starts them over.
+    // Music streams keep the default: play() starts them over.
     [[nodiscard]] bool is_monophonic() const override { return true; }
 
 private:
@@ -307,9 +306,9 @@ private:
 
 // ---- Synchronized streams ----
 
-// Godot's AudioStreamPlaybackSynchronized: every stream from the same start, each at its volume.
-// A player's stream_<index>_volume_db parameter changes a volume, ramping over a mix step where
-// Godot steps, so a layer fading in doesn't click.
+// A synchronized playback: every stream from the same start, each at its volume.
+// A player's stream_<index>_volume_db parameter changes a volume, ramping over a mix step,
+// so a layer fading in doesn't click.
 class SynchronizedPlayback final : public Playback {
 public:
     SynchronizedPlayback(const std::vector<std::shared_ptr<const Stream>>& streams,
@@ -408,7 +407,7 @@ public:
     }
 
 private:
-    static constexpr int kMixBufferSize = 128; // Godot's MIX_BUFFER_SIZE
+    static constexpr int kMixBufferSize = 128; // frames per mix
 
     // The stream a "stream_<index>_volume_db" parameter names.
     [[nodiscard]] std::optional<std::size_t> stream_index(std::string_view name) const {
@@ -507,12 +506,12 @@ struct Interactive {
 
     [[nodiscard]] StreamFile::Transition transition(int from, int to) const {
         const int index = transition_index(transitions, from, to);
-        // With none, Godot's empty transition, with its defaults.
+        // With none, the empty transition, with its defaults.
         return index >= 0 ? transitions[static_cast<std::size_t>(index)] : StreamFile::Transition{};
     }
 };
 
-// Godot's AudioStreamPlaybackInteractive: one clip plays, and a switch waits for its transition's
+// An interactive playback: one clip plays, and a switch waits for its transition's
 // time, fades as it says and may play a filler clip between.
 class InteractivePlayback final : public Playback {
 public:
@@ -557,7 +556,7 @@ public:
 
     [[nodiscard]] bool is_playing() const override { return active_; }
 
-    // Godot's is always 0; the clip playing's position tells an agent more.
+    // The position of the clip playing, which tells an agent more than a fixed 0.
     [[nodiscard]] double position() const override {
         return playback_current_ >= 0 ? state(playback_current_).playback->position() : 0.0;
     }
@@ -583,8 +582,8 @@ public:
         return frames;
     }
 
-    // Godot's switch_to_clip_by_name. Switching to the clip it is playing or going to does
-    // nothing, where Godot would start that clip over.
+    // Switches to a clip by name. Switching to the clip it is playing or going to does
+    // nothing.
     void set_parameter(std::string_view name, const json::Value& value) override {
         if (name != "switch_to_clip" || !value.is_string()) {
             return;
@@ -602,8 +601,8 @@ public:
         }
     }
 
-    // The clip asked for, else the one it is going to, else the one playing: where Godot's
-    // get_parameter skips the clip a transition waits for.
+    // The clip asked for, else the one it is going to, else the one playing; the clip a
+    // transition waits for is skipped.
     [[nodiscard]] json::Value parameter(std::string_view name) const override {
         if (name != "switch_to_clip") {
             return {};
@@ -626,7 +625,7 @@ public:
     }
 
 private:
-    static constexpr int kBufferSize = 1024; // Godot's BUFFER_SIZE
+    static constexpr int kBufferSize = 1024; // frames
     // Clip changes kept for take_clip_changes; older ones go once there are more.
     static constexpr std::size_t kMaxChanges = 64;
 
@@ -668,7 +667,7 @@ private:
     }
     [[nodiscard]] int heading() const { return queued_ != -1 ? queued_ : playback_current_; }
 
-    // Godot's _queue.
+    // Queues a switch to a clip.
     void queue(int to_clip, bool is_auto_advance) {
         if (to_clip < 0 || to_clip >= clip_count()) {
             return;
@@ -826,9 +825,8 @@ private:
                 auto_advance_to = next_clip;
             }
         }
-        // Godot records the hold after this check, so a hold_previous transition straight into a
-        // return_to_hold clip went back to an older hold, or nowhere; recording it first lets a
-        // one-clip sting return to the clip it interrupted.
+        // The hold is recorded before this check, so a hold_previous transition straight into a
+        // return_to_hold clip, even a one-clip sting, returns to the clip it interrupted.
         if (transition.hold_previous) {
             return_memory_ = playback_current_;
         }
@@ -1007,7 +1005,7 @@ public:
                                                         std::uint32_t random) const override {
         return std::make_unique<InteractivePlayback>(data_, mix_rate, random);
     }
-    // As Godot's: it plays until it is stopped, or a clip that doesn't go on ends.
+    // It plays until it is stopped, or a clip that doesn't go on ends.
     [[nodiscard]] double length() const override { return 0.0; }
     [[nodiscard]] bool is_monophonic() const override { return true; }
 

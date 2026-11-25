@@ -14,7 +14,7 @@
 #include <vector>
 
 // Characters' and creatures' own ragdolls (Ragdoll3D), SlashEngine's own after Unreal's physics
-// assets and Physical Animation component, on Godot's PhysicalBoneSimulator3D and SimulatedBone3D:
+// assets and Physical Animation component, built on SimulatedBone3D:
 // the ragdoll system keeps a simulator and a physical bone per profile bone, sets their joints
 // and muscles from the profile, and runs the ragdoll's states (animated, active, limp, getting
 // up). engine/physics3d drives the bodies' muscles toward the animated pose

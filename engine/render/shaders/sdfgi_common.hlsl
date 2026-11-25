@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // What SDFGI's compute shaders share: the cascades' words as src/sdfgi.hpp lays them out, and the
 // helpers of src/sdfgi.cpp, its CPU twin, line for line. A shader that includes this declares
 // cell_words, field_words, probe_words and items first (read-only or not), and Params.
@@ -224,7 +225,7 @@ uint probe_parity(Cascade c, int3 probe) {
     return uint(world.x & 1) | (uint(world.y & 1) << 1u) | (uint(world.z & 1) << 2u);
 }
 
-// Godot's octahedron_encode (to 0 to 1) and its inverse.
+// The octahedral encoding (to 0 to 1) and its inverse.
 float2 octahedron_encode(float3 n) {
     n /= abs(n.x) + abs(n.y) + abs(n.z);
     float2 xy = n.xy;

@@ -1,7 +1,7 @@
-// A server and two clients on this machine over ENet, as Godot's ENetMultiplayerPeer: the
-// clients join, the server sends to one, to all and to all but one, a client sends on its own
-// channel unreliably, a third client gets no answer from the full server and a client leaves.
-// IDs and ports change every run, so the output names peers by role.
+// A server and two clients on this machine over ENet: the clients join, the server sends to one, to
+// all and to all but one, a client sends on its own channel unreliably, a third client gets no
+// answer from the full server and a client leaves. IDs and ports change every run, so the output
+// names peers by role.
 #include "slash/net/enet.hpp"
 
 #include <algorithm>

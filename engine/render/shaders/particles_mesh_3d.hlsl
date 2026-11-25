@@ -1,10 +1,10 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // Places a draw pass's mesh at each particle of a 3D system, into the vertex buffer of the mesh
 // that draws them: a thread a vertex written, each as slash::render::Vertex3D lays it out (60
-// bytes), as Godot's particles copy shader and BaseMaterial3D's billboard and particle animation
-// code do. Its CPU twin is particle_mesh_vertices_3d in src/particles3d.cpp, which this follows
-// line for line; a change to one goes in the other. The source vertices are words in data, as
-// src/particle_layout_3d.cpp's pack_particle_vertices_3d lays them out, and keys are
-// particles_sort_3d.hlsl's for a pass drawn by view depth.
+// bytes), with the billboard and particle animation. Its CPU twin is particle_mesh_vertices_3d in
+// src/particles3d.cpp, which this follows line for line; a change to one goes in the other. The
+// source vertices are words in data, as src/particle_layout_3d.cpp's pack_particle_vertices_3d lays
+// them out, and keys are particles_sort_3d.hlsl's for a pass drawn by view depth.
 
 #include "particles_3d.hlsl"
 
@@ -125,7 +125,7 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
     store(address + 52u, source_word(from + 13u));
     store(address + 56u, source_word(from + 14u));
     if ((particle.flags & kParticleActive) == 0u) {
-        // Folded onto one point, as Godot's zero scale.
+        // Folded onto one point, as a zero scale does.
         store_float3(address, float3(0.0, 0.0, 0.0));
         for (uint w = 3u; w < 13u; ++w) {
             store(address + (w * 4u), source_word(from + w));
@@ -199,15 +199,14 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
             placed.z = placed.z * length_of(model.z);
         }
     }
-    // Normals turn with the basis, as Godot's MODELVIEW_NORMAL_MATRIX: as it is for a billboard,
-    // by its inverse's transpose otherwise.
+    // Normals turn with the basis: as it is for a billboard, by its inverse's transpose otherwise.
     Affine turned = inverse(placed);
     float3 n = source_float3(from + 3u);
     float3 normal = billboard != kBillboardDisabled
                         ? unit(basis(placed, n))
                         : unit(float3(dot(turned.x, n), dot(turned.y, n), dot(turned.z, n)));
     float4 tint = clamp(particle.color, 0.0, 1.0);
-    // The frame a Particles billboard shows, as Godot's particle animation.
+    // The frame a Particles billboard shows.
     float h = frames.x;
     float vf = frames.y;
     float frame = 0.0;

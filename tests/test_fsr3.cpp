@@ -69,7 +69,8 @@ TEST_CASE("FSR 3 is a scaling mode that runs where FSR 2 does") {
     CHECK(uniforms.previous[1] == doctest::Approx(-0.25F));
 }
 
-TEST_CASE("Forward+ FSR 3 rebuilds a still square's edges at the full size over its frames") {
+TEST_CASE("the clustered renderer's FSR 3 rebuilds a still square's edges at the full size over "
+          "its frames") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image taa = draw_square(*device, {.fsr2 = std::nullopt, .taa = true, .frames = 32});
@@ -91,7 +92,7 @@ TEST_CASE("Forward+ FSR 3 rebuilds a still square's edges at the full size over 
     }
 }
 
-TEST_CASE("Forward+ FSR 3 follows moving meshes, a moving camera and the sky") {
+TEST_CASE("the clustered renderer's FSR 3 follows moving meshes, a moving camera and the sky") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image still = draw_square(*device, {.fsr2 = kFsr3, .frames = 32});

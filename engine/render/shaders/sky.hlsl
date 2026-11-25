@@ -1,10 +1,9 @@
-// The background of a frame's 3D world, as Godot's Compatibility renderer draws it
-// (drivers/gles3/shaders/sky.glsl): a SkyGradient, SkyScattering or
-// SkyPanorama (scene/resources/3d/sky_material.cpp) worked out for each pixel's view
-// direction, or the background color when fog covers it, then fogged, exposed and tonemapped as
-// meshes are; or for Forward+ as its renderer draws it (servers/rendering/renderer_rd/shaders/
-// environment/sky.glsl), from linear colors and left linear for forward_post.hlsl. It draws one triangle over the
-// whole target, before the meshes. Keep it in step with shade_sky in src/sky.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The background of a frame's 3D world, as the compatibility renderer draws it: a SkyGradient,
+// SkyScattering or SkyPanorama worked out for each pixel's view direction, or the background color
+// when fog covers it, then fogged, exposed and tonemapped as meshes are; or for the clustered
+// renderer, from linear colors and left linear for forward_post.hlsl. It draws one triangle over
+// the whole target, before the meshes. Keep it in step with shade_sky in src/sky.cpp, its CPU twin.
 
 #include "tonemap.hlsl"
 
@@ -29,7 +28,7 @@ static const uint kSkyLinear = 4u;
 
 static const float kPi = 3.14159265359;
 
-// A SunLight3D the sky shows, as Godot's DirectionalLightData.
+// A SunLight3D the sky shows.
 struct SkyLight {
     float4 direction_energy; // toward the light, in the world; its energy
     float4 color_size;       // sRGB (linear with kSkyLinear); the cosine of its angular radius
@@ -39,8 +38,8 @@ struct SkyLight {
 cbuffer Sky : register(b0, space3) {
     float4x4 orientation; // the camera's space to the sky's: the inverse of sky_rotation, times
                           // the camera's turn
-    // Godot's: the projection's [2][0], [0][0], [2][1] and [1][1], which turn a pixel into the
-    // direction it looks in.
+    // The projection's [2][0], [0][0], [2][1] and [1][1], which turn a pixel into the direction it
+    // looks in.
     float4 projection;
     float4 pixel;   // one over the target's size, then the background's energy multiplier
     float4 tonemap; // exposure, white, the tonemapper, and 1 to tonemap here (2 to stay linear)
@@ -52,7 +51,7 @@ cbuffer Sky : register(b0, space3) {
     uint4 options; // the kind, how many lights, kSkyDeband | kSkyTexture | kSkyLinear
 };
 
-// Eberly's approximations, as Godot's sky.glsl takes them: acos for -1 to 1, and atan2.
+// Eberly's approximations: acos for -1 to 1, and atan2.
 float acos_approx(float p_x) {
     float x = abs(p_x);
     float res = -0.156583 * x + (kPi / 2.0);
@@ -139,7 +138,7 @@ float3 physical_sky(float3 eye, float4 night) {
     float3 beta_m_theta = mie_beta * mie_phase;
     float3 scattered = sun_energy * ((beta_r_theta + beta_m_theta) / (rayleigh_beta + mie_beta));
     float3 lin = pow(scattered * (1.0 - extinction), (float3)1.5);
-    // A hack from three.js's Sky.js, as Godot's.
+    // A hack from three.js's Sky.js.
     lin *= lerp((float3)1.0, pow(scattered * extinction, (float3)0.5),
                 saturate(pow(1.0 - zenith_angle, 5.0)));
     // And the ground color, hacked in.
@@ -177,7 +176,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     float4 texel = sky_texture.SampleLevel(sky_sampler, coords, 0.0);
     bool linear_sky = (options.z & kSkyLinear) != 0u;
     if (linear_sky) {
-        // Forward+ samples a source_color texture as sRGB.
+        // The clustered renderer samples a source_color texture as sRGB.
         texel.rgb = srgb_to_linear(texel.rgb);
     }
 
@@ -190,7 +189,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     } else if (kind == kSkyPhysical) {
         color = physical_sky(eye, texel);
     } else if (kind == kSkyPanorama && (options.z & kSkyTexture) != 0u) {
-        // With no texture, it is black, as Godot's hint_default_black.
+        // With no texture, it is black.
         color = texel.rgb * params[0].x;
     }
     color *= pixel.z;

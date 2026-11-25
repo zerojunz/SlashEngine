@@ -13,10 +13,10 @@
 #include <string_view>
 #include <vector>
 
-// App icons for every platform, made from one square image (project.json's "icon", or the
-// engine's own), as Godot's exports make them from application/config/icon: an .icns file in
-// macOS bundles, an .ico resource in Windows executables, an adaptive icon in Android APKs, an
-// asset catalog in iOS apps and a favicon on the web. Linux games show the icon in their window.
+// App icons for every platform, made from one square image (project.json's "icon", or the engine's
+// own): an .icns file in macOS bundles, an .ico resource in Windows executables, an adaptive icon
+// in Android APKs, an asset catalog in iOS apps and a favicon on the web. Linux games show the icon
+// in their window.
 namespace slash::exporter {
 
 using Rgb = std::array<std::uint8_t, 3>;
@@ -45,10 +45,10 @@ struct IconFile {
 [[nodiscard]] Result<std::vector<IconFile>> platform_icons(std::string_view platform,
                                                            const IconSettings& settings);
 
-// An .icns file of the icon at every size macOS asks for, as Godot's macOS export writes one:
-// PNG images from 1024 to 32 pixels, and 32 and 16 pixel ones run-length encoded with masks.
+// An .icns file of the icon at every size macOS asks for: PNG images from 1024 to 32 pixels, and 32
+// and 16 pixel ones run-length encoded with masks.
 [[nodiscard]] Result<std::string> encode_icns(const render::Image& icon);
-// An .ico file of PNG images from 16 to 256 pixels, as Godot's Windows export writes one.
+// An .ico file of PNG images from 16 to 256 pixels.
 [[nodiscard]] Result<std::string> encode_ico(const render::Image& icon);
 // The icon as macOS shows apps' icons: an opaque one drawn in Apple's rounded square, 824 of
 // 1024 pixels with corners rounded 185 pixels, with clear margins; one with transparent pixels,

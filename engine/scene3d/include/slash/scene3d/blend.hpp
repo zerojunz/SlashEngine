@@ -8,8 +8,7 @@
 #include <string>
 #include <string_view>
 
-// Blender .blend files, as Godot imports them
-// (modules/gltf/editor/editor_scene_importer_blend.cpp): the engine never reads one. It runs the
+// Blender .blend files: the engine never reads one. It runs the
 // artist's own Blender in the background, which exports the file as glTF, and reads that, so no
 // Blender code is linked or shipped. A converted file is kept in the project's .slash/imported/
 // folder until the .blend file changes, and exports ship it in place of the .blend file, so games
@@ -26,13 +25,12 @@ struct Blender {
 };
 
 // The Blender that converts .blend files: program if it isn't empty, else SLASH_BLENDER_PATH,
-// else the first of the places Godot looks (blender on PATH, then where installers put it) that
-// runs. It must print "Blender <major>.<minor>" for --version, and be 3.0 or later, as Godot
-// needs.
+// else the first of the usual places (blender on PATH, then where installers put it) that runs.
+// It must print "Blender <major>.<minor>" for --version, and be 3.0 or later.
 [[nodiscard]] Result<Blender> find_blender(std::string_view program = {});
 
 // The Python Blender runs to open source (a .blend file) and export it to destination (a .glb
-// file), with Godot's default import options for that version of Blender.
+// file), with the default import options for that version of Blender.
 [[nodiscard]] std::string blend_export_script(const Blender& blender, std::string_view source,
                                               std::string_view destination);
 

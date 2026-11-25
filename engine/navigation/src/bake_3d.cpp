@@ -1,7 +1,7 @@
-// Baking 3D navigation meshes on Recast, as Godot 4.6's NavMeshGenerator3D
-// (modules/navigation/3d/nav_mesh_generator_3d.cpp, generator_bake_from_source_geometry_data):
-// the same Recast steps with the same settings, obstacles' projected obstructions marked out of
-// the walkable area, and the detail mesh's triangles kept as the polygons, as Godot keeps them.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Baking 3D navigation meshes on Recast: the same Recast steps with the same settings, obstacles'
+// projected obstructions marked out of the walkable area, and the detail mesh's triangles kept as
+// the polygons.
 
 #include "slash/navigation/navigation.hpp"
 
@@ -19,7 +19,7 @@
 namespace slash::navigation {
 namespace {
 
-// Godot's CMP_EPSILON, Math::is_equal_approx and Math::is_zero_approx.
+// The epsilon for approximate comparisons.
 constexpr float kEpsilon = 0.00001F;
 
 bool equal_approx(float a, float b) {
@@ -59,7 +59,7 @@ void mark_walkable_triangles(float slope_degrees, const float* verts, const int*
     }
 }
 
-// Past this many cells Godot refuses to bake, as its crash prevention check does.
+// Past this many cells a bake is refused, to prevent crashes.
 constexpr std::int64_t kMaxCells = 30'000'000;
 
 // Recast's objects, freed however the bake ends.
@@ -131,7 +131,7 @@ Result<NavigationMesh> bake(const NavigationMesh& settings, const SourceGeometry
     cfg.detailSampleDist = std::max(settings.cell_size * settings.detail_sample_distance, 0.1F);
     cfg.detailSampleMaxError = settings.cell_height * settings.detail_sample_max_error;
 
-    // Godot's warnings for settings that don't fit the cells.
+    // Warnings for settings that don't fit the cells.
     if (settings.border_size > 0.0F &&
         !zero_approx(std::fmod(settings.border_size, settings.cell_size))) {
         warn("border_size is rounded up to whole cells of cell_size");
@@ -288,8 +288,8 @@ Result<NavigationMesh> bake(const NavigationMesh& settings, const SourceGeometry
         return failed("build the detail mesh");
     }
 
-    // The detail mesh's vertices, each once, in the order they first come, and its triangles as
-    // the polygons, turned the other way round, as Godot converts them.
+    // The detail mesh's vertices, each once, in the order they first come, and its triangles as the
+    // polygons, turned the other way round.
     const rcPolyMeshDetail& detail = *recast.detail_mesh;
     std::map<std::array<float, 3>, int> seen;
     std::vector<int> native(static_cast<std::size_t>(detail.nverts));

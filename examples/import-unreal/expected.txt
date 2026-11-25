@@ -99,7 +99,7 @@ project.import {"dry_run":true,"source":"unreal"}
       "count": 1,
       "what": "exponential height fog",
       "where": "/Game/Maps/Main: ExponentialHeightFog",
-      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+      "why": "the engine's height fog stands for it: as thick, thinning upward by the same falloff"
     },
     {
       "count": 1,
@@ -257,7 +257,7 @@ project.import {"source":"unreal"}
       "count": 1,
       "what": "exponential height fog",
       "where": "/Game/Maps/Main: ExponentialHeightFog",
-      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+      "why": "the engine's height fog stands for it: as thick, thinning upward by the same falloff"
     },
     {
       "count": 1,
@@ -790,7 +790,7 @@ project.import {"source":"unreal"}
       "count": 1,
       "what": "exponential height fog",
       "where": "/Game/Maps/Main: ExponentialHeightFog",
-      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+      "why": "the engine's height fog stands for it: as thick, thinning upward by the same falloff"
     },
     {
       "count": 1,

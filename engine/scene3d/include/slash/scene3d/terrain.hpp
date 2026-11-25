@@ -25,10 +25,10 @@ namespace slash::world {
 class World;
 }
 
-// Heightmap terrains, as the Terrain3D plugin for Godot (zylann.hterrain, MIT): an Terrain3D's
+// Heightmap terrains, after the MIT-licensed HTerrain plugin: a Terrain3D's
 // heights a cell apart, read from a 16-bit gray .height.png file, drawn in chunks whose detail
-// falls off with distance as its quad tree (util/quad_tree_lod.gd) settles, stitched to coarser
-// neighbors as its mesher (hterrain_mesher.gd) stitches them, shaded with its four ground
+// falls off with distance as its quad tree settles, stitched to coarser
+// neighbors as its mesher stitches them, shaded with its four ground
 // textures (render::TerrainShading, its simple4 shader), colliding as a height field and walked
 // on by navigation bakes. Its cell space has x and z in cells from the first height and y in
 // meters before map_scale.
@@ -135,7 +135,7 @@ struct TerrainChunk {
                                                        float lod_scale, Vec3 viewer);
 
 // The triangles of a chunk of quads_x by quads_z quads with seams, as HTerrainMesher's
-// make_indices, clockwise from above as Godot's front faces are.
+// make_indices, clockwise from above.
 [[nodiscard]] std::vector<std::uint32_t> terrain_indices(int quads_x, int quads_z, int seams);
 
 // A chunk's corners in the terrain's cell space, raised to their heights, each with its texture
@@ -152,8 +152,8 @@ terrain_chunk_vertices(const TerrainData& data, int chunk_size, const TerrainChu
 // there.
 [[nodiscard]] Vec3 terrain_normal(const TerrainData& data, Vec3 map_scale, float x, float z);
 
-// Every triangle of the terrain at full detail in its cell space, three points each, as Godot's
-// HeightMapShape3D parses into navigation source geometry; triangles touching a hole are left
+// Every triangle of the terrain at full detail in its cell space, three points each, for
+// navigation source geometry; triangles touching a hole are left
 // out.
 [[nodiscard]] std::vector<Vec3> terrain_faces(const TerrainData& data);
 

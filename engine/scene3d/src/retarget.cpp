@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/core/math.hpp"
 #include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -16,20 +17,19 @@
 #include <utility>
 #include <vector>
 
-// Godot's PostImportPluginSkeletonTrackOrganizer, PostImportPluginSkeletonRenamer and
-// PostImportPluginSkeletonRestFixer (editor/import/3d/), in the order its importer runs them,
-// on a model: a Godot skeleton's bones are the nodes model_skeletons names, their rests the
-// nodes' transforms and its animations' bone tracks the model's node tracks. Godot's importer
-// also divides position tracks by the skeleton's motion scale, which a glTF file can't keep;
-// blend_animation scales them by the ratio of two models' motion scales instead.
+// The track organizer, skeleton renamer and rest fixer, in the order they run, on a model: a
+// skeleton's bones are the nodes model_skeletons names, their rests the nodes' transforms and
+// its animations' bone tracks the model's node tracks. Some importers also divide position
+// tracks by the skeleton's motion scale, which a glTF file can't keep; blend_animation scales
+// them by the ratio of two models' motion scales instead.
 namespace slash::scene3d {
 namespace {
 
 using world::Affine3D;
 
-constexpr float kCmpEpsilon = 0.00001F; // Godot's CMP_EPSILON
+constexpr float kCmpEpsilon = 0.00001F; // the epsilon for approximate comparisons
 
-// ---- Godot's Vector3, Quaternion and Basis ----
+// ---- Vector3, Quaternion and Basis ----
 
 float dot(Vec3 a, Vec3 b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
@@ -137,7 +137,7 @@ Affine3D basis_of(const Quat& q) {
     return world::rotation_basis(q);
 }
 
-// A profile bone's reference pose, its basis given row by row as Godot's Transform3D takes it.
+// A profile bone's reference pose, its basis given row by row.
 Affine3D reference_pose(const ProfileBone& bone) {
     const std::array<float, 9>& b = bone.basis;
     Affine3D out;
@@ -195,7 +195,7 @@ struct Skeleton {
     }
 };
 
-// The profile's bones' global rests, as Godot's importer builds a skeleton of them.
+// The profile's bones' global rests.
 std::vector<Affine3D> profile_globals() {
     const std::span<const ProfileBone> profile = humanoid_profile();
     std::vector<Affine3D> out(profile.size());

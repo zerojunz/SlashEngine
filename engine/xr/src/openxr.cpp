@@ -1,5 +1,6 @@
-// The OpenXR interface, ported from Godot's modules/openxr (OpenXRAPI and OpenXRInterface): each
-// function names the one it follows. Built only with the Khronos loader (SLASH_HAS_OPENXR).
+// The OpenXR interface: each function names the reference function it follows.
+// Built only with the Khronos loader (SLASH_HAS_OPENXR).
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/xr/openxr.hpp"
 
 #include "internal.hpp"
@@ -439,7 +440,7 @@ Result<void> OpenXR::create_instance(const Settings& settings, std::string_view 
         available_.insert(property.extensionName);
     }
 
-    // The extensions Godot's wrappers ask for that this interface uses: the graphics API's when
+    // The extensions the interface uses: the graphics API's when
     // it draws into the headset, else a headless session where the runtime allows one.
     std::vector<std::string> wanted{std::string(kLocalFloor), std::string(kPalmPose)};
     const std::string_view platform = detail::platform_instance_extension();
@@ -1055,7 +1056,7 @@ void OpenXR::emit(world::World& world, std::string kind) const {
     detail::server(world).emit(world, std::move(kind), std::move(event));
 }
 
-// OpenXRAPI's on_state_* and OpenXRInterface's, which emit Godot's signals as world events.
+// OpenXRAPI's on_state_* and OpenXRInterface's, which emit signals as world events.
 void OpenXR::on_state(world::World& world, XrSessionState state) {
     session_state_ = state;
     info_.session_state = session_state_of(state);
@@ -1320,7 +1321,7 @@ void OpenXR::sync_actions(world::World& world) {
 
 // OpenXRInterface::process with OpenXRAPI::process. A session that draws waits for its frames as
 // it draws them (begin_frame); a headless one waits for one each tick and ends it with nothing
-// in it, as Godot's renderer would begin and end it (pre_render, end_frame).
+// in it (pre_render, end_frame).
 void OpenXR::process(world::World& world) {
     if (instance_ == XR_NULL_HANDLE) {
         return;
@@ -1357,7 +1358,7 @@ void OpenXR::process(world::World& world) {
 }
 
 // OpenXRAPI::prepare_for_rendering's choice of graphics extension, then OpenXRAPI::initialize,
-// as Godot starts OpenXR before it makes its rendering device: the device is made with what the
+// OpenXR starts before the rendering device is made: the device is made with what the
 // runtime asks of it.
 Result<OpenXRDevice> OpenXR::prepare_device(world::World& world, std::string_view driver) {
     if (initialized_ || prepared_) {

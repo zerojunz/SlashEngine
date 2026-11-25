@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json_schema.hpp"
@@ -34,32 +35,32 @@ struct Problems {
 using NameSet = std::set<std::string, std::less<>>;
 
 // Puts a model's meshes, materials, images, nodes, parts, skins and collision into another under
-// a node (parent, or -1 for the root), as Godot instances a scene under one: node names kept
+// a node (parent, or -1 for the root): node names kept
 // unless taken (then numbered), a model without nodes given one for each part, the parts placed
 // by place in the model's space, and materials it has already shared. Animations stay with the
 // file. Model recipes' model parts and vehicles' bodies go in this way.
 void add_model(Model& into, const Model& from, int parent, const world::Affine3D& place,
                std::set<std::string, std::less<>>& taken);
 
-// Godot's importers' _gen_unique_name: name with the characters a node's name (or an animation's,
+// A unique name: name with the characters a node's name (or an animation's,
 // which also can't have ',' or '[') can't have made underscores, numbered from 2 when it is taken.
 std::string unique_name(NameSet& taken, std::string_view name, bool animation = false);
 
-// The names a model's nodes can't take: "Skeleton3D", which Godot's importers keep for the
+// The names a model's nodes can't take: "Skeleton3D", which is kept for the
 // skeleton.
 NameSet node_names();
 
-// Godot's import hint: an animation whose name begins or ends with "loop" or "cycle", in any case,
+// The loop hint: an animation whose name begins or ends with "loop" or "cycle", in any case,
 // loops.
 bool loops_by_name(std::string_view name);
 
-// Godot's Color::linear_to_srgb, for one channel.
+// sRGB from linear, for one channel.
 float linear_to_srgb(float c);
 
 // path with its "." and ".." parts worked out; nullopt if it climbs out of the project.
 std::optional<std::string> normalized(std::string_view path);
 
-// A surface's corners and triangles, before Godot's winding.
+// A surface's corners and triangles, before winding.
 struct Triangles {
     std::vector<render::Vertex3D> vertices;
     std::vector<std::uint32_t> indices; // counter-clockwise, as glTF's and OBJ's
@@ -77,7 +78,7 @@ Triangles deindexed(const Triangles& in);
 std::vector<SurfaceBlendShape> follow_origins(const std::vector<SurfaceBlendShape>& shapes,
                                               const std::vector<std::uint32_t>& origins);
 
-// Equal vertices merged into one, in the order they first appear, as Godot's SurfaceTool::index.
+// Equal vertices merged into one, in the order they first appear.
 void reindex(Triangles& triangles);
 
 Vec3 position_of(const render::Vertex3D& v);
@@ -86,10 +87,10 @@ Vec3 position_of(const render::Vertex3D& v);
 // take its face's normal.
 void flat_normals(Triangles& triangles);
 
-// MikkTSpace's tangents, as Godot's SurfaceTool::generate_tangents makes them.
+// MikkTSpace's tangents.
 void generate_tangents(Triangles& triangles);
 
-// Godot's dummy tangent for a mesh with normals but no texture coordinates.
+// The dummy tangent for a mesh with normals but no texture coordinates.
 render::Vertex3D dummy_tangent(render::Vertex3D vertex);
 void dummy_tangents(Triangles& triangles);
 

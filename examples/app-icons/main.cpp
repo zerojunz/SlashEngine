@@ -1,9 +1,8 @@
 // App icons for every platform, made from one image.
 //
-// project.json's "icon" names a square image, as Godot's application/config/icon; exports make
-// each platform's icons from it, and presets can change a few things per platform. This makes a
-// project in code whose icon is a gold coin on a clear background, then the icon files each
-// platform's export ships.
+// project.json's "icon" names a square image; exports make each platform's icons from it, and
+// presets can change a few things per platform. This makes a project in code whose icon is a gold
+// coin on a clear background, then the icon files each platform's export ships.
 
 #include "slash/core/json.hpp"
 #include "slash/exporter/icons.hpp"

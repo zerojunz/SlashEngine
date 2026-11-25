@@ -1,5 +1,5 @@
-// Compositor effects and pipeline files: a game's own screen passes, as Godot 4.3's Compositor and
-// CompositorEffect, drawn over the 3D world at points of a Forward+ frame.
+// Compositor effects and pipeline files: a game's own screen passes, drawn over the 3D world at
+// points of a clustered renderer frame.
 
 #include "devices.hpp"
 

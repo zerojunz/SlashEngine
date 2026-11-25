@@ -180,7 +180,7 @@ TEST_CASE("3D particles spread in a cone about direction, flattened by flatness"
     scene.step();
     float cone_y = 0.0F;
     for (const scene3d::Particle3D& particle : scene.live(cone)) {
-        // Within 30 degrees of +x each way across, as Godot's spread.
+        // Within 30 degrees of +x each way across.
         const float most = std::cos(30.0F * std::numbers::pi_v<float> / 180.0F);
         CHECK(length(particle.velocity) == doctest::Approx(1.0));
         CHECK(particle.velocity.x >= (most * most) - 1e-5F);
@@ -193,7 +193,7 @@ TEST_CASE("3D particles spread in a cone about direction, flattened by flatness"
     }
 }
 
-TEST_CASE("3D emission shapes place new particles as Godot's") {
+TEST_CASE("3D emission shapes place new particles") {
     Scene scene;
     const auto shape = [&](std::string_view id, std::string_view fields) {
         return scene.add(id, {10.0F, 0.0F, 0.0F},
@@ -261,7 +261,7 @@ TEST_CASE("3D emission shapes place new particles as Godot's") {
     }
 }
 
-TEST_CASE("3D particle forces, damping and flags move and turn particles as Godot's") {
+TEST_CASE("3D particle forces, damping and flags move and turn particles") {
     Scene scene;
     const entt::entity falling =
         scene.add("falling", {}, R"({"amount": 1, "lifetime": 10, "explosiveness": 1, "spread": 0,
@@ -296,7 +296,7 @@ TEST_CASE("3D particle forces, damping and flags move and turn particles as Godo
     const scene3d::Particle3D along = scene.live(aligned).at(0);
     CHECK(near(along.transform.y, {0.0F, 0.0F, 1.0F}));
     CHECK(std::abs(dot(along.transform.x, along.transform.y)) < 1e-5F);
-    // In the xy plane, turned about z by its angle as Godot's columns.
+    // In the xy plane, turned about z by its angle.
     const scene3d::Particle3D in_plane = scene.live(flat).at(0);
     CHECK(in_plane.transform.origin.z == 0.0F);
     CHECK(in_plane.velocity.z == 0.0F);
@@ -387,7 +387,7 @@ TEST_CASE("3D particles repeat, step the same on threads, and simulate as the sy
     }
 }
 
-TEST_CASE("billboards face the camera as Godot's billboard modes") {
+TEST_CASE("billboards face the camera by their billboard modes") {
     world::Affine3D camera;
     camera.x = {0.0F, 0.0F, -1.0F}; // a camera on the +x side, looking back toward -x
     camera.z = {1.0F, 0.0F, 0.0F};
@@ -426,7 +426,7 @@ TEST_CASE("billboards face the camera as Godot's billboard modes") {
     CHECK(scene3d::billboard(model, camera, scene3d::Billboard::Disabled, true, 1.0F) == model);
 }
 
-TEST_CASE("particle frames move texture coordinates as Godot's particle animation") {
+TEST_CASE("particle frames move texture coordinates by the particle animation") {
     // 2 by 2 frames: halfway through is the third frame, bottom left.
     CHECK(scene3d::particle_frame_uv({1.0F, 1.0F}, 0.5F, 2, 2, false) == Vec2{0.5F, 1.0F});
     CHECK(scene3d::particle_frame_uv({0.0F, 0.0F}, 0.75F, 2, 2, false) == Vec2{0.5F, 0.5F});

@@ -168,7 +168,7 @@ TEST_CASE("controls are placed in their parent's rect by anchors and offsets") {
     }
 }
 
-TEST_CASE("anchors past 0 and 1 anchor a control outside its parent's rect, as Godot allows") {
+TEST_CASE("anchors past 0 and 1 anchor a control outside its parent's rect") {
     Scene scene;
     const std::string_view control = R"({"Widget": {"anchor_left": -0.5, "anchor_top": 1.5,
                                                     "anchor_right": 1.25, "anchor_bottom": 2}})";
@@ -241,7 +241,7 @@ TEST_CASE("modulate, visible and z_index pass from parents to children") {
     CHECK(layout.find(a)->z == 2);
     CHECK(layout.find(b)->z == 1);
     CHECK(layout.find(loose)->visible);
-    // A z_index that isn't relative is the whole of it, as Godot's z_as_relative.
+    // A z_index that isn't relative is the whole of it.
     scene.set(b, R"({"Widget": {"z_index": -1, "z_as_relative": false}})");
     CHECK(scene.layout().find(b)->z == -1);
     scene.set(b, R"({"Widget": {"z_index": -1, "z_as_relative": true}})");
@@ -309,7 +309,7 @@ TEST_CASE("a label is as big as its text and aligns its lines in its rect") {
     CHECK(layout.label(centered)->pens == std::vector<Vec2>{{32.0F, 14.0F + 17.0F}});
     CHECK(layout.label(corner)->pens == std::vector<Vec2>{{64.0F, 28.0F + 17.0F}});
 
-    // Lines 3 pixels apart, Godot's line_spacing.
+    // Lines 3 pixels apart, by line_spacing.
     const float wide = scene.width_of("Hello, world");
     CHECK(layout.find(two)->size == Vec2{wide, 22.0F + 3.0F + 22.0F});
     CHECK(layout.label(two)->pens == std::vector<Vec2>{{0.0F, 17.0F}, {0.0F, 17.0F + 25.0F}});
@@ -363,7 +363,7 @@ TEST_CASE("labels trim lines too wide for their rect, and clip_text cuts off wha
     CHECK(cut.trimmed == std::vector<std::size_t>{0});
     CHECK(cut.text.lines[0].width <= 30.0F);
     CHECK(shown_lines(cut).front().size() < 5);
-    // Only the ellipsis's first character is used, as in Godot.
+    // Only the ellipsis's first character is used.
     CHECK(shown_lines(*layout.label(dots)).front().ends_with("."));
     CHECK_FALSE(shown_lines(*layout.label(dots)).front().ends_with(".."));
 

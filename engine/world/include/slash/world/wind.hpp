@@ -1,7 +1,7 @@
 #pragma once
 
 // Wind, after Unreal's WindDirectionalSource: the wind field a world's WindSource3Ds blow and the
-// clock their gusts keep. Godot has no wind but Zone3D's for soft bodies, which physics3d keeps.
+// clock their gusts keep. Zone3D's wind on soft bodies is separate: physics3d keeps it.
 
 #include "slash/core/math.hpp"
 #include "slash/world/components.hpp"

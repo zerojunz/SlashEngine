@@ -5,8 +5,8 @@
 // as [x, y, z].
 namespace slash {
 
-// The type of a coordinate, as Godot's real_t: a float, or a double in engines built with
-// SLASH_PRECISION=double (SLASH_REAL_T_IS_DOUBLE), for worlds that reach far from the origin.
+// The type of a coordinate: a float, or a double in engines built with SLASH_PRECISION=double
+// (SLASH_REAL_T_IS_DOUBLE), for worlds that reach far from the origin.
 #if defined(SLASH_REAL_T_IS_DOUBLE)
 using real_t = double;
 #else
@@ -23,8 +23,7 @@ struct Vec2 {
     friend constexpr Vec2 operator*(Vec2 v, real_t s) { return {v.x * s, v.y * s}; }
 };
 
-// A pair of integers, such as a cell of a tile map, written to JSON as [x, y], as Godot's
-// Vector2i.
+// A pair of integers, such as a cell of a tile map, written to JSON as [x, y].
 struct Vec2i {
     int x = 0;
     int y = 0;
@@ -34,8 +33,7 @@ struct Vec2i {
     friend constexpr Vec2i operator-(Vec2i a, Vec2i b) { return {a.x - b.x, a.y - b.y}; }
 };
 
-// Three integers, such as a cell of a BlockMap3D, written to JSON as [x, y, z], as Godot's
-// Vector3i.
+// Three integers, such as a cell of a BlockMap3D, written to JSON as [x, y, z].
 struct Vec3i {
     int x = 0;
     int y = 0;

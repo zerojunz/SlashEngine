@@ -14,10 +14,10 @@
 #include <string_view>
 #include <vector>
 
-// Plugins, as Godot's GDExtension: libraries built apart from the engine against
-// slash/plugin/slash_plugin.h, a C interface that stays the same from one engine version to the
-// next, which add components and systems to a game. A project lists them in project.json's
-// "plugins", each a .plugin.json file naming its entry function and its library per platform.
+// Plugins: libraries built apart from the engine against slash/plugin/slash_plugin.h, a C interface
+// that stays the same from one engine version to the next, which add components and systems to a
+// game. A project lists them in project.json's "plugins", each a .plugin.json file naming its entry
+// function and its library per platform.
 //
 //   plugin::Plugins plugins(components);
 //   plugins.load_project(root, project.plugins);  // before scenes open
@@ -33,10 +33,10 @@ struct PluginSystem {
     void* userdata = nullptr;
 };
 
-// A .plugin.json file, as Godot's .gdextension: the entry function's name, the interface version
-// it was built for, its library on each platform as "<os>.<arch>" or "<os>" ("linux.x86_64",
-// "macos", "windows.x86_64", "android.arm64", "ios", "web"), relative to the file, and the
-// sources exports compile into games instead.
+// A .plugin.json file: the entry function's name, the interface version it was built for, its
+// library on each platform as "<os>.<arch>" or "<os>" ("linux.x86_64", "macos", "windows.x86_64",
+// "android.arm64", "ios", "web"), relative to the file, and the sources exports compile into games
+// instead.
 struct PluginFile {
     std::string path; // the file, as the project names it
     std::string entry;
@@ -75,8 +75,7 @@ struct LoadOptions {
 [[nodiscard]] SlashProc get_proc(const char* name);
 
 // The plugins a program loaded, and the systems they add to its worlds. Plugins stay loaded until
-// the program exits, as Godot keeps extensions; their components stay in the registry, which
-// must outlive this object.
+// the program exits; their components stay in the registry, which must outlive this object.
 class Plugins {
 public:
     explicit Plugins(world::ComponentRegistry& components);

@@ -38,7 +38,7 @@ namespace scene3d = slash::scene3d;
 namespace {
 
 // A bumpy ground 40 meters square of 128 x 128 quads: plenty to simplify, with a rim that stays
-// put (an open edge is locked, as Godot's importer locks it). ripple is how high the bumps between
+// put (an open edge is locked). ripple is how high the bumps between
 // corners go.
 scene3d::ModelSurface bumpy_ground(float ripple_height = 0.02F) {
     slash::world::PlaneGeometry plane;

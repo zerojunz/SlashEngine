@@ -24,7 +24,7 @@
 // alike and a float mixes with a vector as if it were one of the same size.
 namespace slash::render {
 
-// How a draw's colors combine with what is under them, as Godot's canvas blend modes.
+// How a draw's colors combine with what is under them.
 enum class BlendMode : std::uint8_t {
     Mix,         // ordinary alpha blending, the default
     Add,         // adds the color, times its alpha: glows, fire and light

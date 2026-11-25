@@ -1,6 +1,6 @@
-// Audio tracks, as Godot's AnimationMixer plays them (_blend_init, the TYPE_AUDIO cases of
-// _blend_process and _blend_apply, and _clear_audio_streams), through the sound engine/audio sets
+// Audio tracks: how animations play them, through the sound engine/audio sets
 // on the world (world::AudioTrackSound).
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/world/audio_tracks.hpp"
 
@@ -21,7 +21,7 @@
 namespace slash::animation::detail {
 namespace {
 
-// A stream a key started, as Godot's PlayingAudioStreamInfo.
+// A stream a key started.
 struct PlayingStream {
     std::int64_t id = 0;
     double start = 0.0;             // the animation's time when it started
@@ -29,7 +29,7 @@ struct PlayingStream {
     std::optional<float> volume_db; // as last set
 };
 
-// One audio track of one animation, as Godot's PlayingAudioTrackInfo.
+// One audio track of one animation.
 struct TrackInfo {
     double length = 0.0;
     double time = 0.0;
@@ -54,7 +54,7 @@ Owners& owners_of(world::World& world) {
 }
 
 float volume_db(float linear) {
-    // Godot's linear_to_db: ln(linear) * 20 / ln(10).
+    // Linear gain to decibels: ln(linear) * 20 / ln(10).
     constexpr float kDbPerNeper = 8.6858896380650365530225783783321F;
     return linear > 0.0F ? slash::ln(linear) * kDbPerNeper
                          : -std::numeric_limits<float>::infinity();

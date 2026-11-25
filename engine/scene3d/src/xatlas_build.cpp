@@ -1,5 +1,5 @@
-// Builds xatlas (MIT, https://github.com/jpcy/xatlas), the unwrapper Godot uses for lightmap UVs,
-// and stb_rect_pack, which packs Godot's lightmap atlases, so that their charts and atlases are
+// Builds xatlas (MIT, https://github.com/jpcy/xatlas), the unwrapper for lightmap UVs,
+// and stb_rect_pack, which packs lightmap atlases, so that their charts and atlases are
 // the same on every platform: its sines, cosines and arc functions go
 // through the engine's own (slash::cos_sin and slash::atan2) rather than libm's, whose last bits
 // differ between platforms, and its one qsort, whose comparator never returns a negative number

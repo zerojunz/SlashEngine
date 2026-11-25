@@ -1,11 +1,11 @@
-// UI and text, as Godot's Control, Label and ColorFill: main.scene.json is a pause screen over
-// the game, a panel centered on the window holding a title in a distance field font with an
-// outline, a paragraph that wraps, a quest line cut to one line with an ellipsis and a hint in
-// the bottom-right corner, plus a score and a sign in the corners.
+// UI and text: main.scene.json is a pause screen over the game, a panel centered on the window
+// holding a title in a distance field font with an outline, a paragraph that wraps, a quest line
+// cut to one line with an ellipsis and a hint in the bottom-right corner, plus a score and a sign
+// in the corners.
 //
-// This program writes the font file, checks the screen with ui.layout and text.measure as an
-// agent would, with no screenshot, changes the score and the window size, catches a misspelled
-// theme override, then draws the screen into a texture.
+// This program writes the font file, checks the screen with ui.layout and text.measure as an agent
+// would, with no screenshot, changes the score and the window size, catches a misspelled theme
+// override, then draws the screen into a texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

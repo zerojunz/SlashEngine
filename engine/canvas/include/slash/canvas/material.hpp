@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -19,8 +20,8 @@
 #include <string_view>
 #include <vector>
 
-// .material.json files: canvas materials, Godot's ShaderMaterial for 2D written as a node graph.
-// Sprite2D's "material" names one.
+// .material.json files: canvas materials, a shader for 2D written as a node graph. Sprite2D's
+// "material" names one.
 //
 //   {
 //     "blend": "mix",
@@ -35,15 +36,15 @@
 //     }
 //   }
 //
-// "color" is the pixel's color, a vec4. Left out, it is the texture times the vertex color, as
-// a sprite with no material draws. An arg is a number, an array of 2 to 4 numbers, a node
-// written in place, or a name: a node in "nodes", a param, or an input. Inputs, as in Godot's
-// canvas shaders: uv, color (the vertex color, Sprite2D's modulate), time, texture (the
-// sprite's), texture_pixel_size and fragcoord. A name can pick components, as in "base.rgb" or
-// "uv.yx". The graph compiles to a material program (slash/render/material.hpp).
+// "color" is the pixel's color, a vec4. Left out, it is the texture times the vertex color, as a
+// sprite with no material draws. An arg is a number, an array of 2 to 4 numbers, a node written in
+// place, or a name: a node in "nodes", a param, or an input. Inputs: uv, color (the vertex color,
+// Sprite2D's modulate), time, texture (the sprite's), texture_pixel_size and fragcoord. A name can
+// pick components, as in "base.rgb" or "uv.yx". The graph compiles to a material program
+// (slash/render/material.hpp).
 //
 // Instead of a graph, "shader" can name a game's own shader, an .hlsl file with fragment() and
-// vertex() functions as Godot's canvas_item shaders (see docs/reference/scene-format.md):
+// vertex() functions, as canvas shaders have (see docs/reference/scene-format.md):
 //
 //   {"format": 1, "params": {"amount": {"type": "float", "value": 0.5}},
 //    "shader": "shaders/dissolve.hlsl"}
@@ -51,10 +52,9 @@
 // The shader tools compile it for every backend (render::compile_shader), and exports write the
 // compiled code into the file as "compiled", since games can't compile shaders.
 //
-// With "shader_type": "spatial", the file is a 3D material, Godot's ShaderMaterial for a mesh
-// (Model3D's material_override names it): its shader's vertex() moves the mesh's corners,
-// its fragment() gives each pixel's ALBEDO, ROUGHNESS, NORMAL_MAP and the rest, and
-// "render_mode" lists Godot's render modes:
+// With "shader_type": "spatial", the file is a 3D material, a shader for a mesh (Model3D's material
+// names it): its shader's vertex() moves the mesh's corners, its fragment() gives each pixel's
+// ALBEDO, ROUGHNESS, NORMAL_MAP and the rest, and "render_mode" lists its render modes:
 //
 //   {"format": 1, "shader_type": "spatial", "render_mode": ["cull_disabled"],
 //    "params": {"tint": {"type": "color", "value": [1, 0.5, 0.2, 1]}},
@@ -64,7 +64,7 @@ namespace slash::canvas {
 inline constexpr std::string_view kMaterialSuffix = ".material.json";
 inline constexpr std::string_view kShaderSuffix = ".hlsl";
 
-// Godot's TIME wraps every hour, which keeps it precise in a float.
+// TIME wraps every hour, which keeps it precise in a float.
 inline constexpr double kMaterialTimeWrap = 3600.0;
 
 struct MaterialParam {
@@ -75,8 +75,8 @@ struct MaterialParam {
     std::string filter = "inherit"; // textures: "inherit", "linear" or "nearest"
     std::optional<double> min;      // numbers: the smallest value allowed in each component
     std::optional<double> max;
-    // A spatial material's texture of sRGB colors, which its shader reads linear, as Godot's
-    // source_color hint. Its color params are always.
+    // A spatial material's texture of sRGB colors, which its shader reads linear, as the
+    // source_color hint says. Its color params are always.
     bool source_color = false;
     // Where the program reads it: a constant, or a texture's slot (1 to 3). None when the
     // graph doesn't use it. A shader's params all have one, in name order: numbers from
@@ -84,10 +84,10 @@ struct MaterialParam {
     std::optional<std::uint32_t> slot;
 };
 
-// A spatial material's render modes, as Godot's render_mode line: how its meshes blend
-// (blend_mix, blend_add, blend_sub, blend_mul) and cull (cull_back, cull_front, cull_disabled),
-// and unshaded, fog_disabled, shadows_disabled and world_vertex_coords (its vertex() works in the
-// world rather than the mesh's space).
+// A spatial material's render modes, as the render_mode line gives them: how its meshes blend
+// (blend_mix, blend_add, blend_sub, blend_mul) and cull (cull_back, cull_front, cull_disabled), and
+// unshaded, fog_disabled, shadows_disabled and world_vertex_coords (its vertex() works in the world
+// rather than the mesh's space).
 struct SpatialModes {
     render::BlendMode blend = render::BlendMode::Mix;
     render::CullMode cull = render::CullMode::Back;

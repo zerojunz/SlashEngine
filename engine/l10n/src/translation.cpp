@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/l10n/translation.hpp"
 
 #include "slash/l10n/locale.hpp"
@@ -20,7 +22,7 @@ namespace {
 
 constexpr std::string_view kEnglishRules = "nplurals=2; plural=(n != 1);";
 
-// Text without the characters up to a space at either end, as Godot's String::strip_edges.
+// Text without the characters up to a space at either end.
 std::string_view strip(std::string_view text) {
     while (!text.empty() && static_cast<unsigned char>(text.front()) <= 32) {
         text.remove_prefix(1);
@@ -40,7 +42,7 @@ std::string replace_all(std::string text, std::string_view from, std::string_vie
     return text;
 }
 
-// C escapes read as what they stand for, one after another as Godot's String::c_unescape.
+// C escapes read as what they stand for, one after another.
 std::string c_unescape(std::string_view text) {
     std::string out(text);
     out = replace_all(std::move(out), "\\a", "\a");
@@ -66,7 +68,7 @@ std::string to_lower(std::string_view text) {
     return out;
 }
 
-// The text's lines, as Godot's FileAccess::get_line reads them one by one: split at '\n', with
+// The text's lines, one by one: split at '\n', with
 // '\r' left out. The last is what follows the last '\n', reading which reaches the end.
 std::vector<std::string> lines_of(std::string_view text) {
     std::vector<std::string> lines;
@@ -210,7 +212,7 @@ Result<PluralRules> PluralRules::parse(std::string_view rules) {
     }
     std::size_t expression_end = rules.rfind(';');
     if (expression_end == std::string_view::npos || expression_end < expression_eq) {
-        // Godot warns and reads to the end.
+        // A missing end reads to the end.
         expression_end = rules.size();
     }
     const std::size_t expression_start = expression_eq + 1;
@@ -326,7 +328,7 @@ void read_header(std::string_view header, Translation& translation) {
     }
 }
 
-// Records the rule a header's Plural-Forms line gives, as Godot does: from "Plural-Forms" to
+// Records the rule a header's Plural-Forms line gives: from "Plural-Forms" to
 // the end of its line.
 void read_plural_forms(std::string_view header, Translation& translation) {
     const std::size_t start = header.find("Plural-Forms");
@@ -652,7 +654,7 @@ std::vector<std::string> csv_fields(std::string_view line, char delimiter, bool&
     return fields;
 }
 
-// The next record of a CSV file from line, as Godot's FileAccess::get_csv_line: lines are joined
+// The next record of a CSV file from line: lines are joined
 // while a quote is open, a delimiter outside quotes ends a field and "" inside quotes is a quote.
 std::vector<std::string> csv_line(const std::vector<std::string>& lines, std::size_t& next,
                                   char delimiter, bool& unclosed) {
@@ -858,7 +860,7 @@ Placeholders placeholders_of(std::string_view text) {
                 i = at; // "%%" is a percent sign
                 continue;
             }
-            // Godot's modifiers: flags, a width or "*", and a precision.
+            // The modifiers: flags, a width or "*", and a precision.
             while (at < text.size() &&
                    std::string_view("+-0123456789.* ").find(text[at]) != std::string_view::npos) {
                 ++at;

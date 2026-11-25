@@ -17,8 +17,8 @@
 
 namespace slash::render::detail {
 
-// Whether a frame draws SDFGI on a GPU device: in Forward+, as Godot's, and not into a
-// reflection probe's cube, as the software device.
+// Whether a frame draws SDFGI on a GPU device: in the clustered renderer, and not into a reflection
+// probe's cube, as the software device.
 [[nodiscard]] inline bool uses_sdfgi(const Scene3D& scene) {
     return scene.method == RenderMethod::ForwardPlus && scene.sdfgi.enabled && !scene.capture;
 }

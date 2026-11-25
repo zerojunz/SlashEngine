@@ -30,8 +30,8 @@ using render::Vertex3D;
 
 namespace {
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has no SSR.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has no SSR.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -192,7 +192,7 @@ std::array<float, 16> times(const std::array<float, 16>& a, const std::array<flo
 
 } // namespace
 
-TEST_CASE("SSR plans Godot's passes at half and full size") {
+TEST_CASE("SSR plans its passes at half and full size") {
     using detail::kSsrColor;
     using detail::kSsrFinal;
     using detail::kSsrHiz;
@@ -239,12 +239,12 @@ TEST_CASE("SSR plans Godot's passes at half and full size") {
     CHECK(last.slots.at(0) == detail::kSsrWorld);
 }
 
-TEST_CASE("SSR's uniforms are Godot's push constants and scene data") {
+TEST_CASE("SSR's uniforms are its push constants and scene data") {
     render::Scene3D scene;
     scene.camera = render::look_at({0.0F, 1.0F, 2.5F}, {0.0F, 0.3F, 0.0F}, {0.0F, 1.0F, 0.0F});
     scene.projection = render::perspective(60.0F, 1.0F, 0.1F, 20.0F);
     const detail::SsrCamera camera = detail::ssr_camera(scene);
-    // Godot's corrected projection: y runs down, as texture coordinates do.
+    // The corrected projection: y runs down, as texture coordinates do.
     for (std::size_t i = 0; i < 16; ++i) {
         CHECK(camera.projection.at(i) ==
               (i % 4 == 1 ? -scene.projection.at(i) : scene.projection.at(i)));
@@ -298,7 +298,7 @@ TEST_CASE("SSR's uniforms are Godot's push constants and scene data") {
     CHECK(flat.options[2] == detail::kSsrOrthogonal);
 }
 
-TEST_CASE("SSR's pyramid keeps the nearest depth, as Godot's downsample and Hi-Z") {
+TEST_CASE("SSR's pyramid keeps the nearest depth") {
     // Reversed depth: the nearest is the largest. A 5x3 frame halves to 2x1, each texel taking
     // the nearest of the pixels it covers.
     const std::vector<float> depth{0.1F, 0.2F, 0.3F, 0.4F, 0.9F, //
@@ -312,8 +312,8 @@ TEST_CASE("SSR's pyramid keeps the nearest depth, as Godot's downsample and Hi-Z
     CHECK(u.options[2] == (detail::kSsrOddWidth | detail::kSsrOddHeight));
     detail::SsrImage target{.width = 2, .height = 1, .channels = 1, .values = {}};
     detail::run_ssr_pass(u, down, {}, {.depth = depth}, target);
-    // Since the source is odd, each texel covers a third column and row past its 2x2, as Godot's
-    // do: the first takes 0.8 from the second's corner.
+    // Since the source is odd, each texel covers a third column and row past its 2x2:
+    // the first takes 0.8 from the second's corner.
     CHECK(target.values == std::vector<float>{0.8F, 0.9F});
 }
 
@@ -327,7 +327,7 @@ TEST_CASE("SSR settings come from project.json's rendering.ssr") {
     CHECK(render::ssr_settings_from_json(wrong.value()) == render::SsrSettings{});
 }
 
-TEST_CASE("Forward+ SSR reflects the wall and a square standing on a shiny floor") {
+TEST_CASE("clustered-renderer SSR reflects the wall and a square standing on a shiny floor") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         // The scene has no sky, so without SSR the metal floor reflects nothing and stays black.
@@ -342,7 +342,7 @@ TEST_CASE("Forward+ SSR reflects the wall and a square standing on a shiny floor
         }
         CHECK(red(on, kSquare) > 90);
         CHECK(std::abs(red(on, kSquare) - channel(on, kSquare[0], kSquare[1], 2)) < 12);
-        // The rough wall takes no reflections, as in Godot, which fades them out from roughness
+        // The rough wall takes no reflections, which fades them out from roughness
         // 0.6 to 0.7.
         for (std::size_t c = 0; c < 3; ++c) {
             CHECK(channel(on, kWall[0], kWall[1], c) == channel(plain, kWall[0], kWall[1], c));
@@ -363,7 +363,7 @@ TEST_CASE("Forward+ SSR reflects the wall and a square standing on a shiny floor
             draw_mirror(*device, {.ssr = {.enabled = true}, .frames = 3, .turn = 0.2F});
         CHECK(red(moving, kWallLeft) > 90);
         CHECK(red(moving, kWallRight) > 90);
-        // A ray of 4 steps reaches only part of the way to the wall, as Godot's.
+        // A ray of 4 steps reaches only part of the way to the wall.
         const Image short_rays = draw_mirror(*device, {.ssr = {.enabled = true, .max_steps = 4}});
         CHECK(red(short_rays, kWallLeft) < red(on, kWallLeft) - 20);
     }
@@ -380,10 +380,10 @@ TEST_CASE("SSR dims on rough floors and leaves transparent meshes and Compatibil
         // From roughness 0.7 there is none.
         CHECK(difference(draw_mirror(*device, {.ssr = {.enabled = true}, .roughness = 0.8F}),
                          draw_mirror(*device, {.roughness = 0.8F})) == 0);
-        // A transparent floor takes none, as in Godot.
+        // A transparent floor takes none.
         CHECK(difference(draw_mirror(*device, {.ssr = {.enabled = true}, .glass_floor = true}),
                          draw_mirror(*device, {.glass_floor = true})) == 0);
-        // Godot's Compatibility renderer has no SSR.
+        // the compatibility renderer has no SSR.
         const auto compatibility = render::RenderMethod::Compatibility;
         CHECK(difference(draw_mirror(*device, {.ssr = {.enabled = true}, .method = compatibility}),
                          draw_mirror(*device, {.method = compatibility})) == 0);

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "space.hpp"
 
 #include "polygon.hpp"
@@ -35,12 +36,12 @@ using world::Transform2D;
 using world::Zone2D;
 
 // Box2D substeps per tick, as its documentation recommends.
-// Joint motors push as hard as it takes, as Godot's do.
+// Joint motors push as hard as it takes.
 constexpr float kMaxMotorTorque = 1.0e9F;
 // Box2D's revolute limits stop just short of half a turn.
 constexpr float kMaxJointAngle = 0.99F * std::numbers::pi_v<float>;
 
-// Godot's rule: two objects collide when either one's mask shares a bit with the other's layer.
+// Two objects collide when either one's mask shares a bit with the other's layer.
 bool should_collide(b2ShapeId a, b2ShapeId b, void* /*context*/) {
     const ShapeInfo* first = info_of(a);
     const ShapeInfo* second = info_of(b);
@@ -112,8 +113,8 @@ int material_id(float friction, float bounce) {
     return (friction < 0.0F ? kRough : 0) | (bounce < 0.0F ? kAbsorbent : 0);
 }
 
-// Godot's rules for two bodies' materials: the smaller computed friction without its sign (a
-// rough one wins), the sum of computed bounces (an absorbent one takes away) from 0 to 1.
+// How two bodies' materials combine: the smaller computed friction without its sign (a rough one
+// wins), the sum of computed bounces (an absorbent one takes away) from 0 to 1.
 float combine_friction(float a, int material_a, float b, int material_b) {
     const float signed_a = (material_a & kRough) != 0 ? -a : a;
     const float signed_b = (material_b & kRough) != 0 ? -b : b;
@@ -142,7 +143,7 @@ std::string_view material_path(const entt::registry& registry, entt::entity enti
     return {};
 }
 
-// The kind of body an entity is, by Godot's node it stands for; the first wins if it has two.
+// The kind of body an entity is, by the component it has; the first wins if it has two.
 std::optional<Kind> kind_of(const entt::registry& registry, entt::entity entity) {
     if (registry.all_of<RigidBody2D>(entity)) {
         return Kind::Rigid;
@@ -245,9 +246,8 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree2D& tree,
         }
     };
     add(entity, std::nullopt);
-    // As a Godot CollisionObject2D takes the shapes of its Collider2D and
-    // PolygonCollider2D children: child entities with shapes and no body of their own, placed
-    // by their own transforms.
+    // A body takes the shapes of its Collider2D and PolygonCollider2D children: child entities with
+    // shapes and no body of their own, placed by their own transforms.
     if (const auto* transform = registry.try_get<Transform2D>(entity);
         transform != nullptr && tree.nested()) {
         for (const entt::entity child : transform->children) {
@@ -293,7 +293,7 @@ RigidKey rigid_key_of(const RigidBody2D& rigid, const Settings& settings) {
             .center = rigid.center_of_mass};
 }
 
-// A static or animatable body's constant velocities, as Godot's StaticBody2D's; none for others.
+// A static or animatable body's constant velocities; none for others.
 std::pair<Vec2, float> constant_velocity_of(const entt::registry& registry, entt::entity entity,
                                             Kind kind) {
     if (kind == Kind::Static) {
@@ -545,7 +545,7 @@ void Space::build_shapes(world::World& world, Body& body, const ShapeKey& key) {
         def.enableHitEvents = key.hits && !area;
         def.filter.categoryBits = key.layer | kShapeBit;
         def.filter.maskBits = ~std::uint64_t{0};
-        // Areas ignore one_way_collision, as in Godot.
+        // Areas ignore one_way_collision.
         if (one_way && !area) {
             info.one_way = true;
             info.one_way_margin = margin;
@@ -690,8 +690,7 @@ void Space::sync_body(world::World& world, const world::Tree2D& tree, entt::enti
     entt::registry& registry = world.ecs();
     const Transform2D transform = transform_of(tree, entity);
     ShapeKey shape_key = shape_key_of(registry, tree, entity, kind);
-    // A physics material overrides the body's own friction and bounce, as Godot's
-    // physics_material_override.
+    // A physics material overrides the body's own friction and bounce.
     std::optional<world::PhysicsMaterial> made_of;
     if (const std::string_view path = material_path(registry, entity, kind); !path.empty()) {
         made_of = material(world, std::string(path));
@@ -895,8 +894,7 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
                     .rotation = own.rotation,
                     .body_a = body_a,
                     .body_b = body_b};
-        // Points along the joint's y axis in its own space, after its parents', as Godot's
-        // get_global_transform().xform(Vector2(0, distance)).
+        // Points along the joint's y axis in its own space, after its parents'.
         const world::Affine2D global = tree.global_affine(entity);
         const b2Vec2 origin = to_b2(global.origin);
         const auto along = [&](float distance) { return to_b2(global.apply({0.0F, distance})); };
@@ -917,8 +915,8 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
             def.collideConnected = !pin->disable_collision;
             joint.id = b2CreateRevoluteJoint(world_, &def);
         } else if (const auto* spring = std::get_if<SpringJoint2D>(&key); spring != nullptr) {
-            // Godot's stiffness and damping, as Box2D's frequency and damping ratio for the
-            // bodies' masses.
+            // The stiffness and damping, as Box2D's frequency and damping ratio for the bodies'
+            // masses.
             const float mass_a = b2Body_GetMass(body_a);
             const float mass_b = b2Body_GetMass(body_b);
             float mass = mass_a > 0.0F && mass_b > 0.0F ? (mass_a * mass_b) / (mass_a + mass_b)
@@ -981,8 +979,7 @@ void Space::sync_joints(world::World& world, const world::Tree2D& tree) {
         const auto& groove = registry.get<TrackJoint2D>(entity);
         place(entity, groove, groove.body_a, groove.body_b);
     }
-    // Past a limit a pin's motor stops pushing, as in Godot's GodotPinJoint2D::solve, so it
-    // can't drive through the limit.
+    // Past a limit a pin's motor stops pushing, so it can't drive through the limit.
     for (const entt::entity entity : registry.view<PinJoint2D>()) {
         const auto& pin = registry.get<PinJoint2D>(entity);
         const Joint* joint = joints_.find(entity);
@@ -1222,9 +1219,9 @@ void Space::read_back(world::World& world, const world::Tree2D& tree) {
             transform.position = position;
             transform.rotation = rotation;
         } else {
-            // As Godot sets a body's global transform: its own is what puts it there. The body
-            // keeps the global transform that comes back, rounding and all, so the next sync
-            // doesn't take the rounding for a move.
+            // The body's own transform is what puts it there. The body keeps the global transform
+            // that comes back, rounding and all, so the next sync doesn't take the rounding for a
+            // move.
             tree.set_global_position(world, body->entity, position);
             tree.set_global_rotation(world, body->entity, rotation);
             const Transform2D placed = tree.global(body->entity);
@@ -1298,8 +1295,8 @@ void touching_bodies(b2BodyId body, std::vector<entt::entity>& out) {
     }
 }
 
-// What an area's shapes overlap, by Godot's rule: its mask has the other's layer, and another
-// area must be monitorable.
+// What an area's shapes overlap: its mask has the other's layer, and another area must be
+// monitorable.
 void area_overlaps(const Body& area, std::vector<std::pair<entt::entity, bool>>& out) {
     for (const b2ShapeId shape : area.shapes) {
         const int capacity = b2Shape_GetSensorCapacity(shape);
@@ -1328,7 +1325,7 @@ void area_overlaps(const Body& area, std::vector<std::pair<entt::entity, bool>>&
 
 namespace {
 
-// Godot's Vector2::normalized: unchanged when zero.
+// Normalized, unchanged when zero.
 Vec2 normalized(Vec2 v) {
     const float length_squared = (v.x * v.x) + (v.y * v.y);
     if (length_squared == 0.0F) {
@@ -1338,8 +1335,8 @@ Vec2 normalized(Vec2 v) {
     return {v.x / length, v.y / length};
 }
 
-// An area's gravity at a point, as Godot's GodotArea2D::compute_gravity: along its direction,
-// or toward its center, falling off with distance squared past a unit distance.
+// An area's gravity at a point: along its direction, or toward its center, falling off with
+// distance squared past a unit distance.
 Vec2 area_gravity(const world::Tree2D& tree, entt::entity entity, const Zone2D& area,
                   Vec2 position) {
     if (!area.gravity_point) {
@@ -1357,7 +1354,7 @@ Vec2 area_gravity(const world::Tree2D& tree, entt::entity entity, const Zone2D& 
     return normalized(to_center) * area.gravity;
 }
 
-// A body's damping with its own, as Godot's damp modes.
+// A body's damping with its own, by the area's damp modes.
 float with_own(float total, const std::string& mode, float own) {
     return mode == "replace" ? own : total + own;
 }
@@ -1401,7 +1398,7 @@ AreaForces Space::forces(const world::World& world, const world::Tree2D& tree, c
     bool gravity_done = false;
     bool linear_done = false;
     bool angular_done = false;
-    // Godot's override modes, each from the highest priority down.
+    // The override modes, each from the highest priority down.
     const auto apply = [](const std::string& mode, auto value, auto& total, bool& done) {
         if (done || mode == "disabled") {
             return false;
@@ -1435,7 +1432,7 @@ AreaForces Space::forces(const world::World& world, const world::Tree2D& tree, c
             out.areas.push_back(area_body->entity);
         }
     }
-    // Then the project's, as Godot's default area.
+    // Then the project's, as the default area.
     if (!gravity_done) {
         out.gravity = out.gravity + (settings_.gravity_vector * settings_.gravity);
     }
@@ -1546,7 +1543,7 @@ void Space::step(world::World& world, float seconds) {
         const bool moving = animated && (transform.position != body->position ||
                                          transform.rotation != body->rotation);
         if (carrying) {
-            // As Godot's kinematic bodies: the constant velocities plus the move.
+            // The constant velocities plus the move, as for kinematic bodies.
             Vec2 linear = body->constant_linear_velocity;
             float angular = body->constant_angular_velocity;
             if (moving) {

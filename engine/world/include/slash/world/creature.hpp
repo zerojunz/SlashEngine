@@ -1,10 +1,10 @@
 #pragma once
 
-// Animals as recipes, after the creature tools of Unreal's Mutable and its Animal AI (Godot has
-// none): a .creature.json file says a species' body plan, its look and how it behaves (where it
-// roams, what it flees, hunts and eats, whether it flocks and whether people can tame and ride
-// it). slash/scene3d/creature.hpp builds it into a rigged, animated model, creature_cutout here
-// into a 2D cut-out drawn by the character_2d system, and slash/npc/fauna.hpp runs its behavior.
+// Animals as recipes, after the creature tools of Unreal's Mutable and its Animal AI: a
+// .creature.json file says a species' body plan, its look and how it behaves (where it roams, what
+// it flees, hunts and eats, whether it flocks and whether people can tame and ride it).
+// slash/scene3d/creature.hpp builds it into a rigged, animated model, creature_cutout here into a
+// 2D cut-out drawn by the character_2d system, and slash/npc/fauna.hpp runs its behavior.
 
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"

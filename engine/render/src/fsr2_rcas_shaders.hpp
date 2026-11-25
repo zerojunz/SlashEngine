@@ -1038,9 +1038,9 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> @location(0u) vec4<f32> {
 )wgsl";
 
 inline constexpr char kFsr2RcasHlsl[] = R"hlsl(// FSR 2's sharpening pass (ffx_fsr2_rcas.h): the accumulate pass's color sharpened with FSR 1's
-// robust contrast-adaptive sharpening, denoised, as FSR 2's copy of ffx_fsr1.h has it; or copied
-// as it is where Godot turns sharpening off (a sharpness of 0), as the accumulate pass writes the
-// output itself then. Keep it in step with src/fsr2.cpp, its CPU twin.
+// robust contrast-adaptive sharpening, denoised, as FSR 2's copy of ffx_fsr1.h has it; or copied as
+// it is where sharpening is off (a sharpness of 0), as the accumulate pass writes the output itself
+// then. Keep it in step with src/fsr2.cpp, its CPU twin.
 //
 // Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 //
@@ -1059,14 +1059,14 @@ inline constexpr char kFsr2RcasHlsl[] = R"hlsl(// FSR 2's sharpening pass (ffx_f
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// What the passes of AMD's FidelityFX Super Resolution 2.2 share, as Godot 4.6 runs it for its
-// scaling_3d mode "fsr2" (thirdparty/amd-fsr2): the uniforms, ffx_fsr2_common.h's helpers and
-// ffx_fsr2_sample.h's filters. Godot's FSR 2 is a compute shader per pass; here each pass draws one
-// triangle over its target (the reconstruct pass alone is a compute shader, for its atomics), and
-// loads texels and filters them in code, keeping every load inside its texture, so every device
-// draws the same values. Godot's settings: HDR input, reversed depth, motion vectors at the render
-// size, no auto exposure of FSR 2's own, a pre-exposure of 1. Keep these files in step with
-// src/fsr2.cpp, their CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// What the passes of AMD's FidelityFX Super Resolution 2.2 share, as the scaling_3d mode "fsr2"
+// runs it: the uniforms, ffx_fsr2_common.h's helpers and ffx_fsr2_sample.h's filters. Each pass
+// draws one triangle over its target (the reconstruct pass alone is a compute shader, for its
+// atomics), and loads texels and filters them in code, keeping every load inside its texture, so
+// every device draws the same values. The settings: HDR input, reversed depth, motion vectors at
+// the render size, no auto exposure of FSR 2's own, a pre-exposure of 1. Keep these files in step
+// with src/fsr2.cpp, their CPU twin.
 //
 // Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 //
@@ -1098,7 +1098,7 @@ cbuffer Fsr2 : FSR2_UNIFORMS {
     // The shading change mip's size, the reconstruct pass's step (0 clears, 1 scatters), and 1
     // for an orthogonal camera, whose depth FSR 2's perspective formulas take as linear here.
     int4 options;
-    // Godot's reprojection matrix by columns: clip space now to the frame before's.
+    // The reprojection matrix by columns: clip space now to the frame before's.
     float4 reprojection[4];
 };
 
@@ -1137,9 +1137,8 @@ int2 LumaMipDimensions() {
     return options.xy;
 }
 
-// Godot's derive_motion_vector (motion_vector_inc.glsl): a render pixel's motion vector from its
-// depth, for one the prepass drew none for (FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS).
-// Clip space's y runs up and texture coordinates' down.
+// A render pixel's motion vector from its depth, for one the prepass drew none for. Clip space's y
+// runs up and texture coordinates' down.
 float2 DeriveMotionVector(float2 fUv, float fDepth) {
     float x = fUv.x * 2.0 - 1.0;
     float y = 1.0 - fUv.y * 2.0;
@@ -1148,8 +1147,8 @@ float2 DeriveMotionVector(float2 fUv, float fDepth) {
     float2 ndc = previous.xy / previous.w;
     return float2(0.5 + ndc.x * 0.5 - fUv.x, 0.5 - ndc.y * 0.5 - fUv.y);
 }
-// LoadInputMotionVector's half of Godot's option: the prepass's motion vector, or one derived
-// from the depth where it is -1 both ways (the target's clear: the sky).
+// LoadInputMotionVector's half of that: the prepass's motion vector, or one derived from the depth
+// where it is -1 both ways (the target's clear: the sky).
 float2 ValidMotionVector(float2 fMotion, int2 iPxPos, float fDepth) {
     if (fMotion.x <= -1.0 && fMotion.y <= -1.0) {
         float2 fUv = (float2(iPxPos) + 0.5) / float2(RenderSize());
@@ -1320,13 +1319,13 @@ BilinearSamplingData GetBilinearSamplingData(float2 fUv, int2 iSize) {
     data.iOffsets[3] = int2(1, 1);
     data.fWeights[0] = (1.0 - fPxFrac.x) * (1.0 - fPxFrac.y);
     data.fWeights[1] = (fPxFrac.x) * (1.0 - fPxFrac.y);
-)hlsl"
-R"hlsl(    data.fWeights[2] = (1.0 - fPxFrac.x) * (fPxFrac.y);
+    data.fWeights[2] = (1.0 - fPxFrac.x) * (fPxFrac.y);
     data.fWeights[3] = (fPxFrac.x) * (fPxFrac.y);
     return data;
 }
 
-// A linear sampler with clamped edges, as the GPU's filters a texture of size at uv: the four
+)hlsl"
+R"hlsl(// A linear sampler with clamped edges, as the GPU's filters a texture of size at uv: the four
 // texels around it, kept inside the texture, blended.
 float2 LinearWeights(float2 fUv, int2 iSize, out int2 iBase) {
     float2 fPx = (fUv * float2(iSize)) - 0.5;

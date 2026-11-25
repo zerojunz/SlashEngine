@@ -1,5 +1,5 @@
-// Character movement, as Godot's CharacterBody3D.move_and_slide, on Space::test_motion (Godot's
-// body_test_motion). Each function names the one of Godot's it follows, line for line.
+// Character movement: move_and_slide, on Space::test_motion.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "space.hpp"
 
@@ -16,11 +16,11 @@ namespace {
 
 using world::CharacterMover3D;
 
-// Godot adds this to floor_max_angle and wall_min_slide_angle, so a surface right at the limit
+// This is added to floor_max_angle and wall_min_slide_angle, so a surface right at the limit
 // counts.
 constexpr float kFloorAngleThreshold = 0.01F;
 
-// Godot's CharacterBody3D::CollisionState.
+// Which kinds of surface a move touched: floor, wall, ceiling.
 struct CollisionState {
     bool floor = false;
     bool wall = false;
@@ -29,7 +29,7 @@ struct CollisionState {
 
 constexpr CollisionState kApplyAll{.floor = true, .wall = true, .ceiling = true};
 
-// Godot's Math::is_equal_approx.
+// Whether two floats are equal within a small relative tolerance.
 bool equal_approx(float a, float b) {
     if (a == b) {
         return true;
@@ -38,7 +38,7 @@ bool equal_approx(float a, float b) {
     return std::abs(a - b) < tolerance;
 }
 
-// Godot's Vector3::is_equal_approx.
+// Whether two vectors are equal within a small relative tolerance.
 bool equal_approx(Vec3 a, Vec3 b) {
     return equal_approx(a.x, b.x) && equal_approx(a.y, b.y) && equal_approx(a.z, b.z);
 }
@@ -55,7 +55,7 @@ float length_squared(Vec3 v) {
     return dot(v, v);
 }
 
-// One call of move_and_slide: the CharacterMover3D's members Godot keeps, loaded from the
+// One call of move_and_slide: the CharacterMover3D's members it keeps, loaded from the
 // component and the body, and written back when the move is done.
 class Mover {
 public:
@@ -149,7 +149,7 @@ private:
         return parameters;
     }
 
-    // What a collision touched, for the body's touching list, as Godot's motion_results.
+    // What a collision touched, for the body's touching list.
     void note(const MotionResult& result) {
         for (const MotionCollision& collision : result.collisions) {
             if (std::find(touching_.begin(), touching_.end(), collision.collider) ==
@@ -209,8 +209,8 @@ private:
         return colliding;
     }
 
-    // CharacterBody3D::_move_and_slide_grounded.
-    // NOLINTNEXTLINE(readability-function-cognitive-complexity): Godot's, kept whole
+    // The grounded move.
+    // NOLINTNEXTLINE(readability-function-cognitive-complexity): kept whole
     void move_and_slide_grounded(float delta, bool was_on_floor) {
         CharacterMover3D& c = *c_;
         Vec3 motion = c.velocity * delta;

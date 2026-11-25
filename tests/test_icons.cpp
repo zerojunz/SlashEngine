@@ -231,7 +231,7 @@ TEST_CASE("project.json and presets name icons, checked as project paths and col
     CHECK_FALSE(exporter::parse_color("#ff80zz").has_value());
 }
 
-TEST_CASE("an .icns file holds the icon at every size macOS asks for, as Godot writes it") {
+TEST_CASE("an .icns file holds the icon at every size macOS asks for") {
     const render::Image icon = picture(256);
     auto icns = exporter::encode_icns(icon);
     REQUIRE(icns.ok());

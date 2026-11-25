@@ -1,5 +1,5 @@
 // Builds V-HACD 4.1 (BSD-3-Clause, https://github.com/kmammou/v-hacd), the convex decomposition
-// Godot's importer makes collision hulls with, so that its hulls are the same on every platform:
+// that makes collision hulls, so that its hulls are the same on every platform:
 // it runs on one thread, cmake/patches/vhacd-deterministic.cmake gives it an order of its own
 // wherever a standard library would choose one, and its one pow call goes through the engine's
 // exp and ln rather than libm's, whose last bits differ between platforms.

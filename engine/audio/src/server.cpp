@@ -1,7 +1,7 @@
-// The mixer, following Godot's AudioServer (servers/audio/audio_server.cpp): _driver_process,
-// _mix_step and _mix_step_for_channel over each speaker pair, the playback list's states and
-// lookahead fade, and the bus setters. Godot mixes on the audio driver's thread; here mix() runs on
-// the game's, once per tick, so the same ticks make the same sound.
+// The mixer: each mix step over each speaker pair, the playback list's states and
+// lookahead fade, and the bus setters. mix() runs on the game's thread, once per tick, so the
+// same ticks make the same sound.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "filter.hpp"
 
@@ -115,7 +115,7 @@ struct Server::Impl final : MixContext {
         bool enabled = true;
     };
 
-    // A speaker pair's buffer on a bus, as Godot's Bus::Channel: its own copy of each effect.
+    // A speaker pair's buffer on a bus: its own copy of each effect.
     struct Channel {
         std::vector<Frame> buffer = std::vector<Frame>(kBufferSize);
         // One per effect slot; nullptr when it couldn't be made.
@@ -151,13 +151,12 @@ struct Server::Impl final : MixContext {
         PlaybackId id = 0;
         std::unique_ptr<Playback> playback;
         State state = State::Playing;
-        // The buses it mixes into and its volume in each, as Godot's bus details: one for most
+        // The buses it mixes into and its volume in each: one for most
         // players, more for a 3D player in an area with a reverb bus.
         std::vector<BusVolume> buses;
         std::vector<BusVolume> prev;
         float pitch_scale = 1.0F;
-        // A 3D player's high-shelf filter, one processor per speaker, shared by its buses as
-        // Godot's filter_process is.
+        // A 3D player's high-shelf filter, one processor per speaker, shared by its buses.
         float highshelf_gain = 0.0F;
         float attenuation_cutoff_hz = 0.0F;
         std::array<Filter::Processor, 2 * static_cast<std::size_t>(kMaxChannels)> filter_process{};
@@ -174,7 +173,7 @@ struct Server::Impl final : MixContext {
         return channel_mix_buffer(find_bus(name), std::clamp(channel, 0, channels - 1));
     }
 
-    // Godot's thread_find_bus_index: Master for a name it doesn't know.
+    // Finds a bus by name: Master for a name it doesn't know.
     [[nodiscard]] int find_bus(std::string_view name) const {
         for (const auto& bus : buses) {
             if (bus->name == name) {
@@ -193,7 +192,7 @@ struct Server::Impl final : MixContext {
         return nullptr;
     }
 
-    // Godot's thread_get_channel_mix_buffer: the first use in a mix step clears it.
+    // A bus's channel mix buffer: the first use in a mix step clears it.
     Frame* channel_mix_buffer(int index, int channel) {
         Channel& out =
             buses[static_cast<std::size_t>(index)]->channels[static_cast<std::size_t>(channel)];
@@ -215,7 +214,7 @@ struct Server::Impl final : MixContext {
         return it != playbacks.end() ? &*it : nullptr;
     }
 
-    // Godot's _mix_step_for_channel: the source into out at a volume ramping from vol_start to
+    // Mixes one speaker pair: the source into out at a volume ramping from vol_start to
     // vol_final, through the node's high-shelf filter for that speaker pair when it has one.
     void mix_step_for_channel(Frame* out, const Frame* source, Frame vol_start, Frame vol_final,
                               Node& node, int channel) const {
@@ -444,7 +443,7 @@ struct Server::Impl final : MixContext {
         to_mix = kBufferSize;
     }
 
-    // Godot's _update_bus_effects: each speaker pair gets its own copy of each effect.
+    // Each speaker pair gets its own copy of each effect.
     void update_bus_effects(Bus& bus, const BusSettings& settings) {
         bus.effects.clear();
         bus.channels.clear();
@@ -728,7 +727,7 @@ bool Server::input_active() const noexcept {
 }
 
 void Server::begin_input() {
-    // As Godot's set_input_device_active and the driver's input_start: the buffer starts over.
+    // The buffer starts over.
     input_.buffer.assign(static_cast<std::size_t>(input_buffer_length_frames()), Frame{});
     input_.recorded = 0;
     input_.read = 0;
@@ -810,7 +809,7 @@ Frame Server::input_frame(std::uint64_t index) const {
 }
 
 void Server::mix(std::span<Frame> out) {
-    // As Godot's _driver_process: each speaker pair of a frame after the one before.
+    // Each speaker pair of a frame after the one before.
     const auto cs = static_cast<std::size_t>(impl_->channels);
     const std::size_t frames = out.size() / cs;
     std::size_t done = 0;

@@ -169,10 +169,10 @@ int main() {
     // The HUD canvas is controls drawn over the game: the coin count laid out in a row at the
     // top left, the pause button at the top right and the hint along the bottom.
     agent.call("ui.layout", R"({"ids": ["coins", "icon", "count", "pause", "hint"]})");
-    // URP's 2D lights are Godot's: the dusky Global Light 2D is the scene's CanvasModulate and
-    // the lantern a PointLight2D, through a texture of its falloff, that swings with it. The lily
-    // pad's ShadowCaster2D is an occluder: beside the lantern it lights the pond on top of the
-    // dusk, and under the lily pad only the dusk does.
+    // URP's 2D lights become the engine's own: the dusky Global Light 2D is the scene's
+    // AmbientTint2D and the lantern a PointLight2D, through a texture of its falloff, that swings
+    // with it. The lily pad's ShadowCaster2D is an occluder: beside the lantern it lights the pond
+    // on top of the dusk, and under the lily pad only the dusk does.
     agent.call("entity.get", R"({"id": "global_light_2d", "components": ["CanvasModulate"]})");
     agent.call("entity.get", R"({"id": "lantern", "components": ["PointLight2D"],
                                  "omit_defaults": true})");

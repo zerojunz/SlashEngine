@@ -84,7 +84,7 @@ bool valid_version(std::string_view version) {
     return digits > 0 && parts == 2;
 }
 
-// rendering.scaling, as Godot's rendering/scaling_3d settings.
+// rendering.scaling.
 json::Value scaling_schema() {
     const render::Scaling defaults;
     json::Value mode;
@@ -375,7 +375,7 @@ json::Value anti_aliasing_schema() {
 }
 
 // rendering.virtual_geometry: how virtualized surfaces' cluster pages stream, as Unreal's Nanite
-// streaming pool (Godot has none).
+// streaming pool.
 json::Value virtual_geometry_schema() {
     json::Value pool;
     pool["type"] = "integer";
@@ -509,7 +509,7 @@ json::Value ray_tracing_schema() {
     return out;
 }
 
-// rendering.occlusion_culling, as Godot's rendering/occlusion_culling settings.
+// rendering.occlusion_culling.
 json::Value occlusion_culling_schema() {
     json::Value use;
     use["type"] = "boolean";

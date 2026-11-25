@@ -1,10 +1,10 @@
-// Tile collision, as Godot's TileSet physics layers: level.tileset.json gives its tiles collision
-// polygons, and each TileLayer2D whose tiles have them is a static body in 2D physics.
+// Tile collision: level.tileset.json gives its tiles collision polygons, and each TileLayer2D whose
+// tiles have them is a static body in 2D physics.
 //
 // The level in main.scene.json has blocks, a slope, a one-way ledge, a springy tile on a second
-// physics layer and a see-through alternative of the block with no collision. Four balls show
-// each: one rolls down the slope, one bounces on the spring, one falls through the see-through
-// block and one rises up through the ledge and lands on it.
+// physics layer and a see-through alternative of the block with no collision. Four balls show each:
+// one rolls down the slope, one bounces on the spring, one falls through the see-through block and
+// one rises up through the ledge and lands on it.
 
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
