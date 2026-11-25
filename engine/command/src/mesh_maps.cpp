@@ -399,7 +399,7 @@ namespace {
 Reply model_bake_maps(Session& session, const json::Value& params) {
     Reply reply = bake_model_maps(session, params, true, nullptr);
     if (reply.ok &&
-        (reply.data.find("cached") != nullptr || reply.data.find("unchanged") != nullptr)) {
+        (reply.value.find("cached") != nullptr || reply.value.find("unchanged") != nullptr)) {
         session.mark_unchanged();
     }
     return reply;
