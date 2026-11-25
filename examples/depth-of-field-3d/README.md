@@ -40,5 +40,5 @@ frame.capture {"points":[[118,85],[50,123],[157,102]],"path":"shots/statue.png"}
 
 As in Godot, what is blurred far behind something sharp takes a trace of its light at its edges,
 and near blur spreads over what is in focus behind it. Godot's Compatibility renderer
-(`"rendering_method": "gl_compatibility"`, and always with the OpenGL drivers) has no depth of
+(`"renderer": "compatibility"`, and always with the OpenGL drivers) has no depth of
 field.

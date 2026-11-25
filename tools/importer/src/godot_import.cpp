@@ -1896,7 +1896,7 @@ private:
             const bool es =
                 driver != nullptr && driver->is_string() && driver->text == "opengl3_es";
             project["rendering"]["driver"] = es ? "opengl_es" : "opengl";
-            project["rendering"]["rendering_method"] = "gl_compatibility";
+            project["rendering"]["renderer"] = "compatibility";
         }
         if (const Value* fallback = setting("rendering", "rendering_device/fallback_to_opengl3");
             fallback != nullptr && fallback->kind == Value::Kind::Bool) {
@@ -5400,6 +5400,8 @@ private:
                 problems_.add("style box property " + name, owner->path, field_why);
             }
         }
+        // Godot's property names, as SlashEngine's style boxes name them.
+        ui::upgrade_style_box(style);
         return style;
     }
 

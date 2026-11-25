@@ -97,7 +97,7 @@ round alike to within a few levels, which `tests/test_sdfgi.cpp` holds them to.
 ## Using it
 
 A `Environment3D`'s `sdfgi_*` fields turn it on ([scene-format.md](scene-format.md#worldenvironment)),
-with Godot's names and defaults. A frame in `forward_plus` drawn by the software or GPU device (as
+with Godot's names and defaults. A frame in `clustered` drawn by the software or GPU device (as
 `frame.capture` draws it) then lights its opaque meshes with it:
 
 ```json

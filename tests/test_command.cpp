@@ -1503,22 +1503,29 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     // The render scale is project.json's rendering.scaling; see tests/test_render_scale.cpp, and
     // frame generation tests/test_generated_frames.cpp.
     const std::string_view scaling =
-        R"("frame_generation": {"enabled": false}, "scaling": {"fsr_sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
+        R"("frame_generation": {"enabled": false}, "scaling": {"sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
     CHECK(engine.ok("display.list") ==
-          parse(R"({"displays": [], "max_fps": 0, "vsync_mode": "enabled", )" +
+          parse(R"({"displays": [], "max_fps": 0, "vsync": "enabled", )" +
                 std::string(scaling) + "}"));
-    CHECK(engine.ok("display.set", R"({"vsync_mode": "mailbox", "max_fps": 120})") ==
-          parse(R"({"max_fps": 120, "vsync_mode": "mailbox", )" + std::string(scaling) + "}"));
+    CHECK(engine.ok("display.set", R"({"vsync": "mailbox", "max_fps": 120})") ==
+          parse(R"({"max_fps": 120, "vsync": "mailbox", )" + std::string(scaling) + "}"));
     CHECK(loop.value().max_fps() == 120);
     CHECK(renderer->vsync() == slash::render::VsyncMode::Mailbox);
     CHECK(engine.ok("display.set", R"({"max_fps": 0})") ==
-          parse(R"({"max_fps": 0, "vsync_mode": "mailbox", )" + std::string(scaling) + "}"));
+          parse(R"({"max_fps": 0, "vsync": "mailbox", )" + std::string(scaling) + "}"));
+    // The params' old names still work.
+    CHECK(engine.ok("display.set", R"({"vsync_mode": "enabled", "scaling": {"fsr_sharpness": 0.2}})") ==
+          parse(R"({"max_fps": 0, "vsync": "enabled", )" + std::string(scaling) + "}"));
+    CHECK(renderer->vsync() == slash::render::VsyncMode::Enabled);
+    CHECK(engine.ok("display.set", R"({"vsync": "mailbox", "vsync_mode": "disabled"})")
+              .find("vsync")
+              ->as_string() == "mailbox");
     command::Reply bad =
         engine.fails("display.set", R"({"max_fps": 1001})", command::code::kInvalidParams);
     CHECK(contains(bad.message, "/max_fps"));
     bad =
-        engine.fails("display.set", R"({"vsync_mode": "adaptiv"})", command::code::kInvalidParams);
-    CHECK(contains(bad.message, "/vsync_mode"));
+        engine.fails("display.set", R"({"vsync": "adaptiv"})", command::code::kInvalidParams);
+    CHECK(contains(bad.message, "/vsync"));
     CHECK(loop.value().max_fps() == 0);
     // Neither changes the world, so there is nothing to undo.
     CHECK(engine.session->undo_labels().empty());
@@ -1532,7 +1539,7 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(stats.find("catch_up_frames")->as_int() == 0);
     CHECK(stats.find("tick_hz")->as_double() == doctest::Approx(60.0));
     CHECK(stats.find("renderer")->as_string() == "null");
-    CHECK(stats.find("vsync_mode")->as_string() == "mailbox");
+    CHECK(stats.find("vsync")->as_string() == "mailbox");
     CHECK(stats.find("frame_ms")->find("avg") != nullptr);
     CHECK(stats.find("fps") != nullptr);
     // With the world's tick and system times, and their params.

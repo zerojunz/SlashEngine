@@ -35,9 +35,9 @@
 //   }
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
-// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode",
+// ("major.minor.patch"), "window" ({"width", "height", "vsync",
 // "linux_display_driver"}), "tick_hz", "max_fps",
-// "rendering" ({"clear_color", "driver", "rendering_method", "texture_filter", "interpolation",
+// "rendering" ({"clear_color", "driver", "renderer", "texture_filter", "interpolation",
 // "scaling", "lights_and_shadows", "camera", "textures"}),
 // "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"

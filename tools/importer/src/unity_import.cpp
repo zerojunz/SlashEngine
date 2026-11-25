@@ -5524,25 +5524,25 @@ private:
             style["type"] = "texture";
             style["texture"] = sprite->texture;
             if (!sprite->whole) {
-                style["region_rect"] = json::Array{sprite->region[0], sprite->region[1],
+                style["region"] = json::Array{sprite->region[0], sprite->region[1],
                                                    sprite->region[2], sprite->region[3]};
             }
             if (look.type == 1 || look.type == 2) {
                 // Unity's borders are left, bottom, right and top.
-                style["texture_margin_left"] = sprite->border[0];
-                style["texture_margin_top"] = sprite->border[3];
-                style["texture_margin_right"] = sprite->border[2];
-                style["texture_margin_bottom"] = sprite->border[1];
+                style["slice_margin_left"] = sprite->border[0];
+                style["slice_margin_top"] = sprite->border[3];
+                style["slice_margin_right"] = sprite->border[2];
+                style["slice_margin_bottom"] = sprite->border[1];
                 if (!look.fill_center) {
-                    style["draw_center"] = false;
+                    style["fill_center"] = false;
                 }
                 if (look.type == 2) {
-                    style["axis_stretch_horizontal"] = "tile";
-                    style["axis_stretch_vertical"] = "tile";
+                    style["stretch_horizontal"] = "tile";
+                    style["stretch_vertical"] = "tile";
                 }
             }
             if (color != Color{1, 1, 1, 1}) {
-                style["modulate_color"] = color_json(color);
+                style["tint"] = color_json(color);
             }
             return style;
         }
@@ -5551,7 +5551,7 @@ private:
             return style;
         }
         style["type"] = "flat";
-        style["bg_color"] = color_json(color);
+        style["background_color"] = color_json(color);
         if (look.radius > 0) {
             style["corner_radius"] = look.radius;
         }
@@ -14730,7 +14730,7 @@ private:
                 static_cast<std::size_t>(current) < levels->items.size()) {
                 const std::int64_t vsync =
                     levels->items[static_cast<std::size_t>(current)].integer_at("vSyncCount", 1);
-                project["window"]["vsync_mode"] = vsync == 0 ? "disabled" : "enabled";
+                project["window"]["vsync"] = vsync == 0 ? "disabled" : "enabled";
             }
         }
         return project;

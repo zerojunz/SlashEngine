@@ -49,8 +49,9 @@ struct Scaling {
     bool operator==(const Scaling&) const = default;
 };
 
-// Settings from JSON ({"mode", "scale", "fsr_sharpness", "upscaler"}), each left at its default
-// when missing or of the wrong type, and the numbers clamped to their ranges.
+// Settings from JSON ({"mode", "scale", "sharpness", "upscaler"}; "fsr_sharpness" is sharpness's
+// old name), each left at its default when missing or of the wrong type, and the numbers clamped
+// to their ranges.
 [[nodiscard]] Scaling scaling_from_json(const json::Value& value);
 // The settings as JSON, every field but an empty upscaler.
 [[nodiscard]] json::Value scaling_json(const Scaling& scaling);

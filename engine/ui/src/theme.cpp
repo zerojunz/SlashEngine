@@ -643,9 +643,10 @@ json::Value theme_schema() {
 
 namespace {
 
-// The theme with its types, and the types they are based on, named by the controls' current names:
-// `doc` itself when none has an old one, else `copy`, which this fills. Where a type is given under
-// both names, the current one's items are kept.
+// The theme with its types, and the types they are based on, named by the controls' current names,
+// and its style boxes' keys by their current names: `doc` itself when none has an old one, else
+// `copy`, which this fills. Where a type is given under both names, the current one's items are
+// kept.
 const json::Value& current_types(const json::Value& doc, json::Value& copy) {
     const json::Value* types = doc.find("types");
     if (types == nullptr || !types->is_object()) {
@@ -654,10 +655,21 @@ const json::Value& current_types(const json::Value& doc, json::Value& copy) {
     const auto renamed = [](std::string_view name) {
         return world::current_component_name(name) != name;
     };
+    const auto old_style = [](const json::Value& type) {
+        const json::Value* styles = type.find("styles");
+        if (styles == nullptr || !styles->is_object()) {
+            return false;
+        }
+        return std::ranges::any_of(styles->as_object(), [](const auto& style) {
+            json::Value scratch;
+            return &current_style_box(style.second, scratch) != &style.second;
+        });
+    };
     const bool old = std::ranges::any_of(types->as_object(), [&](const auto& type) {
         const json::Value* base = type.second.find("base_type");
         return renamed(type.first) ||
-               (base != nullptr && base->is_string() && renamed(base->as_string()));
+               (base != nullptr && base->is_string() && renamed(base->as_string())) ||
+               old_style(type.second);
     });
     if (!old) {
         return doc;
@@ -667,6 +679,11 @@ const json::Value& current_types(const json::Value& doc, json::Value& copy) {
     for (auto& [name, type] : copy["types"].as_object()) {
         if (json::Value* base = type.find("base_type"); base != nullptr && base->is_string()) {
             *base = std::string(world::current_component_name(base->as_string()));
+        }
+        if (json::Value* styles = type.find("styles"); styles != nullptr && styles->is_object()) {
+            for (auto& entry : styles->as_object()) {
+                upgrade_style_box(entry.second);
+            }
         }
         const std::string_view now = world::current_component_name(name);
         if (now == name || !types->as_object().contains(std::string(now))) {

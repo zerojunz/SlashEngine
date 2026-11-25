@@ -2402,7 +2402,7 @@ void register_ui_components(ComponentRegistry& registry) {
                           "{\"checked\": \"ui/tick.png\"}."})
         .describe("theme_styles",
                   {.doc = "Theme style boxes by name, as in a .theme.json file, e.g. "
-                          "{\"panel\": {\"bg_color\": [0.1, 0.1, 0.2, 1], "
+                          "{\"panel\": {\"background_color\": [0.1, 0.1, 0.2, 1], "
                           "\"corner_radius\": 8}}."})
         .describe("theme",
                   {.doc = "A .theme.json file whose items it and its children use before the "

@@ -1,10 +1,10 @@
 # Renamed names
 
-Which components, fields, project settings, file suffixes, commands and schema kinds took SlashEngine's own names in November 2026, and how their old names still work.
+Which components, fields, style box keys, project settings, file suffixes, commands, command params and schema kinds took SlashEngine's own names in November 2026, and how their old names still work.
 
 - Scenes, prefabs and command params take either name. Saving, `scene format`, `engine.describe` and schemas use the new one.
 - Games' C++ keeps compiling: each old name is a deprecated alias of the new type, so the compiler names the new one.
-- The tables live in `engine/world/src/aliases.cpp` (`slash/world/aliases.hpp`): `current_component_name`, `current_field_name`, `upgrade_scene`, `upgrade_params`, for `project.json` `upgrade_settings`, and `has_suffix`, `current_command_name` and `current_param_value`.
+- The tables live in `engine/world/src/aliases.cpp` (`slash/world/aliases.hpp`): `current_component_name`, `current_field_name`, `upgrade_scene`, `upgrade_params`, for `project.json` `upgrade_settings` (setting values too), and `has_suffix`, `current_command_name`, `upgrade_param_names` and `current_param_value`.
 - Importers write the new names; Autopilot still reports the names its agent knows.
 
 | Old name | New name |
@@ -242,6 +242,22 @@ Fields renamed at the same time. Scenes, prefabs, command params that hold compo
 | `z_as_relative` | `sort_order_relative` | `Cloth2D`, `Emitter2D`, `Fluid2D` and 9 more |
 | `z_index` | `sort_order` | `Cloth2D`, `Emitter2D`, `Fluid2D` and 9 more |
 
+## Style box keys
+
+Keys of the [style boxes](scene-format.md#style-boxes) in themes' `styles` and controls' `theme_styles`. Loading reads an old key as its new one, sides included (`expand_margin_left` is `outset_left`); where both are given, the new one wins (`ui::upgrade_style_box`, `ui::style_box_aliases`).
+
+| Old key | New key |
+| --- | --- |
+| `axis_stretch_horizontal` | `stretch_horizontal` |
+| `axis_stretch_vertical` | `stretch_vertical` |
+| `bg_color` | `background_color` |
+| `corner_detail` | `corner_segments` |
+| `draw_center` | `fill_center` |
+| `expand_margin` | `outset` |
+| `modulate_color` | `tint` |
+| `region_rect` | `region` |
+| `texture_margin` | `slice_margin` |
+
 ## Project settings
 
 Settings that moved in `project.json`. Loading moves a setting at its old place to its new one (`world::upgrade_settings`); where both are given, the new one wins. Validation errors name the new place.
@@ -297,6 +313,13 @@ Settings that moved in `project.json`. Loading moves a setting at its old place 
 | `rendering.scaling.fsr_sharpness` | `rendering.scaling.sharpness` |
 | `window.vsync_mode` | `window.vsync` |
 
+Setting values that took new names (`world::setting_value_aliases`); loading reads the old value as the new one.
+
+| Setting | Old value | New value |
+| --- | --- | --- |
+| `rendering.renderer` | `forward_plus` | `clustered` |
+| `rendering.renderer` | `gl_compatibility` | `compatibility` |
+
 
 ## File suffixes
 
@@ -319,6 +342,15 @@ Every front end (CLI `call`, JSON-RPC, MCP, REST) still runs a command by its ol
 | `gridmap.get` | `blockmap.get` |
 | `gridmap.set` | `blockmap.set` |
 | `voxel_gi.bake` | `voxel_lighting.bake` |
+
+## Command params
+
+Params a command still takes under their old names (`world::param_name_aliases`); where both are given, the new one wins. Results use the new names.
+
+| Command | Old param | New param |
+| --- | --- | --- |
+| `display.set` | `vsync_mode` | `vsync` |
+| `display.set` | `scaling.fsr_sharpness` | `scaling.sharpness` |
 
 ## Schema kinds
 

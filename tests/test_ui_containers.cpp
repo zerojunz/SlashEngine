@@ -326,7 +326,7 @@ TEST_CASE("themes give controls their items, nearest first, then the project's t
             "Label": {"colors": {"font_color": [1, 0, 0, 1]}, "font_sizes": {"font_size": 20}},
             "Title": {"base_type": "Label", "font_sizes": {"font_size": 32}},
             "StackBox": {"constants": {"separation": 10}},
-            "Panel": {"styles": {"panel": {"bg_color": [0, 0, 1, 1], "corner_radius": 6}}}
+            "Panel": {"styles": {"panel": {"background_color": [0, 0, 1, 1], "corner_radius": 6}}}
         }
     })";
     scene.files.files["ui/project.theme.json"] = R"({
@@ -421,20 +421,55 @@ TEST_CASE("style boxes read Godot's property names, with shorthands for every si
           R"("corner_radius_bottom_right":4,"corner_radius_top_right":4})");
 
     const auto texture = ui::parse_style_box(
-        parse(R"({"type": "texture", "texture": "ui/box.png", "texture_margin": 6})"));
+        parse(R"({"type": "texture", "texture": "ui/box.png", "slice_margin": 6})"));
     REQUIRE(texture.ok());
     CHECK(texture.value().margin(2) == 6.0F);
     CHECK(texture.value().minimum_size() == Vec2{12.0F, 12.0F});
     CHECK(ui::parse_style_box(parse(R"({"type": "empty"})")).value().minimum_size() == Vec2{});
 
-    CHECK(error_lines(ui::validate_style_box(parse(R"({"bg_colour": [1, 1, 1, 1]})"))) ==
-          std::vector<std::string>{"/bg_colour: unknown property \"bg_colour\"; did you mean "
-                                   "\"bg_color\"?"});
+    CHECK(error_lines(ui::validate_style_box(parse(R"({"background_colour": [1, 1, 1, 1]})"))) ==
+          std::vector<std::string>{"/background_colour: unknown property \"background_colour\"; did you mean "
+                                   "\"background_color\"?"});
     CHECK(error_lines(ui::validate_style_box(parse(R"({"texture": "ui/box.png"})"))) ==
           std::vector<std::string>{
               "/texture: flat style boxes have no texture; it is for \"type\": \"texture\""});
     CHECK(error_lines(ui::validate_style_box(parse(R"({"type": "texture"})"))) ==
           std::vector<std::string>{": a texture style box needs a texture"});
+}
+
+TEST_CASE("style boxes and themes written with the old key names still load") {
+    // Each old key, sides and all, reads as its current name.
+    const auto flat = ui::parse_style_box(parse(R"({"bg_color": [0, 0, 1, 1], "corner_detail": 4,
+        "draw_center": false, "expand_margin": 3, "expand_margin_left": 5})"));
+    REQUIRE(flat.ok());
+    CHECK(flat.value().bg_color == Vec4{0.0F, 0.0F, 1.0F, 1.0F});
+    CHECK(flat.value().corner_detail == 4);
+    CHECK_FALSE(flat.value().draw_center);
+    CHECK(flat.value().expand_margin == std::array<float, 4>{5.0F, 3.0F, 3.0F, 3.0F});
+    CHECK(json::write(ui::style_box_json(flat.value()), json::Style::Compact) ==
+          R"({"background_color":[0.0,0.0,1.0,1.0],"corner_segments":4,"fill_center":false,)"
+          R"("outset":3.0,"outset_left":5.0})");
+    const auto texture = ui::parse_style_box(parse(R"({"type": "texture", "texture": "ui/box.png",
+        "region_rect": [0, 0, 8, 8], "texture_margin_top": 2, "axis_stretch_horizontal": "tile",
+        "axis_stretch_vertical": "tile_fit", "modulate_color": [1, 0, 0, 1]})"));
+    REQUIRE(texture.ok());
+    CHECK(texture.value().texture_margin[1] == 2.0F);
+    CHECK(texture.value().axis_stretch_horizontal == ui::StyleBox::Stretch::Tile);
+    CHECK(texture.value().axis_stretch_vertical == ui::StyleBox::Stretch::TileFit);
+    CHECK(texture.value().modulate_color == Vec4{1.0F, 0.0F, 0.0F, 1.0F});
+    // Given under both names, the current one wins; errors name the current key.
+    json::Value both = parse(R"({"bg_color": [1, 1, 1, 1], "background_color": [0, 0, 0, 1]})");
+    CHECK(ui::upgrade_style_box(both));
+    CHECK(json::write(both, json::Style::Compact) == R"({"background_color":[0,0,0,1]})");
+    CHECK(error_lines(ui::validate_style_box(parse(R"({"corner_detail": 40})"))) ==
+          std::vector<std::string>{"/corner_segments: must be at most 20, got 40"});
+    // Themes too.
+    CHECK(ui::validate_theme(parse(R"({"format": 1, "types": {
+              "Panel": {"styles": {"panel": {"bg_color": [1, 1, 1, 1]}}}}})"))
+              .empty());
+    const auto theme = ui::parse_theme(parse(R"({"format": 1, "types": {
+              "Panel": {"styles": {"panel": {"bg_color": [1, 0, 0, 1]}}}}})"));
+    REQUIRE(theme.ok());
 }
 
 TEST_CASE("theme files are checked for unknown types, items and broken variations") {
@@ -448,7 +483,7 @@ TEST_CASE("theme files are checked for unknown types, items and broken variation
               "Label": {"colors": {"font_colour": [1, 1, 1, 1]}},
               "Loop": {"base_type": "Loop2"},
               "Loop2": {"base_type": "Loop"},
-              "Panel": {"styles": {"panel": {"bg_color": [1, 1, 1, 1]}}}}})"))) ==
+              "Panel": {"styles": {"panel": {"background_color": [1, 1, 1, 1]}}}}})"))) ==
           std::vector<std::string>{
               "/types/Big/base_type: \"Labl\" isn't a control type or a type in this theme; did "
               "you mean \"Label\"?",
@@ -460,9 +495,9 @@ TEST_CASE("theme files are checked for unknown types, items and broken variation
           });
     // The schema's errors come first, alone.
     CHECK(error_lines(ui::validate_theme(parse(R"({"format": 1, "types": {
-              "Panel": {"styles": {"panel": {"bg_colour": [1, 1, 1, 1]}}}}})"))) ==
-          std::vector<std::string>{"/types/Panel/styles/panel/bg_colour: unknown property "
-                                   "\"bg_colour\"; did you mean \"bg_color\"?"});
+              "Panel": {"styles": {"panel": {"background_colour": [1, 1, 1, 1]}}}}})"))) ==
+          std::vector<std::string>{"/types/Panel/styles/panel/background_colour: unknown property "
+                                   "\"background_colour\"; did you mean \"background_color\"?"});
 }
 
 TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's StyleBoxFlat") {
@@ -470,7 +505,7 @@ TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's St
     scene.create("panel", R"({"Widget": {"offset_left": 10, "offset_top": 10,
                                           "offset_right": 110, "offset_bottom": 60,
                                           "theme_override_styles": {"panel": {
-                                              "bg_color": [1, 0, 0, 1], "corner_radius": 4}}},
+                                              "background_color": [1, 0, 0, 1], "corner_radius": 4}}},
                               "Panel": {}})");
     ui::DrawList drawn = ui::draw_calls(scene.layout(), scene.world, scene.fonts());
     CHECK(drawn.boxes == 1);
@@ -498,7 +533,7 @@ TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's St
     scene.set("panel", R"({"Widget": {"offset_left": 10, "offset_top": 10,
                                        "offset_right": 110, "offset_bottom": 60,
                                        "theme_override_styles": {"panel": {
-                                           "bg_color": [0, 0, 0, 1], "border_width": 2}}}})");
+                                           "background_color": [0, 0, 0, 1], "border_width": 2}}}})");
     drawn = ui::draw_calls(scene.layout(), scene.world, scene.fonts());
     CHECK(drawn.calls[0].vertices.size() == (16 + 6) * 3);
 

@@ -133,7 +133,7 @@ int main() {
     // be.
     call(
         session, "component.set",
-        R"({"id": "slot_1", "components": {"Widget": {"theme_override_styles": {"panal": {"bg_color": [1, 0, 0, 1]}}}}})");
+        R"({"id": "slot_1", "components": {"Widget": {"theme_override_styles": {"panal": {"background_color": [1, 0, 0, 1]}}}}})");
     call(session, "ui.layout", R"({"ids": ["slot_1"]})");
     call(session, "undo", "{}");
 
