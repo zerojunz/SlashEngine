@@ -54,6 +54,7 @@
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/damage.hpp"
@@ -249,7 +250,7 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(canvas::kMaterialSuffix)) {
         return DataFile::Material;
     }
-    if (name.ends_with(canvas::kProcessMaterialSuffix)) {
+    if (world::has_suffix(name, canvas::kProcessMaterialSuffix)) {
         return DataFile::ProcessMaterial;
     }
     if (name.ends_with(animation::kAnimationSuffix)) {
@@ -295,7 +296,7 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(navigation::kMeshSuffix)) {
         return DataFile::NavigationMesh;
     }
-    if (name.ends_with(navigation::kPolygonSuffix)) {
+    if (world::has_suffix(name, navigation::kPolygonSuffix)) {
         return DataFile::NavigationPolygon;
     }
     if (name.ends_with(npc::kBrainSuffix)) {
@@ -337,7 +338,7 @@ DataFile data_file(std::string_view name) {
     if (world::is_face_path(name)) {
         return DataFile::Face;
     }
-    if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
+    if (world::has_suffix(name, scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
     }
     if (name.ends_with(scene3d::kStandardMaterialSuffix)) {
@@ -346,7 +347,7 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(scene3d::kLightmapSuffix)) {
         return DataFile::Lightmap;
     }
-    if (name.ends_with(scene3d::kVoxelGISuffix)) {
+    if (world::has_suffix(name, scene3d::kVoxelGISuffix)) {
         return DataFile::VoxelLighting3D;
     }
     if (name.ends_with(scene3d::kSplatSuffix)) {
@@ -750,11 +751,11 @@ std::optional<std::string> with_quality(std::string_view text, const std::string
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
-// .bus_layout.json, .navmesh.json, .navpoly.json, .npc.json, .meshlib.json, .lightmap.json and
-// .voxelgi.json file, translation file (.po, .mo and the CSV files project.json lists), heightmap,
-// lightmap's .hdr texels, Gaussian splats' .ply file and model into data, checking each on the way.
-// Materials take their shaders compiled for the platform, and textures ship in the forms
-// project.json's rendering.textures asks for, kept in library_dir's cache. Model recipes ship
+// .bus_layout.json, .navmesh.json, .navmesh2d.json, .npc.json, .blocks.json, .lightmap.json and
+// .voxellight.json file, translation file (.po, .mo and the CSV files project.json lists),
+// heightmap, lightmap's .hdr texels, Gaussian splats' .ply file and model into data, checking each
+// on the way. Materials take their shaders compiled for the platform, and textures ship in the
+// forms project.json's rendering.textures asks for, kept in library_dir's cache. Model recipes ship
 // as the preset's model_quality tier makes them.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 std::string_view target, const Preset& preset, const std::string& library_dir,

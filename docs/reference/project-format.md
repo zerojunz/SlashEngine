@@ -1015,7 +1015,7 @@ my-game/
 ```
 
 Only `project.json`, `.scene.json`, `.prefab.json`, `.frames.json`, `.material.json`,
-`.process_material.json`, `.anim.json`, `.tileset.json`, `.font.json`, `.ttf`, `.otf`, `.png`
+`.particles.json`, `.anim.json`, `.tileset.json`, `.font.json`, `.ttf`, `.otf`, `.png`
 and `.bmp` files ship in an export, and each is checked first: a texture SDL can't read or a
 font FreeType can't draw is an error, like a scene, material, process material, animation, tile
 set or font settings file that fails validation, a tile map layer whose legend or rows don't

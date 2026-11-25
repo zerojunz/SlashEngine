@@ -209,8 +209,8 @@ environment variables, never from the file.
   `CharacterMover2D`, `Zone2D` and the rest, with `Collider2D` shapes. Ask what is where
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
 - Particles are `Emitter2D` components, as Godot's, with a texture from `sprites/`, or
-  `GpuEmitter2D` ones for many thousands, moved on the GPU as a `.process_material.json` file
-  (`slash-cli schema process_material`) says. Check either with `particles_eval` (how many,
+  `GpuEmitter2D` ones for many thousands, moved on the GPU as a `.particles.json` file
+  (`slash-cli schema particles`) says. Check either with `particles_eval` (how many,
   where, and each one) rather than a screenshot.
 - UI is `Widget`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
   laid out in the window by anchors and offsets or by containers. `fonts/` (or any folder):

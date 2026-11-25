@@ -15,7 +15,7 @@ the fog: the red wall, high on the back wall, lower on the back wall and the flo
 
 - Before a bake the VoxelLighting3D has no data, so only the sun and its shadows light the fog: the red
   wall reads (0.61, 0.22, 0.19) and high on the back wall (0.58, 0.56, 0.55).
-- `voxel_gi.bake` voxelizes the four static meshes. Now the bounce lights the meshes and the fog
+- `voxel_lighting.bake` voxelizes the four static meshes. Now the bounce lights the meshes and the fog
   in front of them: (0.71, 0.28, 0.24) and (0.65, 0.62, 0.58).
 - `component.set` raises `volumetric_fog_gi_inject` to 4, and the fog glows brighter with the
   bounce: (0.80, 0.41, 0.34) and (0.75, 0.71, 0.65).

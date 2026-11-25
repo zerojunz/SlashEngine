@@ -46,7 +46,7 @@ std::vector<render::Particle3D> live(command::Session& session, std::string_view
     const entt::entity entity = world.find(id);
     const auto& emitter = world.ecs().get<const world::GpuEmitter3D>(entity);
     const auto process =
-        session.assets().load<slash::canvas::ProcessMaterial>(emitter.process_material);
+        session.assets().load<slash::canvas::ProcessMaterial>(emitter.particle_rules);
     if (!process) {
         std::exit(1);
     }

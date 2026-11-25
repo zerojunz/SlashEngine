@@ -30,7 +30,7 @@ the replies.
   `WorldEnvironment` fields and a `ProceduralSkyMaterial` component; `project.godot`'s
   `3d/default_gravity` becomes `project.json`'s `physics_3d` gravity.
 - The fireflies are a `GPUParticles3D`: its `ParticleProcessMaterial` becomes a
-  `.process_material.json` file in 3D (its sphere emission, `direction`, `spread`, zero gravity
+  `.particles.json` file in 3D (its sphere emission, `direction`, `spread`, zero gravity
   and color), `visibility_aabb` becomes `visibility_aabb_position` and `visibility_aabb_size`, and
   `draw_pass_1`'s `QuadMesh` and its material become the entity's own. The `Lure`
   (`GPUParticlesAttractorSphere3D`) pulls them toward the lamp and the `Roof`

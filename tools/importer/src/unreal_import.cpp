@@ -2317,7 +2317,7 @@ private:
     }
 
     // A Niagara system as Godot's particles: each enabled emitter becomes a CPUParticles3D, or a
-    // GPUParticles3D with a .process_material.json file when Unreal simulates it on the GPU, on
+    // GPUParticles3D with a .particles.json file when Unreal simulates it on the GPU, on
     // the component's entity, or on an entity of its own under it when there are several.
     void convert_niagara(const json::Value& niagara, Level& level, const std::string& id,
                          const std::string& where) {

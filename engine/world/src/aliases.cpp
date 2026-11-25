@@ -130,6 +130,7 @@ constexpr std::array kComponents = std::to_array<NameAlias>({
 // Sorted by component, then old name.
 constexpr std::array kFields = std::to_array<FieldAlias>({
     {"AnimationGraph", "tree_root", "root"},
+    {"BlockMap3D", "mesh_library", "blocks"},
     {"BoneLookAt3D", "origin_external_node", "origin_entity"},
     {"BoneLookAt3D", "target_node", "target"},
     {"BoneSocket3D", "external_skeleton", "skeleton_entity"},
@@ -200,6 +201,7 @@ constexpr std::array kFields = std::to_array<FieldAlias>({
     {"GpuEmitter2D", "hframes", "columns"},
     {"GpuEmitter2D", "light_mask", "light_layers"},
     {"GpuEmitter2D", "local_coords", "local_space"},
+    {"GpuEmitter2D", "process_material", "particle_rules"},
     {"GpuEmitter2D", "texture_filter", "filter"},
     {"GpuEmitter2D", "vframes", "rows"},
     {"GpuEmitter2D", "z_as_relative", "sort_order_relative"},
@@ -214,6 +216,7 @@ constexpr std::array kFields = std::to_array<FieldAlias>({
     {"GpuEmitter3D", "fixed_fps", "fixed_rate"},
     {"GpuEmitter3D", "fract_delta", "smooth_emission"},
     {"GpuEmitter3D", "local_coords", "local_space"},
+    {"GpuEmitter3D", "process_material", "particle_rules"},
     {"Hair2D", "light_mask", "light_layers"},
     {"Hair2D", "modulate", "tint"},
     {"Hair2D", "texture_filter", "filter"},
@@ -240,6 +243,8 @@ constexpr std::array kFields = std::to_array<FieldAlias>({
     {"Model3D", "material_override", "material"},
     {"MovingBody2D", "physics_material_override", "physics_material"},
     {"MovingBody3D", "physics_material_override", "physics_material"},
+    {"NavArea2D", "navigation_polygon", "navmesh"},
+    {"NavArea3D", "navigation_mesh", "navmesh"},
     {"NineSlice", "axis_stretch_horizontal", "stretch_horizontal"},
     {"NineSlice", "axis_stretch_vertical", "stretch_vertical"},
     {"NineSlice", "draw_center", "fill_center"},
@@ -782,6 +787,101 @@ const json::Value& current_settings(const json::Value& project, json::Value& cop
     copy = project;
     upgrade_settings(copy);
     return copy;
+}
+
+namespace {
+
+constexpr std::array kSuffixes = std::to_array<SuffixAlias>({
+    {".meshlib.json", ".blocks.json"},
+    {".navpoly.json", ".navmesh2d.json"},
+    {".process_material.json", ".particles.json"},
+    {".voxelgi.json", ".voxellight.json"},
+});
+
+// Sorted by old name.
+constexpr std::array kCommands = std::to_array<NameAlias>({
+    {"csg.get", "solid.get"},
+    {"gridmap.get", "blockmap.get"},
+    {"gridmap.set", "blockmap.set"},
+    {"voxel_gi.bake", "voxel_lighting.bake"},
+});
+
+} // namespace
+
+std::span<const SuffixAlias> suffix_aliases() {
+    return kSuffixes;
+}
+
+bool has_suffix(std::string_view path, std::string_view suffix) {
+    if (path.ends_with(suffix)) {
+        return true;
+    }
+    return std::ranges::any_of(kSuffixes, [&](const SuffixAlias& alias) {
+        return alias.suffix == suffix && path.ends_with(alias.old_suffix);
+    });
+}
+
+std::vector<std::string> suffixes_of(std::string_view suffix) {
+    std::vector<std::string> out{std::string(suffix)};
+    for (const SuffixAlias& alias : kSuffixes) {
+        if (alias.suffix == suffix) {
+            out.emplace_back(alias.old_suffix);
+        }
+    }
+    return out;
+}
+
+std::span<const NameAlias> command_aliases() {
+    return kCommands;
+}
+
+std::string_view current_command_name(std::string_view name) {
+    const std::span<const NameAlias> list = kCommands;
+    const auto it = std::ranges::lower_bound(list, name, std::less<>{}, &NameAlias::old_name);
+    return it != list.end() && it->old_name == name ? it->name : name;
+}
+
+namespace {
+
+constexpr std::array kParamValues = std::to_array<ParamValueAlias>({
+    {"schema.get", "kind", "meshlib", "blocks"},
+    {"schema.get", "kind", "navpoly", "navmesh2d"},
+    {"schema.get", "kind", "process_material", "particles"},
+    {"schema.get", "kind", "voxel_gi", "voxel_light"},
+});
+
+} // namespace
+
+std::span<const ParamValueAlias> param_value_aliases() {
+    return kParamValues;
+}
+
+std::string_view current_param_value(std::string_view command, std::string_view param,
+                                     std::string_view value) {
+    for (const ParamValueAlias& alias : kParamValues) {
+        if (alias.command == command && alias.param == param && alias.old_value == value) {
+            return alias.value;
+        }
+    }
+    return value;
+}
+
+bool upgrade_param_values(std::string_view command, json::Value& params) {
+    if (!params.is_object()) {
+        return false;
+    }
+    bool replaced = false;
+    for (auto& [param, value] : params.as_object()) {
+        if (!value.is_string()) {
+            continue;
+        }
+        if (const std::string_view current = current_param_value(command, param, value.as_string());
+            current != value.as_string()) {
+            value = std::string(current);
+            replaced = true;
+        }
+    }
+    return replaced;
 }
 
 } // namespace slash::world

@@ -10,6 +10,6 @@
 {"id":10,"jsonrpc":"2.0","result":{"colors":[[0.4,0.431,0.549,1]],"drawn":{"meshes":4},"height":90,"width":160}}
 {"id":11,"jsonrpc":"2.0","result":{"changed":1,"id":"level"}}
 {"id":12,"jsonrpc":"2.0","result":{"cells":[{"cell":[1,0,0],"center":[3,1,1],"item":"ramp","orientation":22}]}}
-{"id":13,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":1,"undone":"gridmap.set"}}
-{"id":14,"jsonrpc":"2.0","result":{"can_redo":2,"can_undo":0,"undone":"gridmap.set"}}
+{"id":13,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":1,"undone":"blockmap.set"}}
+{"id":14,"jsonrpc":"2.0","result":{"can_redo":2,"can_undo":0,"undone":"blockmap.set"}}
 {"id":15,"jsonrpc":"2.0","result":{"length":12.6453,"points":[[1,0.2,7],[2,0.2,6],[4,0.2,4],[6,0.2,3.3333],[8,0.2,2.6667],[10,2,2],[11,2,1]]}}

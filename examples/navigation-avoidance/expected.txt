@@ -1,7 +1,7 @@
 scene.open {"path":"main.scene.json"}
 {"entities":8,"path":"main.scene.json"}
 navigation.bake {"id":"plaza"}
-{"file":"nav/plaza.navpoly.json","obstacle_outlines":1,"obstructions":0,"polygons":12,"vertices":16}
+{"file":"nav/plaza.navmesh2d.json","obstacle_outlines":1,"obstructions":0,"polygons":12,"vertices":16}
 events.subscribe {"kinds":["target_reached"]}
 {"subscription":"events_1"}
 1 s: courier (224.4, 95.6) west_1 (100.0, 280.0) west_2 (100.0, 320.0) east_1 (300.0, 285.0) east_2 (300.0, 315.0) cart (120.0, 220.0)

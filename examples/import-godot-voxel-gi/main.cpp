@@ -1,5 +1,5 @@
 // Importing a Godot VoxelGI with its baked cells: project.import writes the
-// cells of the VoxelGIData Godot baked as a .voxelgi.json file, so the room
+// cells of the VoxelGIData Godot baked as a .voxellight.json file, so the room
 // lights as it did in Godot with no new bake.
 //
 // godot/ holds "Gallery", a Godot 4 project as its maker keeps it: a room with

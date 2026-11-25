@@ -43,7 +43,7 @@
 namespace slash::navigation {
 
 inline constexpr std::string_view kMeshSuffix = ".navmesh.json";
-inline constexpr std::string_view kPolygonSuffix = ".navpoly.json";
+inline constexpr std::string_view kPolygonSuffix = ".navmesh2d.json";
 
 // What geometry under a region bakes into its file, as Godot's ParsedGeometryType.
 enum class ParsedGeometry : std::uint8_t { MeshInstances, StaticColliders, Both };
@@ -87,7 +87,7 @@ struct NavigationMesh {
     Vec3 filter_baking_aabb_offset;
 };
 
-// A .navpoly.json file, as Godot's NavigationPolygon: the same in 2D, in pixels, with outlines
+// A .navmesh2d.json file, as Godot's NavigationPolygon: the same in 2D, in pixels, with outlines
 // that baking fills.
 struct NavigationPolygon {
     std::vector<Vec2> vertices;
@@ -120,7 +120,7 @@ struct NavigationPolygon {
 [[nodiscard]] Result<NavigationMesh> parse_mesh(const json::Value& doc);
 [[nodiscard]] Result<NavigationPolygon> parse_polygon(const json::Value& doc);
 
-// Registers .navmesh.json and .navpoly.json files with assets.
+// Registers .navmesh.json and .navmesh2d.json files with assets.
 void add_asset_types(asset::Assets& assets);
 
 // ---- Baking, as Godot 4.6's NavigationServer3D and 2D: parse the geometry under a region, then

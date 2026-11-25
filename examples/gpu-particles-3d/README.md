@@ -5,7 +5,7 @@ Particles in 3D, as Godot 4.6's `GpuEmitter3D` with its `ParticleProcessMaterial
 yellow to a fading red and drift in turbulence; leaves made of thin boxes circle a ring about y
 in the emitter's own space, spinning as they go; and blue streaks thrown up from a box stretch
 along their velocity as they fly and fall. Each emitter's
-[`.process_material.json`](sparks.process_material.json) says how its particles move.
+[`.particles.json`](sparks.particles.json) says how its particles move.
 [calls.jsonl](calls.jsonl) checks them with `particles.eval`, draws the scene with
 `frame.capture`, turns the sparks off and adds an emitter with nothing to draw;
 [results.jsonl](results.jsonl) holds the replies.

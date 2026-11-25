@@ -33,7 +33,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `Collider2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, voxel_gi, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, pipeline, storyboard, project, presets, sdk, plugin, providers, bench)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, animtree, particles, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navmesh2d, npc, quest, dialogue, blocks, lightmap, voxel_light, model, standard_material, texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, character, face, creature, vehicle, vfx, fluid, water, pipeline, storyboard, project, presets, sdk, plugin, providers, bench)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -41,10 +41,10 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`, `.animtree.json`,
-`.process_material.json`, `.tileset.json`, `.font.json`, `.theme.json`, `.audio.json`,
+`.particles.json`, `.tileset.json`, `.font.json`, `.theme.json`, `.audio.json`,
 `.bus_layout.json`, `.replay.json`, `.test.json`, `.score.json`, `.navmesh.json`,
-`.navpoly.json`, `.npc.json`, `.quest.json`, `.dialogue.json`, `.meshlib.json`,
-`.lightmap.json`, `.voxelgi.json`, `.model.json`, `.standard_material.json`, `.texture.json`,
+`.navmesh2d.json`, `.npc.json`, `.quest.json`, `.dialogue.json`, `.blocks.json`,
+`.lightmap.json`, `.voxellight.json`, `.model.json`, `.standard_material.json`, `.texture.json`,
 `.scatter.json`, `.pcg.json`, `.physics_material.json`, `.ragdoll.json`, `.foliage.json`,
 `.groom.json`, `.damage.json`, `.character.json`, `.face.json`, `.creature.json`,
 `.vehicle.json`, `.vfx.json`, `.fluid.json`, `.water.json` and `.pipeline.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a

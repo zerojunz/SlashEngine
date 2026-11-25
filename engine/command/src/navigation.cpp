@@ -3,6 +3,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -361,11 +362,10 @@ struct RegionFile {
 std::optional<Reply> read_region_file(Session& session, const std::string& path,
                                       std::string_view suffix, RegionFile& out) {
     const bool three_d = suffix == navigation::kMeshSuffix;
-    if (!path.ends_with(suffix)) {
+    if (!world::has_suffix(path, suffix)) {
         return param_error(code::kInvalidArgument, "/id",
-                           "its " +
-                               std::string(three_d ? "navigation_mesh" : "navigation_polygon") +
-                               " " + quoted(path) + " is not a " + std::string(suffix) + " file");
+                           "its navmesh " + quoted(path) + " is not a " + std::string(suffix) +
+                               " file");
     }
     auto text = session.read_project_file(path);
     if (!text) {
@@ -407,15 +407,14 @@ Reply navigation_bake(Session& session, const json::Value& params) {
         return param_error(code::kInvalidParams, "/id",
                            quoted(id) + " has no NavArea2D or NavArea3D");
     }
-    const std::string& path =
-        region_3d != nullptr ? region_3d->navigation_mesh : region_2d->navigation_polygon;
+    const std::string& path = region_3d != nullptr ? region_3d->navmesh : region_2d->navmesh;
     if (path.empty()) {
         return param_error(code::kInvalidArgument, "/id",
                            region_3d != nullptr
-                               ? quoted(id) + " names no navigation_mesh file to bake into, "
+                               ? quoted(id) + " names no navmesh file to bake into, "
                                               "such as \"navigation/level.navmesh.json\""
-                               : quoted(id) + " names no navigation_polygon file to bake into, "
-                                              "such as \"navigation/level.navpoly.json\"");
+                               : quoted(id) + " names no navmesh file to bake into, "
+                                              "such as \"navigation/level.navmesh2d.json\"");
     }
     RegionFile file;
     if (auto failed = read_region_file(
@@ -596,7 +595,7 @@ void register_navigation_commands(Registry& registry) {
     region_id["minLength"] = 1;
     registry.add({
         .name = "navigation.bake",
-        .description = "Bakes a region's navigation_mesh or navigation_polygon file from the "
+        .description = "Bakes a region's navmesh file from the "
                        "geometry under it, as Godot's bake_navigation_mesh and "
                        "bake_navigation_polygon, keeping the file's settings. Obstacles with "
                        "affect_navigation_mesh are cut out; tile map layers add their tiles' "

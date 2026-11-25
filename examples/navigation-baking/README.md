@@ -8,7 +8,7 @@ Godot bakes the nodes under a region:
 
 ```json
 "courtyard": {"components": {
-  "NavArea3D": {"navigation_mesh": "nav/courtyard.navmesh.json"},
+  "NavArea3D": {"navmesh": "nav/courtyard.navmesh.json"},
   "Transform3D": {"children": ["ground", "wall", "well", "platform", "ramp"]}
 }}
 ```
@@ -20,7 +20,7 @@ whose shapes bake; the well is a `Model3D`, whose mesh bakes. Recast marks the t
 flat enough to walk, voxelizes them, keeps agents `agent_radius` from every edge and gives back
 the walkable area as triangles, which the bake writes to the file's `vertices` and `polygons`.
 
-On the 2D map, [nav/garden.navpoly.json](nav/garden.navpoly.json) has an outline of a garden
+On the 2D map, [nav/garden.navmesh2d.json](nav/garden.navmesh2d.json) has an outline of a garden
 where agents may walk, and the `garden` region has a pond (a `PolygonCollider2D`) and a tree
 (a circle `Collider2D`) on static bodies under it. Clipper2 takes the obstructions out of
 the outline and shrinks what is left by `agent_radius`, and PolyPartition splits it into convex

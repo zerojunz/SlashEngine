@@ -1,6 +1,7 @@
 #include "slash/command/command.hpp"
 
 #include "slash/core/assert.hpp"
+#include "slash/world/aliases.hpp"
 
 #include <algorithm>
 #include <array>
@@ -148,10 +149,18 @@ void Registry::replace(Command command) {
 }
 
 const Command* Registry::find(std::string_view name) const {
-    const auto it =
-        std::ranges::lower_bound(commands_, name, std::less<>(),
-                                 [](const Command& c) -> const std::string& { return c.name; });
-    return it != commands_.end() && it->name == name ? &*it : nullptr;
+    const auto at = [&](std::string_view wanted) -> const Command* {
+        const auto it =
+            std::ranges::lower_bound(commands_, wanted, std::less<>(),
+                                     [](const Command& c) -> const std::string& { return c.name; });
+        return it != commands_.end() && it->name == wanted ? &*it : nullptr;
+    };
+    if (const Command* found = at(name); found != nullptr) {
+        return found;
+    }
+    // A command's old name finds it by its current one.
+    const std::string_view current = world::current_command_name(name);
+    return current != name ? at(current) : nullptr;
 }
 
 } // namespace slash::command

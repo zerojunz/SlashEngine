@@ -342,7 +342,7 @@ A reference must name an entity that exists in the same scene.
 | | `amount` | `int` | `8` | Particles alive at most, 1 to 1000000: each cycle emits this many |
 | | `amount_ratio` | `float` | `1` | The share of `amount` it emits, 0 to 1 |
 | | `sub_emitter` | `entity` | `null` | Another `GpuEmitter2D` its particles start particles in, as its process material's `sub_emitter_mode` says (see [sub-emitters](#sub-emitters)) |
-| | `process_material` | `std::string` | `""` | Project path of a [`.process_material.json`](#process-materials) file: how particles start and move; `""` emits still white pixels |
+| | `particle_rules` | `std::string` | `""` | Project path of a [`.particles.json`](#process-materials) file: how particles start and move; `""` emits still white pixels |
 | | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file each particle draws, centered on it; `""` draws a white pixel |
 | | `lifetime` | `float` | `1` | Seconds each particle lives and each cycle lasts, from 0.001 |
 | | `interp_to_end` | `float` | `0` | Ages every particle toward the end of its life, 0 to 1 |
@@ -1591,7 +1591,7 @@ Each also has the fields of Godot's `CSGShape3D`:
 Shapes are made as Godot makes them, face for face, then combined with
 [Manifold](https://github.com/elalish/manifold) in Godot's order, so a level built in Godot
 builds the same here. A root keeps its mesh until a shape under it changes; moving the root
-alone doesn't remake it. [`csg.get`](commands.md#csgget) returns what a root makes.
+alone doesn't remake it. [`solid.get`](commands.md#csgget) returns what a root makes.
 
 In `"path"` mode a `SolidExtrusion3D` pushes its polygon along the `Spline3D` of the entity its
 `path` names, as Godot's `MODE_PATH`: a ring of the polygon every `path_interval` (`1`)
@@ -1625,7 +1625,7 @@ toward +z.
 "level": {"components": {
   "Transform3D": {},
   "BlockMap3D": {
-    "mesh_library": "blocks.meshlib.json",
+    "blocks": "blocks.blocks.json",
     "bake_navigation": true,
     "legend": {"f": "floor", "p": "platform", "r": "ramp:10", "w": "wall"},
     "floors": [{"y": 0, "origin": [0, 0], "rows": ["ffffpp", "ffffrp", "ffwfff", "ffwfff"]}]
@@ -1635,7 +1635,7 @@ toward +z.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `mesh_library` | `""` | A [`.meshlib.json`](#mesh-libraries) file, below |
+| `blocks` | `""` | A [`.blocks.json`](#mesh-libraries) file, below |
 | `cell_size` | `[2, 2, 2]` | Meters along x, y and z |
 | `cell_octant_size` | `8` | Cells along each side of the blocks drawn, collided and remade together |
 | `cell_center_x`, `cell_center_y`, `cell_center_z` | `true` | Moves items half a cell along that axis, to the cell's center; without it the item sits on the cell's corner |
@@ -1668,8 +1668,8 @@ toward +z.
   region on the item's `navigation_layers`, and neighboring cells join where their edges meet.
   [Baking](#baking) a navigation mesh takes the BlockMap3D's meshes, or its shapes, as Godot's
   `GridMap::navmesh_parse_source_geometry` does.
-- **Commands.** [`gridmap.set`](commands.md#gridmapset) places or erases an item in cells or a
-  box of them, and [`gridmap.get`](commands.md#gridmapget) reads the map, cells or the cells
+- **Commands.** [`blockmap.set`](commands.md#gridmapset) places or erases an item in cells or a
+  box of them, and [`blockmap.get`](commands.md#gridmapget) reads the map, cells or the cells
   points are in.
 - **Checks.** `scene validate` and exports report rows that don't decode, legend items the
   library doesn't have (with the closest name), cells but no library, a library that doesn't
@@ -1678,9 +1678,9 @@ toward +z.
 
 #### Mesh libraries
 
-A `.meshlib.json` file is Godot's `MeshLibrary`: items by name (1 to 64 characters, no `:`),
+A `.blocks.json` file is Godot's `MeshLibrary`: items by name (1 to 64 characters, no `:`),
 each what a cell holding it draws, collides as and walks on, in the cell's space.
-`slash-cli schema meshlib` prints its JSON Schema, and `scene validate` and `scene format` take
+`slash-cli schema blocks` prints its JSON Schema, and `scene validate` and `scene format` take
 it.
 
 ```json
@@ -2507,11 +2507,11 @@ meshes in it are voxelized into cells once, and the lights are injected into the
 runs, so lights that move or change bounce too. Meshes in the box take their ambient light and
 reflections from it, by tracing cones through the cells. It is Forward+ only, as Godot's.
 
-[`voxel_gi.bake`](commands.md#voxel_gibake) voxelizes the `Model3D`s whose `lighting_mode` is
+[`voxel_lighting.bake`](commands.md#voxel_gibake) voxelizes the `Model3D`s whose `lighting_mode` is
 `"static"`, visible under the entity's parent (the whole world for a root), that touch its box, as
 Godot's `Voxelizer`: each triangle goes down an octree to cells `subdiv` across the box's longest
 side, and each cell takes the albedo, emission and normal of the triangles in it. It writes a
-`.voxelgi.json` file and names it in `data`. A bake is the same on every machine.
+`.voxellight.json` file and names it in `data`. A bake is the same on every machine.
 
 As the game runs, the renderer:
 
@@ -2547,7 +2547,7 @@ them; Compatibility draws without them.
 | `subdiv` | `"128"` | Cells along the box's longest side: `"64"`, `"128"`, `"256"` or `"512"` |
 | `size` | `[20, 20, 20]` | The box, centered on the entity, in its space |
 | `camera_attributes` | `""` | An entity whose `CameraLens`'s `exposure_multiplier` emission is baked with; a camera's over it scales the light |
-| `data` | `""` | The `.voxelgi.json` file it bakes into and draws from |
+| `data` | `""` | The `.voxellight.json` file it bakes into and draws from |
 | `dynamic_range` | `2` | The brightest light the cells hold, 1 to 8 |
 | `energy` | `1` | Times the light meshes take |
 | `bias` | `1.5` | Cells cones start out from surfaces, against lighting themselves |
@@ -2556,7 +2556,7 @@ them; Compatibility draws without them.
 | `use_two_bounces` | `true` | Light bounces twice inside the cells, not once |
 | `interior` | `false` | Leaves out the environment's light: meshes take only the cells' |
 
-A `.voxelgi.json` file is Godot's `VoxelGIData` in text (`slash-cli schema voxel_gi`): the
+A `.voxellight.json` file is Godot's `VoxelGIData` in text (`slash-cli schema voxel_light`): the
 `bounds` it voxelized (position, then size, in the VoxelLighting3D's space), its `octree_size` (cells
 along each axis), the `baked_exposure`, the `level_counts` of the octree from the root, and its
 `cells` as base64, level by level, each sorted as Godot sorts them: a cell's place, albedo,
@@ -6069,7 +6069,7 @@ a cat round the corner of a yard.
 ### Navigation meshes and polygons
 
 A `.navmesh.json` file is Godot's `NavigationMesh`: convex polygons over shared vertices, in
-meters. A `.navpoly.json` file is its `NavigationPolygon`, the same in pixels. An agent can write
+meters. A `.navmesh2d.json` file is its `NavigationPolygon`, the same in pixels. An agent can write
 the polygons, or bake them from the scene with [`navigation.bake`](commands.md#navigationbake)
 and the settings below ([Baking](#baking)).
 
@@ -6086,13 +6086,13 @@ and the settings below ([Baking](#baking)).
 | Field | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `format` | Yes | | `1` |
-| `vertices` | No | `[]` | Points, as `[x, y, z]` (`[x, y]` in a `.navpoly.json` file) |
+| `vertices` | No | `[]` | Points, as `[x, y, z]` (`[x, y]` in a `.navmesh2d.json` file) |
 | `polygons` | No | `[]` | Convex polygons, each a list of three or more indices into `vertices` |
 | `cell_size` | No | `0.25` (`1` in 2D) | The cell size it was made for, as Godot's |
 | `cell_height` | No | `0.25` | The cell height it was made for, in `.navmesh.json` files only |
 
 `$cli scene validate` and `$cli scene format` take both, and `$cli schema navmesh` and
-`$cli schema navpoly` print their schemas. Validating reports an index past the vertices, an
+`$cli schema navmesh2d` print their schemas. Validating reports an index past the vertices, an
 index used twice in one polygon and a polygon that isn't convex, each with its JSON Pointer.
 Files reload when they change, and their maps rebuild.
 
@@ -6141,7 +6141,7 @@ wall's; with `carve_navigation_mesh` they are marked after, so it cuts only its 
 | `filter_walkable_low_height_spans` | `false` | Leave out places lower than `agent_height` |
 | `filter_baking_aabb_position`, `filter_baking_aabb_size`, `filter_baking_aabb_offset` | `[0, 0, 0]` | Bake only what is in this box, when its size has volume |
 
-In 2D, a `.navpoly.json` file's `outlines` say where agents may walk: closed outlines of
+In 2D, a `.navmesh2d.json` file's `outlines` say where agents may walk: closed outlines of
 `[x, y]` points, merged where they overlap. The shapes of each `StaticBody2D` and
 `MovingBody2D` under the region are cut out of them, as Godot's parser takes them: a
 rectangle, a circle of 12 sides, a capsule of 14 corners, a polygon's convex hull, or a
@@ -6170,13 +6170,13 @@ walk, and its collision polygons on physics layers whose `collision_layer` share
 ### Regions
 
 A `NavArea3D` places a `.navmesh.json` file on the 3D map at the entity's `Transform3D`
-(position, rotation and scale), and a `NavArea2D` places a `.navpoly.json` file on the
+(position, rotation and scale), and a `NavArea2D` places a `.navmesh2d.json` file on the
 2D map at its `Transform2D`.
 
 ```json
 "house": {"components": {
   "Transform3D": {},
-  "NavArea3D": {"navigation_mesh": "nav/house.navmesh.json"}
+  "NavArea3D": {"navmesh": "nav/house.navmesh.json"}
 }}
 ```
 
@@ -6303,8 +6303,8 @@ avoid an obstacle when their `avoidance_mask` shares a bit with its `avoidance_l
 
 | Component | Fields (defaults) |
 | --- | --- |
-| `NavArea2D` | `navigation_polygon` `""` (a `.navpoly.json` file), `enabled` `true`, `use_edge_connections` `true`, `navigation_layers` `1`, `enter_cost` `0`, `travel_cost` `1` |
-| `NavArea3D` | `navigation_mesh` `""` (a `.navmesh.json` file), and the rest as `NavArea2D`'s |
+| `NavArea2D` | `navmesh` `""` (a `.navmesh2d.json` file), `enabled` `true`, `use_edge_connections` `true`, `navigation_layers` `1`, `enter_cost` `0`, `travel_cost` `1` |
+| `NavArea3D` | `navmesh` `""` (a `.navmesh.json` file), and the rest as `NavArea2D`'s |
 | `NavLink2D` | `enabled` `true`, `bidirectional` `true`, `navigation_layers` `1`, `start_position` and `end_position` `[0, 0]`, `enter_cost` `0`, `travel_cost` `1` |
 | `NavLink3D` | The same, with `start_position` and `end_position` `[0, 0, 0]` |
 | `NavAgent2D` | `target_position` `[0, 0]`, `path_desired_distance` `20`, `target_desired_distance` `10`, `path_max_distance` `100`, `navigation_layers` `1`, `path_postprocessing` `"corridorfunnel"`, `simplify_path` `false`, `simplify_epsilon` `0`, `path_return_max_length` `0`, `path_return_max_radius` `0`, `path_search_max_polygons` `4096`, `path_search_max_distance` `0`; avoidance: `avoidance_enabled` `false`, `velocity` `[0, 0]`, `radius` `10`, `neighbor_distance` `500`, `max_neighbors` `10`, `time_horizon_agents` `1`, `time_horizon_obstacles` `0`, `max_speed` `100`, `avoidance_layers` `1`, `avoidance_mask` `1`, `avoidance_priority` `1` |
@@ -6314,7 +6314,7 @@ avoid an obstacle when their `avoidance_mask` shares a bit with its `avoidance_l
 
 The maps' settings are `project.json`'s [`navigation_2d` and `navigation_3d`](project-format.md).
 `scene validate` and exports check each region's file and report one that doesn't exist or
-validate, or a `.navpoly.json` file on a `NavArea3D`. The
+validate, or a `.navmesh2d.json` file on a `NavArea3D`. The
 [`navigation.*` commands](commands.md#navigationpath) find paths and points and report maps and
 agents.
 
@@ -7012,7 +7012,7 @@ sparks and snow.
   "components": {
     "GpuEmitter2D": {
       "amount": 48,
-      "process_material": "fire.process_material.json",
+      "particle_rules": "fire.particles.json",
       "texture": "dot.png"
     },
     "Transform2D": {"position": [80.0, 150.0]}
@@ -7049,9 +7049,9 @@ sparks and snow.
 
 ### Process materials
 
-A `.process_material.json` file is Godot's `ParticleProcessMaterial` in 2D, with its property
+A `.particles.json` file is Godot's `ParticleProcessMaterial` in 2D, with its property
 names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a process material on a
-`GpuEmitter2D`. `slash-cli schema process_material` prints its JSON Schema, and
+`GpuEmitter2D`. `slash-cli schema particles` prints its JSON Schema, and
 `slash-cli scene validate` and `scene format` take these files. A `GpuEmitter3D` reads the same
 files with Godot's 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
 
@@ -7165,7 +7165,7 @@ the step it dies of age, as Godot's code finds it (in its last two or three), an
 ```json
 "rockets": {
   "components": {
-    "GpuEmitter2D": {"amount": 4, "process_material": "rockets.process_material.json",
+    "GpuEmitter2D": {"amount": 4, "particle_rules": "rockets.particles.json",
                        "sub_emitter": "burst", "texture": "dot.png"},
     "Transform2D": {"position": [30.0, 175.0]}
   }
@@ -7173,7 +7173,7 @@ the step it dies of age, as Godot's code finds it (in its last two or three), an
 "burst": {
   "components": {
     "GpuEmitter2D": {"amount": 64, "lifetime": 0.8,
-                       "process_material": "burst.process_material.json", "texture": "dot.png"},
+                       "particle_rules": "burst.particles.json", "texture": "dot.png"},
     "Transform2D": {}
   }
 }
@@ -7208,7 +7208,7 @@ particle started, so it grows out behind it.
 "comets": {
   "components": {
     "GpuEmitter2D": {"amount": 4, "lifetime": 1.6,
-                       "process_material": "comets.process_material.json",
+                       "particle_rules": "comets.particles.json",
                        "texture": "streak.png", "trail_enabled": true, "trail_lifetime": 0.4,
                        "trail_section_subdivisions": 2, "trail_sections": 12},
     "Transform2D": {"position": [20.0, 24.0]}
@@ -7325,7 +7325,7 @@ steps, placing the meshes on the CPU for now; the software and OpenGL devices, `
       "amount": 60,
       "draw_order": "view_depth",
       "lifetime": 1.2,
-      "process_material": "sparks.process_material.json"
+      "particle_rules": "sparks.particles.json"
     },
     "QuadGeometry": {"size": [0.12, 0.12]},
     "Surface3D": {
@@ -7343,7 +7343,7 @@ steps, placing the meshes on the CPU for now; the software and OpenGL devices, `
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `emitting`, `amount`, `amount_ratio`, `lifetime`, `interp_to_end`, `one_shot`, `preprocess`, `speed_scale`, `explosiveness`, `randomness`, `seed`, `use_fixed_seed`, `fixed_fps`, `interpolate`, `smooth_emission`, `local_space` | | | As `GpuEmitter2D`'s |
-| `process_material` | `std::string` | `""` | Project path of a [`.process_material.json`](#process-materials) file; `""` emits still particles at the emitter |
+| `particle_rules` | `std::string` | `""` | Project path of a [`.particles.json`](#process-materials) file; `""` emits still particles at the emitter |
 | `mesh_count` | `int` | `1` | How many of the draw passes draw, 1 to 4 |
 | `mesh_1` to `mesh_4` | `std::string` | `""` | A model file (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json`) each particle draws; a `mesh_1` of `""` draws the entity's primitive mesh component. The entity's `Surface3D` overrides the meshes' materials |
 | `draw_order` | `std::string` | `"index"` | `index`, `lifetime` (the oldest first), `reverse_lifetime` (the newest first) or `view_depth` (the farthest from the camera first) |

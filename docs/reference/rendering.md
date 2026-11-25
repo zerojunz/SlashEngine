@@ -353,8 +353,8 @@ courtyard.
 
 VoxelLighting3D is Godot 4.6's (`slash/scene3d/voxel_gi.hpp`, `src/voxel_gi.cpp`). `voxelize` follows
 Godot's `Voxelizer` (an octree down to `subdiv` cells, each with albedo, emission and normal), and
-`voxel_gi.bake` (`engine/command/src/lightmap.cpp`) writes the `.voxelgi.json` file
-(`$cli schema voxel_gi`), Godot's `VoxelGIData`. `light_voxel_gi` injects lights on the CPU on the
+`voxel_lighting.bake` (`engine/command/src/lightmap.cpp`) writes the `.voxellight.json` file
+(`$cli schema voxel_light`), Godot's `VoxelGIData`. `light_voxel_gi` injects lights on the CPU on the
 job pool, following `voxel_gi.glsl`'s passes (direct light with shadows marched through the
 distance field, mipmaps, the second bounce), and `voxel_gi_atlas` lays its 3D texture's levels
 out as z slices in one RGBA8 atlas. `plot_voxel_gi_objects` plots moving meshes into that light as
@@ -917,7 +917,7 @@ the world until the shapes under it change; `csg_mesh` makes it on each call in 
 `Renderer` draws roots, physics3d makes a static body of each root with `use_collision` (its
 triangles as a concave shape), navigation bakes take roots as Godot's
 `CSGShape3D::navmesh_parse_source_geometry` does, `check_csg` reports shapes that can't be made
-for `scene validate`, and `csg.get` returns a root's size, surfaces and problems.
+for `scene validate`, and `solid.get` returns a root's size, surfaces and problems.
 `examples/csg-shapes` builds a hamlet.
 
 Paths are Godot's `Path2D` and `Spline3D` with their curves, and the `SplineFollower2D` and
@@ -934,7 +934,7 @@ curve and finds its nearest point, `check_paths` (run from `check_meshes`) repor
 whose parent has no path, and `examples/paths` laps a cart round a rail.
 
 Grid maps are Godot 4.6's `BlockMap3D` and `MeshLibrary` (`engine/scene3d/src/gridmap.cpp`, after
-`modules/gridmap/grid_map.cpp`). A `.meshlib.json` file (`$cli schema meshlib`) holds items by
+`modules/gridmap/grid_map.cpp`). A `.blocks.json` file (`$cli schema blocks`) holds items by
 name, each a model's meshes or a primitive, a material, shapes and a navigation mesh in one
 cell's space. A `BlockMap3D` writes its cells as a `TileLayer2D` does, a `legend` of keys
 (`world/legend.hpp`, shared with tile maps) and `floors` of rows; `decode_grid_cells` and
@@ -947,7 +947,7 @@ whose cells didn't, `Renderer` draws them, physics3d makes the BlockMap3D one st
 cell's shapes (each sub-shape tagged with its cell, so `physics.raycast` returns the cell it
 hit), with `bake_navigation` each cell whose item has a navigation mesh is a region, and
 navigation bakes take its meshes and shapes as Godot's `GridMap::navmesh_parse_source_geometry`.
-`gridmap.set` fills cells or a box of them, `gridmap.get` reads cells and points, and
+`blockmap.set` fills cells or a box of them, `blockmap.get` reads cells and points, and
 `check_gridmaps` reports items the library doesn't have for `scene validate` and exports.
 `examples/gridmap` lays out a room with a ramp.
 

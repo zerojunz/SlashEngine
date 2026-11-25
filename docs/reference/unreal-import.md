@@ -250,7 +250,7 @@ inputs, or a typed value), else the script's rapid iteration parameter for it, e
 static switch. A system the editor can't write as text is reported as "Niagara emitters", and
 its component emits nothing.
 An emitter simulated on the CPU becomes a `CPUParticles3D`; one simulated on the GPU becomes a
-`GPUParticles3D` and a `.process_material.json` file beside the system's `.uasset`, named
+`GPUParticles3D` and a `.particles.json` file beside the system's `.uasset`, named
 `<system>_<emitter>`. A system of one emitter is the component's entity; with several, each enabled
 emitter is a child entity named `<component>_<emitter>`.
 

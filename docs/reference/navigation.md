@@ -7,7 +7,7 @@ Status: current · Updated: 2026-11-20
 `engine/navigation` is navigation, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`,
 ported from Godot's `modules/navigation` (each function names the one it follows). Each world
 has a 2D and a 3D map built from components: `NavArea3D` and `NavArea2D` place
-`.navmesh.json` and `.navpoly.json` files (`$cli schema navmesh`; convex polygons over shared
+`.navmesh.json` and `.navmesh2d.json` files (`$cli schema navmesh`; convex polygons over shared
 vertices, as Godot's `NavigationMesh` and `NavigationPolygon`), and `NavLink3D` and
 `NavLink2D` join places the regions don't. `src/core.cpp` is the map: regions' polygons
 and edges keyed to the map's merge cells, edge connections across regions, links joined to the

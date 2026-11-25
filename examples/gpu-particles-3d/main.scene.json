@@ -44,8 +44,8 @@
           "amount": 24,
           "lifetime": 3.0,
           "local_space": true,
-          "preprocess": 3.0,
-          "process_material": "leaves.process_material.json"
+          "particle_rules": "leaves.particles.json",
+          "preprocess": 3.0
         },
         "Surface3D": {
           "vertex_color_use_as_albedo": true
@@ -71,8 +71,8 @@
           "amount": 60,
           "draw_order": "view_depth",
           "lifetime": 1.2,
-          "preprocess": 1.2,
-          "process_material": "sparks.process_material.json"
+          "particle_rules": "sparks.particles.json",
+          "preprocess": 1.2
         },
         "QuadGeometry": {
           "size": [0.12, 0.12]
@@ -97,8 +97,8 @@
         },
         "GpuEmitter3D": {
           "amount": 30,
+          "particle_rules": "streaks.particles.json",
           "preprocess": 1.0,
-          "process_material": "streaks.process_material.json",
           "transform_align": "y_to_velocity"
         },
         "Surface3D": {
