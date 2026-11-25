@@ -428,8 +428,9 @@ TEST_CASE("style boxes read Godot's property names, with shorthands for every si
     CHECK(ui::parse_style_box(parse(R"({"type": "empty"})")).value().minimum_size() == Vec2{});
 
     CHECK(error_lines(ui::validate_style_box(parse(R"({"background_colour": [1, 1, 1, 1]})"))) ==
-          std::vector<std::string>{"/background_colour: unknown property \"background_colour\"; did you mean "
-                                   "\"background_color\"?"});
+          std::vector<std::string>{
+              "/background_colour: unknown property \"background_colour\"; did you mean "
+              "\"background_color\"?"});
     CHECK(error_lines(ui::validate_style_box(parse(R"({"texture": "ui/box.png"})"))) ==
           std::vector<std::string>{
               "/texture: flat style boxes have no texture; it is for \"type\": \"texture\""});
@@ -448,7 +449,7 @@ TEST_CASE("style boxes and themes written with the old key names still load") {
     CHECK(flat.value().expand_margin == std::array<float, 4>{5.0F, 3.0F, 3.0F, 3.0F});
     CHECK(json::write(ui::style_box_json(flat.value()), json::Style::Compact) ==
           R"({"background_color":[0.0,0.0,1.0,1.0],"corner_segments":4,"fill_center":false,)"
-          R"("outset":3.0,"outset_left":5.0})");
+          R"("outset_bottom":3.0,"outset_left":5.0,"outset_right":3.0,"outset_top":3.0})");
     const auto texture = ui::parse_style_box(parse(R"({"type": "texture", "texture": "ui/box.png",
         "region_rect": [0, 0, 8, 8], "texture_margin_top": 2, "axis_stretch_horizontal": "tile",
         "axis_stretch_vertical": "tile_fit", "modulate_color": [1, 0, 0, 1]})"));
@@ -462,7 +463,7 @@ TEST_CASE("style boxes and themes written with the old key names still load") {
     CHECK(ui::upgrade_style_box(both));
     CHECK(json::write(both, json::Style::Compact) == R"({"background_color":[0,0,0,1]})");
     CHECK(error_lines(ui::validate_style_box(parse(R"({"corner_detail": 40})"))) ==
-          std::vector<std::string>{"/corner_segments: must be at most 20, got 40"});
+          std::vector<std::string>{"/corner_segments: must be at most 20.0, got 40"});
     // Themes too.
     CHECK(ui::validate_theme(parse(R"({"format": 1, "types": {
               "Panel": {"styles": {"panel": {"bg_color": [1, 1, 1, 1]}}}}})"))
