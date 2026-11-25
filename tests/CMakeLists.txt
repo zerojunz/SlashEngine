@@ -127,6 +127,7 @@ add_executable(slash_tests
     test_mcp.cpp
     test_mesh.cpp
     test_mesh_maps.cpp
+    test_paint.cpp
     test_model.cpp
     test_multiplayer.cpp
     test_replication.cpp

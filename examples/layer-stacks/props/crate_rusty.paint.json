@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "type": "paint",
+  "extends": "props/crate.paint.json",
+  "parameters": {"wear": 0.9, "dust": 0.2},
+  "layers": [
+    {"name": "iron", "fill": {"albedo": [0.42, 0.2, 0.09], "metallic": 0, "roughness": 0.9}}
+  ]
+}

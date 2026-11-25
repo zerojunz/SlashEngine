@@ -6,7 +6,7 @@ version 1. The authoritative schemas are generated from the registered component
 `{"kind": "scene"}`, or the MCP resource `slash://schema/scene`), so they always match the engine
 you are running.
 
-Status: current · Updated: 2026-11-22
+Status: current · Updated: 2026-11-25
 
 Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
 
@@ -3005,6 +3005,79 @@ the same either way.
 `slash-cli schema texture` lists each op's settings with their defaults. `scene validate` reports
 each mistake at its JSON Pointer with a "did you mean". A node no output reaches is left out, and
 nodes share slots once nothing later reads them.
+
+### Layer stacks
+
+A `.paint.json` file of `"type": "paint"` is a model's or a sprite's texturing as layers, bottom
+to top, in the spirit of Substance Painter's layer stacks. Each layer is a material (flat values,
+a texture graph, decals, strokes) laid over the channels below it through a mask: the model's
+[mesh maps](commands.md#modelbake_maps) over thresholds (curvature for worn edges, ambient
+occlusion for dirt, the world normal for dust), part and material names, noise in the model's
+space, a graph, and strokes along points. A stack compiles to a texture graph whose images are
+the mesh maps and the masks worked out on the CPU, so it bakes as graphs do: in compute on the GPU
+devices and with the CPU twin elsewhere. [`paint.bake`](commands.md#paintbake) writes its
+textures and a material, [`paint.edit`](commands.md#paintedit) changes it by layer name and
+[`paint.preview`](commands.md#paintpreview) draws it.
+
+```json
+{
+  "format": 1,
+  "type": "paint",
+  "model": "props/chest.obj",
+  "size": 1024,
+  "parameters": {"wear": 0.5},
+  "layers": [
+    {"name": "wood", "fill": {"albedo": [0.45, 0.3, 0.18], "roughness": 0.7}},
+    {"name": "iron", "fill": {"albedo": [0.3, 0.3, 0.32], "metallic": 1, "roughness": 0.4},
+     "mask": {"part": "bands"}},
+    {"name": "worn", "fill": {"albedo": [0.7, 0.7, 0.72], "roughness": 0.25},
+     "mask": [{"part": "bands"}, {"map": "curvature", "above": "=0.75 - wear * 0.2",
+                                 "breakup": {"amount": 0.1, "scale": 12}}]}
+  ]
+}
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `model` | string | The model it paints; its first mesh's texture coordinates place the texels |
+| `high` | string | A detailed model the mesh maps bake from, as `model.bake_maps`'s `high` |
+| `sprite` | string | An image it paints instead of a model, with `normal_map` (its normal map) and `edge_width` (default 4 pixels) |
+| `size` | integer or `[w, h]` | The textures' size (default 512, or the sprite's); mesh maps need a square |
+| `maps` | object | `rays`, `distances` and `padding` for the mesh map bake |
+| `extends` | string | A stack this one changes, by project path, or a smart material the engine ships (`builtin:paint/worn_painted_metal`, `rusty_iron`, `mossy_stone`, `dusty_wood`, `scuffed_plastic`) |
+| `parameters` | object | Numbers, colors or `=` expressions, read by any setting as `"$name"` or `"=..."` |
+| `base` | object | The channels under the first layer, by name (default: the sprite's colors, or mid gray) |
+| `layers` | array | The layers, bottom to top |
+| `outputs` | array | The textures to bake (default: `albedo`, `orm` on a model, `normal`, and `height` and `emission` when a layer paints them) |
+| `height_normal` | number | How strongly painted height bends the normal (default 2) |
+| `material` | string | The `.standard_material.json` `paint.bake` writes (default: next to the stack) |
+| `expect` | object | Ranges for [`texture.check`](commands.md#texturecheck): `"<output>.<measure>"` or `"mask.<layer>"` (the mask's mean) |
+
+Channels are `albedo`, `roughness`, `metallic`, `ao`, `height`, `normal` and `emission`; outputs
+add `orm` (ambient occlusion, roughness and metallic in red, green and blue).
+
+A layer has a `name` (unique), and any of:
+
+- **`fill`**: values by channel, each a number, a color or a parameter.
+- **`graph`**: a texture graph (a path or a document) whose outputs named after channels fill
+  them, with `parameters` and `repeat` (how many times it tiles across the texture).
+- **`decals`**: images projected onto the model, each with `image`, `at`, `direction`, `up`,
+  `size`, `depth` and `rotation`; on a sprite, `at` is in pixels.
+- **`strokes`**: `points` (in the model's units, or a sprite's pixels) with `size`, `hardness`
+  and `erase`, painted into the mask.
+- **`mask`**: one term or a list of them. A term reads a `map` (`ao`, `curvature`, `thickness`,
+  `sky`, `height`, `world_normal` and `position` with an `axis`, `noise` with `scale`, `seed` and
+  `octaves`, or `alpha`), a `part` or `material` name, or a `graph` output, then shapes it with
+  `range`, `above`, `below`, `softness`, `breakup` (`amount`, `scale`, `seed`) and `invert`. Each
+  term after the first joins the ones before it by its `op`: `multiply` (default), `add`,
+  `subtract`, `max` or `min`.
+- **`blend`** (a mode, or modes by channel), **`opacity`**, **`channels`** (the ones it paints)
+  and **`enabled`**.
+
+Fill wins over a graph or decals for the same channel. With `extends`, objects merge as a JSON
+Merge Patch and layers merge by name: a layer of the same name is changed in place and the others
+go on top. On a sprite, `curvature` is the outline's edge (1 at the edge, 0.5 `edge_width` pixels
+in), `alpha` is its alpha, and `ao`, `sky` and `thickness` read 1.
 
 ## Scatter rules
 

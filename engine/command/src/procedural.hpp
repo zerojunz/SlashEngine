@@ -6,6 +6,8 @@
 #include "slash/procedural/texture_graph.hpp"
 #include "slash/render/image.hpp"
 
+#include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -22,6 +24,23 @@ void register_texture_tools(Registry& registry);
 
 // Adds model.bake_maps, over slash/scene3d/mesh_maps.hpp (mesh_maps.cpp).
 void register_mesh_map_commands(Registry& registry);
+
+// model.bake_maps with its params: the bake its folder holds when it matches, else a new one,
+// written (with an undo step) when write is true. images, when given, gets each map's image by
+// name. Never marks the command unchanged; the caller decides.
+[[nodiscard]] Reply bake_model_maps(Session& session, const json::Value& params, bool write,
+                                    std::map<std::string, render::Image, std::less<>>* images);
+
+// Adds paint.edit, paint.bake and paint.preview, over slash/procedural/paint.hpp (paint.cpp).
+void register_paint_commands(Registry& registry);
+
+// Checks a .paint.json file as texture.check does (paint.cpp): its errors, what it reads, and
+// its bake against its "expect", each added to errors as {file, path, message}. Returns false
+// when the file isn't a paint stack.
+bool check_paint_file(Session& session, const std::string& file, json::Array& errors);
+
+// A paint stack's albedo, baked in memory, or nullopt when it doesn't bake (paint.cpp).
+[[nodiscard]] std::optional<render::Image> paint_albedo(Session& session, const std::string& file);
 
 // Reads what a graph names from the session's project: text files, and images decoded as
 // texture paths are (a graph's images may be other graphs' outputs).

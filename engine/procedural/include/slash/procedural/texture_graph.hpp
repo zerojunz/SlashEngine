@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -49,6 +50,9 @@ namespace slash::procedural {
 struct GraphReader {
     std::function<Result<std::string>(std::string_view path)> text;
     std::function<Result<render::Image>(std::string_view path)> image;
+    // Asked before image: an image as floats, for paths a caller makes itself (a paint stack's
+    // masks and mesh maps); nullopt sends the path on to image.
+    std::function<std::optional<render::GraphImage>(std::string_view path)> graph_image;
 };
 
 // One output of a compiled graph: its name, the slot holding it and how it becomes RGBA8.

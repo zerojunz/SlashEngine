@@ -1266,20 +1266,27 @@ Result<CompiledGraph> compile_texture_graph(const json::Value& doc, const GraphR
                                           "/path: a graph reads at most " +
                                           std::to_string(render::kMaxGraphImages) + " images");
                 }
-                if (!reader.image) {
-                    return make_error(ErrorCode::InvalidArgument,
-                                      "/nodes/" + json::pointer_escape(name) +
-                                          "/path: nothing reads images here");
+                std::optional<render::GraphImage> made;
+                if (reader.graph_image) {
+                    made = reader.graph_image(path);
                 }
-                auto image = reader.image(path);
-                if (!image) {
-                    return make_error(image.error().code, "/nodes/" + json::pointer_escape(name) +
-                                                              "/path: " + quoted(path) + ": " +
-                                                              image.error().message);
+                if (!made) {
+                    if (!reader.image) {
+                        return make_error(ErrorCode::InvalidArgument,
+                                          "/nodes/" + json::pointer_escape(name) +
+                                              "/path: nothing reads images here");
+                    }
+                    auto image = reader.image(path);
+                    if (!image) {
+                        return make_error(image.error().code,
+                                          "/nodes/" + json::pointer_escape(name) + "/path: " +
+                                              quoted(path) + ": " + image.error().message);
+                    }
+                    made = graph_image_of(image.value());
                 }
                 found =
                     image_of.emplace(path, static_cast<std::uint32_t>(program.images.size())).first;
-                program.images.push_back(graph_image_of(image.value()));
+                program.images.push_back(std::move(*made));
                 out.files.push_back(path);
             }
             pass.params[0] = static_cast<float>(found->second);

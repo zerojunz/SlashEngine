@@ -49,6 +49,20 @@ normal and position, part and material ids, and from a high model its height and
 files in a `.maps` folder beside it that `image` nodes read. Rays trace on ray queries where a
 device has them (see [rendering](rendering.md)) and on the CPU twin elsewhere; curvature comes from
 the angles of nearby edges. `examples/mesh-maps` bakes a crate's maps and wears its edges with them.
+Layer stacks (`.paint.json`, `slash/procedural/paint.hpp`, `src/paint.cpp`) paint a model or a
+sprite as layers over masks: `resolve_paint` merges what a stack `extends` (a file, or a smart
+material it ships as `builtin:paint/<name>`), and `compile_paint` turns it into a texture graph of
+a blend per layer and channel. What the graph can't work out per texel on its own (the mesh maps,
+world normal and position by axis, 3D noise in the model's space, part and material ids, strokes,
+decals) is worked out on the CPU over a `PaintSurface` and fed in as float images
+(`GraphReader::graph_image`, up to `render::kMaxGraphImages`, 64), so a stack bakes as any graph
+does. A model's surface is its low mesh rasterized into its texture
+(`scene3d::mesh_map_surface`: place, normal, part and material per texel, padded as the maps are),
+and a sprite's is its pixels, its alpha and its outline's edge (`paint_sprite_surface`).
+`paint.edit`, `paint.bake` and `paint.preview` (`engine/command/src/paint.cpp`) bake the maps a
+stack needs with `model.bake_maps`' code and cache, write the textures and a material, and
+`texture.check` holds stacks to their `expect` too. `examples/layer-stacks` paints a worn crate and
+a 2D shield.
 
 Gameplay code makes textures and meshes while a game runs: `asset::Assets::put` keeps a value at a
 `made:<name>` path (`asset::is_made_path`) until `drop`, bumping its version when put again so
