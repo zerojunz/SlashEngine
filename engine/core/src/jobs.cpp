@@ -270,7 +270,7 @@ json::Value settings_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "The job system, as Godot's threading/worker_pool settings.";
+    schema["description"] = "The job system.";
     json::Value& max_threads = schema["properties"]["max_threads"];
     max_threads["type"] = "integer";
     max_threads["minimum"] = -1;

@@ -70,8 +70,7 @@ json::Value sprite_frames_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine sprite frames";
-    schema["description"] = "Named flipbook animations that Flipbook2D plays, like "
-                            "Godot's SpriteFrames.";
+    schema["description"] = "Named flipbook animations that Flipbook2D plays.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "animations"};

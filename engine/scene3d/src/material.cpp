@@ -34,9 +34,8 @@ json::Value make_schema() {
     schema["$defs"] = builder.definitions();
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine material";
-    schema["description"] =
-        "A Surface3D in a file of its own, as Godot saves one as a resource, which model "
-        "recipes' materials name so models share it. Texture paths are the project's.";
+    schema["description"] = "A Surface3D in a file of its own, which model recipes' materials name "
+                            "so models share it. Texture paths are the project's.";
     schema["required"] = json::Array{"format"};
     schema["properties"]["format"]["const"] = 1;
     schema["properties"]["format"]["description"] = "Format version. Must be 1.";

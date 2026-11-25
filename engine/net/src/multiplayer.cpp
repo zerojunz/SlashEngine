@@ -2795,16 +2795,15 @@ void install(world::World& world) {
         "multiplayer",
         [](world::World& w, double tick_seconds) { multiplayer(w).poll(tick_seconds); },
         {.doc = "Polls the world's multiplayer peer: peers joining and leaving, raw packets, "
-                "remote procedure calls, spawns and synchronizers, as Godot's SceneMultiplayer.",
+                "remote procedure calls, spawns and synchronizers.",
          .priority = -950});
-    world.add_system(
-        "multiplayer_visibility",
-        [](world::World& w, double /*tick_seconds*/) {
-            multiplayer(w).state_->update_filtered_visibility("physics");
-        },
-        {.doc = "Checks the visibility filters of synchronizers whose visibility_update_mode is "
-                "\"physics\", after physics, as Godot's MultiplayerSynchronizer.",
-         .priority = 955});
+    world.add_system("multiplayer_visibility",
+                     [](world::World& w, double /*tick_seconds*/) {
+                         multiplayer(w).state_->update_filtered_visibility("physics");
+                     },
+                     {.doc = "Checks the visibility filters of synchronizers whose "
+                             "visibility_update_mode is \"physics\", after physics.",
+                      .priority = 955});
 }
 
 Multiplayer& multiplayer(world::World& world) {

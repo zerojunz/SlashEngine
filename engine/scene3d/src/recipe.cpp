@@ -111,8 +111,7 @@ const std::vector<Field>& shape_fields() {
          "SolidExtrusion3D"},
         {"path_simplify_angle", Kind::Number,
          "polygon, path mode: degrees of bend under which rings are left out.", "SolidExtrusion3D"},
-        {"path_rotation", Kind::Choice,
-         "polygon, path mode: how the polygon turns along the path, as Godot's.",
+        {"path_rotation", Kind::Choice, "polygon, path mode: how the polygon turns along the path.",
          "SolidExtrusion3D", std::vector<std::string_view>{"polygon", "path", "path_follow"}},
         {"path_rotation_accurate", Kind::Boolean,
          "polygon, path mode: turn by the curve's exact direction.", "SolidExtrusion3D"},
@@ -310,9 +309,8 @@ json::Value make_schema(bool loose) {
     json::Value part;
     part["type"] = "object";
     part["additionalProperties"] = false;
-    part["description"] =
-        "A shape, as Godot's CSG node of its kind, combined with the shapes before it under the "
-        "same parent by its operation; or at the top level, a named part of the model.";
+    part["description"] = "A shape, combined with the shapes before it under the same parent by "
+                          "its operation; or at the top level, a named part of the model.";
     json::Value& properties = part["properties"];
     properties["name"]["type"] = "string";
     properties["name"]["minLength"] = 1;
@@ -332,15 +330,15 @@ json::Value make_schema(bool loose) {
     properties["model"]["minLength"] = 1;
     properties["model"]["description"] =
         "A top-level part only: another model file (a recipe, glTF, OBJ, FBX or .blend) by project "
-        "path, its nodes placed under this part's node as Godot instances a scene. It takes only "
-        "name, position, rotation, scale and array.";
+        "path, its nodes placed under this part's node. It takes only name, position, rotation, "
+        "scale and array.";
     properties["operation"] =
         choice_schema({"union", "intersection", "subtraction"},
                       "How it combines with the shapes before it under the same parent.", "union");
     properties["material"]["type"] = "string";
     properties["material"]["description"] =
-        "A name in materials, for this shape and the shapes under it that name none; Godot's "
-        "default material without.";
+        "A name in materials, for this shape and the shapes under it that name none; the default "
+        "material without.";
     transform_properties(properties, loose);
     properties["flip_faces"] = number_schema("boolean", "Turns its faces inside out.", loose);
     world::SchemaBuilder builder;
@@ -436,8 +434,8 @@ json::Value make_schema(bool loose) {
     point["type"] = "object";
     point["additionalProperties"] = false;
     point["required"] = json::Array{"name"};
-    point["description"] = "An attachment point: a node with no mesh, as Godot's Marker3D, which a "
-                           "BoneSocket3D's bone_name follows.";
+    point["description"] =
+        "An attachment point: a node with no mesh, which a BoneSocket3D's bone_name follows.";
     point["properties"]["name"]["type"] = "string";
     point["properties"]["name"]["minLength"] = 1;
     point["properties"]["name"]["description"] = "Its node name, unique in the model.";
@@ -471,9 +469,8 @@ json::Value make_schema(bool loose) {
     definitions["Part"] = std::move(part);
     json::Value expression;
     expression["type"] = "string";
-    expression["description"] =
-        "\"=\" then an expression in Godot's Expression syntax over the parameters, such as "
-        "\"=width / 2 - 0.05\"; its value takes the string's place.";
+    expression["description"] = "\"=\" then an expression over the parameters, such as \"=width / "
+                                "2 - 0.05\"; its value takes the string's place.";
     definitions["Expression"] = std::move(expression);
     schema["$defs"] = std::move(definitions);
     return schema;

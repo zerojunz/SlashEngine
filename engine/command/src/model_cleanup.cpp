@@ -284,9 +284,8 @@ json::Object cleanup_properties() {
     json::Value uvs = property("boolean", "Unwrap surfaces without texture coordinates. Default "
                                           "true.");
     json::Value collision = property(
-        "string", "Give it collision from its triangles, replacing any it has, as Godot's "
-                  "\"Generate > Physics\": \"trimesh\", \"convex\" (one hull) or \"decompose\" "
-                  "(convex hulls). Default: keep its own.");
+        "string", "Give it collision from its triangles, replacing any it has: \"trimesh\", "
+                  "\"convex\" (one hull) or \"decompose\" (convex hulls). Default: keep its own.");
     collision["enum"] = json::Array{"trimesh", "convex", "decompose"};
     json::Value delight = property(
         "number", "Take this much of the light baked into its albedo textures out of them, 0 to "
@@ -468,10 +467,10 @@ void register_model_cleanup_commands(Registry& registry) {
                    "an A-pose. Default false.");
     registry.add({
         .name = "model.retarget",
-        .description = "Retargets a rigged humanoid to Godot's humanoid skeleton as a .glb file: "
-                       "renames its bones (Hips, LeftUpperArm, ...) and turns their rests as "
-                       "Godot's importer does, so animations of every retargeted model play on "
-                       "it. Guesses the bone map; returns it, with bones missing or left over.",
+        .description = "Retargets a rigged humanoid to the engine's humanoid skeleton as a .glb "
+                       "file: renames its bones (Hips, LeftUpperArm, ...) and turns their rests, "
+                       "so animations of every retargeted model play on it. Guesses the bone map; "
+                       "returns it, with bones missing or left over.",
         .capabilities = {Capability::Edit, Capability::Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"path", std::move(source)},

@@ -1544,8 +1544,7 @@ private:
 // audio_effect_capture.cpp and audio_effect_record.cpp); their instances are in effects.hpp.
 
 constexpr std::array kSpectrumAnalyzer{
-    number("buffer_length", 0.1, 4, 2,
-           "Seconds of analyses Godot keeps; only the newest is read, here as in Godot."),
+    number("buffer_length", 0.1, 4, 2, "Seconds of analyses kept; only the newest is read."),
     Setting{"fft_size", Kind::Integer, 256, 4096, 1024, kFftSizeDoc},
 };
 
@@ -1586,121 +1585,86 @@ struct EffectType {
 
 const std::array<EffectType, 24> kTypes{{
     {"amplify",
-     "Godot's AudioEffectAmplify: changes the volume.",
+     "Changes the volume.",
      kAmplify,
      [](const Params& p, MixContext&) -> std::unique_ptr<EffectInstance> {
          return std::make_unique<Amplify>(p);
      },
      {}},
     {"low_pass_filter",
-     "Godot's AudioEffectLowPassFilter: cuts frequencies above the cutoff.",
+     "Cuts frequencies above the cutoff.",
      kFilter,
      make_filter<Filter::Mode::LowPass>,
      {}},
     {"high_pass_filter",
-     "Godot's AudioEffectHighPassFilter: cuts frequencies below the cutoff.",
+     "Cuts frequencies below the cutoff.",
      kFilter,
      make_filter<Filter::Mode::HighPass>,
      {}},
     {"band_pass_filter",
-     "Godot's AudioEffectBandPassFilter: keeps frequencies near the cutoff and cuts the rest.",
+     "Keeps frequencies near the cutoff and cuts the rest.",
      kFilter,
      make_filter<Filter::Mode::BandPass>,
      {}},
     {"notch_filter",
-     "Godot's AudioEffectNotchFilter: cuts frequencies near the cutoff.",
+     "Cuts frequencies near the cutoff.",
      kFilter,
      make_filter<Filter::Mode::Notch>,
      {}},
     {"band_limit_filter",
-     "Godot's AudioEffectBandLimitFilter: keeps a band from the cutoff, with resonance as Godot "
-     "uses it.",
+     "Keeps a band from the cutoff, with resonance.",
      kFilter,
      make_filter<Filter::Mode::BandLimit>,
      {}},
     {"low_shelf_filter",
-     "Godot's AudioEffectLowShelfFilter: scales frequencies below the cutoff by gain.",
+     "Scales frequencies below the cutoff by gain.",
      kShelfFilter,
      make_filter<Filter::Mode::LowShelf>,
      {}},
     {"high_shelf_filter",
-     "Godot's AudioEffectHighShelfFilter: scales frequencies above the cutoff by gain.",
+     "Scales frequencies above the cutoff by gain.",
      kShelfFilter,
      make_filter<Filter::Mode::HighShelf>,
      {}},
-    {"eq6",
-     "Godot's AudioEffectEQ6: six bands from 32 Hz to 10 kHz, each set in dB.",
-     {},
-     make_eq<kBands6>,
-     kBands6},
-    {"eq10",
-     "Godot's AudioEffectEQ10: ten bands from 31 Hz to 16 kHz, each set in dB.",
-     {},
-     make_eq<kBands10>,
-     kBands10},
-    {"eq21",
-     "Godot's AudioEffectEQ21: 21 bands from 22 Hz to 22 kHz, each set in dB.",
-     {},
-     make_eq<kBands21>,
-     kBands21},
-    {"delay",
-     "Godot's AudioEffectDelay: two echoes and repeating feedback.",
-     kDelay,
-     make_with_rate<Delay>,
-     {}},
-    {"reverb",
-     "Godot's AudioEffectReverb: the sound of a room.",
-     kReverb,
-     make_with_rate<ReverbEffect>,
-     {}},
-    {"chorus",
-     "Godot's AudioEffectChorus: up to four delayed, wavering copies.",
-     kChorus,
-     make_with_rate<Chorus>,
-     {}},
-    {"phaser",
-     "Godot's AudioEffectPhaser: notches that sweep up and down.",
-     kPhaser,
-     make_with_rate<Phaser>,
-     {}},
-    {"distortion",
-     "Godot's AudioEffectDistortion: clips or shapes the waveform.",
-     kDistortion,
-     make_with_rate<Distortion>,
-     {}},
+    {"eq6", "Six bands from 32 Hz to 10 kHz, each set in dB.", {}, make_eq<kBands6>, kBands6},
+    {"eq10", "Ten bands from 31 Hz to 16 kHz, each set in dB.", {}, make_eq<kBands10>, kBands10},
+    {"eq21", "21 bands from 22 Hz to 22 kHz, each set in dB.", {}, make_eq<kBands21>, kBands21},
+    {"delay", "Two echoes and repeating feedback.", kDelay, make_with_rate<Delay>, {}},
+    {"reverb", "The sound of a room.", kReverb, make_with_rate<ReverbEffect>, {}},
+    {"chorus", "Up to four delayed, wavering copies.", kChorus, make_with_rate<Chorus>, {}},
+    {"phaser", "Notches that sweep up and down.", kPhaser, make_with_rate<Phaser>, {}},
+    {"distortion", "Clips or shapes the waveform.", kDistortion, make_with_rate<Distortion>, {}},
     {"compressor",
-     "Godot's AudioEffectCompressor: turns loud sound down, optionally by another bus's level "
-     "(sidechain).",
+     "Turns loud sound down, optionally by another bus's level (sidechain).",
      kCompressor,
      [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
          return std::make_unique<Compressor>(p, context);
      },
      {}},
     {"hard_limiter",
-     "Godot's AudioEffectHardLimiter: keeps the sound under a ceiling, with 2 ms of latency.",
+     "Keeps the sound under a ceiling, with 2 ms of latency.",
      kHardLimiter,
      make_with_rate<HardLimiter>,
      {}},
     {"panner",
-     "Godot's AudioEffectPanner: moves the sound left or right.",
+     "Moves the sound left or right.",
      kPanner,
      [](const Params& p, MixContext&) -> std::unique_ptr<EffectInstance> {
          return std::make_unique<Panner>(p);
      },
      {}},
     {"stereo_enhance",
-     "Godot's AudioEffectStereoEnhance: widens or narrows the stereo image.",
+     "Widens or narrows the stereo image.",
      kStereoEnhance,
      make_with_rate<StereoEnhance>,
      {}},
     {"pitch_shift",
-     "Godot's AudioEffectPitchShift: changes the pitch and keeps the speed.",
+     "Changes the pitch and keeps the speed.",
      kPitchShift,
      make_with_rate<PitchShift>,
      {}},
     {"spectrum_analyzer",
-     "Godot's AudioEffectSpectrumAnalyzer: measures frequencies for audio.spectrum and game "
-     "code; the sound passes unchanged.",
+     "Measures frequencies for audio.spectrum and game code; the sound passes unchanged.",
      kSpectrumAnalyzer,
      [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
          return std::make_unique<SpectrumAnalyzerInstance>(static_cast<int>(p("fft_size")),
@@ -1708,16 +1672,14 @@ const std::array<EffectType, 24> kTypes{{
      },
      {}},
     {"capture",
-     "Godot's AudioEffectCapture: holds what passes for game code to take; the sound passes "
-     "unchanged.",
+     "Holds what passes for game code to take; the sound passes unchanged.",
      kCapture,
      [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
          return std::make_unique<CaptureInstance>(p("buffer_length"), context.mix_rate());
      },
      {}},
     {"record",
-     "Godot's AudioEffectRecord: records what passes while audio.record or game code says; the "
-     "sound passes unchanged.",
+     "Records what passes while audio.record or game code says; the sound passes unchanged.",
      {},
      [](const Params& p, MixContext& context) -> std::unique_ptr<EffectInstance> {
          const json::Value* format = p.find("format");
@@ -1782,8 +1744,7 @@ json::Value type_schema(const EffectType& type) {
         format["type"] = "string";
         format["enum"] = json::Array{kRecordFormats[0], kRecordFormats[1]};
         format["default"] = kRecordFormats[1];
-        format["description"] = "Bits per sample of the recording, as Godot's 8-bit and 16-bit "
-                                "formats.";
+        format["description"] = "Bits per sample of the recording.";
     }
     if (!type.bands.empty()) {
         json::Value& bands = properties["band_db"];
@@ -1800,10 +1761,10 @@ json::Value type_schema(const EffectType& type) {
         voices["type"] = "array";
         voices["maxItems"] = 4;
         voices["description"] =
-            "Each voice's settings, as Godot's voice/1 to voice/4; voice_count says how many "
-            "play. Godot's defaults: voice 1 delay_ms 15, rate_hz 0.8, depth_ms 2, cutoff_hz "
-            "8000, pan -0.5; voice 2 delay_ms 20, rate_hz 1.2, depth_ms 3, cutoff_hz 8000, pan "
-            "0.5; voices 3 and 4 as each setting's default.";
+            "Each voice's settings, voice/1 to voice/4; voice_count says how many play. Defaults: "
+            "voice 1 delay_ms 15, rate_hz 0.8, depth_ms 2, cutoff_hz 8000, pan -0.5; voice 2 "
+            "delay_ms 20, rate_hz 1.2, depth_ms 3, cutoff_hz 8000, pan 0.5; voices 3 and 4 as each "
+            "setting's default.";
         json::Value& voice = voices["items"];
         voice["type"] = "object";
         voice["additionalProperties"] = false;
@@ -1844,8 +1805,7 @@ std::vector<std::string_view> effect_types() {
 
 json::Value effect_schema() {
     json::Value schema;
-    schema["description"] =
-        "An effect, as one of Godot's AudioEffect resources: its type and its settings.";
+    schema["description"] = "An effect: its type and its settings.";
     json::Array options;
     for (const EffectType& type : kTypes) {
         options.push_back(type_schema(type));

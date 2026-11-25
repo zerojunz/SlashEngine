@@ -293,7 +293,7 @@ TEST_CASE("decals are checked: their numbers, their textures and the atlas they 
     decal.orm = nullptr;
     CHECK(render::check_decals({.decals = {decal}, .filter = static_cast<render::DecalFilter>(9)})
               .error()
-              .message == "the decals' filter is not one of Godot's");
+              .message == "the decals' filter is not a known filter");
 
     // A texture 2048 texels across fits; forty 16384 across take a row each, 32768 by 2048 texels
     // with levels, past what the atlas holds.

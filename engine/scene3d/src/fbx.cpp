@@ -329,7 +329,7 @@ void FbxReader::images() {
         std::string found = find_texture(named);
         if (found.empty()) {
             problems_.add("texture " + quoted(named) +
-                          " isn't beside the model or in a folder Godot looks in; materials "
+                          " isn't beside the model or in a folder searched for textures; materials "
                           "draw without it");
             images_.push_back(-1);
             continue;

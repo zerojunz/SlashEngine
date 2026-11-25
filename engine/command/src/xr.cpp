@@ -391,8 +391,7 @@ void register_xr_commands(Registry& registry) {
             {"initialize", property("boolean", "Starts or stops the test headset.")},
             {"trackers", std::move(trackers)},
             {"play_area_mode",
-             choice({"sitting", "roomscale", "stage"},
-                    "The play area the headset tracks in, as Godot's XRInterface.")},
+             choice({"sitting", "roomscale", "stage"}, "The play area the headset tracks in.")},
             {"play_area_size", numbers(2, "Meters, x by z.")},
             {"environment_blend_mode",
              choice({"opaque", "additive", "alpha"},
@@ -400,9 +399,9 @@ void register_xr_commands(Registry& registry) {
             {"ipd", std::move(ipd)},
             {"render_target_size", std::move(target)},
             {"center_on_hmd",
-             choice({"reset_full_rotation", "reset_but_keep_tilt", "dont_reset_rotation"},
-                    "Makes where the head is the play space's center, as Godot's center_on_hmd; "
-                    "not in the stage play area.")},
+             choice(
+                 {"reset_full_rotation", "reset_but_keep_tilt", "dont_reset_rotation"},
+                 "Makes where the head is the play space's center; not in the stage play area.")},
             {"keep_height", property("boolean", "With center_on_hmd. Default: true.")},
         }),
         .handler = xr_set,

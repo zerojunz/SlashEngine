@@ -268,9 +268,8 @@ json::Value schema(bool list_ops) {
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine particle process material";
     schema["description"] =
-        "How a GpuEmitter2D's or GpuEmitter3D's particles start and move: Godot's "
-        "ParticleProcessMaterial, with its property names. Angles are in degrees, lengths in "
-        "pixels in 2D and meters in 3D; vectors are [x, y] or [x, y, z], z only in 3D.";
+        "How a GpuEmitter2D's or GpuEmitter3D's particles start and move. Angles are in degrees, "
+        "lengths in pixels in 2D and meters in 3D; vectors are [x, y] or [x, y, z], z only in 3D.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -388,7 +387,7 @@ json::Value schema(bool list_ops) {
     properties["turbulence_noise_strength"] =
         number("How sharply the noise turns.", defaults.turbulence_noise_strength, 0.0, 20.0);
     properties["turbulence_noise_scale"] =
-        number("The noise's size: higher is larger swirls, 10 the largest Godot's slider gives.",
+        number("The noise's size: higher is larger swirls; 10 is the usual largest.",
                defaults.turbulence_noise_scale, 0.0);
     properties["turbulence_noise_speed"] = numbers(3);
     properties["turbulence_noise_speed"]["default"] = json::Array{0, 0, 0};
