@@ -168,9 +168,9 @@ struct StyleBox {
 [[nodiscard]] json::Value style_box_schema();
 // Every error in a style box, each with the JSON Pointer of the bad value. Keys under their old
 // names (style_box_aliases) are read as their current ones.
-[[nodiscard]] std::vector<json::ValidationError> validate_style_box(const json::Value& doc);
+[[nodiscard]] std::vector<json::ValidationError> validate_style_box(const json::Value& given);
 // A style box, or its first error. Takes old key names too.
-[[nodiscard]] Result<StyleBox> parse_style_box(const json::Value& doc);
+[[nodiscard]] Result<StyleBox> parse_style_box(const json::Value& given);
 
 // A style box key's old name and its current one ("bg_color" is now "background_color"). Keys
 // with sides ("expand_margin_left") are renamed as their base ("outset_left").
