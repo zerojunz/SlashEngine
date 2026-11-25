@@ -78,6 +78,7 @@
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/video/commands.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/character.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -181,10 +182,10 @@ Usage:
                                      .gltf, .glb, .obj, .fbx or .blend model)
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames, material,
-                                     process_material, animation (.anim.json), animtree,
-                                     tileset, font, theme, audio, bus_layout, navmesh, navpoly,
-                                     npc, quest, dialogue, meshlib, lightmap, voxel_gi
-                                     (.voxelgi.json), model, standard_material, texture,
+                                     particles, animation (.anim.json), animtree, tileset,
+                                     font, theme, audio, bus_layout, navmesh, navmesh2d, npc,
+                                     quest, dialogue, blocks, lightmap, voxel_light
+                                     (.voxellight.json), model, standard_material, texture,
                                      scatter, pcg, physics_material, ragdoll, foliage, groom,
                                      damage, character, face, creature, vehicle, vfx, fluid,
                                      water, pipeline, replay, test, score (each its
@@ -1242,7 +1243,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool prefab = path.ends_with(world::kPrefabSuffix);
     const bool frames = path.ends_with(slash::canvas::kSpriteFramesSuffix);
     const bool material = path.ends_with(slash::canvas::kMaterialSuffix);
-    const bool process = path.ends_with(slash::canvas::kProcessMaterialSuffix);
+    const bool process = slash::world::has_suffix(path, slash::canvas::kProcessMaterialSuffix);
     const bool animation = path.ends_with(slash::animation::kAnimationSuffix);
     const bool tree = path.ends_with(slash::animation::kTreeSuffix);
     const bool tileset = path.ends_with(slash::canvas::kTileSetSuffix);
@@ -1251,14 +1252,14 @@ int cmd_scene_validate(const std::string& path) {
     const bool stream = path.ends_with(slash::audio::kStreamSuffix);
     const bool buses = path.ends_with(slash::audio::kBusLayoutSuffix);
     const bool navmesh = path.ends_with(slash::navigation::kMeshSuffix);
-    const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
+    const bool navpoly = slash::world::has_suffix(path, slash::navigation::kPolygonSuffix);
     const bool brain = path.ends_with(slash::npc::kBrainSuffix);
     const bool quest = path.ends_with(slash::npc::kQuestSuffix);
     const bool dialogue = path.ends_with(slash::npc::kDialogueSuffix);
-    const bool meshlib = path.ends_with(slash::scene3d::kMeshLibrarySuffix);
+    const bool meshlib = slash::world::has_suffix(path, slash::scene3d::kMeshLibrarySuffix);
     const bool standard = path.ends_with(slash::scene3d::kStandardMaterialSuffix);
     const bool lightmap = path.ends_with(slash::scene3d::kLightmapSuffix);
-    const bool voxel_gi = path.ends_with(slash::scene3d::kVoxelGISuffix);
+    const bool voxel_gi = slash::world::has_suffix(path, slash::scene3d::kVoxelGISuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
     const bool test = path.ends_with(command::kTestSuffix);
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
@@ -1519,7 +1520,7 @@ int cmd_scene_validate(const std::string& path) {
     return errors.empty() ? kExitOk : kExitFailure;
 }
 
-// A .frames.json, .material.json, .process_material.json, .anim.json, .animtree.json,
+// A .frames.json, .material.json, .particles.json, .anim.json, .animtree.json,
 // .tileset.json, .font.json,
 // .theme.json, .audio.json, .bus_layout.json, .replay.json or .test.json file in canonical form:
 // checked,
@@ -1557,7 +1558,7 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::canvas::kMaterialSuffix)) {
             return format_checked(text.value(), slash::canvas::parse_material);
         }
-        if (path.ends_with(slash::canvas::kProcessMaterialSuffix)) {
+        if (slash::world::has_suffix(path, slash::canvas::kProcessMaterialSuffix)) {
             return format_checked(text.value(), slash::canvas::parse_process_material);
         }
         if (path.ends_with(slash::animation::kAnimationSuffix)) {
@@ -1586,7 +1587,7 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::navigation::kMeshSuffix)) {
             return format_checked(text.value(), slash::navigation::parse_mesh);
         }
-        if (path.ends_with(slash::navigation::kPolygonSuffix)) {
+        if (slash::world::has_suffix(path, slash::navigation::kPolygonSuffix)) {
             return format_checked(text.value(), slash::navigation::parse_polygon);
         }
         if (path.ends_with(slash::npc::kBrainSuffix)) {
@@ -1604,7 +1605,7 @@ int cmd_scene_format(const std::string& path, bool check) {
                 return slash::npc::parse_dialogue(dialogue);
             });
         }
-        if (path.ends_with(slash::scene3d::kMeshLibrarySuffix)) {
+        if (slash::world::has_suffix(path, slash::scene3d::kMeshLibrarySuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_mesh_library);
         }
         if (path.ends_with(slash::scene3d::kStandardMaterialSuffix)) {
@@ -1613,7 +1614,7 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::scene3d::kLightmapSuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_lightmap);
         }
-        if (path.ends_with(slash::scene3d::kVoxelGISuffix)) {
+        if (slash::world::has_suffix(path, slash::scene3d::kVoxelGISuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_voxel_gi);
         }
         if (path.ends_with(slash::procedural::kTextureSuffix)) {
@@ -1769,61 +1770,30 @@ int cmd_scene(const std::vector<std::string>& args) {
     return action == "validate" ? cmd_scene_validate(path) : cmd_scene_format(path, check);
 }
 
-int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 48> kKinds = {"scene",
-                                                         "prefab",
-                                                         "frames",
-                                                         "material",
-                                                         "process_material",
-                                                         "animation",
-                                                         "animtree",
-                                                         "tileset",
-                                                         "font",
-                                                         "theme",
-                                                         "audio",
-                                                         "bus_layout",
-                                                         "navmesh",
-                                                         "navpoly",
-                                                         "npc",
-                                                         "quest",
-                                                         "dialogue",
-                                                         "meshlib",
-                                                         "lightmap",
-                                                         "voxel_gi",
-                                                         "model",
-                                                         "replay",
-                                                         "test",
-                                                         "score",
-                                                         "storyboard",
-                                                         "project",
-                                                         "presets",
-                                                         "sdk",
-                                                         "plugin",
-                                                         "providers",
-                                                         "bench",
-                                                         "standard_material",
-                                                         "texture",
-                                                         "scatter",
-                                                         "pcg",
-                                                         "physics_material",
-                                                         "ragdoll",
-                                                         "foliage",
-                                                         "groom",
-                                                         "damage",
-                                                         "character",
-                                                         "face",
-                                                         "creature",
-                                                         "vehicle",
-                                                         "vfx",
-                                                         "fluid",
-                                                         "water",
-                                                         "pipeline"};
+int cmd_schema(std::vector<std::string> args) {
+    // Kinds renamed since ("process_material" is now "particles") still name their schemas.
+    if (args.size() == 1) {
+        args[0] = std::string(world::current_param_value("schema.get", "kind", args[0]));
+    }
+    constexpr std::array<std::string_view, 48> kKinds = {
+        "scene",      "prefab",    "frames",   "material",
+        "particles",  "animation", "animtree", "tileset",
+        "font",       "theme",     "audio",    "bus_layout",
+        "navmesh",    "navmesh2d", "npc",      "quest",
+        "dialogue",   "blocks",    "lightmap", "voxel_light",
+        "model",      "replay",    "test",     "score",
+        "storyboard", "project",   "presets",  "sdk",
+        "plugin",     "providers", "bench",    "standard_material",
+        "texture",    "scatter",   "pcg",      "physics_material",
+        "ragdoll",    "foliage",   "groom",    "damage",
+        "character",  "face",      "creature", "vehicle",
+        "vfx",        "fluid",     "water",    "pipeline"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
             "schema takes one argument: scene, prefab, frames, material, "
-            "process_material, animation, animtree, tileset, font, theme, audio, "
-            "bus_layout, navmesh, navpoly, npc, quest, dialogue, meshlib, lightmap, "
-            "voxel_gi, model, "
+            "particles, animation, animtree, tileset, font, theme, audio, "
+            "bus_layout, navmesh, navmesh2d, npc, quest, dialogue, blocks, lightmap, "
+            "voxel_light, model, "
             "standard_material, "
             "texture, scatter, pcg, physics_material, ragdoll, foliage, groom, damage, "
             "character, face, creature, "
@@ -1841,7 +1811,7 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::canvas::sprite_frames_schema();
     } else if (args[0] == "material") {
         schema = slash::canvas::material_schema();
-    } else if (args[0] == "process_material") {
+    } else if (args[0] == "particles") {
         schema = slash::canvas::process_material_schema();
     } else if (args[0] == "animation") {
         schema = slash::animation::animation_schema();
@@ -1859,7 +1829,7 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::audio::bus_layout_schema();
     } else if (args[0] == "navmesh") {
         schema = slash::navigation::mesh_schema();
-    } else if (args[0] == "navpoly") {
+    } else if (args[0] == "navmesh2d") {
         schema = slash::navigation::polygon_schema();
     } else if (args[0] == "npc") {
         schema = slash::npc::brain_schema();
@@ -1867,11 +1837,11 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::npc::quest_schema();
     } else if (args[0] == "dialogue") {
         schema = slash::npc::dialogue_schema();
-    } else if (args[0] == "meshlib") {
+    } else if (args[0] == "blocks") {
         schema = slash::scene3d::mesh_library_schema();
     } else if (args[0] == "lightmap") {
         schema = slash::scene3d::lightmap_schema();
-    } else if (args[0] == "voxel_gi") {
+    } else if (args[0] == "voxel_light") {
         schema = slash::scene3d::voxel_gi_schema();
     } else if (args[0] == "model") {
         schema = slash::scene3d::model_recipe_schema();

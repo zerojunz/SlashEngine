@@ -18,6 +18,7 @@
 #include "slash/render/light.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/world/aliases.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
@@ -41,7 +42,7 @@ namespace {
 using namespace detail;
 
 static_assert(std::endian::native == std::endian::little,
-              ".voxelgi.json files hold the machine's bytes, little-endian");
+              ".voxellight.json files hold the machine's bytes, little-endian");
 static_assert(sizeof(VoxelGICell) == 16, "cells are kept as their bytes");
 
 // The deepest octree a file may hold: Godot's "512".
@@ -102,8 +103,8 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine VoxelLighting3D data";
-    schema["description"] =
-        "The cells a VoxelLighting3D voxelized, as Godot's VoxelGIData: voxel_gi.bake writes it.";
+    schema["description"] = "The cells a VoxelLighting3D voxelized, as Godot's VoxelGIData: "
+                            "voxel_lighting.bake writes it.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "bounds", "octree_size", "level_counts", "cells"};
@@ -2019,7 +2020,7 @@ json::Value voxel_gi_json(const VoxelGIData& data) {
 
 void add_voxel_gi_types(asset::Assets& assets) {
     assets.add_type<VoxelGIData>(
-        "voxel_gi", {std::string(kVoxelGISuffix)},
+        "voxel_light", world::suffixes_of(kVoxelGISuffix),
         [](std::string_view text, std::string_view /*path*/) -> Result<VoxelGIData> {
             auto doc = json::parse(text);
             if (!doc) {
@@ -2402,7 +2403,7 @@ std::vector<Problem> check_voxel_gis(const world::World& world) {
             continue;
         }
         const std::string field = base + "data";
-        if (!path.ends_with(kVoxelGISuffix)) {
+        if (!world::has_suffix(path, kVoxelGISuffix)) {
             problems.push_back(
                 {entity, field,
                  "\"" + path + "\" isn't a " + std::string(kVoxelGISuffix) + " file"});

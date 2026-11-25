@@ -2709,13 +2709,13 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
     // for the library's items, turned items keep their orientation, and the physics material
     // gives friction and bounce.
     CHECK(*entity(files, level, "blocks").find("BlockMap3D") == parse(R"({
-        "mesh_library": "godot/blocks.meshlib.json", "cell_size": [2.0, 1.0, 2.0],
+        "blocks": "godot/blocks.blocks.json", "cell_size": [2.0, 1.0, 2.0],
         "friction": 0.5, "bounce": 0.25,
         "legend": {"F": "Floor", "R": "Ramp_steep:16", "a": "Floor_2", "i": "item_3"},
         "floors": [{"y": -1, "rows": ["F"]},
                    {"origin": [-1, -2], "rows": [".F", "", ".FFR", "a"]},
                    {"y": 1, "rows": ["i"]}]})"));
-    CHECK(parse(files.at("godot/blocks.meshlib.json")) == parse(R"({"format": 1, "items": {
+    CHECK(parse(files.at("godot/blocks.blocks.json")) == parse(R"({"format": 1, "items": {
         "Floor": {
             "primitive": {"BoxGeometry": {"size": [2.0, 2.0, 2.0]}},
             "material": {"albedo_color": [0.5, 0.5, 0.45, 1.0]},
@@ -2729,9 +2729,9 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
                    "material": {"albedo_color": [0.5, 0.5, 0.45, 1.0]}}}})"));
     // A library saved in Godot's binary form converts the same way.
     CHECK(*entity(files, level, "ruins").find("BlockMap3D") == parse(R"({
-        "mesh_library": "godot/ruins.meshlib.json", "legend": {"P": "Pillar"},
+        "blocks": "godot/ruins.blocks.json", "legend": {"P": "Pillar"},
         "floors": [{"origin": [3, 3], "rows": ["P"]}]})"));
-    CHECK(parse(files.at("godot/ruins.meshlib.json")) == parse(R"({"format": 1, "items": {
+    CHECK(parse(files.at("godot/ruins.blocks.json")) == parse(R"({"format": 1, "items": {
         "Pillar": {"primitive": {"CylinderGeometry": {
             "top_radius": 0.4, "bottom_radius": 0.4, "height": 4.0}}}}})"));
 
@@ -2756,7 +2756,7 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
     // Navigation: regions name the files their meshes become, and an agent is an entity at its
     // parent's origin.
     CHECK(*entity(files, level, "yard").find("NavArea3D") == parse(R"({
-        "navigation_mesh": "godot/level_yard.navmesh.json", "travel_cost": 2.0})"));
+        "navmesh": "godot/level_yard.navmesh.json", "travel_cost": 2.0})"));
     CHECK(parse(files.at("godot/level_yard.navmesh.json")) == parse(R"({
         "format": 1, "vertices": [[-8.0, 0.0, -8.0], [8.0, 0.0, -8.0], [8.0, 0.0, 8.0],
                                   [-8.0, 0.0, 8.0]],
@@ -2766,7 +2766,7 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
         "filter_baking_aabb": {"position": [-10.0, -1.0, -10.0], "size": [20.0, 5.0, 20.0]}})"));
     // Godot's navigation meshes bake only meshes unless told otherwise.
     CHECK(*entity(files, level, "square").find("NavArea3D") ==
-          parse(R"({"navigation_mesh": "godot/nav/square.navmesh.json"})"));
+          parse(R"({"navmesh": "godot/nav/square.navmesh.json"})"));
     CHECK(parse(files.at("godot/nav/square.navmesh.json")) == parse(R"({
         "format": 1, "vertices": [[-1.0, 0.0, -1.0], [1.0, 0.0, -1.0], [1.0, 0.0, 1.0],
                                   [-1.0, 0.0, 1.0]],
@@ -2788,8 +2788,8 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
     CHECK(*entity(files, map, "car").find("SplineFollower2D") ==
           parse(R"({"progress": 30.0, "rotates": false})"));
     CHECK(*entity(files, map, "ground").find("NavArea2D") ==
-          parse(R"({"navigation_polygon": "godot/map_ground.navpoly.json"})"));
-    CHECK(parse(files.at("godot/map_ground.navpoly.json")) == parse(R"({
+          parse(R"({"navmesh": "godot/map_ground.navmesh2d.json"})"));
+    CHECK(parse(files.at("godot/map_ground.navmesh2d.json")) == parse(R"({
         "format": 1, "vertices": [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
         "polygons": [[0, 1, 2, 3]],
         "outlines": [[[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]]],
@@ -3116,7 +3116,7 @@ std::string voxel_gi_data_text(const slash::scene3d::VoxelGIData& data) {
 
 } // namespace
 
-TEST_CASE("importing Godot's VoxelGIs writes their baked cells as .voxelgi.json files") {
+TEST_CASE("importing Godot's VoxelGIs writes their baked cells as .voxellight.json files") {
     const fs::path project = "import_godot_voxel_gi";
     const fs::path folder = project / "godot";
     fs::remove_all(project);
@@ -3208,28 +3208,28 @@ data = SubResource("broken")
     const json::Value room_entity = entity(files, level, "room");
     CHECK(*room_entity.find("VoxelLighting3D") == parse(R"({
         "subdiv": "64", "size": [4.0, 2.0, 4.0], "camera_attributes": "room",
-        "data": "godot/level_room.voxelgi.json", "dynamic_range": 4.0, "propagation": 0.7,
+        "data": "godot/level_room.voxellight.json", "dynamic_range": 4.0, "propagation": 0.7,
         "use_two_bounces": false, "interior": true})"));
     CHECK(*room_entity.find("CameraLens") == parse(R"({"exposure_multiplier": 0.5})"));
     slash::scene3d::VoxelGIData expected = room;
     expected.baked_exposure = 0.5F;
-    CHECK(cells_in("godot/level_room.voxelgi.json") == expected);
+    CHECK(cells_in("godot/level_room.voxellight.json") == expected);
     // Binary data reads the same, with no camera attributes at 1.
     CHECK(*entity(files, level, "hall").find("VoxelLighting3D") == parse(R"({
-        "subdiv": "64", "size": [4.0, 4.0, 4.0], "data": "godot/hall.voxelgi.json",
+        "subdiv": "64", "size": [4.0, 4.0, 4.0], "data": "godot/hall.voxellight.json",
         "energy": 1.5})"));
-    CHECK(cells_in("godot/hall.voxelgi.json") == hall);
+    CHECK(cells_in("godot/hall.voxellight.json") == hall);
 
     // Data with no cells, or cells that don't make a VoxelGI's, is baked again.
     CHECK(*entity(files, level, "unbaked").find("VoxelLighting3D") == parse(R"({"energy": 2.0})"));
     CHECK(*entity(files, level, "broken").find("VoxelLighting3D") == parse("{}"));
     const json::Value unbaked = unsupported(plan.report, "VoxelGIData with no cells");
     CHECK(unbaked.find("where")->as_string() == "level.tscn: Unbaked");
-    CHECK(unbaked.find("why")->as_string() == "bake it with voxel_gi.bake");
+    CHECK(unbaked.find("why")->as_string() == "bake it with voxel_lighting.bake");
     const json::Value broken = unsupported(plan.report, "VoxelGIData cells");
     CHECK(broken.find("where")->as_string() == "level.tscn: Broken");
     CHECK(broken.find("why")->as_string().starts_with("they don't make a VoxelGI's ("));
-    CHECK(broken.find("why")->as_string().ends_with("); bake it again with voxel_gi.bake"));
+    CHECK(broken.find("why")->as_string().ends_with("); bake it again with voxel_lighting.bake"));
     CHECK(unsupported(plan.report, "node type VoxelGI").is_null());
 
     // Godot's cones.
@@ -3539,8 +3539,7 @@ trail_section_subdivisions = 2
     CHECK(plan.report.find("converted")->find("process_materials")->as_int() == 2);
 
     // The scene's own material: its 2D vectors, curve and gradient.
-    const std::string fire_material =
-        "godot/level_particle_process_material_1.process_material.json";
+    const std::string fire_material = "godot/level_particle_process_material_1.particles.json";
     REQUIRE(files.contains(fire_material));
     CHECK(slash::canvas::validate_process_material(parse(files.at(fire_material))).empty());
     CHECK(parse(files.at(fire_material)) == parse(R"({
@@ -3572,19 +3571,19 @@ trail_section_subdivisions = 2
         "sub_emitter_keep_velocity": true})"));
     CHECK(unsupported(plan.report, "ParticleProcessMaterial.collision_mode").is_null());
     CHECK(unsupported(plan.report, "ParticleProcessMaterial.sub_emitter_mode").is_null());
-    CHECK(parse(files.at("godot/smoke.process_material.json")) ==
+    CHECK(parse(files.at("godot/smoke.particles.json")) ==
           parse(R"({"format": 1, "spread": 180.0, "initial_velocity_max": 10.0,
                     "gravity": [0.0, 98.0]})"));
 
     // The emitters: the material's animation frames, and the seed only where it is fixed.
     const std::string level = "godot/level.scene.json";
     CHECK(*entity(files, level, "fire").find("GpuEmitter2D") == parse(R"({
-        "amount": 32, "process_material": "godot/level_particle_process_material_1.process_material.json",
+        "amount": 32, "particle_rules": "godot/level_particle_process_material_1.particles.json",
         "texture": "godot/spark.png", "lifetime": 0.8, "use_fixed_seed": true,
         "seed": -294967296, "draw_order": "index", "collision_size": 3.0, "columns": 4,
         "rows": 2, "anim_loop": true, "sub_emitter": "smoke"})"));
     CHECK(*entity(files, level, "smoke").find("GpuEmitter2D") ==
-          parse(R"({"process_material": "godot/smoke.process_material.json",
+          parse(R"({"particle_rules": "godot/smoke.particles.json",
                     "trail_enabled": true, "trail_lifetime": 0.5, "trail_sections": 12,
                     "trail_section_subdivisions": 2})"));
     CHECK(unsupported(plan.report, "GPUParticles2D.trail_enabled").is_null());
@@ -5890,7 +5889,7 @@ heightfield_mask = 3
     CHECK(unsupported(plan.report, "GPUParticles3D.trail_enabled") != nullptr);
 
     // The process material keeps its 3D vectors, its flags and its three scale curves.
-    const std::string material = emitter.find("process_material")->as_string();
+    const std::string material = emitter.find("particle_rules")->as_string();
     REQUIRE(files.contains(material));
     const json::Value process = parse(files.at(material));
     CHECK(*process.find("emission_box_extents") == parse("[4.0, 0.2, 3.0]"));

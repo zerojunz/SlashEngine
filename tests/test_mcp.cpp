@@ -242,6 +242,12 @@ TEST_CASE("tools/call runs the command and returns text and structured content")
     // Leaving out arguments counts as an empty object.
     const json::Value described = client.result("tools/call", R"({"name": "engine_describe"})");
     CHECK_FALSE(described.find("isError")->as_bool());
+
+    // A command's old tool name still runs it.
+    const json::Value old = client.call_tool("csg_get", R"({"id": "player"})");
+    CHECK(old.find("isError")->as_bool());
+    CHECK(old.find("content")->as_array().front().find("text")->as_string().find(
+              "has no CSG shape") != std::string::npos);
 }
 
 TEST_CASE("a frame.capture image goes to the model as an image block") {

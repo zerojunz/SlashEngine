@@ -29,22 +29,22 @@ struct VoxelLighting3D;
 
 // VoxelLighting3D, as Godot 4.6's VoxelLighting3D (scene/3d/voxel_gi.cpp): a box of the world
 // voxelized into an octree of cells, each holding the albedo, emission and normal of the static
-// meshes in it (scene/3d/voxelizer.cpp), baked into a .voxelgi.json file. Lights are injected into
-// the cells as Godot's voxel_gi.glsl injects them on the GPU, here on the CPU on the job pool,
+// meshes in it (scene/3d/voxelizer.cpp), baked into a .voxellight.json file. Lights are injected
+// into the cells as Godot's voxel_gi.glsl injects them on the GPU, here on the CPU on the job pool,
 // whenever the lights change: direct light with shadows marched through the cells' distance field,
 // a second bounce traced through the first, and the light averaged up the octree. Each level's
 // light is a level of the 3D texture lit meshes trace cones through for their ambient light and
 // reflections (render::VoxelGIShading).
 namespace slash::scene3d {
 
-inline constexpr std::string_view kVoxelGISuffix = ".voxelgi.json";
+inline constexpr std::string_view kVoxelGISuffix = ".voxellight.json";
 
 // A cell as Godot's VoxelGIData keeps its data cells: its place in its level's cells (x, y << 11,
 // z << 21), its albedo and how much of it is solid (RGBA8, linear; only the deepest cells have an
 // albedo), its emission (RGBE9995) and its normal (three snorm8).
 using VoxelGICell = std::array<std::uint32_t, 4>;
 
-// A .voxelgi.json file, as Godot's VoxelGIData: the box it voxelized in its VoxelLighting3D's
+// A .voxellight.json file, as Godot's VoxelGIData: the box it voxelized in its VoxelLighting3D's
 // space, its cells along each axis at the deepest level, the exposure its emission was baked with,
 // and its cells, level by level from the root (level_counts of each), each level sorted by x, then
 // y, then z, as Godot's Voxelizer sorts them.
@@ -59,7 +59,7 @@ struct VoxelGIData {
     friend bool operator==(const VoxelGIData&, const VoxelGIData&) = default;
 };
 
-// The JSON Schema for .voxelgi.json files.
+// The JSON Schema for .voxellight.json files.
 [[nodiscard]] json::Value voxel_gi_schema();
 // Every error in a document, each with its JSON Pointer: those of the schema, octree sizes that
 // aren't what a VoxelLighting3D makes, level counts that don't add up to the cells, and cells out
@@ -70,7 +70,7 @@ struct VoxelGIData {
 // The document of the data, in canonical form: its cells as base64 of little-endian values.
 [[nodiscard]] json::Value voxel_gi_json(const VoxelGIData& data);
 
-// Registers .voxelgi.json files with assets as VoxelGIData. Called by add_asset_types.
+// Registers .voxellight.json files with assets as VoxelGIData. Called by add_asset_types.
 void add_voxel_gi_types(asset::Assets& assets);
 
 // The cells along each axis of a VoxelLighting3D's box of size at subdiv (6 for "64" up to 9 for
@@ -255,7 +255,7 @@ struct VoxelGIBake {
 
 // Each VoxelLighting3D's problems, for scene validate and exports: a subdiv that isn't "64", "128",
 // "256" or "512", a size that isn't positive, camera_attributes naming no CameraLens, and a data
-// file that isn't a .voxelgi.json file, doesn't read or isn't valid.
+// file that isn't a .voxellight.json file, doesn't read or isn't valid.
 [[nodiscard]] std::vector<Problem> check_voxel_gis(const world::World& world);
 
 } // namespace slash::scene3d

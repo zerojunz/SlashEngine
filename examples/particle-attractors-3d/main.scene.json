@@ -19,7 +19,7 @@
           "burst": 1.0,
           "draw_order": "view_depth",
           "lifetime": 4.0,
-          "process_material": "dust.process_material.json"
+          "particle_rules": "dust.particles.json"
         },
         "QuadGeometry": {
           "size": [0.1, 0.1]

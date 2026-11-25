@@ -35,7 +35,7 @@
     "house": {
       "components": {
         "NavArea3D": {
-          "navigation_mesh": "nav/house.navmesh.json"
+          "navmesh": "nav/house.navmesh.json"
         },
         "Transform3D": {}
       }
@@ -43,7 +43,7 @@
     "yard": {
       "components": {
         "NavArea2D": {
-          "navigation_polygon": "nav/yard.navpoly.json"
+          "navmesh": "nav/yard.navmesh2d.json"
         },
         "Transform2D": {
           "position": [20.0, 10.0]

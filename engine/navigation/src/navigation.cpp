@@ -409,18 +409,12 @@ void gather_regions(const world::World& world, const State& state, const Trees& 
                     std::vector<RegionInput>& out, std::vector<MapError>& errors) {
     for (const Order& order : ordered<Component>(world)) {
         const Component& region = world.ecs().get<const Component>(order.entity);
-        const std::string& path = [&]() -> const std::string& {
-            if constexpr (std::is_same_v<Component, NavArea3D>) {
-                return region.navigation_mesh;
-            } else {
-                return region.navigation_polygon;
-            }
-        }();
+        const std::string& path = region.navmesh;
         if (path.empty()) {
             continue;
         }
         const std::string_view suffix = kind == Map::ThreeD ? kMeshSuffix : kPolygonSuffix;
-        if (!path.ends_with(suffix)) {
+        if (!world::has_suffix(path, suffix)) {
             errors.push_back({order.id, path + ": not a " + std::string(suffix) + " file"});
             continue;
         }
@@ -2095,9 +2089,9 @@ std::vector<json::ValidationError> check_scene(const json::Value& as_written,
         }
         std::string error;
         const std::string_view suffix = three_d ? kMeshSuffix : kPolygonSuffix;
-        if (!path.ends_with(suffix)) {
+        if (!world::has_suffix(path, suffix)) {
             error = three_d ? "navigation meshes are .navmesh.json files"
-                            : "navigation polygons are .navpoly.json files";
+                            : "navigation polygons are .navmesh2d.json files";
         } else if (auto text = reader(path); !text) {
             error = path + ": " + text.error().message;
         } else if (auto parsed = json::parse(text.value()); !parsed) {
@@ -2116,9 +2110,8 @@ std::vector<json::ValidationError> check_scene(const json::Value& as_written,
         return error;
     };
     const auto check = [&](const json::Value& components, const std::string& at) {
-        for (const auto& [name, field, three_d] :
-             {std::tuple{"NavArea2D", "navigation_polygon", false},
-              std::tuple{"NavArea3D", "navigation_mesh", true}}) {
+        for (const auto& [name, field, three_d] : {std::tuple{"NavArea2D", "navmesh", false},
+                                                   std::tuple{"NavArea3D", "navmesh", true}}) {
             const json::Value* region = components.find(name);
             if (region == nullptr || !region->is_object()) {
                 continue;

@@ -582,14 +582,14 @@ struct Sources {
 Sources sources_of(const world::BlockMap3D& map, const MeshLibraryLoader& libraries,
                    const ModelLoader& models) {
     Sources out;
-    if (map.mesh_library.empty()) {
+    if (map.blocks.empty()) {
         return out;
     }
-    if (!map.mesh_library.ends_with(kMeshLibrarySuffix)) {
-        out.library_error = "is not a .meshlib.json file";
+    if (!world::has_suffix(map.blocks, kMeshLibrarySuffix)) {
+        out.library_error = "is not a .blocks.json file";
         return out;
     }
-    auto loaded = libraries(map.mesh_library);
+    auto loaded = libraries(map.blocks);
     if (!loaded) {
         out.library_error = loaded.error().message;
         return out;
@@ -639,7 +639,7 @@ Made make(const world::BlockMap3D& map, entt::entity entity, Sources sources, co
             {entity, field + "/cell_size", "a cell is at least 0.001 meters along each axis"});
     }
     if (!made.sources.library_error.empty()) {
-        mesh->problems.push_back({entity, field + "/mesh_library", made.sources.library_error});
+        mesh->problems.push_back({entity, field + "/blocks", made.sources.library_error});
     }
     GridCells cells;
     std::vector<json::ValidationError> errors;
@@ -647,10 +647,10 @@ Made make(const world::BlockMap3D& map, entt::entity entity, Sources sources, co
     for (json::ValidationError& error : errors) {
         mesh->problems.push_back({entity, field + error.path, std::move(error.message)});
     }
-    if (!cells.empty() && map.mesh_library.empty()) {
-        mesh->problems.push_back({entity, field + "/mesh_library",
+    if (!cells.empty() && map.blocks.empty()) {
+        mesh->problems.push_back({entity, field + "/blocks",
                                   "names no mesh library, so its cells hold nothing: name a "
-                                  ".meshlib.json file"});
+                                  ".blocks.json file"});
     }
     const MeshLibrary* library = made.sources.library.get();
     if (library != nullptr) {
@@ -663,7 +663,7 @@ Made make(const world::BlockMap3D& map, entt::entity entity, Sources sources, co
             auto item = parse_grid_item(value);
             if (item && !library->items.contains(item.value().item)) {
                 std::string message =
-                    quoted(item.value().item) + " is not an item of " + quoted(map.mesh_library);
+                    quoted(item.value().item) + " is not an item of " + quoted(map.blocks);
                 if (const std::string_view near = closest_match(item.value().item, names);
                     !near.empty()) {
                     message += "; did you mean " + quoted(near) + "?";
@@ -692,7 +692,7 @@ Made make(const world::BlockMap3D& map, entt::entity entity, Sources sources, co
     for (const std::string& name : used) {
         const auto found = made.items->find(name);
         if (found != made.items->end() && !found->second.error.empty()) {
-            mesh->problems.push_back({entity, field + "/mesh_library",
+            mesh->problems.push_back({entity, field + "/blocks",
                                       "item " + quoted(name) + "'s mesh: " + found->second.error});
         }
     }
@@ -912,7 +912,7 @@ Result<MeshLibrary> parse_mesh_library(const json::Value& given) {
 
 void add_mesh_library_type(asset::Assets& assets) {
     assets.add_type<MeshLibrary>(
-        "mesh_library", {std::string(kMeshLibrarySuffix)},
+        "blocks", world::suffixes_of(kMeshLibrarySuffix),
         [](std::string_view text, std::string_view /*path*/) -> Result<MeshLibrary> {
             auto doc = json::parse(text);
             if (!doc) {

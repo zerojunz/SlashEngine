@@ -974,8 +974,8 @@ struct LightProbe3D {
 SLASH_COMPONENT(LightProbe3D)
 
 // Light bounced around a box of the world in real time, as Godot's VoxelGI and its VoxelGIData:
-// voxel_gi.bake voxelizes the static MeshInstance3Ds under its entity's parent (the whole world
-// for a root) that touch the box of size centered on it into data, and the lights are then
+// voxel_lighting.bake voxelizes the static MeshInstance3Ds under its entity's parent (the whole
+// world for a root) that touch the box of size centered on it into data, and the lights are then
 // injected into those cells whenever they change, so lights may move while the meshes stay put.
 // Meshes in the box take their ambient light and reflections from the cells, in place of the
 // environment's, unless they are lightmapped.
@@ -985,7 +985,7 @@ struct VoxelLighting3D {
     // The entity whose CameraLens's exposure_multiplier emission is baked with,
     // or "" for 1.
     std::string camera_attributes;
-    // The .voxelgi.json file voxel_gi.bake writes, project path; "" before a bake.
+    // The .voxellight.json file voxel_lighting.bake writes, project path; "" before a bake.
     std::string data;
     float dynamic_range = 2.0F; // the brightest light the cells hold
     float energy = 1.0F;
@@ -1535,13 +1535,13 @@ struct GridFloor {
 };
 SLASH_REFLECT(GridFloor, y, origin, rows)
 
-// Godot's GridMap: items of a .meshlib.json mesh library placed in a grid of cells in the
+// Godot's GridMap: items of a .blocks.json mesh library placed in a grid of cells in the
 // entity's Transform3D space, one item per cell, each turned one of Godot's 24 ways. Cells draw
 // their items' meshes, collide as a static body of their shapes and, with bake_navigation, are
 // navigation regions of their items' navigation meshes. A cell's center is cell_size times the
 // cell, moved half a cell along the axes cell_center_* name.
 struct BlockMap3D {
-    std::string mesh_library; // project path of a .meshlib.json file
+    std::string blocks; // project path of a .blocks.json file
     Vec3 cell_size{2.0F, 2.0F, 2.0F};
     int cell_octant_size = 8; // cells along each side of the blocks drawn and rebuilt together
     bool cell_center_x = true;
@@ -1559,7 +1559,7 @@ struct BlockMap3D {
 
     friend bool operator==(const BlockMap3D&, const BlockMap3D&) = default;
 };
-SLASH_COMPONENT(BlockMap3D, mesh_library, cell_size, cell_octant_size, cell_center_x, cell_center_y,
+SLASH_COMPONENT(BlockMap3D, blocks, cell_size, cell_octant_size, cell_center_x, cell_center_y,
                 cell_center_z, cell_scale, collision_layer, collision_mask, friction, bounce,
                 bake_navigation, legend, floors)
 
@@ -3645,11 +3645,11 @@ SLASH_COMPONENT(PhysicsField2D, enabled, type, magnitude, shape, radius, size, f
 // ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
 // places and agents that follow paths over them, on one 2D and one 3D map per world.
 
-// Places a .navpoly.json navigation polygon on the 2D map at the entity's Transform2D, as Godot's
+// Places a .navmesh2d.json navigation polygon on the 2D map at the entity's Transform2D, as Godot's
 // NavArea2D. Regions join where their edges meet or come within the map's
 // edge_connection_margin.
 struct NavArea2D {
-    std::string navigation_polygon; // a .navpoly.json file
+    std::string navmesh; // a .navmesh2d.json file
     bool enabled = true;
     bool use_edge_connections = true; // join edges near other regions' edges
     std::uint32_t navigation_layers = 1;
@@ -3658,13 +3658,13 @@ struct NavArea2D {
 
     friend bool operator==(const NavArea2D&, const NavArea2D&) = default;
 };
-SLASH_COMPONENT(NavArea2D, navigation_polygon, enabled, use_edge_connections, navigation_layers,
-                enter_cost, travel_cost)
+SLASH_COMPONENT(NavArea2D, navmesh, enabled, use_edge_connections, navigation_layers, enter_cost,
+                travel_cost)
 
 // Places a .navmesh.json navigation mesh on the 3D map at the entity's Transform3D, as Godot's
 // NavArea3D.
 struct NavArea3D {
-    std::string navigation_mesh; // a .navmesh.json file
+    std::string navmesh; // a .navmesh.json file
     bool enabled = true;
     bool use_edge_connections = true;
     std::uint32_t navigation_layers = 1;
@@ -3673,8 +3673,8 @@ struct NavArea3D {
 
     friend bool operator==(const NavArea3D&, const NavArea3D&) = default;
 };
-SLASH_COMPONENT(NavArea3D, navigation_mesh, enabled, use_edge_connections, navigation_layers,
-                enter_cost, travel_cost)
+SLASH_COMPONENT(NavArea3D, navmesh, enabled, use_edge_connections, navigation_layers, enter_cost,
+                travel_cost)
 
 // A way between two places on the 2D map that the regions don't join, such as a jump or a
 // ladder, as Godot's NavigationLink2D: start_position and end_position are in the entity's
@@ -4117,15 +4117,15 @@ SLASH_COMPONENT(Emitter3D, emitting, amount, lifetime, one_shot, preprocess, spe
                 anim_speed_curve, anim_offset_min, anim_offset_max, anim_offset_curve)
 
 // Emits particles from the entity's Transform2D and moves them on the GPU, as Godot's
-// GpuEmitter2D: process_material names a .process_material.json file (Godot's
+// GpuEmitter2D: process_material names a .particles.json file (Godot's
 // ParticleProcessMaterial) that says how they start and move. The gpu_particles_2d system steps
 // each emitter's emission cycle every tick; renderers run the steps on their device and draw the
 // particles, the same on every device. The particles themselves are not saved.
 struct GpuEmitter2D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
-    std::string process_material; // project path of a .process_material.json file
-    std::string texture;          // project path of a PNG, BMP or KTX2 file; "" draws pixels
+    std::string particle_rules; // project path of a .particles.json file
+    std::string texture;        // project path of a PNG, BMP or KTX2 file; "" draws pixels
     std::string filter = "inherit";
     std::string material;
     std::string draw_order = "lifetime"; // "index", "lifetime" or "reverse_lifetime"
@@ -4162,15 +4162,15 @@ struct GpuEmitter2D {
 
     friend bool operator==(const GpuEmitter2D&, const GpuEmitter2D&) = default;
 };
-SLASH_COMPONENT(GpuEmitter2D, emitting, amount, amount_ratio, sub_emitter, process_material,
-                texture, lifetime, interp_to_end, one_shot, preprocess, speed_scale, burst,
-                randomness, use_fixed_seed, seed, fixed_rate, interpolate, smooth_emission,
-                collision_size, local_space, draw_order, trail_enabled, trail_lifetime,
-                trail_sections, trail_section_subdivisions, filter, columns, rows, anim_loop,
-                sort_order, sort_order_relative, visible, material, material_params, light_layers)
+SLASH_COMPONENT(GpuEmitter2D, emitting, amount, amount_ratio, sub_emitter, particle_rules, texture,
+                lifetime, interp_to_end, one_shot, preprocess, speed_scale, burst, randomness,
+                use_fixed_seed, seed, fixed_rate, interpolate, smooth_emission, collision_size,
+                local_space, draw_order, trail_enabled, trail_lifetime, trail_sections,
+                trail_section_subdivisions, filter, columns, rows, anim_loop, sort_order,
+                sort_order_relative, visible, material, material_params, light_layers)
 
 // Emits particles from the entity's Transform3D and moves them on the device, as Godot's
-// GpuEmitter3D: process_material names a .process_material.json file (Godot's
+// GpuEmitter3D: process_material names a .particles.json file (Godot's
 // ParticleProcessMaterial) that says how they start and move. The gpu_particles_3d system steps
 // each emitter's emission cycle every tick; renderers run the steps on their device and draw each
 // draw pass's mesh at every particle, the same on every device. The particles themselves are not
@@ -4178,7 +4178,7 @@ SLASH_COMPONENT(GpuEmitter2D, emitting, amount, amount_ratio, sub_emitter, proce
 struct GpuEmitter3D {
     // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
     // Godot groups them.
-    std::string process_material; // project path of a .process_material.json file
+    std::string particle_rules; // project path of a .particles.json file
     // The mesh each draw pass draws at every particle, in order: a .gltf, .glb, .obj, .fbx,
     // .blend or .model.json file's meshes, or for draw_pass_1 "" the entity's primitive mesh.
     std::string mesh_1;
@@ -4217,7 +4217,7 @@ struct GpuEmitter3D {
 
     friend bool operator==(const GpuEmitter3D&, const GpuEmitter3D&) = default;
 };
-SLASH_COMPONENT(GpuEmitter3D, emitting, amount, amount_ratio, process_material, lifetime,
+SLASH_COMPONENT(GpuEmitter3D, emitting, amount, amount_ratio, particle_rules, lifetime,
                 interp_to_end, one_shot, preprocess, speed_scale, burst, randomness, use_fixed_seed,
                 seed, fixed_rate, interpolate, smooth_emission, collision_size, wind_influence,
                 visibility_aabb_position, visibility_aabb_size, local_space, draw_order,

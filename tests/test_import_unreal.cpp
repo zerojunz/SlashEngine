@@ -1210,8 +1210,8 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(component(scene, "sparks_burst", "Surface3D").find("billboard")->as_string() ==
           "particles");
     (void)component(scene, "sparks_burst", "QuadGeometry");
-    const std::string material = burst.find("process_material")->as_string();
-    CHECK(material == "unreal/Content/FX/NS_Sparks_burst.process_material.json");
+    const std::string material = burst.find("particle_rules")->as_string();
+    CHECK(material == "unreal/Content/FX/NS_Sparks_burst.particles.json");
     const json::Value process = file_json(plan, material);
     CHECK(process.find("lifetime_randomness")->as_double() == doctest::Approx(0.666667));
     CHECK(*process.find("color") == parse("[1.0, 0.5, 0.1, 1.0]"));

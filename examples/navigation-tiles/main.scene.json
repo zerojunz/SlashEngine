@@ -17,7 +17,7 @@
     "lawn": {
       "components": {
         "NavArea2D": {
-          "navigation_polygon": "nav/lawn.navpoly.json"
+          "navmesh": "nav/lawn.navmesh2d.json"
         },
         "Transform2D": {
           "children": ["grass"],

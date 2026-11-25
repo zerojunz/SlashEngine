@@ -1,7 +1,7 @@
 # BlockMap3D
 
 A level built from blocks in cells, as Godot 4.6's `BlockMap3D` and `MeshLibrary`.
-[blocks.meshlib.json](blocks.meshlib.json) is the library: four items, each a mesh (here a
+[blocks.blocks.json](blocks.blocks.json) is the library: four items, each a mesh (here a
 primitive with a material), the shapes it collides with and a navigation mesh, all in the
 space of one 2 x 2 x 2 meter cell.
 
@@ -34,17 +34,17 @@ and neighboring cells' edges join.
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
 
-- `gridmap.get` with no cells returns the legend, the floors and the library's items.
+- `blockmap.get` with no cells returns the legend, the floors and the library's items.
 - `navigation.path` from the far floor corner to the top of the platform goes up the ramp.
 - `physics.raycast` straight down hits the ramp's slope and names its cell and item.
 - `frame.capture` reads the floor, the wall, the platform, the ramp, the wall's shadow and the
   sky.
-- `gridmap.set` with a misspelled item says which one was meant. With `"wall"` it fills a box
+- `blockmap.set` with a misspelled item says which one was meant. With `"wall"` it fills a box
   of cells, closing the gap between the two halves of the room, and the same path now ends at
   the nearest point it can reach.
-- `gridmap.get` with `points` says which cell a point is in and what it holds; with `cells`, a
+- `blockmap.get` with `points` says which cell a point is in and what it holds; with `cells`, a
   cell's center and its item's orientation.
 - `undo` takes the changes back, and the path climbs the ramp again.
 
 `slash-cli scene validate` reports cells whose items the library doesn't have, and
-`slash-cli scene validate blocks.meshlib.json` checks the library.
+`slash-cli scene validate blocks.blocks.json` checks the library.

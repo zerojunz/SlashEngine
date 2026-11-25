@@ -1,10 +1,10 @@
 # Renamed names
 
-Which components, fields and project settings took SlashEngine's own names in November 2026, and how their old names still work.
+Which components, fields, project settings, file suffixes, commands and schema kinds took SlashEngine's own names in November 2026, and how their old names still work.
 
 - Scenes, prefabs and command params take either name. Saving, `scene format`, `engine.describe` and schemas use the new one.
 - Games' C++ keeps compiling: each old name is a deprecated alias of the new type, so the compiler names the new one.
-- The tables live in `engine/world/src/aliases.cpp` (`slash/world/aliases.hpp`): `current_component_name`, `current_field_name`, `upgrade_scene`, `upgrade_params` and, for `project.json`, `upgrade_settings`.
+- The tables live in `engine/world/src/aliases.cpp` (`slash/world/aliases.hpp`): `current_component_name`, `current_field_name`, `upgrade_scene`, `upgrade_params`, for `project.json` `upgrade_settings`, and `has_suffix`, `current_command_name` and `current_param_value`.
 - Importers write the new names; Autopilot still reports the names its agent knows.
 
 | Old name | New name |
@@ -175,11 +175,14 @@ Fields renamed at the same time. Scenes, prefabs, command params that hold compo
 | `local_coords` | `local_space` | `Emitter2D`, `Emitter3D`, `GpuEmitter2D`, `GpuEmitter3D` |
 | `material_override` | `material` | `Model3D` |
 | `max_db` | `max_volume_db` | `SoundPlayer3D` |
+| `mesh_library` | `blocks` | `BlockMap3D` |
 | `modulate` | `tint` | `Decal`, `Fluid2D`, `Foliage2D` and 6 more |
 | `monitorable` | `detectable` | `Zone2D`, `Zone3D` |
 | `monitoring` | `detects` | `Zone2D`, `Zone3D` |
 | `motion_mode` | `movement` | `CharacterMover2D`, `CharacterMover3D` |
 | `mouse_filter` | `pointer_mode` | `Widget` |
+| `navigation_mesh` | `navmesh` | `NavArea3D` |
+| `navigation_polygon` | `navmesh` | `NavArea2D` |
 | `node_a` | `body_a` | `ConeJoint3D`, `HingeJoint3D`, `PinJoint2D` and 5 more |
 | `node_b` | `body_b` | `ConeJoint3D`, `HingeJoint3D`, `PinJoint2D` and 5 more |
 | `occluder_light_mask` | `light_layers` | `Occluder2D` |
@@ -192,6 +195,7 @@ Fields renamed at the same time. Scenes, prefabs, command params that hold compo
 | `physics_material_override` | `physics_material` | `MovingBody2D`, `MovingBody3D`, `RigidBody2D` and 4 more |
 | `pitch_scale` | `pitch` | `SoundPlayer`, `SoundPlayer2D`, `SoundPlayer3D` |
 | `pivot_offset` | `pivot` | `Widget` |
+| `process_material` | `particle_rules` | `GpuEmitter2D`, `GpuEmitter3D` |
 | `range_item_cull_mask` | `lit_layers` | `PointLight2D`, `SunLight2D` |
 | `region_rect` | `region` | `NineSlice` |
 | `sdfgi_bounce_feedback` | `field_lighting_bounce_feedback` | `Environment3D` |
@@ -292,3 +296,37 @@ Settings that moved in `project.json`. Loading moves a setting at its old place 
 | `rendering.rendering_method` | `rendering.renderer` |
 | `rendering.scaling.fsr_sharpness` | `rendering.scaling.sharpness` |
 | `window.vsync_mode` | `window.vsync` |
+
+
+## File suffixes
+
+Files keep loading under their old suffix: scenes may name either, `scene validate` and `scene format` take both, and exports ship both. Tools write the new one.
+
+| Old suffix | New suffix |
+| --- | --- |
+| `.meshlib.json` | `.blocks.json` |
+| `.navpoly.json` | `.navmesh2d.json` |
+| `.process_material.json` | `.particles.json` |
+| `.voxelgi.json` | `.voxellight.json` |
+
+## Commands
+
+Every front end (CLI `call`, JSON-RPC, MCP, REST) still runs a command by its old name, and MCP clients by its old tool name (`csg_get`).
+
+| Old name | New name |
+| --- | --- |
+| `csg.get` | `solid.get` |
+| `gridmap.get` | `blockmap.get` |
+| `gridmap.set` | `blockmap.set` |
+| `voxel_gi.bake` | `voxel_lighting.bake` |
+
+## Schema kinds
+
+`schema.get`'s `kind` and `slash-cli schema` take either name.
+
+| Old kind | New kind |
+| --- | --- |
+| `meshlib` | `blocks` |
+| `navpoly` | `navmesh2d` |
+| `process_material` | `particles` |
+| `voxel_gi` | `voxel_light` |

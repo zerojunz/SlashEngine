@@ -26,15 +26,15 @@ solid.
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
 
-- `csg.get` on the house returns its triangles, its bounds and volume in its own space, and
+- `solid.get` on the house returns its triangles, its bounds and volume in its own space, and
   each surface's material. Asking for the door instead says which root makes the mesh.
 - `physics.raycast` straight through the doorway hits the inside of the back wall; one 0.6
   meters to the side hits the front wall.
 - `frame.capture` reads the roof, the wall, the dark doorway, the tower, the cone, the ring,
   the vase, the tower's shadow and the sky.
-- The door widens with `component.set`. The same side ray now goes through, and `csg.get`
+- The door widens with `component.set`. The same side ray now goes through, and `solid.get`
   shows the house lost volume.
-- A hoop whose `inner_radius` equals its `outer_radius` makes nothing, and `csg.get` says why.
+- A hoop whose `inner_radius` equals its `outer_radius` makes nothing, and `solid.get` says why.
   `undo` takes it away, then puts the door back.
 
-`slash-cli scene validate` reports CSG shapes that can't be made, the way `csg.get` does.
+`slash-cli scene validate` reports CSG shapes that can't be made, the way `solid.get` does.

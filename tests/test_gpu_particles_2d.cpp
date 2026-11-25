@@ -512,13 +512,13 @@ TEST_CASE("the steps kept make the particles that running every step makes") {
         }
     }
     // gpu_particles runs them the same way, in draw order.
-    scene.files.files["busy.process_material.json"] = std::string(kBusy);
-    scene.emitter(torch).process_material = "busy.process_material.json";
+    scene.files.files["busy.particles.json"] = std::string(kBusy);
+    scene.emitter(torch).particle_rules = "busy.particles.json";
     auto live = canvas::gpu_particles(scene.world, torch, scene.assets);
     REQUIRE(live.ok());
     CHECK(live.value().size() == static_cast<std::size_t>(std::ranges::count_if(
                                      every, [](const render::Particle& p) { return p.active(); })));
-    scene.emitter(torch).process_material = "missing.process_material.json";
+    scene.emitter(torch).particle_rules = "missing.particles.json";
     CHECK_FALSE(canvas::gpu_particles(scene.world, torch, scene.assets).ok());
 }
 
@@ -526,10 +526,10 @@ TEST_CASE("simulate runs a GpuEmitter2D apart from the world as stepping would")
     Scene scene;
     const auto process = canvas::parse_process_material(parse(kSpray));
     REQUIRE(process.ok());
-    scene.files.files["spray.process_material.json"] = std::string(kSpray);
+    scene.files.files["spray.particles.json"] = std::string(kSpray);
     const entt::entity spray = scene.create("spray", R"({"Transform2D": {"position": [5, 5]},
                                   "GpuEmitter2D": {"amount": 10, "process_material":
-                                                     "spray.process_material.json"}})");
+                                                     "spray.particles.json"}})");
     scene.step(45);
     auto stepped = canvas::gpu_particles(scene.world, spray, scene.assets);
     REQUIRE(stepped.ok());
@@ -551,19 +551,19 @@ TEST_CASE("simulate runs a GpuEmitter2D apart from the world as stepping would")
 
 TEST_CASE("the canvas runs and draws GPU particles the same on every device") {
     Scene scene;
-    scene.files.files["spray.process_material.json"] = std::string(kSpray);
-    scene.files.files["busy.process_material.json"] = std::string(kBusy);
+    scene.files.files["spray.particles.json"] = std::string(kSpray);
+    scene.files.files["busy.particles.json"] = std::string(kBusy);
     scene.create("spray", R"({"Transform2D": {"position": [10, 40]},
                               "GpuEmitter2D": {"amount": 8, "explosiveness": 1,
-                                                 "process_material": "spray.process_material.json"}})");
+                                                 "process_material": "spray.particles.json"}})");
     scene.create("torch", R"({"Transform2D": {"position": [32, 40]},
                               "GpuEmitter2D": {"amount": 32, "draw_order": "reverse_lifetime",
-                                                 "process_material": "busy.process_material.json",
+                                                 "process_material": "busy.particles.json",
                                                  "local_coords": true}})");
     scene.create("hidden", R"({"Transform2D": {}, "GpuEmitter2D": {"amount": 5,
                                "visible": false}})");
     scene.create("broken", R"({"Transform2D": {}, "GpuEmitter2D": {"amount": 6,
-                               "process_material": "gone.process_material.json"}})");
+                               "process_material": "gone.particles.json"}})");
     constexpr std::uint32_t kSize = 48;
     const auto draw_with = [&](canvas::CanvasRenderer& renderer, render::RenderDevice& device,
                                canvas::FrameContents* contents) {
@@ -609,7 +609,7 @@ TEST_CASE("the canvas runs and draws GPU particles the same on every device") {
     CHECK(counts["spray"] == 8);
     CHECK(counts["torch"] > 10);
     REQUIRE(contents.problems.size() == 1);
-    CHECK(contents.problems.front().path == "/components/GpuEmitter2D/process_material");
+    CHECK(contents.problems.front().path == "/components/GpuEmitter2D/particle_rules");
 
     auto late_device = render::create_software_device();
     canvas::CanvasRenderer late(*late_device, scene.assets);
@@ -813,30 +813,30 @@ TEST_CASE("the steps a chain of sub-emitters keeps make what running every step 
     }
     CHECK(std::ranges::any_of(every[1], [](const render::Particle& p) { return p.active(); }));
     // gpu_particles runs a sub-emitter with its chain.
-    scene.files.files["rocket.process_material.json"] = std::string(kRocket);
-    scene.files.files["busy.process_material.json"] = std::string(kBusy);
-    scene.emitter(rockets).process_material = "rocket.process_material.json";
-    scene.emitter(sparks).process_material = "busy.process_material.json";
+    scene.files.files["rocket.particles.json"] = std::string(kRocket);
+    scene.files.files["busy.particles.json"] = std::string(kBusy);
+    scene.emitter(rockets).particle_rules = "rocket.particles.json";
+    scene.emitter(sparks).particle_rules = "busy.particles.json";
     auto live = canvas::gpu_particles(scene.world, sparks, scene.assets);
     REQUIRE(live.ok());
     CHECK(live.value().size() ==
           static_cast<std::size_t>(std::ranges::count_if(
               every[1], [](const render::Particle& p) { return p.active(); })));
-    scene.emitter(rockets).process_material = "missing.process_material.json";
+    scene.emitter(rockets).particle_rules = "missing.particles.json";
     CHECK_FALSE(canvas::gpu_particles(scene.world, sparks, scene.assets).ok());
 }
 
 TEST_CASE("the canvas draws chains of sub-emitters the same however late it starts") {
     Scene scene;
-    scene.files.files["rocket.process_material.json"] = std::string(kRocket);
-    scene.files.files["spark.process_material.json"] = std::string(kSpark);
+    scene.files.files["rocket.particles.json"] = std::string(kRocket);
+    scene.files.files["spark.particles.json"] = std::string(kSpark);
     scene.create("sparks", R"({"Transform2D": {},
                                "GpuEmitter2D": {"amount": 48, "lifetime": 0.5,
-                                                  "process_material": "spark.process_material.json"}})");
+                                                  "process_material": "spark.particles.json"}})");
     scene.create("rockets", R"({"Transform2D": {"position": [24, 44]},
                                 "GpuEmitter2D": {"amount": 4, "lifetime": 0.6,
                                                    "sub_emitter": "sparks",
-                                                   "process_material": "rocket.process_material.json"}})");
+                                                   "process_material": "rocket.particles.json"}})");
     constexpr std::uint32_t kSize = 48;
     const auto draw_with = [&](canvas::CanvasRenderer& renderer, render::RenderDevice& device,
                                canvas::FrameContents* contents) {
@@ -903,10 +903,10 @@ TEST_CASE("the canvas draws chains of sub-emitters the same however late it star
 
 TEST_CASE("GPU particles collide with Occluder2D outlines and tile occluders") {
     Scene scene;
-    scene.files.files["rain.process_material.json"] =
+    scene.files.files["rain.particles.json"] =
         R"({"format": 1, "direction": [0, 1], "spread": 0, "gravity": [0, 200],
             "initial_velocity_min": 50, "initial_velocity_max": 50, "collision_mode": "rigid"})";
-    scene.files.files["drift.process_material.json"] =
+    scene.files.files["drift.particles.json"] =
         R"({"format": 1, "direction": [0, 1], "spread": 0, "gravity": [0, 200],
             "initial_velocity_min": 50, "initial_velocity_max": 50})";
     render::Image drop;
@@ -918,12 +918,12 @@ TEST_CASE("GPU particles collide with Occluder2D outlines and tile occluders") {
         "Occluder2D": {"polygon": [[-100, 0], [100, 0], [100, 40], [-100, 40]]}})");
     const entt::entity rain = scene.create("rain", R"({"Transform2D": {},
         "GpuEmitter2D": {"amount": 30, "collision_base_size": 2,
-                           "process_material": "rain.process_material.json"}})");
+                           "process_material": "rain.particles.json"}})");
     const entt::entity drift = scene.create("drift", R"({"Transform2D": {},
-        "GpuEmitter2D": {"amount": 30, "process_material": "drift.process_material.json"}})");
+        "GpuEmitter2D": {"amount": 30, "process_material": "drift.particles.json"}})");
     const entt::entity spout = scene.create("spout", R"({"Transform2D": {"position": [10, 20],
         "scale": [2, 2]}, "GpuEmitter2D": {"amount": 30, "texture": "drop.png",
-        "local_coords": true, "process_material": "rain.process_material.json"}})");
+        "local_coords": true, "process_material": "rain.particles.json"}})");
     scene.step(60);
 
     // The floor where it is in the world, the same set for every step, and the emitter's size.
@@ -1146,8 +1146,8 @@ TEST_CASE("the steps kept with trails make what running every step makes") {
     CHECK(draining > 0);
 
     // gpu_particles returns the particles and the trails that draw, as simulate does.
-    scene.files.files["comet.process_material.json"] = std::string(kComet);
-    scene.emitter(comet).process_material = "comet.process_material.json";
+    scene.files.files["comet.particles.json"] = std::string(kComet);
+    scene.emitter(comet).particle_rules = "comet.particles.json";
     std::vector<canvas::ParticleTrail> trails;
     auto live = canvas::gpu_particles(scene.world, comet, scene.assets, &trails);
     REQUIRE(live.ok());
@@ -1171,10 +1171,10 @@ TEST_CASE("simulate runs trails as stepping does") {
     Scene scene;
     const auto process = canvas::parse_process_material(parse(kComet));
     REQUIRE(process.ok());
-    scene.files.files["comet.process_material.json"] = std::string(kComet);
+    scene.files.files["comet.particles.json"] = std::string(kComet);
     const entt::entity comet = scene.create("comet", R"({"Transform2D": {"position": [5, 5]},
                                   "GpuEmitter2D": {"amount": 6, "trail_enabled": true,
-                                                     "process_material": "comet.process_material.json"}})");
+                                                     "process_material": "comet.particles.json"}})");
     scene.step(50);
     std::vector<canvas::ParticleTrail> stepped_trails;
     auto stepped = canvas::gpu_particles(scene.world, comet, scene.assets, &stepped_trails);
@@ -1205,24 +1205,24 @@ TEST_CASE("simulate runs trails as stepping does") {
 
 TEST_CASE("the canvas draws trails the same however late it starts") {
     Scene scene;
-    scene.files.files["rocket.process_material.json"] = std::string(kRocket);
-    scene.files.files["spark.process_material.json"] = std::string(kSpark);
-    scene.files.files["comet.process_material.json"] = std::string(kComet);
+    scene.files.files["rocket.particles.json"] = std::string(kRocket);
+    scene.files.files["spark.particles.json"] = std::string(kSpark);
+    scene.files.files["comet.particles.json"] = std::string(kComet);
     // Comets on their own, and rockets with trails bursting into sparks with trails.
     scene.create("comets", R"({"Transform2D": {"position": [4, 30]},
                                "GpuEmitter2D": {"amount": 5, "lifetime": 0.8,
                                                   "trail_enabled": true, "trail_sections": 10,
                                                   "trail_section_subdivisions": 2,
-                                                  "process_material": "comet.process_material.json"}})");
+                                                  "process_material": "comet.particles.json"}})");
     scene.create("sparks", R"({"Transform2D": {},
                                "GpuEmitter2D": {"amount": 24, "lifetime": 0.5,
                                                   "trail_enabled": true, "trail_lifetime": 0.2,
                                                   "trail_sections": 3,
-                                                  "process_material": "spark.process_material.json"}})");
+                                                  "process_material": "spark.particles.json"}})");
     scene.create("rockets", R"({"Transform2D": {"position": [36, 44]},
                                 "GpuEmitter2D": {"amount": 3, "lifetime": 0.6,
                                                    "sub_emitter": "sparks", "trail_enabled": true,
-                                                   "process_material": "rocket.process_material.json"}})");
+                                                   "process_material": "rocket.particles.json"}})");
     constexpr std::uint32_t kSize = 48;
     const auto draw_with = [&](canvas::CanvasRenderer& renderer, render::RenderDevice& device,
                                canvas::FrameContents* contents) {

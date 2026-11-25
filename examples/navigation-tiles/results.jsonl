@@ -5,5 +5,5 @@
 {"id":5,"jsonrpc":"2.0","result":{"length":61.0753,"points":[[56,56],[64,58.6667],[80,64],[96,72],[112,80]]}}
 {"id":6,"jsonrpc":"2.0","result":{"changed":1,"id":"maze"}}
 {"id":7,"jsonrpc":"2.0","result":{"length":80,"points":[[24,88],[104,88]]}}
-{"id":8,"jsonrpc":"2.0","result":{"file":"nav/lawn.navpoly.json","obstructions":1,"polygons":6,"vertices":8}}
+{"id":8,"jsonrpc":"2.0","result":{"file":"nav/lawn.navmesh2d.json","obstructions":1,"polygons":6,"vertices":8}}
 {"id":9,"jsonrpc":"2.0","result":{"length":73.6825,"points":[[204,24],[225.7004,28.7187],[240,31.8281],[254.2996,28.7187],[276,24]]}}

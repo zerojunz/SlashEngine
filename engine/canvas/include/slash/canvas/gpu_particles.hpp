@@ -33,7 +33,7 @@
 // (collision_base_size, times half the texture's average side). Godot's field covers the
 // screen and a margin around it; these shapes count everywhere.
 //
-// .process_material.json files are Godot's ParticleProcessMaterial in 2D, with its property
+// .particles.json files are Godot's ParticleProcessMaterial in 2D, with its property
 // names; fields left out keep Godot's defaults, and gravity is [0, 98] as a 2D one's:
 //
 //   {
@@ -50,22 +50,22 @@
 //   }
 namespace slash::canvas {
 
-inline constexpr std::string_view kProcessMaterialSuffix = ".process_material.json";
+inline constexpr std::string_view kProcessMaterialSuffix = ".particles.json";
 
-// JSON Schema for .process_material.json files.
+// JSON Schema for .particles.json files.
 [[nodiscard]] json::Value process_material_schema();
 
-// Every error in a .process_material.json document, each with the JSON Pointer of the bad value.
+// Every error in a .particles.json document, each with the JSON Pointer of the bad value.
 [[nodiscard]] std::vector<json::ValidationError> validate_process_material(const json::Value& doc);
 
-// The process a .process_material.json document describes, or its first error.
+// The process a .particles.json document describes, or its first error.
 [[nodiscard]] Result<render::ParticleProcess> parse_process_material(const json::Value& doc);
 
 // The process the document describes for 3D (GpuEmitter3D), or its first error. Particle
 // graphs, collision and sub-emitters are 2D's only for now.
 [[nodiscard]] Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& doc);
 
-// A .process_material.json file as assets load it: its process in 2D and in 3D.
+// A .particles.json file as assets load it: its process in 2D and in 3D.
 struct ProcessMaterial {
     render::ParticleProcess flat;
     render::ParticleProcess3D space;
