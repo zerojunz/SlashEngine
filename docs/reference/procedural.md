@@ -75,6 +75,9 @@ commands set to draw with the UI's fonts (`draw_text_stamp` in `procedural.cpp`)
 state and writes them into the `.damage.json` profile's states (`bake_damage` in
 `engine/command/src/paint.cpp`). `paint.draft` (`engine/ai/src/paint_draft.cpp`, in
 `slash_ai_commands`) has a model write a stack and checks each draft by calling `paint.edit`.
+`texture_graph_from_blender` (`slash/procedural/blender_nodes.hpp`) turns the node trees
+`scene3d::blend_nodes_script` makes Blender write into a texture graph; `texture.from_blender`
+(`texture_tools.cpp`) runs it and writes the graph through `texture.edit`.
 
 Gameplay code makes textures and meshes while a game runs: `asset::Assets::put` keeps a value at a
 `made:<name>` path (`asset::is_made_path`) until `drop`, bumping its version when put again so

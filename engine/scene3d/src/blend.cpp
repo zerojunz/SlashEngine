@@ -340,6 +340,7 @@ struct Task {
     std::string_view doing;
     std::string_view verb;
     std::string_view object;
+    bool glb = true; // whether what it writes is a glTF file; else any file
 };
 
 // Runs script in Blender in the background in folder, logging to log, and returns the .glb file
@@ -367,7 +368,7 @@ Result<std::string> run_job(const Blender& blender, const std::string& script,
     const int exit_code = process.value()->stop();
     const std::string output = process.value()->output();
     auto made = platform::read_file(join(folder, part));
-    if (timed_out || exit_code != 0 || !made || !is_converted_blend(made.value())) {
+    if (timed_out || exit_code != 0 || !made || (task.glb && !is_converted_blend(made.value()))) {
         (void)platform::remove_file(join(folder, part));
         std::string why;
         if (timed_out) {
@@ -377,8 +378,8 @@ Result<std::string> run_job(const Blender& blender, const std::string& script,
             why = "Blender couldn't " + std::string(task.verb) + " (exit code " +
                   std::to_string(exit_code) + "): " + last_lines(output, 3);
         } else {
-            why = "Blender wrote no glTF file " + std::string(task.object) + ": " +
-                  last_lines(output, 3);
+            why = std::string(task.glb ? "Blender wrote no glTF file " : "Blender wrote no file ") +
+                  std::string(task.object) + ": " + last_lines(output, 3);
         }
         return make_error(ErrorCode::InvalidArgument, why + "; its log is " + log);
     }
@@ -424,6 +425,84 @@ Result<std::string> convert_blend(std::string_view path, std::string_view bytes,
     }
     const std::string file(path.substr(path.rfind('/') + 1));
     remove_stale(folder, file + "-", stem.substr(slash + 1) + ".");
+    return made;
+}
+
+std::string blend_nodes_script(std::string_view source, std::string_view destination) {
+    // Paths are relative to the project folder, which Blender starts in.
+    return "import bpy, json, os, sys\n"
+           "opts = {'path': " +
+           python_string(source) + ", 'out': " + python_string(destination) +
+           "}\n"
+           "if bpy.app.version < (3, 0, 0):\n"
+           "  print('Blender 3.0 or higher is required.', file=sys.stderr)\n"
+           "bpy.ops.wm.open_mainfile(filepath=os.path.abspath(opts['path']))\n"
+           "def plain(v):\n"
+           "  if isinstance(v, (bool, int, float, str)):\n"
+           "    return v\n"
+           "  try:\n"
+           "    return [float(x) for x in v]\n"
+           "  except TypeError:\n"
+           "    return None\n"
+           "props = ('blend_type', 'operation', 'data_type', 'clamp_result', 'use_clamp', "
+           "'noise_dimensions', 'feature', 'distance', 'voronoi_dimensions', 'wave_type', "
+           "'bands_direction', 'rings_direction', 'wave_profile', 'gradient_type', "
+           "'interpolation_type', 'clamp_type')\n"
+           "out = {'format': 1, 'blender': list(bpy.app.version[:2]), 'materials': {}}\n"
+           "for m in bpy.data.materials:\n"
+           "  if not m.use_nodes or m.node_tree is None:\n"
+           "    continue\n"
+           "  nodes = {}\n"
+           "  for n in m.node_tree.nodes:\n"
+           "    e = {'type': n.bl_idname, 'inputs': {}, 'outputs': {}, 'props': {}}\n"
+           "    for s in n.inputs:\n"
+           "      if s.enabled and hasattr(s, 'default_value'):\n"
+           "        v = plain(s.default_value)\n"
+           "        if v is not None:\n"
+           "          e['inputs'][s.identifier] = v\n"
+           "    for s in n.outputs:\n"
+           "      if s.enabled and hasattr(s, 'default_value'):\n"
+           "        v = plain(s.default_value)\n"
+           "        if v is not None:\n"
+           "          e['outputs'][s.identifier] = v\n"
+           "    for p in props:\n"
+           "      if hasattr(n, p):\n"
+           "        e['props'][p] = plain(getattr(n, p))\n"
+           "    if n.bl_idname == 'ShaderNodeValToRGB':\n"
+           "      r = n.color_ramp\n"
+           "      e['ramp'] = {'interpolation': r.interpolation, 'elements': "
+           "[{'position': x.position, 'color': list(x.color)} for x in r.elements]}\n"
+           "    if n.bl_idname == 'ShaderNodeTexImage' and n.image is not None:\n"
+           "      e['image'] = os.path.relpath(bpy.path.abspath(n.image.filepath), os.getcwd())"
+           ".replace(os.sep, '/')\n"
+           "    nodes[n.name] = e\n"
+           "  links = [{'from': l.from_node.name, 'from_socket': l.from_socket.identifier, "
+           "'to': l.to_node.name, 'to_socket': l.to_socket.identifier} "
+           "for l in m.node_tree.links if l.is_valid and not l.is_muted]\n"
+           "  out['materials'][m.name] = {'nodes': nodes, 'links': links}\n"
+           "with open(os.path.abspath(opts['out']), 'w') as f:\n"
+           "  json.dump(out, f, indent=1, sort_keys=True)\n";
+}
+
+Result<std::string> read_blend_nodes(std::string_view path, const BlendOptions& options) {
+    auto blender = find_blender(options.blender);
+    if (!blender) {
+        return blender.error();
+    }
+    const std::string folder = join(options.project_root, ".slash/imported");
+    if (auto made = platform::create_directories(folder); !made) {
+        return made.error();
+    }
+    std::string name(path.substr(path.rfind('/') + 1));
+    name = ".slash/imported/" + name + ".nodes";
+    const std::string part = name + ".part.json";
+    auto made = run_job(blender.value(), blend_nodes_script(path, part), options.project_root, part,
+                        name + ".log", options.timeout_seconds,
+                        {.doing = "reading its shader nodes",
+                         .verb = "read its shader nodes",
+                         .object = "of its shader nodes",
+                         .glb = false});
+    (void)platform::remove_file(join(options.project_root, part));
     return made;
 }
 

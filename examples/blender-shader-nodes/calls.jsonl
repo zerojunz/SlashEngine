@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"texture.from_blender","params":{"nodes":"materials/barrel.nodes.json","material":"Rusty","out":"textures/rusty.texture.json","size":128}}
+{"jsonrpc":"2.0","id":2,"method":"texture.inspect","params":{"path":"textures/rusty.texture.json"}}
+{"jsonrpc":"2.0","id":3,"method":"texture.from_blender","params":{"nodes":"materials/barrel.nodes.json","material":"Plain","out":"textures/plain.texture.json","size":64,"measure":false}}
+{"jsonrpc":"2.0","id":4,"method":"texture.from_blender","params":{"nodes":"materials/barrel.nodes.json","material":"Rusti","out":"textures/rusty.texture.json"}}
+{"jsonrpc":"2.0","id":5,"method":"texture.generate","params":{"path":"textures/rusty.texture.json::roughness","out":"build/rusty_roughness.png"}}

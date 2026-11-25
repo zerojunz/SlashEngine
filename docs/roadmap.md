@@ -1417,7 +1417,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         layers over a model's animation (speed, weights, bones' scale, shift and held angles,
         added waves), `animation.edit`, and `animation.preview` and `animation.tune` given a
         library; `.pcg.json` graphs reach all of them through their `command` nodes
-23. [ ] Textures agents author (2026-11-22), after Substance Designer and Painter, Houdini's COPs
+23. [x] Textures agents author (2026-11-22), after Substance Designer and Painter, Houdini's COPs
         and Blender's shader nodes, in 2D and 3D, GPU first with a CPU twin held to every
         device ([design](design.md#procedural-generation)):
         - [x] Texture graphs: `.texture.json` files of `"type": "graph"`, nodes over parameters
@@ -1439,7 +1439,8 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               profile, so `Destructible3D` and `Destructible2D` bodies wear as they are hit
         - [x] Drafts from a prompt: `paint.draft` has a model write or revise a stack, checked
               as `paint.edit` checks one and sent back with its problems
-        - [ ] Blender shader node import
+        - [x] Blender shader node import: `texture.from_blender` turns a material's node tree,
+              written by the artist's own Blender, into a texture graph
 24. [x] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
         whichever vendor's agent it is:
         - [x] A work journal every session writes (`.slash/work/`), sessions that serve themselves
@@ -1576,7 +1577,7 @@ are in [design.md](design.md#feature-coverage).
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | Done: packages, exports, `sdk.add`, `sdk.check` and `sdk.lock`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | Done: every platform exports, and one Mac builds them all |
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
-| Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Next |
+| Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Done: graphs, live graphs, mesh maps, layer stacks, weathering, text stamps, variants, wear from damage, drafts and Blender node import |
 | Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Done: the journal, `slash-cli watch`, the watch page, checkpoints, steering and remote viewing through agents (`work.view`, `work.timeline`, `work.report`, `slash-mcp --watch`) |
 | Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Next |
 | Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Next |

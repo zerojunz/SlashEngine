@@ -3,6 +3,7 @@
 # .pcg.json procedural graphs, and texture graphs (.texture.json files of "type": "graph").
 # Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 add_library(slash_procedural
+    src/blender_nodes.cpp
     src/foliage.cpp
     src/gradient.cpp
     src/noise.cpp
