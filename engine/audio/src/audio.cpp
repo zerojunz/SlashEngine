@@ -1597,51 +1597,41 @@ json::Value settings_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "Sound settings, as Godot's audio project settings.";
+    schema["description"] = "Sound settings.";
     json::Value& properties = schema["properties"];
     properties["bus_layout"]["type"] = "string";
-    properties["bus_layout"]["description"] =
-        "A .bus_layout.json file with the buses players mix into, as Godot's "
-        "audio/buses/default_bus_layout; none plays everything through Master.";
+    properties["bus_layout"]["description"] = "A .bus_layout.json file with the buses players mix "
+                                              "into; none plays everything through Master.";
     properties["mix_rate"]["type"] = "integer";
     properties["mix_rate"]["minimum"] = 8000;
     properties["mix_rate"]["maximum"] = 192000;
     properties["mix_rate"]["default"] = Settings{}.mix_rate;
-    properties["mix_rate"]["description"] = "Frames mixed per second, as Godot's "
-                                            "audio/driver/mix_rate.";
+    properties["mix_rate"]["description"] = "Frames mixed per second.";
     properties["output_latency"] =
-        number_setting("Milliseconds of sound queued ahead of the speakers, as Godot's "
-                       "audio/driver/output_latency. More is steadier when frames run late.",
+        number_setting("Milliseconds of sound queued ahead of the speakers. More is steadier when "
+                       "frames run late.",
                        1, 500, Settings{}.output_latency);
-    properties["panning_strength_2d"] =
-        number_setting("How far SoundPlayer2D sounds pan left and right, as Godot's "
-                       "audio/general/2d_panning_strength.",
-                       0, 4, Settings{}.panning_strength_2d);
-    properties["panning_strength_3d"] =
-        number_setting("How far SoundPlayer3D sounds pan left and right, as Godot's "
-                       "audio/general/3d_panning_strength.",
-                       0, 4, Settings{}.panning_strength_3d);
-    properties["silence_threshold_db"] =
-        number_setting("A bus's speaker pair quieter than this, in dB, for channel_disable_time "
-                       "stops mixing its effects until sound comes again, as Godot's "
-                       "audio/buses/channel_disable_threshold_db; reverb and delay tails ring "
-                       "longer below a lower one.",
-                       -80, 0, Settings{}.channel_disable_threshold_db);
-    properties["silence_seconds"] =
-        number_setting("Seconds a bus's speaker pair stays below channel_disable_threshold_db "
-                       "before it stops, as Godot's audio/buses/channel_disable_time.",
-                       0, 5, Settings{}.channel_disable_time);
+    properties["panning_strength_2d"] = number_setting(
+        "How far SoundPlayer2D sounds pan left and right.", 0, 4, Settings{}.panning_strength_2d);
+    properties["panning_strength_3d"] = number_setting(
+        "How far SoundPlayer3D sounds pan left and right.", 0, 4, Settings{}.panning_strength_3d);
+    properties["silence_threshold_db"] = number_setting(
+        "A bus's speaker pair quieter than this, in dB, for channel_disable_time stops mixing its "
+        "effects until sound comes again; reverb and delay tails ring longer below a lower one.",
+        -80, 0, Settings{}.channel_disable_threshold_db);
+    properties["silence_seconds"] = number_setting(
+        "Seconds a bus's speaker pair stays below channel_disable_threshold_db before it stops.", 0,
+        5, Settings{}.channel_disable_time);
     properties["speaker_mode"]["enum"] =
         json::Array{"auto", "stereo", "surround_31", "surround_51", "surround_71"};
     properties["speaker_mode"]["default"] = "auto";
     properties["speaker_mode"]["description"] =
-        "The speakers to mix for, as Godot's AudioServer speaker modes: auto is the output "
-        "device's (stereo headless), the others fix them, so headless runs can test surround.";
+        "The speakers to mix for: auto is the output device's (stereo headless), the others fix "
+        "them, so headless runs can test surround.";
     properties["input_enabled"]["type"] = "boolean";
     properties["input_enabled"]["default"] = false;
     properties["input_enabled"]["description"] =
-        "Let AudioStreamMicrophone players record, as Godot's audio/driver/enable_input; exports "
-        "then ask the player for the microphone.";
+        "Let AudioStreamMicrophone players record; exports then ask the player for the microphone.";
     properties["input_usage_description"]["type"] = "string";
     properties["input_usage_description"]["description"] =
         "Why the game records, shown when macOS and iOS ask the player for the microphone.";

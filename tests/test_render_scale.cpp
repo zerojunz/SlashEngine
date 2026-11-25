@@ -428,7 +428,7 @@ TEST_CASE("display.set changes the render scale, and frame.capture and display.l
 
         // The project's settings, and what the game's last frame drew with: none yet.
         CHECK(*ok("display.list", "{}").find("scaling") ==
-              parse(R"({"fsr_sharpness": 0.2, "in_effect": "none", "mode": "fsr",
+              parse(R"({"sharpness": 0.2, "in_effect": "none", "mode": "fsr",
                         "scale": 0.5})"));
         json::Value captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
         CHECK(captured.find("upscaler")->as_string() == "fsr");
@@ -444,7 +444,7 @@ TEST_CASE("display.set changes the render scale, and frame.capture and display.l
         REQUIRE(renderer.draw(session.world(), {.target = target, .width = 16.0F, .height = 8.0F})
                     .ok());
         CHECK(*ok("display.list", "{}").find("scaling") ==
-              parse(R"({"fsr_sharpness": 0.2, "in_effect": "fsr", "mode": "fsr", "scale": 0.5,
+              parse(R"({"sharpness": 0.2, "in_effect": "fsr", "mode": "fsr", "scale": 0.5,
                         "render_size": [8, 4]})"));
 
         // Fields left out stay as they were.

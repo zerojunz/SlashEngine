@@ -179,8 +179,7 @@ json::Value noise_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "Noise settings, as Godot's FastNoiseLite: each optional, with "
-                            "Godot's defaults.";
+    schema["description"] = "Noise settings: each optional, with defaults.";
     json::Value& p = schema["properties"];
     p["noise_type"] = enum_field(kNoiseTypes, d.noise_type, "The noise algorithm.");
     p["seed"] = integer_field(d.seed, "Seed of the random values.");

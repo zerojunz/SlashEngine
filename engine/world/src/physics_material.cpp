@@ -29,9 +29,8 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine physics material";
-    schema["description"] =
-        "A material bodies share through their physics_material_override, as Godot's "
-        "PhysicsMaterial, with Chaos's density, strength and surface name.";
+    schema["description"] = "A material bodies share through their physics_material_override, with "
+                            "Chaos's density, strength and surface name.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};

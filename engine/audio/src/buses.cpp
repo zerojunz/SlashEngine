@@ -47,9 +47,8 @@ json::Value bus_layout_schema() {
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine bus layout";
     schema["description"] =
-        "Audio buses, as Godot's AudioBusLayout: players mix into a bus, each bus runs its "
-        "effects, applies its volume and mixes into the bus it sends to, and Master is what "
-        "plays.";
+        "Audio buses: players mix into a bus, each bus runs its effects, applies its volume and "
+        "mixes into the bus it sends to, and Master is what plays.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "buses"};

@@ -933,15 +933,14 @@ struct ProbeCapture {
                                                           const std::array<float, 3>& origin_offset,
                                                           float max_distance, std::uint32_t face);
 
-// How meshes are lit, as Godot's rendering/renderer/rendering_method. Forward+ sorts the omni and
-// spot lights into clusters of the screen and lights each pixel with those that reach it, so a
-// scene can have all kMaxClusteredLights3D of them; Compatibility lights every pixel with the
-// first kMaxLights3D lights, as Godot's Compatibility renderer, and is how the OpenGL devices
-// always draw, since OpenGL ES 3.0 has no storage buffers to hold clusters.
+// How meshes are lit, project.json's rendering.renderer. Clustered sorts the omni and spot lights
+// into clusters of the screen and lights each pixel with those that reach it, so a scene can have
+// all kMaxClusteredLights3D of them; Compatibility lights every pixel with the first kMaxLights3D
+// lights, and is how the OpenGL devices always draw, since OpenGL ES 3.0 has no storage buffers to
+// hold clusters.
 enum class RenderMethod : std::uint8_t { ForwardPlus, Compatibility };
-inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"forward_plus",
-                                                                    "gl_compatibility"};
-// A method by its Godot name, or nullopt.
+inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"clustered", "compatibility"};
+// A method by its name, or its old name ("forward_plus", "gl_compatibility"), or nullopt.
 [[nodiscard]] std::optional<RenderMethod> parse_render_method(std::string_view name);
 
 // A frame's 3D drawn smaller and upscaled to the target with AMD's FidelityFX Super Resolution 2,

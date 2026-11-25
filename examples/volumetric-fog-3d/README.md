@@ -30,5 +30,5 @@ frame.capture {"points":[[10,10],[45,25],[110,35],[80,85]],"frames":8,"path":"sh
 The fog lights each froxel by the lights through their shadows, so the mist in the pillar's
 shadow is darker than the mist in the sun. The sky is seen through the fog's whole length by
 `volumetric_fog_sky_affect`. As in Godot, a `"color"` background is drawn without the fog, and
-Godot's Compatibility renderer (`"rendering_method": "gl_compatibility"`, and always with the
+Godot's Compatibility renderer (`"renderer": "compatibility"`, and always with the
 OpenGL drivers) draws no volumetric fog.

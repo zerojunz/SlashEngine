@@ -25,7 +25,7 @@
 //
 //   {
 //     "format": 1,
-//     "type": "NoiseTexture2D",
+//     "type": "noise",
 //     "width": 256,
 //     "height": 256,
 //     "seamless": true,

@@ -43,7 +43,7 @@ frame.capture {"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/rebuilt.
 
 Captures keep FSR 2's history between them, as a running game's frames do. FSR 2 scales only the
 3D world, in Forward+, at a `scale` below `1`: the canvas and controls draw at the window's size,
-and Godot's Compatibility renderer (`"rendering_method": "gl_compatibility"`, and always with the
+and Godot's Compatibility renderer (`"renderer": "compatibility"`, and always with the
 OpenGL drivers) scales the world with `bilinear` instead. TAA is off while FSR 2 runs, since it
 does TAA's job too. As in Godot, FSR 2 has no reactive mask, so transparent meshes, which write
 no depth, can trail for a frame or two.

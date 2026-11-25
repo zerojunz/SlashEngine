@@ -1431,8 +1431,9 @@ TEST_CASE("FBX textures are found where Godot's importer looks, and those that a
     const auto errors =
         scene3d::check_model(files.files["models/many.fbx"], "models/many.fbx", files.reader());
     REQUIRE(errors.size() == 3);
-    CHECK(errors[0].message == "texture \"gone.png\" isn't beside the model or in a folder Godot "
-                               "looks in; materials draw without it");
+    CHECK(errors[0].message ==
+          "texture \"gone.png\" isn't beside the model or in a folder searched "
+          "for textures; materials draw without it");
     CHECK(errors[1].message == "texture \"bark.tga\" isn't a texture SlashEngine reads (.png, "
                                ".bmp, .jpg, .jpeg or .ktx2); materials draw without it");
     CHECK(errors[2].message.starts_with("the image it carries as \"broken.png\" doesn't decode: "));

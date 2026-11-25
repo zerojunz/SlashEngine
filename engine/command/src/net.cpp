@@ -349,8 +349,8 @@ void register_net_commands(Registry& registry) {
     using enum Capability;
     registry.add({
         .name = "net.host",
-        .description = "Puts the world's multiplayer on the network as its server, peer 1, as "
-                       "Godot's create_server. Returns the port.",
+        .description =
+            "Puts the world's multiplayer on the network as its server, peer 1. Returns the port.",
         .capabilities = {Run, Network},
         .effect = Effect::Read,
         .params = params_schema({
@@ -365,8 +365,8 @@ void register_net_commands(Registry& registry) {
     });
     registry.add({
         .name = "net.join",
-        .description = "Connects the world's multiplayer to a server, as Godot's create_client; "
-                       "connected once steps have polled the answer (net.state).",
+        .description = "Connects the world's multiplayer to a server; connected once steps have "
+                       "polled the answer (net.state).",
         .capabilities = {Run, Network},
         .effect = Effect::Read,
         .params = params_schema(
@@ -407,8 +407,7 @@ void register_net_commands(Registry& registry) {
     args["description"] = "One JSON value of arguments. Default: null.";
     registry.add({
         .name = "net.rpc",
-        .description = "Calls a remote procedure the game's code registered on an entity, as "
-                       "Godot's rpc and rpc_id.",
+        .description = "Calls a remote procedure the game's code registered on an entity.",
         .capabilities = {Run, Network},
         .effect = Effect::Edit,
         .params = params_schema(

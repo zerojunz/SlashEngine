@@ -798,7 +798,7 @@ Result<void> check_decal(const Decal3D& decal, std::string_view name) {
 
 Result<void> check_decals(const Decals3D& decals) {
     if (static_cast<std::size_t>(decals.filter) >= kDecalFilterNames.size()) {
-        return make_error(ErrorCode::InvalidArgument, "the decals' filter is not one of Godot's");
+        return make_error(ErrorCode::InvalidArgument, "the decals' filter is not a known filter");
     }
     for (std::size_t i = 0; i < decals.decals.size(); ++i) {
         if (auto checked = check_decal(decals.decals[i], detail::decal_name(i)); !checked) {

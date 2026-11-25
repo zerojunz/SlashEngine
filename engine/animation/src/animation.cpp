@@ -68,8 +68,8 @@ json::Value schema() {
         "A value track's value: one the field takes. A node track's: [x, y, z].";
     key["properties"]["data"]["description"] = "An event track's event data: any JSON.";
     key["properties"]["transition"] =
-        property("number", "Easing to the next key, as Godot's: 1 linear, above 1 eases in, "
-                           "0 to 1 eases out, below 0 eases in and out, 0 holds the value.");
+        property("number", "Easing to the next key: 1 linear, above 1 eases in, 0 to 1 eases out, "
+                           "below 0 eases in and out, 0 holds the value.");
     key["properties"]["transition"]["default"] = 1;
     json::Value handle = property("array", "");
     handle["items"]["type"] = "number";
@@ -115,16 +115,15 @@ json::Value schema() {
     track["properties"]["event"] =
         property("string", "The event kind it emits when playback passes each key.");
     track["properties"]["node"] =
-        property("string", "The node of the entity's model it moves, by name, as a Godot 3D "
-                           "track moves a bone.");
+        property("string", "The node of the entity's model it moves, by name.");
     track["properties"]["node"]["minLength"] = 1;
     track["properties"]["property"] =
         property("string", "What a node track moves: its keys' values are [x, y, z], a "
                            "rotation's Euler angles in radians, turning the shorter way round.");
     track["properties"]["property"]["enum"] = names(kNodeProperties);
     track["properties"]["target"] =
-        property("string", "The entity it acts on: a name in the Animator's targets, "
-                           "as a Godot track's node path. Left out, the player's own entity.");
+        property("string", "The entity it acts on: a name in the Animator's targets. Left out, the "
+                           "player's own entity.");
     track["properties"]["target"]["minLength"] = 1;
     track["properties"]["interpolation"] = property("string", "How values between keys are found.");
     track["properties"]["interpolation"]["enum"] = names(kInterpolations);
@@ -151,8 +150,7 @@ json::Value schema() {
     from["type"] = "object";
     from["additionalProperties"] = false;
     from["required"] = json::Array{"model", "animation"};
-    from["description"] = "A model file's animation it plays on the nodes of the entity's model, "
-                          "as Godot imports a glTF file's animations.";
+    from["description"] = "A model file's animation it plays on the nodes of the entity's model.";
     from["properties"]["model"] =
         property("string", "The model file: .gltf, .glb, .fbx or .blend.");
     from["properties"]["model"]["minLength"] = 1;
@@ -167,15 +165,14 @@ json::Value schema() {
     animation["properties"]["length"] =
         property("number", "Seconds. Left out, the model animation's it comes from.");
     animation["properties"]["length"]["exclusiveMinimum"] = 0;
-    animation["properties"]["loop"] =
-        property("string", "What happens at the end, as Godot's loop modes. Left out, the model "
-                           "animation's it comes from, or none.");
+    animation["properties"]["loop"] = property(
+        "string",
+        "What happens at the end. Left out, the model animation's it comes from, or none.");
     animation["properties"]["loop"]["enum"] = names(kLoopModes);
     animation["properties"]["loop"]["default"] = "none";
     animation["properties"]["tracks"]["type"] = "array";
     animation["properties"]["tracks"]["items"]["$ref"] = "#/$defs/track";
-    animation["properties"]["markers"] =
-        property("object", "Named times in seconds, as Godot's animation markers.");
+    animation["properties"]["markers"] = property("object", "Named times in seconds.");
     animation["properties"]["markers"]["additionalProperties"]["type"] = "number";
     animation["properties"]["markers"]["additionalProperties"]["minimum"] = 0;
     animation["properties"]["speed"] =
@@ -214,8 +211,7 @@ json::Value schema() {
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine animation library";
-    out["description"] = "Keyframe animations of component fields by name, like Godot's "
-                         "AnimationLibrary. Animator plays them.";
+    out["description"] = "Keyframe animations of component fields by name. Animator plays them.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"animations", "format"};

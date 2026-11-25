@@ -1315,7 +1315,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
         {"name": "multiplayer",
-         "doc": "Polls the world's multiplayer peer: peers joining and leaving, raw packets, remote procedure calls, spawns and synchronizers, as Godot's SceneMultiplayer.",
+         "doc": "Polls the world's multiplayer peer: peers joining and leaving, raw packets, remote procedure calls, spawns and synchronizers.",
          "priority": -950},
         {"name": "gui", "doc": "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
          "priority": -900},
@@ -1369,7 +1369,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Keeps where the physics step left each Ragdoll2D bone, so the next tick tells the animation's pose from it.",
          "priority": 955},
         {"name": "multiplayer_visibility",
-         "doc": "Checks the visibility filters of synchronizers whose visibility_update_mode is \"physics\", after physics, as Godot's MultiplayerSynchronizer.",
+         "doc": "Checks the visibility filters of synchronizers whose visibility_update_mode is \"physics\", after physics.",
          "priority": 955},
         {"name": "flesh_2d",
          "doc": "Steps each Character2D's Flesh2D: its muscles from where its cut-out's bones are, moving its parts' points as they are drawn.",
@@ -1503,22 +1503,29 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     // The render scale is project.json's rendering.scaling; see tests/test_render_scale.cpp, and
     // frame generation tests/test_generated_frames.cpp.
     const std::string_view scaling =
-        R"("frame_generation": {"enabled": false}, "scaling": {"fsr_sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
+        R"("frame_generation": {"enabled": false}, "scaling": {"sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
     CHECK(engine.ok("display.list") ==
-          parse(R"({"displays": [], "max_fps": 0, "vsync_mode": "enabled", )" +
-                std::string(scaling) + "}"));
-    CHECK(engine.ok("display.set", R"({"vsync_mode": "mailbox", "max_fps": 120})") ==
-          parse(R"({"max_fps": 120, "vsync_mode": "mailbox", )" + std::string(scaling) + "}"));
+          parse(R"({"displays": [], "max_fps": 0, "vsync": "enabled", )" + std::string(scaling) +
+                "}"));
+    CHECK(engine.ok("display.set", R"({"vsync": "mailbox", "max_fps": 120})") ==
+          parse(R"({"max_fps": 120, "vsync": "mailbox", )" + std::string(scaling) + "}"));
     CHECK(loop.value().max_fps() == 120);
     CHECK(renderer->vsync() == slash::render::VsyncMode::Mailbox);
     CHECK(engine.ok("display.set", R"({"max_fps": 0})") ==
-          parse(R"({"max_fps": 0, "vsync_mode": "mailbox", )" + std::string(scaling) + "}"));
+          parse(R"({"max_fps": 0, "vsync": "mailbox", )" + std::string(scaling) + "}"));
+    // The params' old names still work.
+    CHECK(engine.ok("display.set",
+                    R"({"vsync_mode": "enabled", "scaling": {"fsr_sharpness": 0.2}})") ==
+          parse(R"({"max_fps": 0, "vsync": "enabled", )" + std::string(scaling) + "}"));
+    CHECK(renderer->vsync() == slash::render::VsyncMode::Enabled);
+    CHECK(engine.ok("display.set", R"({"vsync": "mailbox", "vsync_mode": "disabled"})")
+              .find("vsync")
+              ->as_string() == "mailbox");
     command::Reply bad =
         engine.fails("display.set", R"({"max_fps": 1001})", command::code::kInvalidParams);
     CHECK(contains(bad.message, "/max_fps"));
-    bad =
-        engine.fails("display.set", R"({"vsync_mode": "adaptiv"})", command::code::kInvalidParams);
-    CHECK(contains(bad.message, "/vsync_mode"));
+    bad = engine.fails("display.set", R"({"vsync": "adaptiv"})", command::code::kInvalidParams);
+    CHECK(contains(bad.message, "/vsync"));
     CHECK(loop.value().max_fps() == 0);
     // Neither changes the world, so there is nothing to undo.
     CHECK(engine.session->undo_labels().empty());
@@ -1532,7 +1539,7 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(stats.find("catch_up_frames")->as_int() == 0);
     CHECK(stats.find("tick_hz")->as_double() == doctest::Approx(60.0));
     CHECK(stats.find("renderer")->as_string() == "null");
-    CHECK(stats.find("vsync_mode")->as_string() == "mailbox");
+    CHECK(stats.find("vsync")->as_string() == "mailbox");
     CHECK(stats.find("frame_ms")->find("avg") != nullptr);
     CHECK(stats.find("fps") != nullptr);
     // With the world's tick and system times, and their params.
@@ -4281,10 +4288,10 @@ TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
     REQUIRE(slash::platform::create_directories(root).ok());
     REQUIRE(slash::platform::write_file(root + "/ground.tileset.json", sides_tileset()).ok());
     REQUIRE(slash::platform::write_file(root + "/islands.texture.json", R"({"format": 1,
-        "type": "NoiseTexture2D", "invert": true, "noise": {"frequency": 0.2}})")
+        "type": "noise", "invert": true, "noise": {"frequency": 0.2}})")
                 .ok());
     REQUIRE(slash::platform::write_file(root + "/sky.texture.json", R"({"format": 1,
-        "type": "GradientTexture1D"})")
+        "type": "gradient_1d"})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;
@@ -4330,7 +4337,7 @@ TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
         "noise": {"frequency": 0.2}, "bands": [{"below": 0.5, "terrain": "water"},
                                                {"terrain": "grass"}]})")
                .find("changed") == parse("0"));
-    // A NoiseTexture2D's file brings its noise and inverts it as it says, so water and land
+    // A noise texture's file brings its noise and inverts it as it says, so water and land
     // swap but for the cells right at the middle.
     engine.ok("tilemap.generate", R"({"id": "map", "rect": [0, 0, 8, 8],
         "noise": "islands.texture.json", "bands": [{"below": 0.5, "terrain": "water"},
@@ -4376,7 +4383,7 @@ TEST_CASE("tilemap.generate fills a TileLayer2D from noise by bands") {
         "noise": "sky.texture.json", "bands": [{"tile": null}]})",
                          command::code::kInvalidArgument);
     CHECK(reply.message ==
-          "/noise: \"sky.texture.json\" is a gradient texture; name a NoiseTexture2D");
+          "/noise: \"sky.texture.json\" is a gradient texture; name a noise texture");
     reply = engine.fails("tilemap.generate", R"({"id": "map", "rect": [0, 0, 2, 2],
         "noise": "ground.png", "bands": [{"tile": null}]})",
                          command::code::kInvalidArgument);
@@ -4389,7 +4396,7 @@ TEST_CASE("terrain.generate makes heights from a FastNoiseLite of one's own") {
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root).ok());
     REQUIRE(slash::platform::write_file(root + "/hills.texture.json", R"({"format": 1,
-        "type": "NoiseTexture2D", "invert": true, "noise": {"frequency": 0.05}})")
+        "type": "noise", "invert": true, "noise": {"frequency": 0.05}})")
                 .ok());
     command::SessionOptions options;
     options.project_root = root;

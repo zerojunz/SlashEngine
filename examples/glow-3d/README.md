@@ -36,6 +36,6 @@ frame.capture {"points":[[130,60],[130,45],[200,70],[215,70],[20,160]]}
 - A `glow_hdr_threshold` of 8 is above both signs, so nothing glows: the wall above the pink
   sign keeps only the light of the lamp beside it.
 
-The same settings in Godot's Compatibility renderer (`"rendering_method": "gl_compatibility"`,
+The same settings in Godot's Compatibility renderer (`"renderer": "compatibility"`,
 and always with the OpenGL drivers) glow nowhere: its colors stop at 1, so it needs a threshold
 below 1. [post-processing-3d](../post-processing-3d/) shows that renderer.

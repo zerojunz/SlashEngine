@@ -37,7 +37,7 @@ void call(command::Session& session, std::string_view name, std::string_view par
 
 int main() {
     auto platform = slash::platform::Platform::create({.headless = true});
-    // The settings project.json would give: "max_fps": 60 and "window": {"vsync_mode": ...}.
+    // The settings project.json would give: "max_fps": 60 and "window": {"vsync": ...}.
     auto loop = slash::platform::Loop::create(platform.value(),
                                               {.tick_hz = 60.0, .max_ticks = 600, .max_fps = 60});
     // A window would get a GPU device; set_vsync is how a game applies its V-Sync setting.
@@ -60,7 +60,7 @@ int main() {
 
     // Mailbox shows the newest frame at each refresh: low latency with no tearing. A GPU that
     // lacks a mode falls back to enabled, and the reply says which mode is in effect.
-    call(session, "display.set", R"({"vsync_mode": "mailbox", "max_fps": 120})");
+    call(session, "display.set", R"({"vsync": "mailbox", "max_fps": 120})");
     call(session, "display.set", R"({"max_fps": 5000})");
 
     for (int frame = 0; frame < 90; ++frame) {
@@ -69,12 +69,12 @@ int main() {
     // perf.stats also returns fps and frame times (avg, min and max over the last 120 frames),
     // which depend on the machine, so only the counts are printed here.
     const command::Reply stats = session.call("perf.stats", json::Value());
-    std::printf("perf.stats {}\n  -> frames %lld, ticks %lld, catch-up frames %lld, vsync_mode %s, "
+    std::printf("perf.stats {}\n  -> frames %lld, ticks %lld, catch-up frames %lld, vsync %s, "
                 "max_fps %lld, renderer %s\n",
                 static_cast<long long>(stats.value.find("frames")->as_int()),
                 static_cast<long long>(stats.value.find("ticks")->as_int()),
                 static_cast<long long>(stats.value.find("catch_up_frames")->as_int()),
-                stats.value.find("vsync_mode")->as_string().c_str(),
+                stats.value.find("vsync")->as_string().c_str(),
                 static_cast<long long>(stats.value.find("max_fps")->as_int()),
                 stats.value.find("renderer")->as_string().c_str());
     return 0;

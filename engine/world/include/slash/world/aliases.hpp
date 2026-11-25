@@ -88,7 +88,23 @@ struct SettingAlias {
 // as JSON Pointers into the document.
 std::vector<Renamed> upgrade_settings(json::Value& project);
 
-// Whether a project.json document holds a setting at an old place.
+// A project.json setting value's old name and its current one, for the setting at `path` (names
+// joined by '/'): rendering/renderer's "forward_plus" is now "clustered".
+struct SettingValueAlias {
+    std::string_view path;
+    std::string_view old_value;
+    std::string_view value;
+};
+
+// Every renamed setting value. upgrade_settings replaces them too, after moving settings, and
+// reports each with its setting's path and the old and current values.
+[[nodiscard]] std::span<const SettingValueAlias> setting_value_aliases();
+
+// The current name of a setting's value, given its current or an old one; any other value as
+// given.
+[[nodiscard]] std::string_view current_setting_value(std::string_view path, std::string_view value);
+
+// Whether a project.json document holds a setting at an old place, or an old value.
 [[nodiscard]] bool has_old_settings(const json::Value& project);
 
 // The project.json document with its settings at their current places: `project` itself when it
@@ -136,5 +152,20 @@ struct ParamValueAlias {
 
 // Replaces old values of a command's top-level string params. Returns whether it replaced any.
 bool upgrade_param_values(std::string_view command, json::Value& params);
+
+// A command param's old name and its current one, as paths of names joined by '/' under the
+// params ("display.set"'s "scaling/fsr_sharpness" is now "scaling/sharpness").
+struct ParamNameAlias {
+    std::string_view command;
+    std::string_view old_path;
+    std::string_view path;
+};
+
+// Every renamed param.
+[[nodiscard]] std::span<const ParamNameAlias> param_name_aliases();
+
+// Renames a command's params given under old names; where both are given, the current one's
+// value is kept. Returns whether it renamed any.
+bool upgrade_param_names(std::string_view command, json::Value& params);
 
 } // namespace slash::world

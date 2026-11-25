@@ -537,6 +537,15 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
             given = &upgraded;
         }
     }
+    // And some params their old names ("display.set"'s "vsync_mode").
+    if (std::ranges::any_of(world::param_name_aliases(), [&](const world::ParamNameAlias& alias) {
+            return alias.command == command->name;
+        })) {
+        if (json::Value names = *given; world::upgrade_param_names(command->name, names)) {
+            upgraded = std::move(names);
+            given = &upgraded;
+        }
+    }
     const json::Value& args = *given;
     if (const auto errors = json::validate(args, command->params); !errors.empty()) {
         return Reply::invalid_params(errors);

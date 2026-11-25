@@ -386,7 +386,7 @@ A reference must name an entity that exists in the same scene.
 | | `theme_fonts` | `std::map<std::string, std::string>` | `{}` | Theme fonts by name: a `.ttf`, `.otf` or [`.font.json`](#fonts) file, e.g. `{"font": "fonts/title.ttf"}` |
 | | `theme_font_sizes` | `std::map<std::string, int>` | `{}` | Theme font sizes in pixels by name, 1 to 1024, e.g. `{"font_size": 32}` |
 | | `theme_icons` | `std::map<std::string, std::string>` | `{}` | Theme icons by name: a PNG, BMP or KTX2 file, a [built-in icon](#theme-items) such as `"builtin:checked"`, or `""` for none, e.g. `{"checked": "ui/tick.png"}` |
-| | `theme_styles` | `std::map<std::string, json>` | `{}` | Theme [style boxes](#style-boxes) by name, e.g. `{"panel": {"bg_color": [0.1, 0.1, 0.2, 1], "corner_radius": 8}}` |
+| | `theme_styles` | `std::map<std::string, json>` | `{}` | Theme [style boxes](#style-boxes) by name, e.g. `{"panel": {"background_color": [0.1, 0.1, 0.2, 1], "corner_radius": 8}}` |
 | | `theme` | `std::string` | `""` | A [`.theme.json`](#themes) file whose items it and its children use before the project's theme |
 | | `theme_type_variation` | `std::string` | `""` | A theme type to look its items up in before its own: a variation with a `base_type`, e.g. `"Header"` |
 | | `sizing_horizontal`, `sizing_vertical` | `std::string` | `"fill"` | How a [container](#containers) sizes it on this axis: `fill`, `expand_fill`, `expand`, `shrink_begin`, `shrink_center`, `shrink_end`, `expand_shrink_center` or `expand_shrink_end` |
@@ -439,10 +439,10 @@ A reference must name an entity that exists in the same scene.
 | | `bus` | `std::string` | `"Master"` | The [audio bus](#audio) its sound plays on |
 | | `audio_track` | `int` | `0` | Which of the file's audio tracks plays, from 0 |
 | `NineSlice` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file, cut into nine parts |
-| | `region_rect` | `Vec4` | `[0, 0, 0, 0]` | The part of the texture to use, [x, y, width, height] in pixels; a zero size uses the whole texture |
+| | `region` | `Vec4` | `[0, 0, 0, 0]` | The part of the texture to use, [x, y, width, height] in pixels; a zero size uses the whole texture |
 | | `border_left`, `_top`, `_right`, `_bottom` | `int` | `0` | Pixels of the texture on each side that keep their size; the sides stretch along, the middle both ways |
-| | `axis_stretch_horizontal`, `axis_stretch_vertical` | `std::string` | `"stretch"` | How the middle parts fill: `stretch`, `tile`, or `tile_fit` (tiles stretched to fit a whole number) |
-| | `draw_center` | `bool` | `true` | Draw the middle part |
+| | `stretch_horizontal`, `stretch_vertical` | `std::string` | `"stretch"` | How the middle parts fill: `stretch`, `tile`, or `tile_fit` (tiles stretched to fit a whole number) |
+| | `fill_center` | `bool` | `true` | Draw the middle part |
 | `ProgressBar` | `value` | `double` | `0` | How full it is, between `min_value` and `max_value`, rounded to `step` |
 | | `min_value`, `max_value` | `double` | `0`, `100` | The values of an empty and a full bar |
 | | `step` | `double` | `0.01` | The value is rounded to a multiple of it; 0 for none |
@@ -1839,7 +1839,7 @@ mesh: in depth order, in the prepass and with shadows that are dithered the same
 FSR smooth the dither into a fade. The noise is a hash of whole numbers (PCG3D) where Godot's
 uses sines, so every device keeps the same pixels; ray-traced and path-traced effects take the
 surface's alpha as the share of rays it stops, as they take a blended one's.
-| `subsurface_enabled`, `subsurface_strength`, `subsurface_skin_mode` | `false`, `0`, `false` | `forward_plus`: light [scattered under the surface](#subsurface-scattering), as skin, wax and marble; `subsurface_skin_mode` spreads red further than green and blue, as skin does |
+| `subsurface_enabled`, `subsurface_strength`, `subsurface_skin_mode` | `false`, `0`, `false` | `clustered`: light [scattered under the surface](#subsurface-scattering), as skin, wax and marble; `subsurface_skin_mode` spreads red further than green and blue, as skin does |
 | `subsurface_transmittance_enabled`, `subsurface_transmittance_color`, `subsurface_transmittance_depth`, `subsurface_transmittance_boost` | `false`, `[1, 1, 1, 1]`, `0.1`, `0` | With subsurface scattering, light coming through thin parts (ears, leaves, fingers) from lights behind them that cast shadows: the color it takes (skin's own with skin mode), how deep it reaches in meters, and how far round the lit side it shows |
 | `billboard`, `billboard_keep_scale` | `"disabled"`, `false` | Face the camera: `"enabled"`, `"fixed_y"` (turned about y only) or `"particles"` (turned by each [3D particle](#3d-particles)'s angle); `billboard_keep_scale` keeps the mesh's scale, which billboards otherwise drop |
 | `particles_anim_h_frames`, `particles_anim_v_frames`, `particles_anim_loop` | `1`, `1`, `false` | With `"particles"`, the albedo texture's columns and rows of frames each particle steps through, and whether they start again after the last |
@@ -1899,9 +1899,9 @@ precision.
 from its entity in every direction; `SpotLight3D` shines from its entity in a cone down its -z.
 Up to 8 directional lights and 512 omni and spot lights shine at once, the directional ones
 first and each kind in tree order, and hidden ones don't. The project's
-[rendering method](project-format.md#rendering-methods) picks how: `forward_plus`, the default,
+[rendering method](project-format.md#rendering-methods) picks how: `clustered`, the default,
 lights each pixel with only the omni and spot lights whose range reaches it, and
-`gl_compatibility`, as the OpenGL drivers always do, with the first 64. Their fields are Godot's:
+`compatibility`, as the OpenGL drivers always do, with the first 64. Their fields are Godot's:
 
 | Field | Default | Lights | Meaning |
 | --- | --- | --- | --- |
@@ -1910,9 +1910,9 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `light_temperature` | `6500` | all | With [physical light units](#physical-light-units), the color's black body temperature in kelvin, 1000 to 20000, which tints `light_color` |
 | `light_intensity_lux` | `100000` | directional | With physical light units, its brightness in lux (100000 is the noon sun) |
 | `light_intensity_lumens` | `1000` | omni, spot | With physical light units, its brightness in lumens (about a 75 W bulb's) |
-| `light_projector` | `""` | omni, spot | `forward_plus`: project path of a texture the light casts, as Godot's: through a spot light's cone, or an omni light's [dual paraboloid](#light-projectors-and-ies-profiles); its color times its alpha tints the light |
+| `light_projector` | `""` | omni, spot | `clustered`: project path of a texture the light casts, as Godot's: through a spot light's cone, or an omni light's [dual paraboloid](#light-projectors-and-ies-profiles); its color times its alpha tints the light |
 | `light_projector_scroll` | `[0, 0]` | omni, spot | Moves the projector's texture coordinates by this much a second, wrapping, so it scrolls (clouds, water caustics). SlashEngine's own |
-| `light_ies` | `""` | omni, spot | `forward_plus`: project path of an IES LM-63 profile (`.ies`) whose pattern the light shines in, baked into its projector. SlashEngine's own, after Unreal's IES textures |
+| `light_ies` | `""` | omni, spot | `clustered`: project path of an IES LM-63 profile (`.ies`) whose pattern the light shines in, baked into its projector. SlashEngine's own, after Unreal's IES textures |
 | `light_specular` | `0.5` | all | How strong its highlights are |
 | `light_negative` | `false` | all | Takes light away instead |
 | `lit_layers` | `4294967295` | all | The render layers it lights (layers 1 to 20) |
@@ -1937,7 +1937,7 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `light_indirect_energy` | `1` | all | Times its light in baked bounces |
 | `light_size` | `0` | omni, spot | Its radius when baked and in [ray-traced shadows](#ray-traced-shadows), for soft shadows (a directional light's is `light_angular_distance`) |
 | `shadow_blur` | `1` | all | How much its baked shadows soften |
-| `light_volumetric_fog_energy` | `1` | all | `forward_plus`: how much it lights [volumetric fog](#volumetric-fog), times `light_energy` |
+| `light_volumetric_fog_energy` | `1` | all | `clustered`: how much it lights [volumetric fog](#volumetric-fog), times `light_energy` |
 | `shadow_transmittance_bias` | `0.05` | all | Moves where its shadow map measures how deep a pixel is in its mesh for the [transmittance](#subsurface-scattering), -16 to 16 |
 
 Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
@@ -1970,7 +1970,7 @@ texture's color times its alpha where the light's ray meets it. A spot light map
 cone (twice `spot_angle` across, the texture's top toward the light's +y); an omni light maps it
 as a dual paraboloid, the texture's top half round the light's -z and its bottom half round +z,
 each half's top row toward the light's -y. `light_projector_scroll` moves the texture's
-coordinates each second, wrapping, as a light function. `gl_compatibility` casts no projectors,
+coordinates each second, wrapping, as a light function. `compatibility` casts no projectors,
 as Godot's.
 
 `light_ies` names an IES LM-63 profile (1986 to 2002 files with `TILT=NONE` or `INCLUDE`, type
@@ -1985,7 +1985,7 @@ glass window.
 ### Ray-traced shadows
 
 With the project's `rendering.ray_tracing.shadows` on
-([project-format.md](project-format.md#ray-tracing)), a frame in `forward_plus` traces its lights'
+([project-format.md](project-format.md#ray-tracing)), a frame in `clustered` traces its lights'
 shadows instead of taking them from shadow maps, which Godot 4.6 can't. After the depth and normal
 prepass, each pixel sends `shadow_samples` rays toward each of the first 8 lights the frame draws
 with `shadow_enabled` and a `shadow_opacity` above 0, to points spread over the light's disk:
@@ -2009,7 +2009,7 @@ tracing) draw with shadow maps.
 ### Ray-traced global illumination
 
 With the project's `rendering.ray_tracing.global_illumination` on
-([project-format.md](project-format.md#ray-tracing)), a frame in `forward_plus` traces each opaque
+([project-format.md](project-format.md#ray-tracing)), a frame in `clustered` traces each opaque
 pixel's ambient light, so light bounces off what is near it, which Godot 4.6 does with SDFGI. After
 the depth and normal prepass, each pixel sends `global_illumination_samples` rays over the half of
 the sphere its normal faces, cosine weighted, through every mesh the frame draws. What a ray meets
@@ -2048,15 +2048,15 @@ there is no ambient light and colors stay as they are.
 | `reflected_light_source` | `"background"` | What lit surfaces reflect: `"background"` (the sky, if it is the background), `"sky"` or `"disabled"` |
 | `tonemap_mode` | `"linear"` | `"linear"`, `"reinhard"`, `"filmic"`, `"aces"` or `"agx"` |
 | `tonemap_exposure` | `1` | Multiplies lit colors before they are tonemapped |
-| `tonemap_white` | `1` | The color tonemapped to white, at least 1 with `forward_plus` (`"agx"` uses its own) |
-| `tonemap_agx_white`, `tonemap_agx_contrast` | `16.29`, `1.25` | `forward_plus`: `"agx"`'s white, at least 2, and how steep its curve is |
+| `tonemap_white` | `1` | The color tonemapped to white, at least 1 with `clustered` (`"agx"` uses its own) |
+| `tonemap_agx_white`, `tonemap_agx_contrast` | `16.29`, `1.25` | `clustered`: `"agx"`'s white, at least 2, and how steep its curve is |
 | `glow_enabled` | `false` | Bright colors bleed into what is around them |
-| `glow_levels` | `[0, 0.8, 0.4, 0.1, 0, 0, 0]` | `forward_plus`: how much each of glow's seven levels adds, from the sharpest to the softest; Godot's `glow_levels/1` to `/7` |
-| `glow_normalized` | `false` | `forward_plus`: `glow_levels` are divided by their sum |
+| `glow_levels` | `[0, 0.8, 0.4, 0.1, 0, 0, 0]` | `clustered`: how much each of glow's seven levels adds, from the sharpest to the softest; Godot's `glow_levels/1` to `/7` |
+| `glow_normalized` | `false` | `clustered`: `glow_levels` are divided by their sum |
 | `glow_intensity` | `0.3` | How strong the glow is |
-| `glow_strength` | `1` | `forward_plus`: multiplies each level as it is blurred |
-| `glow_blend_mode` | `"screen"` | `forward_plus`: `"additive"`, `"screen"`, `"softlight"`, `"replace"` or `"mix"` |
-| `glow_mix` | `0.05` | `forward_plus`: how much glow replaces the colors with `"mix"` |
+| `glow_strength` | `1` | `clustered`: multiplies each level as it is blurred |
+| `glow_blend_mode` | `"screen"` | `clustered`: `"additive"`, `"screen"`, `"softlight"`, `"replace"` or `"mix"` |
+| `glow_mix` | `0.05` | `clustered`: how much glow replaces the colors with `"mix"` |
 | `glow_bloom` | `0` | How much of every color glows, from 0 to 1 |
 | `glow_hdr_threshold`, `glow_hdr_scale` | `1`, `2` | Colors glow from the threshold, fully at the threshold plus the scale |
 | `glow_hdr_luminance_cap` | `12` | The brightest glow |
@@ -2064,12 +2064,12 @@ there is no ambient light and colors stay as they are.
 | `adjustment_brightness`, `adjustment_contrast`, `adjustment_saturation` | `1`, `1`, `1` | Multiply colors; contrast 0 is flat gray, saturation 0 gray |
 | `adjustment_color_correction` | `""` | A lookup texture colors pass through: 1 pixel tall, or as wide as its height squared |
 | `compositor` | `""` | A [`.pipeline.json` file](#compositor-shaders-and-pipeline-files): the passes it turns off and the compositor effects it draws |
-| `ssr_enabled` | `false` | `forward_plus`: [screen-space reflections](#screen-space-reflections) reflect what is on the screen in shiny surfaces |
+| `ssr_enabled` | `false` | `clustered`: [screen-space reflections](#screen-space-reflections) reflect what is on the screen in shiny surfaces |
 | `ssr_max_steps` | `64` | How many steps a reflected ray takes at most, from 1 to 512 |
 | `ssr_fade_in` | `0.15` | How reflections fade in where they leave the surface, as an easing curve |
 | `ssr_fade_out` | `2` | How reflections fade out toward the screen's edges, as an easing curve |
 | `ssr_depth_tolerance` | `0.5` | How far behind what is on the screen a ray still hits it, in meters, from 0.01 to 128 |
-| `ssao_enabled` | `false` | `forward_plus`: [screen-space ambient occlusion](#ambient-occlusion) darkens corners and what is close to a surface |
+| `ssao_enabled` | `false` | `clustered`: [screen-space ambient occlusion](#ambient-occlusion) darkens corners and what is close to a surface |
 | `ssao_radius` | `1` | How far around a pixel occludes it, in meters, from 0.01 to 16 |
 | `ssao_intensity` | `2` | How dark occlusion is, from 0 to 16 |
 | `ssao_power` | `1.5` | The occlusion's curve: higher darkens only what is most occluded, from 0.01 to 10 |
@@ -2086,7 +2086,7 @@ there is no ambient light and colors stay as they are.
 | `fog_sky_affect` | `1` | How much fog covers the sky or background, from 0 to 1 |
 | `fog_height`, `fog_height_density` | `0`, `0` | Fog thickens below this height, by this much; `0` for none |
 | `fog_depth_curve`, `fog_depth_begin`, `fog_depth_end` | `1`, `10`, `100` | How depth fog grows, where it begins and where it is thickest; an end of `0` or less is the camera's `far` |
-| `volumetric_fog_enabled` | `false` | `forward_plus`: [volumetric fog](#volumetric-fog) fills the view, lit by the lights and shaded by their shadows |
+| `volumetric_fog_enabled` | `false` | `clustered`: [volumetric fog](#volumetric-fog) fills the view, lit by the lights and shaded by their shadows |
 | `volumetric_fog_density` | `0.05` | How thick it is |
 | `volumetric_fog_albedo` | `[1, 1, 1, 1]` | The color it scatters light with, sRGB |
 | `volumetric_fog_emission`, `volumetric_fog_emission_energy` | `[0, 0, 0, 1]`, `1` | The light it gives off itself, sRGB, and how bright |
@@ -2097,7 +2097,7 @@ there is no ambient light and colors stay as they are.
 | `volumetric_fog_gi_inject` | `1` | How much the light of the [VoxelGIs](#voxelgi) it is in lights it, from 0 to 16 |
 | `volumetric_fog_sky_affect` | `1` | How much it covers the sky, from 0 to 1 |
 | `volumetric_fog_temporal_reprojection_enabled`, `volumetric_fog_temporal_reprojection_amount` | `true`, `0.9` | Each frame blends in this much of the frame before's fog, from 0.5 to 0.99, smoothing it |
-| `field_lighting_enabled` | `false` | `forward_plus`: [SDFGI](sdfgi.md), Godot's fully dynamic global illumination, bounces the lights and the sky off the meshes around the camera with nothing baked. Research: only the software device draws it |
+| `field_lighting_enabled` | `false` | `clustered`: [SDFGI](sdfgi.md), Godot's fully dynamic global illumination, bounces the lights and the sky off the meshes around the camera with nothing baked. Research: only the software device draws it |
 | `field_lighting_cascades` | `4` | Cascades around the camera, each twice as far as the one before, from 1 to 8 |
 | `field_lighting_min_cell_size` | `0.2` | The nearest cascade's cell size in meters; each holds 128 cells across |
 | `field_lighting_y_scale` | `"75_percent"` | How far cascades reach up and down, as a share of across: `"50_percent"`, `"75_percent"` or `"100_percent"` |
@@ -2110,7 +2110,7 @@ there is no ambient light and colors stay as they are.
 How colors are finished depends on the project's
 [rendering method](project-format.md#rendering-methods), as in Godot.
 
-With `forward_plus`, as Godot's Forward+ renderer, the background and meshes draw linear into
+With `clustered`, as Godot's Forward+ renderer, the background and meshes draw linear into
 a texture of 16-bit floats the frame's size, so colors keep their brightness above 1. Glow
 blurs the parts above `glow_hdr_threshold` into up to seven textures, the first half the
 frame's size and each next one half the last, drawing only as far as the last level of more
@@ -2118,7 +2118,7 @@ than 0.01. A pass over the frame then exposes every pixel, blends glow in by
 `glow_blend_mode`, tonemaps it, adjusts and corrects it, and turns it to sRGB, before the 2D
 draws go over it. Alpha blending happens in linear colors.
 
-With `gl_compatibility`, as Godot's Compatibility renderer, meshes are exposed and tonemapped
+With `compatibility`, as Godot's Compatibility renderer, meshes are exposed and tonemapped
 as they draw when there is no glow and no adjustments, and the background is left alone. With
 either, the meshes draw exposed but not tonemapped into a texture of the frame's size, and a pass
 over the frame screens glow in, tonemaps, adjusts and corrects every pixel, the background's
@@ -2128,7 +2128,7 @@ The textures hold 8 bits a channel, so drawn colors reach 1 at most: glow needs
 `glow_blend_mode` and `glow_mix` do nothing.
 
 A color correction texture one pixel tall maps each channel by its value along x, as Godot's 1D
-LUTs (a `GradientTexture1D`) do. One as wide as its height squared is a 3D LUT: height slices of
+LUTs (a `gradient_1d` texture) do. One as wide as its height squared is a 3D LUT: height slices of
 height by height pixels side by side, blue choosing the slice and red and green the pixel in it,
 as Godot imports a `Texture3D` from horizontal slices. A texture of another shape, or one that
 can't load, is reported and left out.
@@ -2143,14 +2143,14 @@ the first `Environment3D`'s, as `Environment3D.camera_attributes`.
 | --- | --- | --- |
 | `exposure_multiplier` | `1` | Brightens the lights, emission, the background and the sky, and so the sky's light, but not `ambient_light_color` or fog |
 | `exposure_sensitivity` | `100` | The camera's ISO, which the auto exposure sensitivities are over |
-| `auto_exposure_enabled` | `false` | `forward_plus`: exposes each frame by how bright it is |
+| `auto_exposure_enabled` | `false` | `clustered`: exposes each frame by how bright it is |
 | `auto_exposure_scale` | `0.4` | The brightness frames are exposed toward: higher is brighter |
 | `auto_exposure_speed` | `0.5` | How much of the way to a new brightness the exposure moves each second of game time |
 | `auto_exposure_min_sensitivity`, `auto_exposure_max_sensitivity` | `0`, `800` | The least and most brightness the exposure follows, in ISO: a scene darker than the least stays dark, and one brighter than the most stays bright |
 | `auto_exposure_metering` | `"average"` | How a frame's brightness is measured: `"average"`, as Godot; `"log_average"` (SlashEngine's own) averages its natural logarithm and takes the exponential, a geometric mean, as Unreal's auto exposure meters in log space, so a few bright spots darken the rest less |
-| `dof_blur_far_enabled` | `false` | `forward_plus`: blurs what is past `dof_blur_far_distance` |
+| `dof_blur_far_enabled` | `false` | `clustered`: blurs what is past `dof_blur_far_distance` |
 | `dof_blur_far_distance`, `dof_blur_far_transition` | `10`, `5` | Meters from the camera where the far blur starts, and over how many more it grows to full. A negative transition grows it as a lens does instead, by how far past the distance something is |
-| `dof_blur_near_enabled` | `false` | `forward_plus`: blurs what is nearer than `dof_blur_near_distance` |
+| `dof_blur_near_enabled` | `false` | `clustered`: blurs what is nearer than `dof_blur_near_distance` |
 | `dof_blur_near_distance`, `dof_blur_near_transition` | `2`, `1` | Meters from the camera where the near blur starts, and over how many fewer it grows to full. A negative transition grows it as a lens does instead, by how far short of the distance something is |
 | `dof_blur_amount` | `0.1` | How much it blurs, from 0 to 1: the widest blur is 64 pixels times this |
 
@@ -2161,7 +2161,7 @@ new frame's by `auto_exposure_speed` per second of game time, so the same frames
 times expose the same way. It starts from the first frame's own brightness when auto exposure
 turns on, when the camera follows other attributes, or when game time goes back, as after a
 restore. With `"log_average"` metering the first pass takes each pixel's logarithm and the last
-the average's exponential; the rest is the same. `gl_compatibility` has no auto exposure, as in
+the average's exponential; the rest is the same. `compatibility` has no auto exposure, as in
 Godot.
 
 Depth of field blurs as Godot 4.6's Forward+ renderer does, by each pixel's distance in the depth
@@ -2170,7 +2170,7 @@ distances, then the frame is blurred by the project's bokeh shape (`rendering.de
 in [project.json](project-format.md)) and mixed with the sharp frame by that size, so what is in
 focus stays sharp. The box and hexagon blur in two passes, at half size for the `very_low` and
 `low` qualities; the circle gathers a spiral of samples at half size. Frames smaller than 8 by 8
-aren't blurred, and `gl_compatibility` has no depth of field, as in Godot.
+aren't blurred, and `compatibility` has no depth of field, as in Godot.
 
 ### Skies
 
@@ -2180,7 +2180,7 @@ worked out for each pixel's view direction as Godot's sky shaders do: a
 has Godot's default procedural sky; one with two is reported, and the first of those three
 draws. Colors are sRGB and textures project paths, and `background_energy_multiplier` brightens
 the sky. As in Godot, Forward+ works the sky out from its colors, textures and suns made linear,
-and leaves the result linear; `gl_compatibility` works it out in sRGB and makes the result
+and leaves the result linear; `compatibility` works it out in sRGB and makes the result
 linear, so the same material is darker and grayer there.
 
 The sky shows the sun of each `SunLight3D` whose `sky_mode` isn't `"light_only"`, up to
@@ -2253,7 +2253,7 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 
 ### Volumetric fog
 
-With `forward_plus`, `volumetric_fog_enabled` fills the view with fog that the lights shine
+With `clustered`, `volumetric_fog_enabled` fills the view with fog that the lights shine
 through and the shadows fall in, as Godot 4.6's Forward+ renderer does. Each frame, the view out
 to `volumetric_fog_length` is cut into froxels (cells across, down and into the screen, set by
 the project's `rendering.volumetric_fog`, see
@@ -2273,7 +2273,7 @@ Meshes are seen through the volume at their depth, after the [fog](#fog), as God
 and the sky through all of it by `volumetric_fog_sky_affect` (a `"color"` or `"clear_color"`
 background is left as it is unless the fog draws it as a sky). Transparent meshes take it too;
 a material's `disable_fog` leaves it out. Frames with no meshes and reflection probes' cubes go
-without it, and `gl_compatibility` has none, as in Godot. Every device draws the same passes (the
+without it, and `compatibility` has none, as in Godot. Every device draws the same passes (the
 software device on the CPU, so `frame.capture` shows it), and a target's first frame starts from
 its own density instead of fading in from none.
 
@@ -2290,7 +2290,7 @@ while the camera is near it), up to 32 a frame, those after left out and reporte
 each froxel in Godot's fixed point: its density in 1024ths, and the light it scatters and its
 glow held to what 11, 11 and 10 bits a channel carry. A `"world"` volume fills every froxel, as
 big as twice the froxels in each direction, so a material on one fades by `edge_fade` (0 keeps
-it whole). Volumes only show with `volumetric_fog_enabled`, in `forward_plus`, to cameras whose
+it whole). Volumes only show with `volumetric_fog_enabled`, in `clustered`, to cameras whose
 `layer_filter` has one of their `layers`.
 [examples/fog-volumes-3d](../../examples/fog-volumes-3d/) fills a cellar with them.
 
@@ -2310,7 +2310,7 @@ it whole). Volumes only show with `volumetric_fog_enabled`, in `forward_plus`, t
 
 ### Ambient occlusion
 
-With `forward_plus`, `ssao_enabled` darkens what light can't easily reach (corners, creases and
+With `clustered`, `ssao_enabled` darkens what light can't easily reach (corners, creases and
 what is close to a surface) as Godot 4.6's Forward+ renderer does with Intel's ASSAO. Before the
 meshes' color pass, a prepass draws the opaque meshes' depth and view-space normals. The depth is
 made linear and split into four slices of every other pixel; each slice's occlusion is gathered
@@ -2319,7 +2319,7 @@ slices are put back together at the frame's size. The color pass multiplies each
 ambient light by the occlusion, which dims its reflections too, as Godot's specular occlusion
 does, and its direct light by `ssao_light_affect` times `ssao_ao_channel_affect` of it. Occlusion fades out with distance, and the project's
 `rendering.ssao` ([project-format.md](project-format.md#ssao)) sets its quality, size,
-blur and fade. Transparent meshes get none, and `gl_compatibility` has no SSAO, as in Godot. The
+blur and fade. Transparent meshes get none, and `compatibility` has no SSAO, as in Godot. The
 software device draws the same passes on the CPU, so `frame.capture` shows it too.
 
 With the project's `rendering.ray_tracing.ambient_occlusion` on
@@ -2338,7 +2338,7 @@ meshes there occluding whole; other devices draw SSAO.
 
 ### Screen-space reflections
 
-With `forward_plus`, `ssr_enabled` reflects what is on the screen in shiny surfaces, as Godot
+With `clustered`, `ssr_enabled` reflects what is on the screen in shiny surfaces, as Godot
 4.6's Forward+ renderer does. From the prepass's depth and normals (halved first at half size,
 keeping the nearest of each 2x2 pixels), a pyramid of the nearest depths is made. Each opaque
 pixel's reflected ray steps across it, up to `ssr_max_steps` times, dropping a level where it
@@ -2352,7 +2352,7 @@ Fresnel. A target's first frame is drawn once without them, for the next to refl
 
 Only what is on the screen is reflected: what is off it, or hidden behind something nearer,
 isn't, as in Godot. Surfaces from roughness 0.7 up and transparent meshes take none, and
-`gl_compatibility` has no SSR. The project's `rendering.ssr`
+`compatibility` has no SSR. The project's `rendering.ssr`
 ([project-format.md](project-format.md#screen-space-reflections)) sets its resolution. The
 software device draws the same passes on the CPU, so `frame.capture` shows them too.
 
@@ -2380,7 +2380,7 @@ above the screen.
 
 A `ReflectionProbe` is a box whose meshes reflect a cube drawn from inside it, as Godot 4.6's
 Forward+ `ReflectionProbe`: shiny floors and metal in a room reflect its walls instead of the sky.
-With `forward_plus`, the renderer draws the world into the probe's cube from `origin_offset`
+With `clustered`, the renderer draws the world into the probe's cube from `origin_offset`
 through six 90-degree views, out to the box's sides or `max_distance` if that is further, with
 the `layer_filter` layers' meshes, the frame's lights (shadows with `enable_shadows`), sky and fog,
 but no post-processing, SSAO, SSR or probes. The cube is filtered into blurrier levels as the
@@ -2415,7 +2415,7 @@ first, smaller ones take the pixel first and larger ones fill what is left, and 
 rest. The probe's rotation turns its box; its scale is ignored, as Godot's. Probes share one atlas
 of cubes, `rendering.reflections` in project.json
 ([project-format.md](project-format.md#reflection-probes)), which sets their size and how many a
-frame draws (at most 42; the smallest past that reflect nothing). `gl_compatibility` draws no
+frame draws (at most 42; the smallest past that reflect nothing). `compatibility` draws no
 probes yet. The software device draws the same captures and reflections on the CPU, so
 `frame.capture` shows them too.
 
@@ -2912,8 +2912,8 @@ bytes in the form the device keeps it.
 
 ## Procedural textures
 
-A `.texture.json` file is a texture made from settings as it loads, as Godot's `NoiseTexture2D`,
-`GradientTexture1D` and `GradientTexture2D` resources. Any field that names a texture can name
+A `.texture.json` file is a texture made from settings as it loads: noise (`noise`), a gradient
+one pixel high (`gradient_1d`) or a gradient filling it (`gradient_2d`). Any field that names a texture can name
 one: a sprite, a tile set's atlas, a material's or style box's texture, a `Picture`, a
 `Surface3D`'s maps and a terrain's textures. The pixels are the same on every machine,
 so a game ships settings rather than images and [`texture.generate`](commands.md#texturegenerate)
@@ -2932,7 +2932,7 @@ measures them without drawing a frame. `slash-cli schema texture` prints the sch
   "height": 64,
   "noise": {"frequency": 0.08, "noise_type": "cellular", "seed": 3},
   "seamless": true,
-  "type": "NoiseTexture2D",
+  "type": "noise",
   "width": 64
 }
 ```
@@ -2942,7 +2942,7 @@ Every key but `format` and `type` is optional, with Godot's default.
 | Key | Types | Default | Meaning |
 | --- | --- | --- | --- |
 | `format` | all | required | Format version. Must be `1` |
-| `type` | all | required | `NoiseTexture2D`, `GradientTexture1D` or `GradientTexture2D` |
+| `type` | all | required | `noise`, `gradient_1d` or `gradient_2d` (the old `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` still load) |
 | `width`, `height` | all | `512` (noise), `256` x 1 (1D), `64` (2D) | Size in pixels, 1 to 16384; a 1D gradient is one pixel high |
 | `noise` | noise | Godot's `FastNoiseLite` | The [noise](#noise) to draw |
 | `invert` | noise | `false` | Light becomes dark and dark light |
@@ -3042,7 +3042,7 @@ the same either way.
 
 | Ops | What they make |
 | --- | --- |
-| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, Godot's FastNoiseLite noise (with domain warp and `seamless`), Godot's `GradientTexture2D`, shapes and bricks in cells, bands, an image file |
+| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, Godot's FastNoiseLite noise (with domain warp and `seamless`), a `gradient_2d` gradient, shapes and bricks in cells, bands, an image file |
 | `levels`, `invert`, `clamp`, `gradient_map`, `hsv`, `grayscale`, `threshold`, `posterize`, `swizzle`, `remap` | Color and value adjustments |
 | `blur`, `sharpen`, `warp`, `transform`, `edge_detect` | Filters and moves |
 | `normal_from_height`, `ao_from_height`, `curvature_from_height` | Maps from a height's red |
@@ -8234,7 +8234,7 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | style | `hover` | flat `[0.225, 0.225, 0.225, 0.6]`, the same shape |
 | | style | `pressed` | flat `[0, 0, 0, 0.6]`, the same shape |
 | | style | `disabled` | flat `[0.1, 0.1, 0.1, 0.3]`, the same shape |
-| | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `expand_margin` 2, no center |
+| | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `outset` 2, no center |
 | | style | `hover_pressed` | none: `pressed` is drawn unless a theme sets it |
 | | style | `normal_mirrored`, `hover_mirrored`, `pressed_mirrored`, `disabled_mirrored`, `hover_pressed_mirrored` | none: drawn in place of the state's box when the button lays out right to left and a theme sets it |
 | | font, font size | `font`, `font_size` | The built-in font, `16` |
@@ -8342,7 +8342,7 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | icon | `increment`, `increment_highlight`, `increment_pressed`, `decrement`, `decrement_highlight`, `decrement_pressed` | `""`: no arrows |
 | | constant | `padding_top`, `padding_bottom` (`HScrollBar`), `padding_left`, `padding_right` (`VScrollBar`) | `0` |
 | `ScrollBox` | style | `panel` | empty: it draws nothing behind its children |
-| | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `expand_margin` 4, no center, drawn with `draw_focus_border` |
+| | style | `focus` | a `[1, 1, 1, 0.75]` border 2 wide, `outset` 4, no center, drawn with `draw_focus_border` |
 | | constant | `scrollbar_margin_left`, `scrollbar_margin_top`, `scrollbar_margin_right`, `scrollbar_margin_bottom` | `-1`: the `panel` style box's margin on that side; the gap between the bars and its edges |
 | | constant | `scrollbar_h_separation`, `scrollbar_v_separation` | `0`, between the vertical or horizontal bar and the children |
 | `StackBox` (`HBoxContainer`, `VBoxContainer`) | constant | `separation` | `4` |
@@ -8404,39 +8404,41 @@ A theme is a `.theme.json` file of items by control type, as Godot's `Theme` res
 ### Style boxes
 
 A style box is what a panel or a bar draws behind its content, and the margins its content
-keeps, as Godot's `StyleBox`. In a theme's `styles` or a control's `theme_styles` it is
-an object with a `type` and Godot's property names:
+keeps. In a theme's `styles` or a control's `theme_styles` it is an object with a `type` and
+these fields:
 
 | Field | Types | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | | `"flat"` | `flat` (Godot's `StyleBoxFlat`), `texture` (`StyleBoxTexture`), `line` (`StyleBoxLine`) or `empty` (`StyleBoxEmpty`) |
+| `type` | | `"flat"` | `flat` (a rect with rounded corners, borders and a shadow), `texture` (a texture cut into nine parts), `line` or `empty` |
 | `content_margin_left`, `_top`, `_right`, `_bottom` | all | `-1` | Room kept for the content on each side; -1 takes the style's own: its border, or its texture margin |
-| `expand_margin_left`, `_top`, `_right`, `_bottom` | flat, texture | `0` | Drawn this far outside the rect |
-| `draw_center` | flat, texture | `true` | Draw the middle, not only the border or the nine-patch's edges |
-| `bg_color` | flat | `[0.6, 0.6, 0.6, 1]` | The fill |
+| `outset_left`, `_top`, `_right`, `_bottom` | flat, texture | `0` | Drawn this far outside the rect |
+| `fill_center` | flat, texture | `true` | Draw the middle, not only the border or the nine-patch's edges |
+| `background_color` | flat | `[0.6, 0.6, 0.6, 1]` | The fill |
 | `border_width_left`, `_top`, `_right`, `_bottom` | flat | `0` | Border widths in pixels |
 | `border_color` | flat | `[0.8, 0.8, 0.8, 1]` | |
 | `border_blend` | flat | `false` | Blend the border into the fill |
-| `corner_radius_top_left`, `_top_right`, `_bottom_right`, `_bottom_left` | flat | `0` | Corner radii in pixels, shrunk to fit as Godot's |
-| `corner_detail` | flat | `8` | Points along each corner, 1 to 20 |
+| `corner_radius_top_left`, `_top_right`, `_bottom_right`, `_bottom_left` | flat | `0` | Corner radii in pixels, shrunk to fit |
+| `corner_segments` | flat | `8` | Points along each corner, 1 to 20 |
 | `shadow_color`, `shadow_size`, `shadow_offset` | flat | `[0, 0, 0, 0.6]`, `0`, `[0, 0]` | A shadow that fades out over `shadow_size` pixels |
 | `skew` | flat | `[0, 0]` | Slants it: an x of 1 moves the top edge right by half the height and the bottom edge left, a y of 1 the left edge down and the right edge up |
 | `anti_aliasing`, `anti_aliasing_size` | flat | `true`, `1` | Smooth the edges of rounded or skewed boxes over this many pixels |
 | `texture` | texture | | Project path of a PNG, BMP or KTX2 file |
-| `region_rect` | texture | `[0, 0, 0, 0]` | The part of the texture to use; a zero size uses all of it |
-| `texture_margin_left`, `_top`, `_right`, `_bottom` | texture | `0` | Pixels on each side that keep their size, as `NineSlice`'s |
-| `axis_stretch_horizontal`, `axis_stretch_vertical` | texture | `"stretch"` | `stretch`, `tile` or `tile_fit` |
-| `modulate_color` | texture | `[1, 1, 1, 1]` | Tints the texture |
+| `region` | texture | `[0, 0, 0, 0]` | The part of the texture to use; a zero size uses all of it |
+| `slice_margin_left`, `_top`, `_right`, `_bottom` | texture | `0` | Pixels on each side that keep their size, as `NineSlice`'s |
+| `stretch_horizontal`, `stretch_vertical` | texture | `"stretch"` | `stretch`, `tile` or `tile_fit` |
+| `tint` | texture | `[1, 1, 1, 1]` | Tints the texture |
 | `color` | line | `[0, 0, 0, 1]` | The line's color |
 | `thickness` | line | `1` | The line's width in pixels; half of it is the style's own margin on each side across the line |
 | `grow_begin`, `grow_end` | line | `1` | Pixels the line reaches before the rect's start and past its end |
 | `vertical` | line | `false` | Run down the rect's left side instead of along its top |
 
-- `content_margin`, `expand_margin`, `border_width`, `corner_radius` and `texture_margin` set all
+- `content_margin`, `outset`, `border_width`, `corner_radius` and `slice_margin` set all
   four sides or corners at once; the named ones override them.
-- Flat boxes are drawn as Godot's `StyleBoxFlat::draw` draws them: rings of triangles round
-  each corner, a feathered edge where anti-aliasing is on, and the shadow under them. A box
-  with no corners, border, shadow or skew is one rect.
+- Files written with the keys' old names (`bg_color`, `expand_margin`, and the rest in
+  [renamed names](renamed-names.md#style-box-keys)) still load.
+- Flat boxes are drawn as rings of triangles round each corner, a feathered edge where
+  anti-aliasing is on, and the shadow under them. A box with no corners, border, shadow or
+  skew is one rect.
 - A field its type doesn't use is an error, as is a texture box with no texture.
   [`ui.theme`](commands.md#uitheme) returns style boxes in this form, with only the fields that
   differ from the defaults.

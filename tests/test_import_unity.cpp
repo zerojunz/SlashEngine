@@ -4055,13 +4055,13 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     REQUIRE(play.find("Button") != nullptr);
     json::Value& styles = play["Widget"]["theme_styles"];
     CHECK(styles["normal"] == parse(R"({"type": "texture", "texture": "unity/Assets/UI/button.png",
-        "texture_margin_left": 12.0, "texture_margin_top": 12.0, "texture_margin_right": 12.0,
-        "texture_margin_bottom": 12.0})"));
-    CHECK(styles["hover"]["modulate_color"] == parse("[0.9, 0.9, 0.9, 1.0]"));
-    CHECK(styles["pressed"]["modulate_color"] == parse("[0.78, 0.78, 0.78, 1.0]"));
+        "slice_margin_left": 12.0, "slice_margin_top": 12.0, "slice_margin_right": 12.0,
+        "slice_margin_bottom": 12.0})"));
+    CHECK(styles["hover"]["tint"] == parse("[0.9, 0.9, 0.9, 1.0]"));
+    CHECK(styles["pressed"]["tint"] == parse("[0.78, 0.78, 0.78, 1.0]"));
     CHECK(styles["hover_pressed"] == styles["pressed"]);
-    CHECK(styles["disabled"]["modulate_color"] == parse("[0.78, 0.78, 0.78, 0.5]"));
-    CHECK(styles["focus"]["modulate_color"] == parse("[0.96, 0.96, 0.96, 1.0]"));
+    CHECK(styles["disabled"]["tint"] == parse("[0.78, 0.78, 0.78, 0.5]"));
+    CHECK(styles["focus"]["tint"] == parse("[0.96, 0.96, 0.96, 1.0]"));
     CHECK(play["Widget"]["children"] == parse(R"(["text"])"));
     json::Value text = entity(files, menu, "text");
     CHECK(text["Label"]["text"].as_string() == "Play");
@@ -4083,9 +4083,9 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(volume["Slider"]["value"].as_double() == 7.0);
     CHECK(volume["Slider"].find("step") == nullptr); // 1, whole numbers
     CHECK(volume["Widget"]["theme_styles"]["slider"] ==
-          parse(R"({"type": "flat", "bg_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
+          parse(R"({"type": "flat", "background_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
                     "content_margin_top": 5.0, "content_margin_bottom": 5.0})"));
-    CHECK(volume["Widget"]["theme_styles"]["grabber_area"]["bg_color"] ==
+    CHECK(volume["Widget"]["theme_styles"]["grabber_area"]["background_color"] ==
           parse("[0.2, 0.8, 0.4, 1.0]"));
     CHECK(objects.find("Canvas/Volume/Handle Slide Area/Handle")->as_string() == "volume");
 
@@ -4099,7 +4099,7 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     CHECK(name["Widget"]["theme_colors"]["font_placeholder_color"] ==
           parse("[0.2, 0.2, 0.2, 0.5]"));
     CHECK(name["Widget"]["theme_styles"]["normal"] ==
-          parse(R"({"type": "flat", "bg_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
+          parse(R"({"type": "flat", "background_color": [1.0, 1.0, 1.0, 1.0], "corner_radius": 3,
                     "content_margin_left": 10.0, "content_margin_top": 7.0,
                     "content_margin_right": 10.0, "content_margin_bottom": 6.0})"));
     CHECK(objects.find("Canvas/Name/Text Area/Text")->as_string() == "name");
@@ -4145,7 +4145,7 @@ TEST_CASE("Unity UI becomes controls: canvases, text, images, widgets and layout
     json::Value badge_root = entity(files, badge, "badge");
     CHECK(badge_root["Widget"]["offset_left"].as_double() == -20.0);
     CHECK(badge_root["Widget"]["children"] == parse(R"(["count"])"));
-    CHECK(badge_root["Widget"]["theme_styles"]["panel"]["bg_color"] ==
+    CHECK(badge_root["Widget"]["theme_styles"]["panel"]["background_color"] ==
           parse("[1.0, 0.0, 0.0, 1.0]"));
     CHECK(entity(files, badge, "count")["Label"]["text"].as_string() == "3");
     const json::Value menu_scene = parse(files.at(menu));

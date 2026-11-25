@@ -163,13 +163,29 @@ struct StyleBox {
 };
 
 // JSON Schema for a style box: an object with "type" ("flat", the default, "texture", "line" or
-// "empty") and Godot's property names. "content_margin", "expand_margin", "texture_margin",
-// "border_width" and "corner_radius" set all four sides or corners; the named ones override them.
+// "empty") and its fields. "content_margin", "outset", "slice_margin", "border_width" and
+// "corner_radius" set all four sides or corners; the named ones override them.
 [[nodiscard]] json::Value style_box_schema();
-// Every error in a style box, each with the JSON Pointer of the bad value.
-[[nodiscard]] std::vector<json::ValidationError> validate_style_box(const json::Value& doc);
-// A style box, or its first error.
-[[nodiscard]] Result<StyleBox> parse_style_box(const json::Value& doc);
+// Every error in a style box, each with the JSON Pointer of the bad value. Keys under their old
+// names (style_box_aliases) are read as their current ones.
+[[nodiscard]] std::vector<json::ValidationError> validate_style_box(const json::Value& given);
+// A style box, or its first error. Takes old key names too.
+[[nodiscard]] Result<StyleBox> parse_style_box(const json::Value& given);
+
+// A style box key's old name and its current one ("bg_color" is now "background_color"). Keys
+// with sides ("expand_margin_left") are renamed as their base ("outset_left").
+struct StyleBoxAlias {
+    std::string_view old_name;
+    std::string_view name;
+};
+// Every renamed style box key.
+[[nodiscard]] std::span<const StyleBoxAlias> style_box_aliases();
+// Renames old keys in a style box object to their current names; where both are given, the
+// current one's value is kept. Returns whether it renamed any.
+bool upgrade_style_box(json::Value& doc);
+// The style box with old keys made current: `doc` itself when it has none, else `copy`, which
+// this fills.
+[[nodiscard]] const json::Value& current_style_box(const json::Value& doc, json::Value& copy);
 // A style box as JSON, with only the fields its type uses that differ from the defaults.
 [[nodiscard]] json::Value style_box_json(const StyleBox& style);
 

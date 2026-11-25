@@ -37,5 +37,5 @@ frame.capture {"points":[[160,88],[160,150],[100,100],[250,110]],"path":"shots/r
 The cube is drawn once, when the probe first shows, and again only when it moves or its box,
 offset, distance, layers or shadows change, as Godot's `"once"` update mode; a scene whose lights
 or meshes move would set `update_mode` to `"always"`. Godot's Compatibility renderer
-(`"rendering_method": "gl_compatibility"`, and always with the OpenGL drivers) draws no probes
+(`"renderer": "compatibility"`, and always with the OpenGL drivers) draws no probes
 here yet.

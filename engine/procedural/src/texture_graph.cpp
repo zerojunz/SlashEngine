@@ -56,12 +56,12 @@ constexpr std::array<OpSpec, 29> kOps{{
      GraphOp::Noise,
      {},
      0,
-     "Godot's FastNoiseLite noise as a NoiseTexture2D makes it: gray, value * 0.5 + 0.5."},
+     "FastNoiseLite noise as a noise texture makes it: gray, value * 0.5 + 0.5."},
     {"gradient",
      GraphOp::Gradient,
      {},
      0,
-     "Godot's GradientTexture2D: a gradient from fill_from to fill_to (UV)."},
+     "A 2D gradient texture: a gradient from fill_from to fill_to (UV)."},
     {"shape", GraphOp::Shape, {}, 0, "A disc, box, polygon or ring in each cell. Gray."},
     {"bricks",
      GraphOp::Bricks,
@@ -231,12 +231,12 @@ json::Value op_schema(const OpSpec& spec) {
     }
     case GraphOp::Noise:
         p["noise"] = noise_schema();
-        p["noise"]["description"] = "The FastNoiseLite settings, by Godot's names.";
+        p["noise"]["description"] = "The FastNoiseLite settings.";
         p["scale"] = pair_field(0.0F, 0.0F,
                                 "Noise units across and down: the image's size in pixels when "
-                                "left out, as a NoiseTexture2D samples it.");
+                                "left out, as a noise texture samples it.");
         p["scale"].as_object().erase("default");
-        p["seamless"] = boolean_field(false, "Make it tile as Godot's get_seamless_image does.");
+        p["seamless"] = boolean_field(false, "Make it tile.");
         p["seamless_blend_skirt"] =
             number_field(0.1F, "The share of the image blended over the seams.", 0.0, 1.0);
         break;

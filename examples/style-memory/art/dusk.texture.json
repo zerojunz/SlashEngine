@@ -12,6 +12,6 @@
       }
     ]
   },
-  "type": "GradientTexture1D",
+  "type": "gradient_1d",
   "width": 96
 }

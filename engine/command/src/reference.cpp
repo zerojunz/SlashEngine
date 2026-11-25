@@ -325,9 +325,9 @@ std::string systems_page(const json::Value& describe) {
 std::string readme_page(const json::Value& describe) {
     std::string out(kGenerated);
     out += "# Engine reference\n\nWhat the engine" + version_line(describe) +
-           " says of itself through `engine.describe`, written as Markdown by `slash-cli docs`, "
-           "as Godot's class reference is written by its `--doctool`. Run in a game's folder "
-           "(`--project`), it takes in the game's own components and systems too.\n\n";
+           " says of itself through `engine.describe`, written as Markdown by `slash-cli docs`. "
+           "Run in a game's folder (`--project`), it takes in the game's own components and "
+           "systems too.\n\n";
     out += "- [Components](components.md): " +
            std::to_string(array_of(describe, "components").size()) +
            ", with their fields\n- [Commands](commands.md): " +

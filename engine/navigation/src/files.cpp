@@ -179,11 +179,9 @@ json::Value file_schema(bool three_d) {
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = three_d ? "SlashEngine navigation mesh" : "SlashEngine navigation polygon";
-    out["description"] =
-        three_d ? "Convex polygons a 3D map's paths go over, as Godot's NavigationMesh; a "
-                  "NavArea3D places it."
-                : "Convex polygons a 2D map's paths go over, as Godot's NavigationPolygon; a "
-                  "NavArea2D places it.";
+    out["description"] = three_d
+                             ? "Convex polygons a 3D map's paths go over; a NavArea3D places it."
+                             : "Convex polygons a 2D map's paths go over; a NavArea2D places it.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format"};

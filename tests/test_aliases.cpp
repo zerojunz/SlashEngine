@@ -216,8 +216,12 @@ TEST_CASE("project.json settings at their old places move to their new ones") {
     CHECK(at("/localization/translations/0")->as_string() == "menu.csv");
     CHECK(at("/localization/fallback")->as_string() == "de");
     CHECK(at("/localization/pseudo/enabled")->as_bool());
-    // Given at both places, the new one's value is kept.
-    CHECK(at("/rendering/renderer")->as_string() == "gl_compatibility");
+    // Given at both places, the new one's value is kept, under its own name now.
+    CHECK(at("/rendering/renderer")->as_string() == "compatibility");
+    CHECK(std::ranges::any_of(moved, [](const world::Renamed& one) {
+        return one.path == "/rendering/renderer" && one.old_name == "gl_compatibility" &&
+               one.name == "compatibility";
+    }));
     // Emptied groups go.
     CHECK(project.find("gui") == nullptr);
     CHECK(project.find("internationalization") == nullptr);
@@ -226,6 +230,22 @@ TEST_CASE("project.json settings at their old places move to their new ones") {
     CHECK(std::ranges::any_of(moved, [](const world::Renamed& one) {
         return one.old_name == "window/vsync_mode" && one.name == "window/vsync";
     }));
+}
+
+TEST_CASE("renamed setting values load as their current names") {
+    for (const world::SettingValueAlias& alias : world::setting_value_aliases()) {
+        CHECK(alias.old_value != alias.value);
+        CHECK(world::current_setting_value(alias.path, alias.old_value) == alias.value);
+        CHECK(world::current_setting_value(alias.path, alias.value) == alias.value);
+    }
+    json::Value project = parse(R"({"format": 1, "rendering": {"renderer": "forward_plus"}})");
+    CHECK(world::has_old_settings(project));
+    const auto renamed = world::upgrade_settings(project);
+    REQUIRE(renamed.size() == 1);
+    CHECK(renamed.front().path == "/rendering/renderer");
+    CHECK(project["rendering"]["renderer"].as_string() == "clustered");
+    CHECK_FALSE(world::has_old_settings(project));
+    CHECK(world::current_setting_value("rendering/renderer", "vulkan") == "vulkan");
 }
 
 TEST_CASE("files keep loading under their old suffixes") {
@@ -262,4 +282,18 @@ TEST_CASE("commands and their params' values answer to their old names") {
     CHECK(world::upgrade_param_values("schema.get", params));
     CHECK(params.find("kind")->as_string() == "voxel_light");
     CHECK_FALSE(world::upgrade_param_values("schema.get", params));
+
+    // Params' old names, nested ones too; given under both, the current one wins.
+    REQUIRE_FALSE(world::param_name_aliases().empty());
+    json::Value display =
+        parse(R"({"vsync_mode": "mailbox", "scaling": {"fsr_sharpness": 1, "scale": 0.5}})");
+    CHECK(world::upgrade_param_names("display.set", display));
+    CHECK(json::write(display, json::Style::Compact) ==
+          R"({"scaling":{"scale":0.5,"sharpness":1},"vsync":"mailbox"})");
+    CHECK_FALSE(world::upgrade_param_names("display.set", display));
+    json::Value both = parse(R"({"vsync_mode": "disabled", "vsync": "enabled"})");
+    CHECK(world::upgrade_param_names("display.set", both));
+    CHECK(json::write(both, json::Style::Compact) == R"({"vsync":"enabled"})");
+    json::Value other = parse(R"({"vsync_mode": "disabled"})");
+    CHECK_FALSE(world::upgrade_param_names("display.list", other));
 }

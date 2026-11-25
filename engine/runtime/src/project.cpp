@@ -93,8 +93,8 @@ json::Value scaling_schema() {
     mode["description"] =
         "How the world scales to the screen: bilinear stretches it, fsr is AMD's FidelityFX Super "
         "Resolution 1, which finds edges and sharpens, fsr2 is FSR 2, which builds the 3D world "
-        "from jittered frames in Forward+, and fsr3 is FSR 3.1's upscaler, which does the same "
-        "with AMD's later passes.";
+        "from jittered frames in the clustered renderer, and fsr3 is FSR 3.1's upscaler, which "
+        "does the same with AMD's later passes.";
     json::Value scale;
     scale["type"] = "number";
     scale["minimum"] = render::kMinRenderScale;
@@ -117,8 +117,8 @@ json::Value scaling_schema() {
     json::Value scaling;
     scaling["type"] = "object";
     scaling["additionalProperties"] = false;
-    scaling["description"] = "Draw the world at another size and scale it to the screen under the "
-                             "UI, as Godot's scaling_3d settings.";
+    scaling["description"] =
+        "Draw the world at another size and scale it to the screen under the UI.";
     scaling["properties"]["mode"] = std::move(mode);
     scaling["properties"]["scale"] = std::move(scale);
     scaling["properties"]["sharpness"] = std::move(sharpness);
@@ -240,8 +240,8 @@ json::Value effects_schema() {
     json::Value fog;
     fog["type"] = "object";
     fog["additionalProperties"] = false;
-    fog["description"] =
-        "Forward+'s volumetric fog, for every Environment3D with volumetric_fog_enabled.";
+    fog["description"] = "The clustered renderer's volumetric fog, for every Environment3D with "
+                         "volumetric_fog_enabled.";
     fog["properties"]["volume_size"] =
         froxels(fog_defaults.volume_size, "Froxels across and down, for a square frame.");
     fog["properties"]["volume_depth"] =
@@ -272,8 +272,8 @@ json::Value effects_schema() {
     json::Value subsurface;
     subsurface["type"] = "object";
     subsurface["additionalProperties"] = false;
-    subsurface["description"] = "Forward+'s subsurface scattering, for StandardMaterial3Ds with "
-                                "subsurf_scatter_enabled.";
+    subsurface["description"] = "The clustered renderer's subsurface scattering, for "
+                                "StandardMaterial3Ds with subsurf_scatter_enabled.";
     subsurface["properties"]["quality"] = std::move(subsurface_quality);
     subsurface["properties"]["scale"] =
         share(subsurface_defaults.scale, "How wide the blur is at full strength, as a share of "
@@ -364,8 +364,8 @@ json::Value anti_aliasing_schema() {
     use_taa["type"] = "boolean";
     use_taa["default"] = false;
     use_taa["description"] =
-        "Temporal antialiasing of the 3D world in Forward+: each frame is drawn with the camera "
-        "moved within a pixel and blended with the frames before it.";
+        "Temporal antialiasing of the 3D world in the clustered renderer: each frame is drawn with "
+        "the camera moved within a pixel and blended with the frames before it.";
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
@@ -422,8 +422,8 @@ json::Value ray_tracing_schema() {
     shadows["type"] = "boolean";
     shadows["default"] = false;
     shadows["description"] =
-        "Opaque meshes take their lights' shadows from rays through every mesh, in Forward+, on "
-        "devices that trace rays; others use shadow maps.";
+        "Opaque meshes take their lights' shadows from rays through every mesh, in the clustered "
+        "renderer, on devices that trace rays; others use shadow maps.";
     json::Value samples;
     samples["type"] = "integer";
     samples["minimum"] = 1;
@@ -437,7 +437,7 @@ json::Value ray_tracing_schema() {
     occlusion["default"] = false;
     occlusion["description"] =
         "The environment's SSAO is traced by rays over each opaque pixel's half of the sphere, up "
-        "to ssao_radius, in Forward+, on devices that trace rays; others draw SSAO.";
+        "to ssao_radius, in the clustered renderer, on devices that trace rays; others draw SSAO.";
     json::Value occlusion_samples;
     occlusion_samples["type"] = "integer";
     occlusion_samples["minimum"] = 1;
@@ -450,7 +450,7 @@ json::Value ray_tracing_schema() {
     reflections["default"] = false;
     reflections["description"] =
         "The environment's SSR is traced by rays reflected off each opaque pixel, through every "
-        "mesh, in Forward+, on devices that trace reflections; others draw SSR.";
+        "mesh, in the clustered renderer, on devices that trace reflections; others draw SSR.";
     json::Value reflection_samples;
     reflection_samples["type"] = "integer";
     reflection_samples["minimum"] = 1;
@@ -462,8 +462,8 @@ json::Value ray_tracing_schema() {
     gi["type"] = "boolean";
     gi["default"] = false;
     gi["description"] =
-        "Each opaque pixel's ambient light is traced by rays bouncing off what is near it, in "
-        "Forward+, on devices that trace it; others light it as before.";
+        "Each opaque pixel's ambient light is traced by rays bouncing off what is near it, in the "
+        "clustered renderer, on devices that trace it; others light it as before.";
     json::Value gi_samples;
     gi_samples["type"] = "integer";
     gi_samples["minimum"] = 1;
@@ -647,8 +647,8 @@ json::Value project_schema() {
     linux_display_driver["enum"] = json::Array{"x11", "wayland"};
     linux_display_driver["default"] = Project{}.linux_display_driver;
     linux_display_driver["description"] =
-        "The display server a game tries first on Linux, falling back to the other, as Godot's "
-        "driver.linuxbsd: x11 (through XWayland on Wayland desktops) or wayland.";
+        "The display server a game tries first on Linux, falling back to the other: x11 (through "
+        "XWayland on Wayland desktops) or wayland.";
     window["properties"]["linux_display_driver"] = std::move(linux_display_driver);
 
     json::Value tick_hz;
@@ -688,8 +688,7 @@ json::Value project_schema() {
     fallback["type"] = "boolean";
     fallback["default"] = Project{}.fallback_to_opengl;
     fallback["description"] = "Draw with opengl where the driver's GPU backend (Vulkan, Metal, "
-                              "Direct3D 12 or WebGPU) doesn't work, as Godot's "
-                              "fallback_to_opengl3.";
+                              "Direct3D 12 or WebGPU) doesn't work.";
     json::Value rendering;
     rendering["type"] = "object";
     rendering["additionalProperties"] = false;
@@ -698,12 +697,13 @@ json::Value project_schema() {
     rendering["properties"]["driver"] = std::move(driver);
     rendering["properties"]["fallback_to_opengl"] = std::move(fallback);
     json::Value method;
-    method["enum"] = json::Array{"forward_plus", "gl_compatibility"};
-    method["default"] = "forward_plus";
+    method["enum"] = json::Array{"clustered", "compatibility"};
+    method["default"] = "clustered";
     method["description"] =
-        "How 3D meshes are lit, as Godot's rendering_method: forward_plus sorts up to 8 "
-        "directional and 512 omni and spot lights into clusters of the screen; gl_compatibility "
-        "shades every pixel with the first 64 lights, as the OpenGL drivers always do.";
+        "How 3D meshes are lit: clustered sorts up to 8 directional and 512 omni and spot lights "
+        "into clusters of the screen; compatibility shades every pixel with the first 64 lights, "
+        "as the OpenGL drivers always do. The old names forward_plus and gl_compatibility load "
+        "as these.";
     rendering["properties"]["renderer"] = std::move(method);
     json::Value texture_filter;
     texture_filter["enum"] = json::Array{"linear", "nearest"};
@@ -743,25 +743,25 @@ json::Value project_schema() {
     frame_generation["default"] = false;
     frame_generation["description"] =
         "Show a frame made between each two drawn ones, as AMD's FSR 3 frame generation: from the "
-        "3D world's motion vectors and depth in Forward+ and the optical flow of the pictures. "
-        "The UI draws over both. Windowed games on the GPU devices; not on the web or OpenGL.";
+        "3D world's motion vectors and depth in the clustered renderer and the optical flow of the "
+        "pictures. The UI draws over both. Windowed games on the GPU devices; not on the web or "
+        "OpenGL.";
     rendering["properties"]["frame_generation"] = std::move(frame_generation);
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
-        "How exports ship textures, as Godot's compress/mode: lossless as the file is; "
-        "vram_compressed as BC7 (desktop, web) or ASTC 4x4 (phones, web) blocks, a quarter of the "
-        "GPU memory; vram_uncompressed as RGBA8 texels ready for the GPU.";
+        "How exports ship textures: lossless as the file is; vram_compressed as BC7 (desktop, web) "
+        "or ASTC 4x4 (phones, web) blocks, a quarter of the GPU memory; vram_uncompressed as RGBA8 "
+        "texels ready for the GPU.";
     json::Value decal_filter;
     decal_filter["enum"] = json::Array{};
     for (const std::string_view filter : render::kDecalFilterNames) {
         decal_filter["enum"].push_back(std::string(filter));
     }
     decal_filter["default"] = "linear_mipmaps";
-    decal_filter["description"] =
-        "How Decals' textures are sampled, as Godot's rendering/textures/decals/filter: by the "
-        "nearest texel or linearly, and with mipmaps, blending smaller copies further away. "
-        "Anisotropic filters are drawn as the plain mipmap ones.";
+    decal_filter["description"] = "How Decals' textures are sampled: by the nearest texel or "
+                                  "linearly, and with mipmaps, blending smaller copies further "
+                                  "away. Anisotropic filters are drawn as the plain mipmap ones.";
     json::Value decals;
     decals["type"] = "object";
     decals["additionalProperties"] = false;
@@ -808,8 +808,7 @@ json::Value project_schema() {
                         "\"scenes/main.scene.json\".");
     properties["icon"] = string_property(
         "A square image, 1024x1024 or larger, that every platform's icons are made from and the "
-        "window shows, relative to the project folder, as Godot's application/config/icon. "
-        "Default: the engine's icon.");
+        "window shows, relative to the project folder. Default: the engine's icon.");
     properties["window"] = std::move(window);
     properties["tick_hz"] = std::move(tick_hz);
     properties["max_fps"] = std::move(max_fps);
@@ -899,10 +898,9 @@ json::Value project_schema() {
     json::Value& plugins = properties["plugins"];
     plugins["type"] = "array";
     plugins["items"]["type"] = "string";
-    plugins["description"] =
-        "Plugin files, relative to the project, as Godot's GDExtensions: each names a library "
-        "built against slash_plugin.h (\"slash-cli schema plugin\") that adds components and "
-        "systems. They load before scenes open.";
+    plugins["description"] = "Plugin files, relative to the project: each names a library built "
+                             "against slash_plugin.h (\"slash-cli schema plugin\") that adds "
+                             "components and systems. They load before scenes open.";
     json::Value& sdks = properties["sdks"];
     sdks["type"] = "array";
     sdks["items"]["type"] = "string";

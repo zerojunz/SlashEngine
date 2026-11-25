@@ -510,9 +510,9 @@ void register_navigation_commands(Registry& registry) {
         "where it first touches each. Default corridorfunnel.");
     registry.add({
         .name = "navigation.path",
-        .description = "Returns a path over the navigation map from from to to, as Godot's "
-                       "query_path: [x, y] points on the 2D map, [x, y, z] on the 3D one, and "
-                       "its length. It ends as close to to as the map reaches.",
+        .description =
+            "Returns a path over the navigation map from from to to: [x, y] points on the 2D map, "
+            "[x, y, z] on the 3D one, and its length. It ends as close to to as the map reaches.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -524,8 +524,8 @@ void register_navigation_commands(Registry& registry) {
                                   0xFFFFFFFF)},
                 {"postprocessing", std::move(postprocessing)},
                 {"simplify_epsilon",
-                 number_property("Drops points closer than this to the line through their "
-                                 "neighbors, as Godot's simplify_path.")},
+                 number_property(
+                     "Drops points closer than this to the line through their neighbors.")},
                 {"excluded_regions", ids_property("Region entities it may not use.")},
                 {"included_regions", ids_property("The only region entities it may use.")},
                 {"max_polygons",
@@ -543,9 +543,9 @@ void register_navigation_commands(Registry& registry) {
     });
     registry.add({
         .name = "navigation.closest",
-        .description = "Returns the point of the navigation map closest to a point, the region "
-                       "it is on and, in 3D, its polygon's normal (not normalized, as Godot's). "
-                       "point is null if the map is empty.",
+        .description =
+            "Returns the point of the navigation map closest to a point, the region it is on and, "
+            "in 3D, its polygon's normal (not normalized). point is null if the map is empty.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"point", point_property("[x, y] or [x, y, z].")}}, {"point"}),
@@ -556,8 +556,8 @@ void register_navigation_commands(Registry& registry) {
     seed["maximum"] = kMaxSeed;
     registry.add({
         .name = "navigation.random",
-        .description = "Returns a random point of the navigation map's regions on "
-                       "navigation_layers, as Godot's map_get_random_point.",
+        .description =
+            "Returns a random point of the navigation map's regions on navigation_layers.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -583,9 +583,9 @@ void register_navigation_commands(Registry& registry) {
     agent_id["minLength"] = 1;
     registry.add({
         .name = "navigation.agent",
-        .description = "Returns an agent's next position, whether it finished, reached or can "
-                       "reach its target, the distance to it, its path and, with avoidance, its "
-                       "safe velocity, as Godot's NavigationAgent getters.",
+        .description =
+            "Returns an agent's next position, whether it finished, reached or can reach its "
+            "target, the distance to it, its path and, with avoidance, its safe velocity.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"id", std::move(agent_id)}}, {"id"}),
@@ -595,12 +595,10 @@ void register_navigation_commands(Registry& registry) {
     region_id["minLength"] = 1;
     registry.add({
         .name = "navigation.bake",
-        .description = "Bakes a region's navmesh file from the "
-                       "geometry under it, as Godot's bake_navigation_mesh and "
-                       "bake_navigation_polygon, keeping the file's settings. Obstacles with "
-                       "affect_navigation_mesh are cut out; tile map layers add their tiles' "
-                       "navigation outlines and collision polygons. Returns the polygon count "
-                       "and warnings.",
+        .description = "Bakes a region's navmesh file from the geometry under it, keeping the "
+                       "file's settings. Obstacles with affect_navigation_mesh are cut out; tile "
+                       "map layers add their tiles' navigation outlines and collision polygons. "
+                       "Returns the polygon count and warnings.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(region_id)}}, {"id"}),

@@ -306,8 +306,7 @@ json::Value layer_schema() {
     p["noise_range"] =
         range_field(d.noise_range, "[min, max] of the noise, which runs about -1 to 1.");
     p["align_to_normal"] = detail::boolean_field(
-        d.align_to_normal, "3D: stand along the ground's normal, as Godot's populate; else "
-                           "upright.");
+        d.align_to_normal, "3D: stand along the ground's normal; else upright.");
     p["rotate_random"] = number(d.rotate_random, "Turn about the up axis by up to this many half "
                                                  "turns either way: 1 is any heading.");
     p["tilt_random"] = number(d.tilt_random, "3D: tilt by up to this many half turns either way.");
@@ -342,9 +341,8 @@ json::Value scatter_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine scatter rules";
-    schema["description"] = "What scatter.run places over terrains, meshes, tile maps and areas, "
-                            "a layer at a time, as Unreal's PCG graphs and Godot's MultiMesh "
-                            "populate.";
+    schema["description"] = "What scatter.run places over terrains, meshes, tile maps and areas, a "
+                            "layer at a time, as Unreal's PCG graphs do.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "layers"};

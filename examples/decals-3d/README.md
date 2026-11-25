@@ -31,5 +31,5 @@ frame.capture {"path":"shots/street.png","points":[[96,120],[130,120],[214,128],
 
 The textures of a frame's decals are packed into one atlas with mipmaps, as Godot's, sampled by
 project.json's `rendering.textures.decals.filter` (`linear_mipmaps` by default). Godot's
-Compatibility renderer (`"rendering_method": "gl_compatibility"`, and always with the OpenGL
+Compatibility renderer (`"renderer": "compatibility"`, and always with the OpenGL
 drivers) draws no decals.

@@ -134,7 +134,7 @@ constexpr SwitchSetting kSwitchSettings[] = {
     {"motion_use_enhanced_internal_edge_removal",
      &Settings::motion_use_enhanced_internal_edge_removal,
      "Whether a character's moves skip contacts with the inner edges of meshes and compound "
-     "shapes (Godot's motion_queries/use_enhanced_internal_edge_removal)."},
+     "shapes."},
 };
 
 // What a query sees, as Godot's JoltQueryFilter3D: bodies, areas or both, on the mask's layers,
@@ -233,13 +233,12 @@ json::Value settings_schema() {
     detect_static["type"] = "boolean";
     detect_static["default"] = defaults.areas_detect_static_bodies;
     detect_static["description"] =
-        "Whether Zone3D reports static bodies entering it, which Godot's Jolt module leaves off.";
+        "Whether Zone3D reports static bodies entering it, off by default.";
 
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] =
-        "3D physics, as Godot's physics/3d and physics/jolt_physics_3d project settings.";
+    schema["description"] = "3D physics.";
     json::Value& properties = schema["properties"];
     properties["gravity"] =
         number_property("Gravity's strength in meters per second squared.", defaults.gravity);
