@@ -1,10 +1,10 @@
 # SDK packages
 
 An SDK package adds a closed vendor SDK (an ad network, a store, analytics, Steamworks, an
-upscaler) to a game without changing the engine, as Godot's Android and iOS plugins do. A
-package is a folder with an `sdk.json` that says what each platform's build links. The vendor's
-binaries are never committed to the engine's repository: `sdk.json` names a download pinned by
-SHA-256, or a path on the machine that exports.
+upscaler) to a game without changing the engine. A package is a folder with an `sdk.json` that
+says what each platform's build links. The vendor's binaries are never committed to the engine's
+repository: `sdk.json` names a download pinned by SHA-256, or a path on the machine that
+exports.
 
 Status: current · Updated: 2026-11-20
 

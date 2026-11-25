@@ -1,10 +1,10 @@
 # Ray-traced GI 3D
 
 A room's light bouncing off its walls, traced by rays, as `rendering.ray_tracing`'s
-`global_illumination` turns it on in Forward+. [main.scene.json](main.scene.json) is a room with
-no ceiling seen through a `Camera3D` in a 320x180 window: a white floor and back wall, a red wall
-on the left, a green wall on the right and a white block, lit by a sun from above the right wall
-and a dim blue ambient light.
+`global_illumination` turns it on in the clustered renderer. [main.scene.json](main.scene.json)
+is a room with no ceiling seen through a `Camera3D` in a 320x180 window: a white floor and back
+wall, a red wall on the left, a green wall on the right and a white block, lit by a sun from
+above the right wall and a dim blue ambient light.
 
 [project.json](project.json) sets `rendering.ray_tracing`: `global_illumination` on, with 16 rays
 a pixel. Each opaque pixel sends them over the half of the sphere it faces. What a ray meets is

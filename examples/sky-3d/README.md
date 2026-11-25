@@ -1,6 +1,6 @@
 # Sky 3D
 
-Skies and fog, as Godot's `Environment` and sky materials draw them in its Compatibility
+Skies and fog, drawn in the compatibility
 renderer. [main.scene.json](main.scene.json) is a meadow with hills, a rock and a tree under the
 sun, seen through a `Camera3D` in a 320x180 window. Its `environment` entity has:
 
@@ -30,14 +30,13 @@ frame.capture {"points":[[160,4],[20,76],[228,17],[150,92],[160,172]],"path":"sh
   `shots/day.png`.
 - `fog_height` 0.6 with `fog_height_density` 0.8 adds height fog: everything below 0.6 thickens
   into mist, the near ground and the foot of the rock too.
-- Swapping in a `SkyScattering` scatters the sun's light through the air, by Rayleigh and
-  Mie scattering, instead of painting gradients. With the sun dropped to 7 degrees above the
+- Swapping in a `SkyScattering` scatters the sun's light through the air, by Rayleigh and Mie
+  scattering, instead of painting gradients. With the sun dropped to 7 degrees above the
   horizon, the sky is a pale dusk blue with a bright glow round the sun. `energy_multiplier` 6
-  brightens it: like Godot's, a physical sky is dim for a sun of energy 1.
+  brightens it:, a physical sky is dim for a sun of energy 1.
 - A `SkyPanorama` wraps an equirectangular image round the camera: here the day frame
   saved first, so blue sky shows overhead again.
 
-Each material has Godot's fields: `SkyPanorama`'s `panorama`, `SkyGradient`'s
-`sky_cover` and `SkyScattering`'s `night_sky` name textures by project path.
-`Environment3D`'s `sky_rotation` turns the sky, and fog with a `"color"` background tints the
-background too, as Godot's does.
+Each material has fields: `SkyPanorama`'s `panorama`, `SkyGradient`'s `sky_cover` and
+`SkyScattering`'s `night_sky` name textures by project path. `Environment3D`'s `sky_rotation`
+turns the sky, and fog with a `"color"` background tints the background too.

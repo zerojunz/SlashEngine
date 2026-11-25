@@ -1,7 +1,7 @@
 # Ray-traced reflections 3D
 
 The hall of [ssr-3d](../ssr-3d/), its reflections traced by rays instead of found on the screen,
-as `rendering.ray_tracing`'s `reflections` turns them on in Forward+.
+as `rendering.ray_tracing`'s `reflections` turns them on in the clustered renderer.
 [main.scene.json](main.scene.json) is the same, a polished metallic floor with a red crate, a blue
 pillar, a rug and a warm back wall, with one thing added: a green `banner` high on the back wall,
 above the top of the screen. The `Environment3D`'s `ssr_enabled` is on.

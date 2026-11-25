@@ -1,12 +1,11 @@
 # Sky Light 3D
 
-The sky's own light on meshes, as Godot's sky radiance in its Compatibility renderer.
-[main.scene.json](main.scene.json) is three balls on a gray plain under a procedural sky, seen
-through a `Camera3D` in a 320x180 window: chrome (`metallic` 1, `roughness` 0.05), satin gold
-(`metallic` 1, `roughness` 0.45) and chalk (`Surface3D`'s defaults: not metallic, fully
-rough). The `environment` entity's `Environment3D` has a `"sky"` background and leaves
-`ambient_light_source` and `reflected_light_source` at `"background"`, so the sky behind the
-balls also lights them and shines in them.
+The sky's own light on meshes. [main.scene.json](main.scene.json) is three balls on a gray plain
+under a procedural sky, seen through a `Camera3D` in a 320x180 window: chrome (`metallic` 1,
+`roughness` 0.05), satin gold (`metallic` 1, `roughness` 0.45) and chalk (`Surface3D`'s
+defaults: not metallic, fully rough). The `environment` entity's `Environment3D` has a `"sky"`
+background and leaves `ambient_light_source` and `reflected_light_source` at `"background"`, so
+the sky behind the balls also lights them and shines in them.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -29,5 +28,5 @@ frame.capture {"points":[[97,80],[100,107],[150,90],[205,100],[160,160]],"path":
   the sky but keeps its light: the background turns dark, and the chrome and chalk read exactly
   as in the first frame.
 
-The sky is drawn into a cube `sky_radiance_size` texels a side (256 here, Godot's default) and
+The sky is drawn into a cube `sky_radiance_size` texels a side (256 here, the default) and
 blurred into smaller levels for rougher surfaces. It is drawn again only when the sky changes.

@@ -10,8 +10,8 @@ the props still stacked out of sight under the ground. [calls.jsonl](calls.jsonl
 way an agent does over MCP or JSON-RPC, and [results.jsonl](results.jsonl) holds the replies:
 
 - Three crates are all asked to go to the same point in the air. The first drops onto the
-  ground, as Godot's editor snaps a node to the floor; the other two are each moved aside to
-  the nearest free spot, 0.8 meters away, where their boxes only touch.
+  ground; the other two are each moved aside to the nearest free spot, 0.8 meters away, where
+  their boxes only touch.
 - The lamp, asked to go above the platform, stands on the platform.
 - Five fence posts are spread evenly along the fence's `Spline3D`, from end to end, each turned to
   face along it (`"rotate": true`): the posts on the second side are turned a quarter turn.

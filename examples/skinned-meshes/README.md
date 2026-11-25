@@ -1,12 +1,12 @@
 # Skinned meshes
 
-A skinned arm, posed as Godot poses an imported glTF scene's `Skeleton3D`.
+A skinned arm, posed through an imported glTF scene's `Skeleton3D`.
 [models/arm.gltf](models/arm.gltf) is one text file, its geometry in a base64 buffer: a sleeve and
 a glove deformed by a skin of three bones, `Shoulder`, `Elbow` and `Hand`, whose vertices are
 weighted between the bones around each joint. It holds two animations: `Wave-loop`, which swings
-the elbow and hand back and forth and loops because of its name, as Godot's import hint, and
-`Point`, which turns the shoulder. [main.scene.json](main.scene.json) draws it with a
-`Model3D` and plays it with an `Animator` whose library is the model itself:
+the elbow and hand back and forth and loops because of its name, and `Point`, which turns the
+shoulder. [main.scene.json](main.scene.json) draws it with a `Model3D` and plays it with an
+`Animator` whose library is the model itself:
 
 ```json
 "arm": {
@@ -18,9 +18,9 @@ the elbow and hand back and forth and loops because of its name, as Godot's impo
 }
 ```
 
-The skin moves each vertex by its bones as Godot's skeleton shader does, on the CPU, into a mesh
-the render device refills each frame. The pose is worked out from the components each time, so
-the paused player's `time` poses the arm too.
+The skin moves each vertex by its bones, on the CPU, into a mesh the render device refills each
+frame. The pose is worked out from the components each time, so the paused player's `time` poses
+the arm too.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -33,15 +33,15 @@ the paused player's `time` poses the arm too.
 - Setting the player's `time` to 0.5 swings the arm the other way, and `skeleton.get` gives the
   hand's pose in its parent and its `world_position`.
 - `Point` turns the arm from the shoulder, and a `Skeleton3D` turning `Shoulder` by 0.5 radians
-  wins over it, as Godot's bone poses do over an animation.
+  wins over it.
 - [anim/arm.anim.json](anim/arm.anim.json)'s `wave` comes `from` the model's `Wave-loop`, taking
   its length and loop, and adds an event track. Playing it for a second emits `wave_out` at each
   end of the swing, which `events.read` returns.
 - [models/arm.fbx](models/arm.fbx) is the same arm as Maya writes an ASCII FBX file, y up and in
   centimeters, with a skin deformer and two animation stacks. `model.inspect` finds the same skin
-  and animations, the stacks baked at 30 a second as Godot's FBX importer bakes them, and with
-  the mesh and player switched to it, the hand half way through the wave is where the glTF arm's
-  is. The glove's color differs a little, since an FBX Lambert material is fully rough.
+  and animations, the stacks baked at 30 a second, and with the mesh and player switched to it,
+  the hand half way through the wave is where the glTF arm's is. The glove's color differs a
+  little, since an FBX Lambert material is fully rough.
 
 `slash-cli scene validate main.scene.json` checks a `Skeleton3D`'s bone names against the model,
 with "did you mean".

@@ -1,13 +1,13 @@
 # Instanced scenes
 
-A scene other scenes instance, as Godot's PackedScene: an entity that `"extends"` a
-`.scene.json` file becomes that scene's root, and the scene's other entities come with it, with
-IDs under the instance's. [scenes/player.scene.json](scenes/player.scene.json) is a player with a
-body and a gun, the gun itself an instance of [scenes/gun.scene.json](scenes/gun.scene.json);
+A scene other scenes instance: an entity that `"extends"` a `.scene.json` file becomes that
+scene's root, and the scene's other entities come with it, with IDs under the instance's.
+[scenes/player.scene.json](scenes/player.scene.json) is a player with a body and a gun, the gun
+itself an instance of [scenes/gun.scene.json](scenes/gun.scene.json);
 [scenes/level.scene.json](scenes/level.scene.json) instances the player as `hero` and tints its
 body. [calls.jsonl](calls.jsonl) adds a second player, changes it, removes the hero's gun, then
-edits the player scene and reopens the level; [results.jsonl](results.jsonl) holds the
-responses, line for line.
+edits the player scene and reopens the level; [results.jsonl](results.jsonl) holds the responses,
+line for line.
 
 ```bash
 slash-cli rpc --project . < calls.jsonl

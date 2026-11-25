@@ -1,15 +1,15 @@
 # SSAO 3D
 
-A room's corners darkened by screen-space ambient occlusion, as Godot 4.6's SSAO in its Forward+
-renderer, the default `rendering.renderer`. [main.scene.json](main.scene.json) is a room
-seen through a `Camera3D` in a 320x180 window: a floor, a back wall and a side wall, a brown crate
+A room's corners darkened by screen-space ambient occlusion in the clustered renderer,
+the default `rendering.renderer`. [main.scene.json](main.scene.json) is a room seen
+through a `Camera3D` in a 320x180 window: a floor, a back wall and a side wall, a brown crate
 against the back wall and a small blue box on the open floor, lit by warm ambient light and a dim
 sun.
 
-The `Environment3D`'s `ssao_enabled` turns SSAO on with Godot's defaults: occlusion from
-within `ssao_radius` 1 meter of each pixel, at `ssao_intensity` 2. [project.json](project.json)
-sets `rendering.ssao`, as Godot's project settings: `high` quality, which takes more
-samples than the default `medium` and reads depth further out at lower resolutions.
+The `Environment3D`'s `ssao_enabled` turns SSAO on with its defaults: occlusion from within
+`ssao_radius` 1 meter of each pixel, at `ssao_intensity` 2. [project.json](project.json) sets
+`rendering.ssao`: `high` quality, which takes more samples than the default `medium` and reads
+depth further out at lower resolutions.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -33,6 +33,6 @@ frame.capture {"points":[[96,20],[272,90],[208,130],[160,165]],"path":"shots/roo
   too, not only the ambient light, so the sunlit corners darken most (0.416 and 0.506).
 - Turning `ssao_enabled` off leaves the room lit evenly again.
 
-SSAO darkens opaque meshes only, as in Godot: a transparent material neither casts occlusion nor
-takes it. Godot's Compatibility renderer (`"renderer": "compatibility"`, and always
-with the OpenGL drivers) has no SSAO.
+SSAO darkens opaque meshes only: a transparent material neither casts occlusion nor takes it.
+The compatibility renderer (`"renderer": "compatibility"`, and always with the OpenGL drivers)
+has no SSAO.

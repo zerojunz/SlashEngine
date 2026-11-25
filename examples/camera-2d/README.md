@@ -1,10 +1,9 @@
 # Camera 2D
 
-The part of a level the window shows, as Godot's `Camera2D`. In
-[main.scene.json](main.scene.json) the level is 1600 pixels wide in a 320x180 window, and the
-player carries a camera 32 pixels above it as a child entity, so the view follows the player.
-[main.cpp](main.cpp) draws the textures, then makes the calls an agent would make over MCP or
-JSON-RPC; [expected.txt](expected.txt) holds the replies.
+The part of a level the window shows. In [main.scene.json](main.scene.json) the level is 1600
+pixels wide in a 320x180 window, and the player carries a camera 32 pixels above it as a child
+entity, so the view follows the player. [main.cpp](main.cpp) draws the textures, then makes the
+calls an agent would make over MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies.
 
 ```text
 frame.summary {"ids":["player","coin","score"]}

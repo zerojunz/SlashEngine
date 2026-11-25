@@ -4,49 +4,47 @@
 
 Status: current · Updated: 2026-11-20
 
-`engine/physics3d` is 3D physics on Jolt Physics, as Godot 4.4's Jolt module. Bodies and areas
-are components: `StaticBody3D`, `MovingBody3D`, `RigidBody3D`, `CharacterMover3D` and
-`Zone3D`, with `Collider3D` shapes (`box`, `sphere`, `capsule`, `cylinder`,
-`convex_polygon`, `concave_polygon`, `world_boundary`), built as Godot's `JoltShape3D`
-subclasses build them (`src/shapes.cpp`). As in 2D, the ECS holds the truth: the `physics3d`
-system (priority 950) brings Jolt's system up to date with the components, applies Godot's
-gravity and damping to rigid bodies, steps it on one thread, writes rigid bodies back, moves
-characters with Godot's `move_and_slide` (`src/character.cpp`, ported line for line onto
-Godot's Jolt `body_test_motion` in `src/motion.cpp`), finds what is in each area and emits the
-2D events. Object layers encode each body's collision layer and mask as Godot's `JoltLayers`
-does, so layers and masks collide when either mask matches. Areas take no part in Jolt's step:
-the space collides their shapes after it. `project.json`'s `physics_3d` sets gravity, damping
-and `areas_detect_static_bodies`; `physics3d::raycast`, `overlap_point`, `overlap_shape`,
-`contacts` and `gravity` answer queries, and the `physics.*` commands ask 3D physics when given
-three-number points, a 3D shape or a 3D body. Jolt is built with
-`CROSS_PLATFORM_DETERMINISTIC` and the space adds and changes bodies in entity order, so results
-are the same on every platform. `examples/physics-3d` has every kind of body.
+Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
 
-Joints are Godot's `PinJoint3D`, `HingeJoint3D`, `SlideJoint3D`, `ConeJoint3D` and
-`SixAxisJoint3D` as components on an entity of their own, built into Jolt constraints as
-Godot's `JoltJoint3D` subclasses build them (`src/joints.cpp`): made at the entity's
+`engine/physics3d` is 3D physics on Jolt Physics. Bodies and areas are components: `StaticBody3D`,
+`MovingBody3D`, `RigidBody3D`, `CharacterMover3D` and `Zone3D`, with `Collider3D` shapes (`box`,
+`sphere`, `capsule`, `cylinder`, `convex_polygon`, `concave_polygon`, `world_boundary`), built in
+`src/shapes.cpp`. As in 2D, the ECS holds the truth: the `physics3d` system (priority 950) brings
+Jolt's system up to date with the components, applies gravity and damping to rigid bodies, steps it
+on one thread, writes rigid bodies back, moves characters by sliding them along surfaces
+(`src/character.cpp`, on the motion test in `src/motion.cpp`), finds what is in each area and emits
+the 2D events. Object layers encode each body's collision layer and mask, so layers and masks
+collide when either mask matches. Areas take no part in Jolt's step: the space collides their shapes
+after it. `project.json`'s `physics_3d` sets gravity, damping and `areas_detect_static_bodies`;
+`physics3d::raycast`, `overlap_point`, `overlap_shape`, `contacts` and `gravity` answer queries, and
+the `physics.*` commands ask 3D physics when given three-number points, a 3D shape or a 3D body.
+Jolt is built with `CROSS_PLATFORM_DETERMINISTIC` and the space adds and changes bodies in entity
+order, so results are the same on every platform. `examples/physics-3d` has every kind of body.
+
+Joints are `PinJoint3D`, `HingeJoint3D`, `SlideJoint3D`, `ConeJoint3D` and
+`SixAxisJoint3D` as components on an entity of their own, built into Jolt constraints
+(`src/joints.cpp`): made at the entity's
 `Transform3D` between `body_a` and `body_b` (a missing one is the world), made again when that
 transform or the bodies change and rebuilt in place for other changes. `WheeledBody3D` on a
-rigid body rolls it on the `Wheel3D` entities among its children, with Godot's
-`WheeledBody3D` code ported line for line in `src/vehicle.cpp`: its inputs go to the wheels
+rigid body rolls it on the `Wheel3D` entities among its children, in
+`src/vehicle.cpp`: its inputs go to the wheels
 before the step, each wheel's ray cast, suspension and friction push the body after it, and the
 wheels' `Transform3D` and contact fields are written back. `examples/joints-and-vehicles` has a
 lamp, a bell, a door, a drawer and a car.
 
-Soft bodies are Godot's `SoftBody3D` on its Jolt module (`src/soft_body.cpp`, after
-`JoltSoftBody3D`): `sync_soft_bodies` makes a Jolt soft body of the primitive mesh the entity's
-`Model3D` draws, its vertices welded by position into points (`SoftBody::mesh_to_physics`)
-with Godot's stiffness, shrinking and edge springs, moves pinned points to their attachments
-before each step and keeps each body's `scene3d::SoftBodyPose` after it. Soft bodies feel Jolt's
-own gravity, which the space sets to the project's (every other body's `mGravityFactor` is 0, as
-the space applies their gravity itself), and `OnSoftBodyContactValidate` keeps Godot's one-way
-layers and `parent_collision_ignore`. `scene3d::set_soft_body_source` (called by
+Soft bodies are `SoftBody3D` components on Jolt (`src/soft_body.cpp`): `sync_soft_bodies` makes a
+Jolt soft body of the primitive mesh the entity's `Model3D` draws, its vertices welded by position
+into points (`SoftBody::mesh_to_physics`) with stiffness, shrinking and edge springs, moves pinned
+points to their attachments before each step and keeps each body's `scene3d::SoftBodyPose` after it.
+Soft bodies feel Jolt's own gravity, which the space sets to the project's (every other body's
+`mGravityFactor` is 0, as the space applies their gravity itself), and `OnSoftBodyContactValidate`
+keeps one-way layers and `parent_collision_ignore`. `scene3d::set_soft_body_source` (called by
 `physics3d::install`, as scene3d doesn't depend on physics3d) hands the poses to
 `scene3d::Renderer`, which draws the mesh from them (`soft_mesh`), and `check_soft_bodies` backs
 `scene validate`. `physics.soft_body` and `physics3d::soft_body_points` read them;
 `examples/soft-bodies` drapes a tablecloth, flies a flag and drops a ball full of air.
 
-Destruction is SlashEngine's own (Godot has none), after Unreal's geometry collections:
+Destruction is SlashEngine's own, after Unreal's geometry collections:
 `scene3d::fracture` (`slash/scene3d/fracture.hpp`, `make_fracture` in
 `engine/scene3d/src/csg.cpp`) cuts a closed mesh into Voronoi cells around points a PCG32 seeds
 in its bounds, each a padded cube trimmed by bisector planes and intersected with the mesh in
@@ -105,24 +103,22 @@ for later steps, counting pieces so replays repeat; scene3d's `cut_cells` cuts a
 the world's job pool (`fracture_of` passes it), in the same order on any number of threads.
 `examples/break-effects` scorches a crate, fells a deer and wrecks a van.
 
-Wind is SlashEngine's own, after Unreal's `WindDirectionalSource` (Godot's only wind is an
-`Zone3D`'s for soft bodies, which physics3d ports too: `area_winds` and `blow_soft_body` in
-`engine/physics3d/src/soft_body.cpp`, after `_compute_area_windforce`). `world::WindField`
+Wind is SlashEngine's own, after Unreal's `WindDirectionalSource`. `world::WindField`
 (`slash/world/wind.hpp`, `engine/world/src/wind.cpp`, built with `-ffp-contract=off`) sums the
 enabled `WindSource3D`s, directional along the entity's -z or `point_wind` out to `radius`, with
 gusts that travel downwind and turbulence across it from a noise of whole numbers hashed with
 each source's ID, on the clock the `wind` system (priority -650, added by `canvas::install` and
 `physics3d::install`) keeps (`world::wind_time`, reset with the world's state). Soft bodies take
-its drag by their `drag_coefficient` before each step, `Emitter3D` add it times
-`wind_influence` to gravity, `GpuEmitter3D` get it as a box attractor that pushes everywhere
-(`wind_attractor` in `engine/scene3d/src/gpu_particles.cpp`, so devices need no change), and
-spatial shaders read it at the mesh's origin as `WIND` (`render::kShaderWindConstant`, filled in
+its drag by their `drag_coefficient` before each step, `Emitter3D` add it times `wind_influence`
+to gravity, `GpuEmitter3D` get it as a box attractor that pushes everywhere (`wind_attractor` in
+`engine/scene3d/src/gpu_particles.cpp`, so devices need no change), and spatial shaders read it
+at the mesh's origin as `WIND` (`render::kShaderWindConstant`, filled in
 `scene3d::Renderer::prepare`). In 2D, `world::WindField2D` sums `WindSource2D`s along their x
 axis in pixels, which `Emitter2D` feel by `wind_influence` and canvas shaders read as `WIND`
 (filled by `CanvasRenderer::draw`'s `blow`). `wind.sample` returns either at points;
 `examples/wind` blows a meadow.
 
-Foliage is Unreal's Foliage tool (Godot has none): a `.foliage.json` type
+Foliage is Unreal's Foliage tool as recipes: a `.foliage.json` type
 (`slash/world/foliage.hpp`; `$cli schema foliage`) says what a plant or rock draws, how thickly a
 brush paints it, how it bends and parts, whether it blocks and what harvesting it gives, and a
 `Foliage3D` or `Foliage2D` holds a group of instances per type as flat numbers (seven or four an
@@ -142,7 +138,7 @@ cell per instance, physics2d takes polygons through the canvas's tile shape sour
 `engine/command/src/scatter.cpp`, with `foliage.sway`, which measures a type's sway along a row
 downwind and tunes its file (`set`, or `lean` for the bend a wind gives). `examples/foliage` paints a meadow in 3D and 2D.
 
-Hair and fur are Unreal's Groom and its Chaos hair (Godot has none): a `.groom.json` file
+Hair and fur are Unreal's Groom and its Chaos hair: a `.groom.json` file
 (`slash/world/hair.hpp`, `engine/world/src/hair.cpp`, built with `-ffp-contract=off`;
 `$cli schema groom`) says how strands grow, draw and move. `world::step_strands` is the solver
 both dimensions share (2D at z 0): small steps of position-based dynamics with a pull toward the
@@ -161,13 +157,13 @@ joints' blend. physics3d's `Space::step_hair` and physics2d's `step_hair_2d` (ea
 (`engine/command/src/hair.cpp`) reads them; `examples/hair-and-fur` grows a head, a creature and
 a mane.
 
-Characters are MetaHuman Creator's, as recipes (Godot has none): a `.character.json` file
+Characters are MetaHuman Creator's, as recipes: a `.character.json` file
 (`slash/world/character.hpp`, `engine/world/src/character.cpp`; `$cli schema character`) gives
 a body's measures, a face, hair (and a `.groom.json`), clothing in layers (one garment may hang
 as cloth) and props at points, and `extends` another, merged as JSON Merge Patch.
 `world::load_character` reads it through the world's assets (the `.character.json` suffix is a
 model's, so it reads the text with `Assets::read`). In 3D, `scene3d::build_character`
-(`engine/scene3d/src/character.cpp`) builds it into a skinned `Model` of Godot's whole
+(`engine/scene3d/src/character.cpp`) builds it into a skinned `Model` of the whole
 humanoid profile (fingers, eyes and jaw) plus twist bones, each turned as the profile's and then onto its next bone
 (`skeleton`), so animations retarget onto it, its skin weighted smoothly across joints
 (`Body::along`, `trunk_at`, `jaw_weights`; `rig::mix_weights`), with hand poses and `jaw_open`
@@ -216,7 +212,7 @@ the front and `face_profile`'s rows (`test.run` runs it), `face.generate` reads 
 controls, marks and a style and keeps the first seeded candidate far enough from the cast, and
 `face.portrait` draws one in 3D or as a cut-out in a private `Session`. `examples/face-tools`
 designs a ship's crew.
-Characters have anatomy and flesh, after Chaos Flesh (Godot has none): `slash/world/flesh.hpp`
+Characters have anatomy and flesh, after Chaos Flesh: `slash/world/flesh.hpp`
 (`engine/world/src/flesh.cpp`, `flesh_solver.cpp` and `flesh2d.cpp`, built with
 `-ffp-contract=off`) places a recipe's bones and 28 kinds of muscle on a body's `BodyFrames`
 (`body_frames_3d` from its measures, `body_frames_2d` the cut-out's, turned), sized by its
@@ -234,7 +230,7 @@ and `Renderer::skinned_mesh` adds its `FleshPose` after skinning; `flesh_2d` ste
 them and `flesh.get` (`engine/command/src/character.cpp`) reads the muscles.
 `examples/character-anatomy` flexes an arm in 3D and 2D.
 
-Animals are creature recipes, after Unreal's Mutable and its animal AI (Godot has none): a
+Animals are creature recipes, after Unreal's Mutable and its animal AI: a
 `.creature.json` file (`slash/world/creature.hpp`, `engine/world/src/creature.cpp`, built with
 `-ffp-contract=off`; `$cli schema creature`) gives a body plan (quadruped, bird, fish or insect),
 measures, a look, parts and a behavior, and `extends` another. `world::creature_measures`,
@@ -265,26 +261,26 @@ private `Session`; `animation.tune` sets a motion, scales bones to `ranges` and 
 by `slide` (`length` or `swing`), writing the instance's motion or the recipe file.
 `examples/animation-tuning` plants a deer's feet and tunes a stag and a 2D fox.
 
-Vehicles are recipes, after Unreal's Chaos Vehicles (Godot has only `WheeledBody3D`): a
+Vehicles are recipes, after Unreal's Chaos Vehicles: a
 `.vehicle.json` file (`slash/world/vehicle.hpp`, `engine/world/src/vehicle.cpp`, built with
 `-ffp-contract=off`; `$cli schema vehicle`) says what a car, bike, truck, tracked vehicle, boat
 or aircraft looks like (body, seats, doors, wheels, wings, and `parts` of its own: shapes or
-model files placed in its space) and its own physics (mass and center
-of mass, the engine's torque curve, gears, differential, steering, brakes, suspension, tires,
-buoyancy, lift), what it does to whoever it hits and the `design` a test drive must meet, and
-`extends` another. `world::drive_step` is the drivetrain both dimensions share (rpm from the
-wheels, an automatic gearbox, throttle against the way it rolls braking, steering eased and
-reduced at speed), and `vehicle_side_view` its 2D profile. `scene3d::build_vehicle`
-(`engine/scene3d/src/vehicle.cpp`) builds its model, with `seat_` and `door_` points and convex
-collision, which `load_model` and `check_model` take as recipes. The `vehicles_3d` system
+model files placed in its space) and its own physics (mass and center of mass, the engine's
+torque curve, gears, differential, steering, brakes, suspension, tires, buoyancy, lift), what it
+does to whoever it hits and the `design` a test drive must meet, and `extends` another.
+`world::drive_step` is the drivetrain both dimensions share (rpm from the wheels, an automatic
+gearbox, throttle against the way it rolls braking, steering eased and reduced at speed), and
+`vehicle_side_view` its 2D profile. `scene3d::build_vehicle` (`engine/scene3d/src/vehicle.cpp`)
+builds its model, with `seat_` and `door_` points and convex collision, which `load_model` and
+`check_model` take as recipes. The `vehicles_3d` system
 (`engine/physics3d/src/vehicle_tool.cpp`, priority 945) keeps each `Vehicle3D`'s `RigidBody3D`
-(the recipe's mass and `center_of_mass`, a field `RigidBody3D` and `RigidBody2D` now have, as
-Godot's) and `WheeledBody3D` with a `Wheel3D` child a wheel, drives the wheels from its
-`controls` (tracked vehicles slewing on tracks that slide), floats boats at four corners, flies
-aircraft by thrust, lift and control torques through `constant_force` and `constant_torque`,
-keeps bikes upright, carries `VehicleRider`s in their seats and hits characters, creatures and
-ragdolls (`vehicle_hit`); `vehicles_2d` (`engine/physics2d/src/vehicle_tool.cpp`) does the same
-for a `Vehicle2D` from the side, its wheels `RigidBody2D` circles on `TrackJoint2D`s and
+(the recipe's mass and `center_of_mass`, a field `RigidBody3D` and `RigidBody2D` now have) and
+`WheeledBody3D` with a `Wheel3D` child a wheel, drives the wheels from its `controls` (tracked
+vehicles slewing on tracks that slide), floats boats at four corners, flies aircraft by thrust,
+lift and control torques through `constant_force` and `constant_torque`, keeps bikes upright,
+carries `VehicleRider`s in their seats and hits characters, creatures and ragdolls
+(`vehicle_hit`); `vehicles_2d` (`engine/physics2d/src/vehicle_tool.cpp`) does the same for a
+`Vehicle2D` from the side, its wheels `RigidBody2D` circles on `TrackJoint2D`s and
 `SpringJoint2D`s. `enter_vehicle` and `exit_vehicle` are gameplay code's; `vehicle.place`,
 `vehicle.control`, `vehicle.tune` (a merge patch kept in the vehicle's `overrides`),
 `vehicle.check` (a test drive in a private `Session` held to the design), `vehicle.design`
@@ -294,7 +290,7 @@ targets by test drives, the unwritten recipe handed to each drive's session thro
 `examples/vehicles` drives a car, a boat and a tank and a 2D pickup, and designs a dune buggy.
 
 Physics materials and fields make one simulation, after Unreal's Chaos. A
-`.physics_material.json` file (`slash/world/physics_material.hpp`: Godot's `PhysicsMaterial`
+`.physics_material.json` file (`slash/world/physics_material.hpp`: friction and bounce
 with Chaos's density, strength and surface; `$cli schema physics_material`) is named by a
 body's `physics_material`; each space reads it through the world's assets
 (`Space::material`, kept by version) and gives the body its computed friction and bounce
@@ -336,7 +332,7 @@ closest points for collision, `WindField2D` and `PhysicsFields2D`), handing the 
 canvas through `world::set_cloth_2d_source` (`slash/world/cloth2d.hpp`), which draws them with
 its texture. `examples/character-cloth` swings both capes.
 
-World streaming is SlashEngine's own (Godot has none), after Unreal's World Partition: the
+World streaming is SlashEngine's own, after Unreal's World Partition: the
 `world_streaming` system (`engine/scene3d/src/streaming.cpp`, priority -700, added by
 `canvas::install`) measures from each enabled `StreamingSource3D` to each `StreamedScene3D`'s
 box and loads its `.scene.json` file onto a new entity `<id>_scene` with
@@ -344,7 +340,7 @@ box and loads its `.scene.json` file onto a new entity `<id>_scene` with
 emitting `streamed_in`, `streamed_out` and `stream_failed` events. `streaming.state` lists the
 cells and `check_streaming` backs `scene validate`. `examples/world-streaming` walks a road.
 
-Double precision is Godot's `precision` build option: `-DSLASH_PRECISION=double` (the `double`
+Double precision is a build option: `-DSLASH_PRECISION=double` (the `double`
 preset; [docs/reference/precision.md](precision.md)) makes `slash::real_t`, and
 with it `Vec2`, `Vec3` and `Quat`'s fields, doubles (`engine/core` defines
 `SLASH_REAL_T_IS_DOUBLE`), builds Jolt with `DOUBLE_PRECISION` (`to_jolt_place` and

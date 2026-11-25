@@ -1,6 +1,6 @@
 # World streaming
 
-A world too large to keep whole, kept in pieces. Godot has no world streaming, so this follows
+A world too large to keep whole, kept in pieces. This follows
 Unreal's World Partition: each part of the world is a scene file of its own, and a
 `StreamedScene3D` loads it while a `StreamingSource3D` (a player or a camera) is near and
 unloads it when every source has gone. [main.scene.json](main.scene.json) holds only a player and

@@ -1,8 +1,7 @@
 # Runtime meshes
 
-Ground and a minimap made by gameplay code while the game runs, as Godot's `SurfaceTool`,
-`ArrayMesh` and `ImageTexture`. [main.cpp](main.cpp) adds a game's own `Ground` component and a
-system that, each time a ground's `seed` changes:
+Ground and a minimap made by gameplay code while the game runs. [main.cpp](main.cpp) adds a
+game's own `Ground` component and a system that, each time a ground's `seed` changes:
 
 - samples `procedural::Noise` over a 16 x 16 grid of cells,
 - builds hills from it with `scene3d::SurfaceTool`: a vertex at each grid point colored by its

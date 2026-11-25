@@ -1,22 +1,17 @@
 # GPU particles
 
-Particles run on the GPU, as Godot's `GPUParticles2D`. In [main.scene.json](main.scene.json), a fire
-rises from a circle and fades from yellow to dark red, a one-shot burst of sparks goes off the same
-way each time, snow was already falling when the scene opened, smoke curls as it rises, rain lands
-on a ledge, rockets burst into sparks, comets draw trails and fireflies circle their emitter. How
-each one's particles start and move is a `.particles.json` file, Godot's
-`ParticleProcessMaterial` in 2D: [fire.particles.json](fire.particles.json),
-[sparks.particles.json](sparks.particles.json),
-[snow.particles.json](snow.particles.json),
-[smoke.particles.json](smoke.particles.json),
-[rain.particles.json](rain.particles.json),
-[rockets.particles.json](rockets.particles.json),
-[burst.particles.json](burst.particles.json),
-[comets.particles.json](comets.particles.json) and
-[fireflies.particles.json](fireflies.particles.json). [main.cpp](main.cpp) makes the
-dot and streak textures, checks the particles with `particles.eval` and `frame.capture`, hears the
-sparks finish and sets them off again, then draws the scene. [expected.txt](expected.txt) holds its
-output.
+Particles run on the GPU. In [main.scene.json](main.scene.json), a fire rises from a circle and
+fades from yellow to dark red, a one-shot burst of sparks goes off the same way each time, snow was
+already falling when the scene opened, smoke curls as it rises, rain lands on a ledge, rockets burst
+into sparks, comets draw trails and fireflies circle their emitter. How each one's particles start
+and move is a `.particles.json` file:
+[fire.particles.json](fire.particles.json), [sparks.particles.json](sparks.particles.json),
+[snow.particles.json](snow.particles.json), [smoke.particles.json](smoke.particles.json),
+[rain.particles.json](rain.particles.json), [rockets.particles.json](rockets.particles.json),
+[burst.particles.json](burst.particles.json), [comets.particles.json](comets.particles.json) and
+[fireflies.particles.json](fireflies.particles.json). [main.cpp](main.cpp) makes the dot and streak
+textures, checks the particles with `particles.eval` and `frame.capture`, hears the sparks finish
+and sets them off again, then draws the scene. [expected.txt](expected.txt) holds its output.
 
 ```text
 particles.eval {"id":"fire","time":0.5}
@@ -27,55 +22,52 @@ particles.eval {"id":"fire"}
 {"alive":24,"bounds":[74.5837,113.1188,14.8968,37.7536]}
 ```
 
-- The component holds what Godot's node holds: `amount`, `lifetime`, `one_shot`,
+- The component holds `amount`, `lifetime`, `one_shot`,
   `explosiveness`, `randomness`, `preprocess`, `speed_scale`, `fixed_fps`, `interpolate`,
   `local_space`, `draw_order`, `texture` and its `hframes` and `vframes` for animated particles,
   and the `trail_` settings.
-  The process material holds the rest, with Godot's property names: the `emission_shape`
+  The process material holds the rest: the `emission_shape`
   (`point`, `sphere`, `sphere_surface`, `box`, `points`, `directed_points`, `ring`),
-  `direction`, `spread`, `gravity` (`[0, 98]` unless given, as in a 2D game made with Godot),
+  `direction`, `spread`, `gravity` (`[0, 98]` unless given),
   each parameter's `_min`, `_max` and `_curve`, `color`, `color_ramp`, `color_initial_ramp`,
   `alpha_curve`, `emission_curve`, `velocity_limit_curve`, and the `turbulence_` and
   `collision_` settings. Angles are in degrees.
 - Turbulence turns each particle's velocity along curl noise that moves with
   `turbulence_noise_speed`, by its `turbulence_influence`, and moves it by its
-  `turbulence_initial_displacement` where it starts, as Godot's. The noise's gradients come from
-  an integer hash, so every device makes the same noise. `turbulence_noise_scale` is Godot's
-  slider, whose noise is sized for 3D meters: in pixels it wants to be close to 10 (the smoke's
-  9.8 makes swirls about 50 pixels across), and its `velocity_limit_curve` keeps turbulence from
-  speeding particles up as it turns them.
+  `turbulence_initial_displacement` where it starts. The noise's gradients come from an integer
+  hash, so every device makes the same noise. `turbulence_noise_scale` sizes the noise for 3D
+  meters: in pixels it wants to be close to 10 (the smoke's 9.8 makes swirls about 50 pixels
+  across), and its `velocity_limit_curve` keeps turbulence from speeding particles up as it turns
+  them.
 - With a `collision_mode`, particles collide with `Occluder2D` outlines (those with
-  `sdf_collision`, as by default) and tile occluders on occlusion layers with `sdf_collision`, as
-  Godot's collide with the distance field it draws from them: `rigid` ones bounce off by
-  `collision_bounce` and slide with `collision_friction`, `hide_on_contact` ones die. A particle
-  touches a shape when it comes within the emitter's `collision_size` of it, times half its
-  texture's average side: 4 pixels for the rain's 8-pixel dot. The shapes are measured exactly,
-  so every device and the CPU agree; `particles.eval` with a `time` runs apart from the world, with
-  nothing to collide with.
-- An emitter's `sub_emitter` names another `GpuEmitter2D` that its particles start particles
-  in, as its process material's `sub_emitter_mode` says: `constant` (`sub_emitter_frequency`
-  times a second), `at_end` (when one dies of age), `at_collision` (each step it touches a shape)
-  or `at_start`, with `sub_emitter_amount_at_end`, `_at_collision` and `_at_start` particles and
-  `sub_emitter_keep_velocity`, as Godot's. The sub-emitter's particles start where those
-  particles are, turned and scaled as they are. It emits only what it is given, so its own
-  `emitting`, `one_shot`, `fixed_fps` and `preprocess` go unused, and it steps with the emitter
-  before it, in the same step, where Godot's may see that emitter's particles from a frame
-  before. A sub-emitter can have its own, up to 8 emitters in a chain. When a sub-emitter's
-  particles are all alive, new ones take the place of the oldest; Godot drops the new ones.
-  `slash-cli scene validate` reports a `sub_emitter` that can't take part: one naming its own
-  emitter or an entity with no `GpuEmitter2D`, a sub-emitter another emitter already has,
-  and one that loops back or makes a chain too long.
-- With `trail_enabled`, each particle draws as Godot's trail ribbon: the texture, a frame wide,
-  stretched down the path the particle took over the last `trail_lifetime` seconds. As in Godot
-  the particle keeps `trail_sections` copies that start with it, wait, then follow its path that
-  much later, and the ribbon bends through them in `trail_section_subdivisions` segments between
-  each two. Trails step 60 times a second when `fixed_fps` is 0, as Godot's. Turn the particles
-  along their path (`particle_flag_align_y`), as Godot's trails want, so the ribbon's width runs
-  across it. When a particle dies its copies run on to the end of the same life, so the trail
-  shortens from the front. Each copy takes its particle's path exactly, collisions included;
-  Godot's run with the current step's time and collision field, and start particles in a
-  sub-emitter, which these don't.
-- A process material's particle graphs are Godot's particle shaders, as node graphs written as
+  `sdf_collision`, as by default) and tile occluders on occlusion layers with `sdf_collision` with
+  the distance field it draws from them: `rigid` ones bounce off by `collision_bounce` and slide
+  with `collision_friction`, `hide_on_contact` ones die. A particle touches a shape when it comes
+  within the emitter's `collision_size` of it, times half its texture's average side: 4 pixels for
+  the rain's 8-pixel dot. The shapes are measured exactly, so every device and the CPU agree;
+  `particles.eval` with a `time` runs apart from the world, with nothing to collide with.
+- An emitter's `sub_emitter` names another `GpuEmitter2D` that its particles start particles in,
+  as its process material's `sub_emitter_mode` says: `constant` (`sub_emitter_frequency` times a
+  second), `at_end` (when one dies of age), `at_collision` (each step it touches a shape) or
+  `at_start`, with `sub_emitter_amount_at_end`, `_at_collision` and `_at_start` particles and
+  `sub_emitter_keep_velocity`. The sub-emitter's particles start where those particles are,
+  turned and scaled as they are. It emits only what it is given, so its own `emitting`,
+  `one_shot`, `fixed_fps` and `preprocess` go unused, and it steps with the emitter before it, in
+  the same step. A
+  sub-emitter can have its own, up to 8 emitters in a chain. When a sub-emitter's particles are
+  all alive, new ones take the place of the oldest. `slash-cli scene
+  validate` reports a `sub_emitter` that can't take part: one naming its own emitter or an entity
+  with no `GpuEmitter2D`, a sub-emitter another emitter already has, and one that loops back or
+  makes a chain too long.
+- With `trail_enabled`, each particle draws: the texture, a frame wide, stretched down the path
+  the particle took over the last `trail_lifetime` seconds. The particle keeps
+  `trail_sections` copies that start with it, wait, then follow its path that much later, and
+  the ribbon bends through them in `trail_section_subdivisions` segments between each two.
+  Trails step 60 times a second when `fixed_fps` is 0. Turn the particles along their path
+  (`particle_flag_align_y`), so the ribbon's width runs across it. When a particle dies its
+  copies run on to the end of the same life, so the trail shortens from the front. Each copy
+  takes its particle's path exactly, collisions included.
+- A process material's particle graphs are node graphs written as
   [materials'](../../docs/reference/scene-format.md#materials) are: `start` changes where a
   particle starts and how it sets off, and `process` changes what each step makes of it, its
   position, velocity, color, angle, scale, frame or whether it lives on. The fireflies' graphs
@@ -83,12 +75,11 @@ particles.eval {"id":"fire"}
   round at a speed of its own, twinkling. The GPU runs graphs in its compute shader and the CPU
   the same way; a mistake in one is refused with its JSON Pointer and the closest name, as a
   material's is. See [Particle graphs](../../docs/reference/scene-format.md#particle-graphs).
-- Each tick the `gpu_particles_2d` system works out each emitter's steps as Godot does: one each
-  1/`fixed_fps` seconds (or one a tick with `fixed_fps` 0), with preprocess and the one-shot
-  timing. The renderer runs the steps on the device and draws the particles there. On Metal,
-  Direct3D 12 and Vulkan a compute shader runs them, so the CPU's work is the same for ten
-  particles or a hundred thousand; web exports run them on the CPU, since WebGL 2 has no
-  compute shaders.
+- Each tick the `gpu_particles_2d` system works out each emitter's steps: one each 1/`fixed_fps`
+  seconds (or one a tick with `fixed_fps` 0), with preprocess and the one-shot timing. The
+  renderer runs the steps on the device and draws the particles there. On Metal, Direct3D 12 and
+  Vulkan a compute shader runs them, so the CPU's work is the same for ten particles or a
+  hundred thousand; web exports run them on the CPU, since WebGL 2 has no compute shaders.
 - The steps make the same particles on every device, and on the CPU: `particles.eval` runs the
   steps kept on the CPU to list them, and with a `time` runs the settings from the start, apart
   from the world. A renderer that starts late, or misses frames, catches up from the steps kept.
@@ -99,7 +90,7 @@ particles.eval {"id":"fire"}
   Setting `emitting` sets it off again.
 - `slash-cli scene validate` checks a `.particles.json` file and reports every mistake
   with its JSON Pointer; exports check every process material.
-- Godot projects import with their `GpuEmitter2D` nodes and `ParticleProcessMaterial`
+- Godot projects import with their `GPUParticles2D` nodes and `ParticleProcessMaterial`
   resources (`slash-cli import`), turbulence, collisions, sub-emitters and trails included;
   attractors are reported as not converted, since SlashEngine doesn't have them yet.
 - Particles are not saved in the scene. Snapshots, undo, dry runs and failed commands leave them

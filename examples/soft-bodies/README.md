@@ -1,10 +1,10 @@
 # Soft bodies
 
-Cloth and soft bodies on Jolt Physics, as Godot 4.4's `SoftBody3D` on its Jolt module.
-[main.scene.json](main.scene.json) drops a tablecloth onto a table, hangs a flag from a pole by
-two pinned points and drops a ball full of air onto the floor. [main.cpp](main.cpp) steps the
-world as an agent would, reads each soft body's points with `physics.soft_body`, then moves the
-pole with `component.set`. [expected.txt](expected.txt) holds its output.
+Cloth and soft bodies on Jolt Physics on its Jolt module. [main.scene.json](main.scene.json)
+drops a tablecloth onto a table, hangs a flag from a pole by two pinned points and drops a ball
+full of air onto the floor. [main.cpp](main.cpp) steps the world as an agent would, reads each
+soft body's points with `physics.soft_body`, then moves the pole with `component.set`.
+[expected.txt](expected.txt) holds its output.
 
 - A `SoftBody3D` simulates the primitive mesh its entity's `Model3D` draws. The mesh's
   vertices are welded where they meet into points, one for each place, and the faces between

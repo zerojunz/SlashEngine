@@ -1,12 +1,11 @@
 # CSG shapes
 
-Level geometry built from boxes, cylinders, tori and polygons combined with Godot 4.6's CSG
+Level geometry built from boxes, cylinders, tori and polygons combined with CSG
 nodes, on Manifold's booleans. [main.scene.json](main.scene.json) has a hamlet: a house cut
 hollow with a door and a round window, under a roof pushed out of a triangle; a tower with a
 cone on top; a ring; a vase spun from its outline; and the ground they stand on.
 
-A CSG shape's children change it in their order, as Godot's do. The house is a `SolidBox3D` with
-four children:
+A CSG shape's children change it in their order. The house is a `SolidBox3D` with four children:
 
 ```json
 "house": {"components": {

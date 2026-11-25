@@ -1,12 +1,12 @@
 # UI and text
 
-UI, as Godot's `Control`, `Label` and `ColorFill`. [main.scene.json](main.scene.json) is a pause
-screen: a dark rect over the whole window, a panel centered on it holding a title in a distance
-field font with an outline, a paragraph that wraps, a quest line cut to one line with an ellipsis
-and a hint with a shadow in its bottom-right corner, plus a score and a sign in the window's
-corners. [main.cpp](main.cpp) writes the font file, checks the screen with `ui.layout` and
-`text.measure`, changes the score and the window size, catches a misspelled theme override, then
-draws the screen into a texture. [expected.txt](expected.txt) holds its output.
+UI. [main.scene.json](main.scene.json) is a pause screen: a dark rect over the whole window, a
+panel centered on it holding a title in a distance field font with an outline, a paragraph that
+wraps, a quest line cut to one line with an ellipsis and a hint with a shadow in its bottom-right
+corner, plus a score and a sign in the window's corners. [main.cpp](main.cpp) writes the font
+file, checks the screen with `ui.layout` and `text.measure`, changes the score and the window
+size, catches a misspelled theme override, then draws the screen into a texture.
+[expected.txt](expected.txt) holds its output.
 
 ```text
 ui.layout {"ids":["hint"]}
@@ -36,7 +36,7 @@ ui.layout {"ids":["hint"]}
 - Fonts are `.ttf` and `.otf` files, or `.font.json` files that name one with settings. The
   title's [fonts/title.font.json](fonts/title.font.json) draws from multichannel signed distance
   fields, which stay sharp at any size, scale and outline. Labels with no font use Roboto, built
-  into the engine. `outline_size`, as Godot's, is four times the pixels the outline reaches.
+  into the engine. `outline_size`, is four times the pixels the outline reaches.
 - Characters a font doesn't have are counted in `missing_glyphs`; Roboto has no Chinese, so the
   sign's 出口 needs a font that does. Games take such characters from a `.font.json` file's
   `fallbacks`, then from fonts installed on the machine; this example turns the installed ones

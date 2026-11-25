@@ -1,7 +1,7 @@
 # Reflections in 2D
 
 A pond at dusk that mirrors the sky, the moon and a boat, through a `Reflection2D`:
-SlashEngine's own 2D reflection, as Godot games draw water with a screen texture shader.
+SlashEngine's own 2D reflection.
 
 [pond.scene.json](pond.scene.json) is a 160x90 window ([project.json](project.json)): a sky
 gradient, a moon and a boat above the water line at y 50, the `pond` below it and a reed in

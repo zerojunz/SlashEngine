@@ -18,10 +18,10 @@ points:
 ```
 
 The door part is placed at its hinge and its board sits beside it, so turning the part turns the
-door on the hinge. Each point is a node of the model with no mesh, as Godot's `Marker3D` in an
-imported scene, placed in its part (or the model) and moving with it. In
-[main.scene.json](main.scene.json) the cabinet's `Skeleton3D` opens the door by its node name, and
-a `BoneSocket3D` on the `top` point carries a lamp, another recipe:
+door on the hinge. Each point is a node of the model with no mesh in an imported scene, placed in
+its part (or the model) and moving with it. In [main.scene.json](main.scene.json) the cabinet's
+`Skeleton3D` opens the door by its node name, and a `BoneSocket3D` on the `top` point carries a
+lamp, another recipe:
 
 ```json
 "cabinet": {"components": {

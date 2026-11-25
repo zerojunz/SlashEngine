@@ -18,7 +18,7 @@ texture.generate {"path":"godot/pond_noise_texture2d_water.texture.json"}
 Terrains come from World Machine, Gaea or World Creator as their heightmap exports: a 16-bit PNG,
 `.r16` or `.raw` file, a `.r32` file of floats, or an EXR of meters, with splat and color maps as
 PNGs. [main.cpp](main.cpp) writes a valley's `.r16` file and splat map as such a tool would, then
-`terrain.import` sizes the `HTerrain` to the file as HTerrain's import dialog does (the smaller
+`terrain.import` sizes the `Terrain3D` to the file as Terrain3D's import dialog does (the smaller
 side's next power of two plus one, here 129), maps the values from `min_height` to `max_height`
 and writes the terrain's own maps:
 

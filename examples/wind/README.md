@@ -1,6 +1,6 @@
 # Wind
 
-A meadow in a breeze. Godot's only wind is an `Zone3D`'s, for soft bodies, so this follows
+A meadow in a breeze. This follows
 Unreal's `WindDirectionalSource`: a `WindSource3D` blows along its entity's -z, or out from it
 with `point_wind`, and everything that feels the wind asks the one field all the sources make.
 [main.scene.json](main.scene.json) has a breeze from the west, a fan by the path, a banner, a

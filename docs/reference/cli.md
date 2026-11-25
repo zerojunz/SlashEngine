@@ -51,7 +51,7 @@ slash-cli run [options]
 | `--save <file>` | Save the scene to this file after the last tick, making its folder if needed |
 | `--record <file>` | Record the run to a [`.replay.json`](scene-format.md#replays) file inside the project, written when the game stops |
 | `--debug-overlay` | Show the [debug panel](#the-debug-overlay) from the start; F3 shows and hides it |
-| `--debug-collisions` | Draw every collision shape over the world, as Godot's `--debug-collisions` |
+| `--debug-collisions` | Draw every collision shape over the world |
 | `--serve` | Serve the running game over HTTP between ticks (see [serve](#serve)) |
 | `--port <n>` | Port for `--serve` (default: any free port) |
 | `--token <token>` | Bearer token for `--serve` (default: random) |
@@ -78,10 +78,10 @@ slash-cli run --headless --ticks 60 --scene tests/data/basic.scene.json
 `renderer` names the device that drew the window: `metal`, `d3d12`, `vulkan`, `opengl` (OpenGL
 3.3) or `opengl_es` (OpenGL ES 3.0), or
 `null` when headless or when no GPU backend works (a warning in the log says why). The window shows the
-scene's [sprites](scene-format.md#built-in-components) over Godot's default gray, drawn between
+scene's [sprites](scene-format.md#built-in-components) over the default gray, drawn between
 ticks as the game moves (see [`rendering.interpolation`](project-format.md)). The keyboard,
 mouse, touches and gamepads press the [input actions](project-format.md#input-actions) of the
-project folder's `project.json`, or only Godot's `ui_*` actions without one. Its
+project folder's `project.json`, or only the built-in `ui_*` actions without one. Its
 [sound](scene-format.md#audio) plays on the default output device; with none, a warning says so
 and the game runs silent. Headless runs mix sound but play it nowhere. With the project's
 `audio.input_enabled`, [microphone](scene-format.md#microphone) players record the default
@@ -149,10 +149,9 @@ F3 shows and hides a panel in the window's top left corner, for the person watch
 - Pause (Play while paused), Step and Shapes buttons.
 
 The buttons run the `pause`, `play` and `step` commands through the game's session, as an agent
-would, so a recording keeps the steps and `undo` takes one back. Shapes draws every
-`Collider2D` and `PolygonCollider2D` over the world as Godot's Visible Collision Shapes
-does, whether or not the panel shows. The game never sees F3, or clicks and touches on the
-panel. An agent shows the panel and the shapes with
+would, so a recording keeps the steps and `undo` takes one back. Shapes draws every `Collider2D`
+and `PolygonCollider2D` over the world, whether or not the panel shows. The game never sees F3,
+or clicks and touches on the panel. An agent shows the panel and the shapes with
 [`debug.overlay`](commands.md#debugoverlay), and sees the shapes itself in
 [`frame.capture`](commands.md#framecapture) with `collisions`. Headless runs draw nothing, so
 the flags change nothing there.
@@ -405,9 +404,8 @@ slash-cli schema bench
 
 ### docs
 
-Writes the engine's reference as Markdown from `engine.describe {"full": true}`, as Godot's
-`--doctool` writes its class reference from the running engine. Run on a game (`--project`), the
-pages take in the game's own components and systems too.
+Writes the engine's reference as Markdown from `engine.describe {"full": true}`. Run on a game
+(`--project`), the pages take in the game's own components and systems too.
 
 ```bash
 slash-cli docs [--out <dir>] [--strict] [--project <dir>]
@@ -902,7 +900,7 @@ export needs signtool, so only a Windows machine does it.
 | --- | --- |
 | `macos` | A universal app bundle (Apple silicon and Intel), always signed: ad hoc unless the preset names a `codesign_identity` |
 | `windows` | An executable plus a `data` folder, with the C++ runtime linked in |
-| `linux` | An executable plus a `data` folder, for x86_64 or arm64 (`linux.arch`). Built against glibc 2.31 and GCC 10's libstdc++, so it runs on Ubuntu 20.04, Debian 11 and newer. It runs on X11 or Wayland: it tries X11 first (XWayland on a Wayland desktop) and then Wayland, as Godot's games do, unless the project's [`window.linux_display_driver`](project-format.md) asks for Wayland first; `SDL_VIDEO_DRIVER` overrides both. On Wayland the compositor draws the window's title bar, which GNOME doesn't do. Building one needs `pkg-config` (`brew install pkgconf` on a Mac): without it the game has X11 only, with no Wayland, PulseAudio or PipeWire |
+| `linux` | An executable plus a `data` folder, for x86_64 or arm64 (`linux.arch`). Built against glibc 2.31 and GCC 10's libstdc++, so it runs on Ubuntu 20.04, Debian 11 and newer. It runs on X11 or Wayland: it tries X11 first (XWayland on a Wayland desktop) and then Wayland, unless the project's [`window.linux_display_driver`](project-format.md) asks for Wayland first; `SDL_VIDEO_DRIVER` overrides both. On Wayland the compositor draws the window's title bar, which GNOME doesn't do. Building one needs `pkg-config` (`brew install pkgconf` on a Mac): without it the game has X11 only, with no Wayland, PulseAudio or PipeWire |
 | `web` | `index.html` plus the script, WebAssembly and data files |
 | `android` | `<binary>.apk` for arm64-v8a and x86_64, signed with the release keystore from the environment or else the debug keystore |
 | `ios` | For the Simulator, `<binary>.app` (Apple silicon and Intel), signed ad hoc. For devices, `<binary>.ipa` (arm64), signed with the team's identity and provisioning profile |

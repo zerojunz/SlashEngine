@@ -1,6 +1,6 @@
 # Vehicles
 
-Vehicles as recipes, after Unreal's Chaos Vehicles (Godot has only `WheeledBody3D`), in 3D and
+Vehicles as recipes, after Unreal's Chaos Vehicles, in 3D and
 in 2D. A `.vehicle.json` file says what a vehicle looks like and how it handles:
 [hatchback.vehicle.json](vehicles/hatchback.vehicle.json) is a front-wheel drive car with its
 own engine, gears and the design a test drive must meet.

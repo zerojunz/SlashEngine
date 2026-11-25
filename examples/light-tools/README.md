@@ -3,9 +3,9 @@
 Light the way a lighting artist does, in numbers an agent can read: real units, color
 temperatures and a tool that brings a frame to a brightness.
 
-[project.json](project.json) turns on `rendering.physical_light_units`,
-as Godot's. [street.scene.json](street.scene.json) is a street at dusk seen through a camera
-whose `CameraLens` has an `exposure_sensitivity` of 6400 (ISO 6400):
+[project.json](project.json) turns on `rendering.physical_light_units`.
+[street.scene.json](street.scene.json) is a street at dusk seen through a camera whose
+`CameraLens` has an `exposure_sensitivity` of 6400 (ISO 6400):
 
 - `dusk` is a `SunLight3D` of 400 lux at 9000 K, the blue light after sunset.
 - `lamp_west` is a sodium street lamp: an `PointLight3D` of 6000 lumens at 2000 K, orange.
@@ -37,9 +37,8 @@ whose `CameraLens` has an `exposure_sensitivity` of 6400 (ISO 6400):
 [alley.scene.json](alley.scene.json) is 2D: a wall under a dark blue `AmbientTint2D`, a
 `lantern` `PointLight2D` with a `temperature` of 1900 K and a `neon` sign at 12000 K.
 
-- `light.sample` shows the lantern's light orange and the sign's blue, though both are white.
-  A 2D light's `temperature` is SlashEngine's own (Godot's 2D lights have none); 0, the
-  default, leaves its color alone.
+- `light.sample` shows the lantern's light orange and the sign's blue, though both are white. A
+  2D light's `temperature` is SlashEngine's own; 0, the default, leaves its color alone.
 - `lighting.check` measures the 2D lights as it does 3D ones: the lantern washes 5% of the frame
   out.
 - `light.tune` with `"mean": 0.25` turns both lights down until the frame stops clipping.
@@ -52,8 +51,7 @@ A 2D light's `texture_scroll` rolls its texture, in turns a second, as a 3D proj
   its bright middle, orange; after 120 ticks (two seconds, half a turn) the glow's dark edge has
   rolled there, and only the night's ambient light is left.
 
-[chapel.scene.json](chapel.scene.json) casts light through things, as Godot 4.6's light
-projectors do:
+[chapel.scene.json](chapel.scene.json) casts light through things with light projectors:
 
 - `streetlamp` is a `SpotLight3D` whose `light_ies` names [lamp.ies](lamp.ies), a street lamp's
   LM-63 photometric file: a batwing that throws most of its light out at 45 to 60 degrees and

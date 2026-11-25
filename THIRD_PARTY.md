@@ -168,6 +168,7 @@ file, as its license asks:
 
 | Name | License | Used for | Where |
 | --- | --- | --- | --- |
+| [Godot Engine](https://github.com/godotengine/godot) 4.6, by the Godot Engine contributors (2014-present) and Juan Linietsky and Ariel Manzur (2007-2014) | MIT | Much of the engine's design and many of its systems are ported from Godot: scenes, UI and themes, 2D and 3D physics glue, navigation, animation, audio, rendering passes, particles, lightmaps and global illumination, networking, XR and the importers' readers; its notice is below | Throughout `engine/` and `tools/importer/`; each ported file says what it follows |
 | smbPitchShift and smbFft, by Stephan M. Bernsee (1999-2015), as Godot uses them | Wide Open License: use, copy and change it if the notice stays in the source | The `pitch_shift` and `spectrum_analyzer` audio effects | `engine/audio/src/effects.cpp` |
 | [RVO2](https://github.com/snape/RVO2) and [RVO2-3D](https://github.com/snape/RVO2-3D), by the University of North Carolina at Chapel Hill (2008), as Godot 4.6 changes them | Apache 2.0 | Agents' and obstacles' avoidance | `engine/navigation/src/rvo2.hpp`, `rvo2_2d.cpp` and `rvo2_3d.cpp` |
 | [YoctoImageDenoiser](https://github.com/ManuelPrandini/YoctoImageDenoiser)'s joint non-local means (JNLM) denoiser, by Manuel Prandini (2020), as Godot's lightmapper changes it | MIT | Denoising `LightmapGI` bakes | `engine/scene3d/src/lightmapper.cpp` |
@@ -178,6 +179,28 @@ file, as its license asks:
 | [FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (`ffx_fsr1.h`), by Advanced Micro Devices (2021), as Godot uses it | MIT | The `fsr` render scale mode: EASU and RCAS | `engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl`, compiled into `engine/render/src/fsr_shaders.hpp` |
 | [FidelityFX Super Resolution 2.2](https://github.com/GPUOpen-Effects/FidelityFX-FSR2) (`ffx_fsr2_*.h`), by Advanced Micro Devices (2022-2023), as Godot 4.6 runs it | MIT | The `fsr2` render scale mode: its seven passes | `engine/render/shaders/fsr2.hlsl` and `fsr2_*.hlsl`, compiled into `engine/render/src/fsr2_*_shaders.hpp`, and their CPU twin in `engine/render/src/fsr2.cpp` |
 | [FidelityFX SDK 1.1.4](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) (`ffx_fsr3upscaler_*.h`), by Advanced Micro Devices (2024) | MIT | The `fsr3` render scale mode: FSR 3.1's upscaler passes | `engine/render/shaders/fsr3.hlsl` and `fsr3_*.hlsl`, compiled into `engine/render/src/fsr3_*_shaders.hpp`, and their CPU twin in `engine/render/src/fsr3.cpp` |
+
+Godot Engine's notice, as its license asks for the ported code:
+
+```
+Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
+Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
 
 The renderer's own shaders are compiled ahead of time with command-line tools whose output is
 committed in `engine/render/src/*_shaders.hpp`, so building the engine needs none of them;

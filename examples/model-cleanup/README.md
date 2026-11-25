@@ -3,12 +3,12 @@
 Generated and imported models rarely arrive ready for a game: a CAD tool's crate is in
 millimeters with z up and no texture coordinates, and a generated boulder has thousands of
 triangles more than a prop needs. `model.cleanup` makes either game-ready in one call and writes
-the result as a `.glb` file that holds everything, as Godot's glTF export does:
+the result as a `.glb` file that holds everything:
 
-1. `up` turns the axis the file calls up to y, Godot's up.
+1. `up` turns the axis the file calls up to y.
 2. `triangles` simplifies each surface to its share of the budget with meshoptimizer's
-   simplifier, as Godot's importer simplifies LODs, then makes the result's LODs. Left out, the
-   budget is the storyboard's tightest `budget` covering `out`.
+   simplifier, then makes the result's LODs. Left out, the budget is the storyboard's tightest
+   `budget` covering `out`.
 3. `scale`, or `height` in meters, sizes it.
 4. `pivot` puts its origin where scenes expect it, as a point in its box: `[0.5, 0, 0.5]` stands it
    on the ground, centered.

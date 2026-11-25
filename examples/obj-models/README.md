@@ -1,10 +1,10 @@
 # OBJ models
 
-Wavefront OBJ models, as Godot's OBJ importer reads them. [models/lamp.obj](models/lamp.obj) is a
-street lamp written as an exporter writes one, meters with y up and faces counter-clockwise from
-outside, with its materials in [models/lamp.mtl](models/lamp.mtl), written as Blender writes
-them. [main.scene.json](main.scene.json) stands it on a street at night, with an `PointLight3D` in
-its lantern, and a `Model3D` whose `mesh` names the file:
+Wavefront OBJ models. [models/lamp.obj](models/lamp.obj) is a street lamp written as an exporter
+writes one, meters with y up and faces counter-clockwise from outside, with its materials in
+[models/lamp.mtl](models/lamp.mtl), written as Blender writes them.
+[main.scene.json](main.scene.json) stands it on a street at night, with an `PointLight3D` in its
+lantern, and a `Model3D` whose `mesh` names the file:
 
 ```json
 "lamp": {
@@ -18,9 +18,9 @@ its lantern, and a `Model3D` whose `mesh` names the file:
 Each `o` object becomes a mesh, and each `usemtl` a surface of it: the lantern is glass with an
 iron roof. The base carries its own normals; the pole has none, so its sides get smooth normals
 from their smoothing group and its top, after `s off`, a flat one. Each material becomes a
-`Surface3D` as Godot's importer makes it: `Kd` is the albedo color, `Ks`'s brightest
-channel the metallic (`Ns`, before it, is overruled; after it, Godot's importer would set the
-metallic from it too), and `d` the albedo's alpha, so the glass is see-through.
+`Surface3D`: `Kd` is the albedo color, `Ks`'s brightest channel the metallic (`Ns`, before it,
+is overruled; after it, it would set the metallic too), and `d` the
+albedo's alpha, so the glass is see-through.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

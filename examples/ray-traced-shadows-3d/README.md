@@ -1,8 +1,8 @@
 # Ray-traced shadows 3D
 
 Shadows traced by rays from each pixel toward its lights, as `rendering.ray_tracing` turns them on
-in Forward+. [main.scene.json](main.scene.json) is an avenue with two pillars, seen from above
-through a `Camera3D` in a 160x90 window:
+in the clustered renderer. [main.scene.json](main.scene.json) is an avenue with two pillars, seen
+from above through a `Camera3D` in a 160x90 window:
 
 - `sun` is a `SunLight3D` with `shadow_enabled`. Its `directional_shadow_max_distance` is
   14 meters, so its shadow maps end before `far_pillar`, 22 meters away; without ray tracing that

@@ -6,10 +6,11 @@
 [project.json](project.json) turns on `rendering.ray_tracing.many_lights` with two reservoirs a
 pixel.
 
-Forward+ gives 16 positional lights shadow maps; ray-traced shadows take 8. With `many_lights`,
-each pixel keeps two lights, resampled each frame from eight drawn from its cluster, from last
-frame's and from its neighbors', and traces one shadow ray to each, so all 64 lamps cast shadows
-for two rays a pixel. Only the software device draws it; GPUs light every lamp as before.
+The clustered renderer gives 16 positional lights shadow maps; ray-traced shadows take 8. With
+`many_lights`, each pixel keeps two lights, resampled each frame from eight drawn from its
+cluster, from last frame's and from its neighbors', and traces one shadow ray to each, so all 64
+lamps cast shadows for two rays a pixel. Only the software device draws it; GPUs light every
+lamp as before.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

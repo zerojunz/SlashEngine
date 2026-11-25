@@ -1,6 +1,6 @@
 # Job system
 
-Threaded systems, as Godot runs a process group on its `WorkerThreadPool`. [main.cpp](main.cpp)
+Threaded systems. [main.cpp](main.cpp)
 is a meadow: plants grow and drop seeds, grazers get hungry, wander and eat the nearest grown
 plant. It prints which systems run together, then runs ten seconds of the meadow on no worker
 threads and on four, and checks that both give the same world. [expected.txt](expected.txt)

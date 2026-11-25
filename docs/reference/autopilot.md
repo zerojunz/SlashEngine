@@ -10,10 +10,10 @@ plugins for Unreal, Unity and Godot. SlashEngine's is built in: `slash::autopilo
 
 Status: current · Updated: 2026-11-20
 
-The bridge says it is a Godot game (`"engine": "godot"` in its hello). SlashEngine's scenes
-follow Godot's, so Autopilot plays a SlashEngine game with what it knows of Godot games, and needs
-no change on its side. Where Godot has nodes, the bridge has entities: object paths are entity
-IDs, `rc` reads and writes components, and the codex is the project's own files.
+The bridge says it is a Godot game (`"engine": "godot"` in its hello). Autopilot plays a SlashEngine
+game with what it knows of Godot games, and needs no change on its side. Where Godot has nodes, the
+bridge has entities: object paths are entity IDs, `rc` reads and writes components, and the codex is
+the project's own files.
 
 Nothing in SlashEngine depends on Autopilot: the bridge is SlashEngine's own code speaking
 Autopilot's protocol, and a game that never connects is unchanged. SlashEngine also has its own

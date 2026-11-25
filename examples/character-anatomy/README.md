@@ -1,6 +1,6 @@
 # Character anatomy
 
-Bones and muscles under a character's skin, after Chaos Flesh (Godot has none).
+Bones and muscles under a character's skin, after Chaos Flesh.
 [characters/bram.character.json](characters/bram.character.json) is a strong, lean man: his
 body's `muscle` and `fat` size the muscles `world::make_anatomy` places on his body's frames, and
 `character.place` with `flesh` gives him a `Flesh3D`, whose muscles are rings of points joined

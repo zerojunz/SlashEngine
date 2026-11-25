@@ -1,7 +1,6 @@
 # Interactive music
 
-Music that follows the game, as Godot's `AudioStreamInteractive`, `AudioStreamSynchronized` and
-`AudioStreamPlaylist`. Each is an `.audio.json` file that an `SoundPlayer` plays like any
+Music that follows the game. Each is an `.audio.json` file that an `SoundPlayer` plays like any
 sound, and the player's `parameters` steer it. [main.cpp](main.cpp) writes the sound files (no
 audio files are committed), then plays the game the way an agent does over MCP (tools
 `component_set`, `audio_state`, `entity_get`) or JSON-RPC. `expected.txt` holds each call and its

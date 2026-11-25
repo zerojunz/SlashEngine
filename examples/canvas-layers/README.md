@@ -1,9 +1,9 @@
 # Canvas layers and parallax
 
-A scrolling level with a parallax background and a HUD, as Godot's `CanvasLayer` and
-`Parallax2D`. In [main.scene.json](main.scene.json) the level is 1600 pixels wide in a 320x180
-window, and the player carries a camera. [main.cpp](main.cpp) draws the textures, then makes the
-calls an agent would make over MCP or JSON-RPC; [expected.txt](expected.txt) holds the replies.
+A scrolling level with a parallax background and a HUD. In [main.scene.json](main.scene.json)
+the level is 1600 pixels wide in a 320x180 window, and the player carries a camera.
+[main.cpp](main.cpp) draws the textures, then makes the calls an agent would make over MCP or
+JSON-RPC; [expected.txt](expected.txt) holds the replies.
 
 ```text
 frame.summary {"ids":["hills","cloud","player","heart","score"]}
@@ -22,6 +22,6 @@ frame.summary {"ids":["hills","cloud","player","heart","score"]}
 - `hud` is a `ScreenLayer`. What its `children` list draws in its own canvas, over the world and
   apart from the camera: the heart sprite and the coin counter stay put however the level
   scrolls. `frame.summary` and `ui.layout` name the layer each thing is in.
-- `canvas.convert` turns window pixels into the world through the camera, as Godot's
-  `get_global_mouse_position`, or back with `"to": "screen"`. With an `id` it uses the canvas
-  that entity draws in, so a click in the HUD stays in window pixels.
+- `canvas.convert` turns window pixels into the world through the camera, or back with `"to":
+  "screen"`. With an `id` it uses the canvas that entity draws in, so a click in the HUD stays
+  in window pixels.

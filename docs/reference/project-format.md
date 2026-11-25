@@ -1,9 +1,8 @@
 # Project format
 
-A game is a folder with a `project.json` at its root, plus its scenes. The file works like
-Godot's `project.godot`: it names the game and says which scene starts it. `slash-cli init`
-writes one, `slash-cli schema project` prints its JSON Schema, and `slash-cli project validate`
-checks it.
+A game is a folder with a `project.json` at its root, plus its scenes. The file works: it names
+the game and says which scene starts it. `slash-cli init` writes one, `slash-cli schema project`
+prints its JSON Schema, and `slash-cli project validate` checks it.
 
 Status: current · Updated: 2026-11-22
 
@@ -32,12 +31,12 @@ Status: current · Updated: 2026-11-22
 | `tick_hz` | No | `60` | Fixed simulation ticks per second, above 0 and at most 1000 |
 | `window.width` | No | `1280` | Initial window width in pixels, 1 to 16384 |
 | `window.height` | No | `720` | Initial window height in pixels, 1 to 16384. [Controls](scene-format.md#ui-and-text) lay out in the window as it is; `ui.layout` and `scene validate` use this size |
-| `window.vsync` | No | `enabled` | How frames wait for the display, as in Godot. `enabled` waits for each refresh, so nothing tears. `disabled` presents at once: the lowest latency, but it may tear. `mailbox` shows the newest finished frame at each refresh: low latency with no tearing. `adaptive` waits unless a frame is late. A mode the GPU or window lacks falls back to `enabled`; SDL's GPU API has no adaptive mode yet, so `adaptive` always does |
-| `window.linux_display_driver` | No | `x11` | The display server a Linux game tries first, as Godot's `display_server/driver.linuxbsd`: `x11`, which Wayland desktops run through XWayland, or `wayland`. If it can't start, the game tries the other. The `SDL_VIDEO_DRIVER` environment variable, such as `SDL_VIDEO_DRIVER=wayland`, overrides it. On Wayland the compositor draws the window's title bar, which GNOME doesn't do; that is why `x11` comes first |
+| `window.vsync` | No | `enabled` | How frames wait for the display. `enabled` waits for each refresh, so nothing tears. `disabled` presents at once: the lowest latency, but it may tear. `mailbox` shows the newest finished frame at each refresh: low latency with no tearing. `adaptive` waits unless a frame is late. A mode the GPU or window lacks falls back to `enabled`; SDL's GPU API has no adaptive mode yet, so `adaptive` always does |
+| `window.linux_display_driver` | No | `x11` | The display server a Linux game tries first: `x11`, which Wayland desktops run through XWayland, or `wayland`. If it can't start, the game tries the other. The `SDL_VIDEO_DRIVER` environment variable, such as `SDL_VIDEO_DRIVER=wayland`, overrides it. On Wayland the compositor draws the window's title bar, which GNOME doesn't do; that is why `x11` comes first |
 | `max_fps` | No | `0` | Frames per second at most, 0 to 1000, e.g. 30, 60, 120 or 240. `0` means no cap, so V-Sync alone paces frames. Headless runs ignore it |
-| `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
-| `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and on the web WebGPU where the browser has it, else WebGL 2. `vulkan`, `metal` or `d3d12` asks for one, and `webgpu` asks for the browser's WebGPU (web exports only). The OpenGL drivers are Godot's compatibility renderer: `opengl` is OpenGL 3.3 on Windows, macOS and Linux, and OpenGL ES 3.0 where that doesn't start; `opengl_es` is OpenGL ES 3.0, as Godot's `opengl3_es`, which is all the web (WebGL 2), Android and iOS have, so there both drivers are it. `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
-| `rendering.fallback_to_opengl` | No | `true` | Draw with `opengl` where the driver's GPU backend (`auto`'s, or the one `vulkan`, `metal` or `d3d12` names) doesn't work, as Godot's `rendering_device/fallback_to_opengl3`: an old GPU or driver, a virtual machine, a remote desktop. The game asks before it makes the window, logs a warning when it falls back, and reports `opengl` (or `opengl_es`) as its `renderer` |
+| `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is a mid gray |
+| `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and on the web WebGPU where the browser has it, else WebGL 2. `vulkan`, `metal` or `d3d12` asks for one, and `webgpu` asks for the browser's WebGPU (web exports only). The OpenGL drivers are the compatibility renderer: `opengl` is OpenGL 3.3 on Windows, macOS and Linux, and OpenGL ES 3.0 where that doesn't start; `opengl_es` is OpenGL ES 3.0, which is all the web (WebGL 2), Android and iOS have, so there both drivers are it. `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
+| `rendering.fallback_to_opengl` | No | `true` | Draw with `opengl` where the driver's GPU backend (`auto`'s, or the one `vulkan`, `metal` or `d3d12` names) doesn't work: an old GPU or driver, a virtual machine, a remote desktop. The game asks before it makes the window, logs a warning when it falls back, and reports `opengl` (or `opengl_es`) as its `renderer` |
 | `rendering.renderer` | No | `clustered` | How 3D meshes are lit and their colors finished (`forward_plus` and `gl_compatibility`, the old names, still load): see [Rendering methods](#rendering-methods) |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
@@ -50,18 +49,18 @@ Status: current · Updated: 2026-11-22
 | `rendering.volumetric_fog` | No | 64 x 64 x 64, filtered | The froxels of 3D [volumetric fog](scene-format.md#volumetric-fog): see [Volumetric fog](#volumetric-fog) |
 | `rendering.ray_tracing` | No | off | 3D shadows, ambient occlusion, reflections and global illumination traced by rays: see [Ray tracing](#ray-tracing) |
 | `rendering.reflections.probe_size`, `probe_count` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
-| `rendering.reflections.sky_samples` | No | `32` | How many GGX samples each level of the sky's [radiance](scene-format.md#sky-light) cube blurs with, from 1 to 32, as Godot's `rendering/reflections/sky_reflections/ggx_samples`; levels take a quarter, a half, all and four times it, as Godot's. Fewer filter faster and look grainier |
-| `rendering.lightmaps.bake_quality` | No | 32, 128, 512, 2048 rays; probes 64, 256, 512, 2048 | The rays a [BakedLighting3D](scene-format.md#baked-lightmaps) bake traces at each `quality`: `low_quality_ray_count` (to `ultra_`) per texel for bounces and `low_quality_probe_ray_count` (to `ultra_`) per light probe, as Godot's `rendering/lightmapping/bake_quality/*` |
-| `rendering.lightmaps.bake_performance` | No | 32, 64, 512 | How bakes split their work, as Godot's `bake_performance/*`: `max_rays_per_pass` and `max_rays_per_probe_pass` (rays a pass traces, each pass seeded afresh, so they change the noise) and `region_size` (a GPU bake's dispatch lights at most this many texels squared) |
-| `rendering.lightmaps.probe_capture.update_speed` | No | `15` | How fast a moving mesh's light from [light probes](scene-format.md#baked-lightmaps) follows it, a share a second, as Godot's `rendering/lightmapping/probe_capture/update_speed` |
-| `rendering.voxel_lighting.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelLighting3D](#voxelgi) |
-| `rendering.field_lighting` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4), as Godot's project settings |
+| `rendering.reflections.sky_samples` | No | `32` | How many GGX samples each level of the sky's [radiance](scene-format.md#sky-light) cube blurs with, from 1 to 32; levels take a quarter, a half, all and four times it. Fewer filter faster and look grainier |
+| `rendering.lightmaps.bake_quality` | No | 32, 128, 512, 2048 rays; probes 64, 256, 512, 2048 | The rays a [BakedLighting3D](scene-format.md#baked-lightmaps) bake traces at each `quality`: `low_quality_ray_count` (to `ultra_`) per texel for bounces and `low_quality_probe_ray_count` (to `ultra_`) per light probe |
+| `rendering.lightmaps.bake_performance` | No | 32, 64, 512 | How bakes split their work: `max_rays_per_pass` and `max_rays_per_probe_pass` (rays a pass traces, each pass seeded afresh, so they change the noise) and `region_size` (a GPU bake's dispatch lights at most this many texels squared) |
+| `rendering.lightmaps.probe_capture.update_speed` | No | `15` | How fast a moving mesh's light from [light probes](scene-format.md#baked-lightmaps) follows it, a share a second |
+| `rendering.voxel_lighting.quality` | No | `low` | How many cones meshes trace through [`VoxelLighting3D`s](scene-format.md#voxelgi): see [VoxelLighting3D](#voxelgi) |
+| `rendering.field_lighting` | No | see [SDFGI](sdfgi.md) | SDFGI's `probe_ray_count` (8), `frames_to_converge` (30) and `frames_to_update_lights` (4) |
 | `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
 | `rendering.lod.threshold_pixels` | No | `1` | How many pixels a model's coarser [LODs](scene-format.md#mesh-lods) may be off by where they draw: see [Mesh LODs](#mesh-lods) |
 | `rendering.virtual_geometry` | No | no pool | How [virtualized](virtualized-geometry.md) surfaces' cluster pages stream: `streaming_pool_kb` (0) and `max_page_loads_per_frame` (32): see [Virtualized geometry streaming](#virtualized-geometry-streaming) |
 | `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
-| `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
+| `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared |
 | `physics_2d.gravity_vector` | No | `[0, 1]` | Gravity's direction, as `[x, y]`; y points down |
 | `physics_2d.linear_damp` | No | `0.1` | How fast rigid bodies slow down, per second. A body's own `linear_damp` adds to it unless its `linear_damp_mode` is `replace` |
 | `physics_2d.angular_damp` | No | `1` | How fast rigid bodies stop turning, per second, combined the same way |
@@ -72,16 +71,16 @@ Status: current · Updated: 2026-11-22
 | `physics_2d.max_linear_speed` | No | `25600` | The fastest bodies may move, in pixels per second (Box2D's 400 meters) |
 | `physics_2d.bounce_velocity_threshold` | No | `64` | The speed, in pixels per second, below which colliding bodies don't bounce |
 | `physics_2d.hit_event_threshold` | No | `64` | The speed, in pixels per second, a hit needs to count for breaking and damage |
-| `physics_2d.allow_sleep`, `sleep_velocity_threshold` | No | `true`, `3.2` | Whether resting bodies sleep, and how slowly, in pixels per second, they must move for half a second first (Godot's `physics/2d/sleep_threshold_linear`) |
+| `physics_2d.allow_sleep`, `sleep_velocity_threshold` | No | `true`, `3.2` | Whether resting bodies sleep, and how slowly, in pixels per second, they must move for half a second first |
 | `physics_2d.enable_continuous`, `enable_warm_starting`, `enable_speculative` | No | `true`, `true`, `true` | Whether fast bodies are swept against static ones so they don't tunnel, whether the solver starts from the last step's impulses (steadier stacks), and whether contacts are made a little before bodies touch |
-| `physics_3d.gravity` | No | `9.8` | Gravity's strength in meters per second squared, as Godot's `physics/3d/default_gravity` |
+| `physics_3d.gravity` | No | `9.8` | Gravity's strength in meters per second squared |
 | `physics_3d.gravity_vector` | No | `[0, -1, 0]` | Gravity's direction, as `[x, y, z]`; y points up |
 | `physics_3d.linear_damp` | No | `0.1` | How fast 3D rigid bodies slow down, per second, combined with a body's own as in 2D |
 | `physics_3d.angular_damp` | No | `0.1` | How fast 3D rigid bodies stop turning, per second, combined the same way |
-| `physics_3d.zones_detect_static_bodies` | No | `false` | Whether `Zone3D` reports static bodies, as Godot's `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` |
+| `physics_3d.zones_detect_static_bodies` | No | `false` | Whether `Zone3D` reports static bodies |
 | `physics_3d.substeps` | No | `1` | Collision steps each physics tick, 1 to 16, as Chaos's substeps: more keep fast, small or stacked bodies steadier, at that many times the cost |
 | `physics_3d.break_budget` | No | `0` | The most pieces breaks from impacts cut each tick, as Chaos's break budget (the first always cuts; the rest wait for later ticks); 0 for no limit |
-| `physics_3d.velocity_steps`, `position_steps` | No | `10`, `2` | Solver iterations for velocities (2 to 100) and positions (1 to 100) each step, as Godot's `physics/jolt_physics_3d/simulation/` settings of those names, as every `physics_3d` row below |
+| `physics_3d.velocity_steps`, `position_steps` | No | `10`, `2` | Solver iterations for velocities (2 to 100) and positions (1 to 100) each step |
 | `physics_3d.baumgarte_stabilization_factor` | No | `0.2` | How much of the penetration the position steps take out each step, 0 to 1 |
 | `physics_3d.speculative_contact_distance`, `penetration_slop` | No | `0.02`, `0.02` | How close bodies come, in meters, before contacts are made for them, and how far they may sink into each other before they are pushed apart |
 | `physics_3d.continuous_cd_movement_threshold`, `continuous_cd_max_penetration` | No | `0.75`, `0.25` | How far a body with `continuous_cd` must move in a step, as a fraction of its inner radius, before it is cast, and how far a cast body may still sink into what it hits |
@@ -90,44 +89,44 @@ Status: current · Updated: 2026-11-22
 | `physics_3d.allow_sleep` | No | `true` | Whether resting bodies sleep, after `sleep_time_threshold` seconds (`0.5`) with every point slower than `sleep_velocity_threshold` meters per second (`0.03`) |
 | `physics_3d.use_enhanced_internal_edge_removal` | No | `true` | Whether bodies skip contacts with the inner edges of meshes and compound shapes, so they slide over seams |
 | `physics_3d.soft_body_point_radius` | No | `0.01` | The radius, in meters, of soft bodies' and cloths' points when they collide |
-| `physics_3d.recovery_iterations`, `recovery_amount` | No | `4`, `0.4` | Godot's `motion_queries` settings: the passes a character's move makes to push out of what it overlaps, and the share of each overlap a pass takes |
-| `physics_3d.motion_use_enhanced_internal_edge_removal` | No | `true` | Whether a character's moves skip contacts with inner edges, as Godot's `motion_queries/use_enhanced_internal_edge_removal` |
-| `physics_3d.collision_margin_fraction`, `active_edge_threshold` | No | `0.08`, `0.8727` | Godot's `collisions` settings: the share of a convex shape's smallest extent its margin may take, and the angle in radians (50 degrees) between faces under which a mesh's edge counts as smooth |
-| `physics_3d.world_boundary_shape_size` | No | `2000` | Godot's `limits` settings, as the rows after it: how far a world boundary shape reaches, in meters |
+| `physics_3d.recovery_iterations`, `recovery_amount` | No | `4`, `0.4` | The passes a character's move makes to push out of what it overlaps, and the share of each overlap a pass takes |
+| `physics_3d.motion_use_enhanced_internal_edge_removal` | No | `true` | Whether a character's moves skip contacts with inner edges |
+| `physics_3d.collision_margin_fraction`, `active_edge_threshold` | No | `0.08`, `0.8727` | The share of a convex shape's smallest extent its margin may take, and the angle in radians (50 degrees) between faces under which a mesh's edge counts as smooth |
+| `physics_3d.world_boundary_shape_size` | No | `2000` | How far a world boundary shape reaches, in meters |
 | `physics_3d.max_linear_velocity`, `max_angular_velocity` | No | `500`, `47.12` | The fastest bodies may move, in meters per second, and turn, in radians per second (2700 degrees) |
 | `physics_3d.max_bodies`, `max_body_pairs`, `max_contact_constraints` | No | `10240`, `65536`, `20480` | How many bodies, pairs of touching bodies and contact constraints a space holds; a step past the last two warns and drops contacts |
-| `physics_3d.temporary_memory_buffer_size` | No | `4` | Jolt's scratch memory for a step, in megabytes (Godot's is 32); more comes from the heap |
-| `navigation_2d.cell_size` | No | `1` | The 2D map's cell size in pixels, as Godot's `navigation/2d/default_cell_size`: edge ends are rounded to it, so make navigation polygons for it |
-| `navigation_2d.merge_cell_scale` | No | `1` | Edge ends closer than `cell_size` times this (at most 0.1) are the same point, as Godot's |
+| `physics_3d.temporary_memory_buffer_size` | No | `4` | Jolt's scratch memory for a step, in megabytes; more comes from the heap |
+| `navigation_2d.cell_size` | No | `1` | The 2D map's cell size in pixels: edge ends are rounded to it, so make navigation polygons for it |
+| `navigation_2d.merge_cell_scale` | No | `1` | Edge ends closer than `cell_size` times this (at most 0.1) are the same point |
 | `navigation_2d.connect_edges` | No | `true` | Whether regions' edges that come within `edge_connection_margin` join |
 | `navigation_2d.edge_connection_margin` | No | `1` | How close, in pixels, two regions' edges must come to join |
 | `navigation_2d.link_connection_radius` | No | `4` | How far, in pixels, a link's ends reach for a region |
-| `navigation_3d.cell_size`, `navigation_3d.cell_height` | No | `0.25` | The 3D map's cell size and height in meters, as Godot's `navigation/3d/default_cell_size` and `default_cell_height` |
+| `navigation_3d.cell_size`, `navigation_3d.cell_height` | No | `0.25` | The 3D map's cell size and height in meters |
 | `navigation_3d.merge_cell_scale`, `connect_edges` | No | `1`, `true` | As in 2D |
 | `navigation_3d.edge_connection_margin` | No | `0.25` | How close, in meters, two regions' edges must come to join |
 | `navigation_3d.link_connection_radius` | No | `1` | How far, in meters, a link's ends reach for a region |
-| `navigation_3d.up` | No | `[0, 1, 0]` | Which way is up for paths, as Godot's `navigation/3d/default_up` |
+| `navigation_3d.up` | No | `[0, 1, 0]` | Which way is up for paths |
 | `npc.day_seconds` | No | `0` | Seconds of game time in a day of the [npc clock](scene-format.md#daily-schedules-and-routes), which NPC brains' `hour` and `day` facts read; `0` stops the clock at `start_hour` |
 | `npc.start_hour` | No | `6` | The hour the npc clock shows when the world starts, from 0 up to 24 |
-| `ui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
+| `ui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before the default theme. `project validate` checks that it exists and `export` checks and ships it |
 | `ui.system_font_fallback` | No | `true` | Let text take characters its fonts and their [fallbacks](scene-format.md#fonts) lack from fonts installed on the machine. Off, text lays out the same on every machine, as on the web, which has none; a `.font.json` file's `allow_system_fallback` turns them off for one font |
-| `ui.tooltip_delay_seconds` | No | `0.5` | Seconds the pointer rests on a control before its [tooltip](scene-format.md#tooltips-and-drag-and-drop) shows, as Godot's `gui/timers/tooltip_delay_sec` |
-| `ui.tooltip_offset` | No | `[10, 10]` | Where a tooltip shows from the pointer, as Godot's `display/mouse_cursor/tooltip_position_offset` |
-| `ui.accessibility_support` | No | `"auto"` | When controls serve a [screen reader](scene-format.md#accessibility), as Godot's `accessibility/general/accessibility_support`: while one is in use (`auto`), `always` or `disabled`, which also leaves the window with no screen reader adapter. Serving one, controls with `focus_mode` `accessibility` take focus |
-| `ui.drag_threshold` | No | `10` | Pixels the pointer moves with the left button held before a [drag](scene-format.md#tooltips-and-drag-and-drop) starts, as Godot's `Viewport.gui_drag_threshold` |
-| `ui.text_edit_merge_seconds` | No | `3` | Seconds without typing that end one undo step in a [`TextArea`](scene-format.md#text-fields-of-several-lines), as Godot's `gui/timers/text_edit_idle_detect_sec`; typing before then merges into the step |
-| `ui.text_edit_undo_limit` | No | `1024` | Undo steps a `TextArea` keeps, at least 1, as Godot's `gui/common/text_edit_undo_stack_max_size`; the oldest go first |
-| `ui.type_search_ms` | No | `2000` | Milliseconds between key presses that still add to a popup menu's or tree's search by typing, as Godot's `gui/timers/incremental_search_max_interval_msec` |
-| `ui.shortcut_flash_seconds` | No | `0.2` | Seconds a [button](scene-format.md#buttons) shows pressed after its shortcut, as Godot's `gui/timers/button_shortcut_feedback_highlight_time`; 0 shows none |
-| `audio.bus_layout` | No | | A [`.bus_layout.json`](scene-format.md#bus-layouts) file with the buses players mix into, as Godot's `audio/buses/default_bus_layout`. Without one, everything plays through Master. `project validate` checks it and `export` checks and ships it |
-| `audio.mix_rate` | No | `44100` | Frames of sound mixed per second, 8000 to 192000, as Godot's `audio/driver/mix_rate`. Sounds at other rates are resampled |
-| `audio.output_latency` | No | `15` | Milliseconds of sound queued ahead of the speakers, 1 to 500, as Godot's `audio/driver/output_latency`. More is steadier when frames run late; less answers sooner |
-| `audio.panning_strength_2d` | No | `0.5` | How far [`SoundPlayer2D`](scene-format.md#audio) sounds pan left and right, 0 to 4, as Godot's `audio/general/2d_panning_strength`. Each player's `panning_strength` multiplies it |
-| `audio.speaker_mode` | No | `"auto"` | The speakers to mix for: `stereo`, `surround_31`, `surround_51`, `surround_71`, or `auto` for the output device's, as Godot asks its audio driver; stereo where nothing plays the sound, as headless. See [surround sound](scene-format.md#surround-sound) |
-| `audio.panning_strength_3d` | No | `0.5` | How far [`SoundPlayer3D`](scene-format.md#3d-sound) sounds pan left and right, 0 to 4, as Godot's `audio/general/3d_panning_strength`. Each player's `panning_strength` multiplies it |
-| `audio.silence_threshold_db` | No | `-60` | A bus's speaker pair quieter than this, -80 to 0 dB, for `silence_seconds` stops mixing its effects until sound comes again, as Godot's `audio/buses/channel_disable_threshold_db`. Lower lets reverb and delay tails ring longer |
-| `audio.silence_seconds` | No | `2` | Seconds, 0 to 5, a bus's speaker pair stays under `silence_threshold_db` before it stops, as Godot's `audio/buses/channel_disable_time` |
-| `audio.input_enabled` | No | `false` | Let [microphone](scene-format.md#microphone) players record, as Godot's `audio/driver/enable_input`. Exports then ask for the microphone: `NSMicrophoneUsageDescription` in macOS and iOS apps, the `RECORD_AUDIO` permission on Android, and the `com.apple.security.device.audio-input` entitlement for a Mac app signed with a Developer ID and no `entitlements` file of its own (one that has its own needs that key) |
+| `ui.tooltip_delay_seconds` | No | `0.5` | Seconds the pointer rests on a control before its [tooltip](scene-format.md#tooltips-and-drag-and-drop) shows |
+| `ui.tooltip_offset` | No | `[10, 10]` | Where a tooltip shows from the pointer |
+| `ui.accessibility_support` | No | `"auto"` | When controls serve a [screen reader](scene-format.md#accessibility): while one is in use (`auto`), `always` or `disabled`, which also leaves the window with no screen reader adapter. Serving one, controls with `focus_mode` `accessibility` take focus |
+| `ui.drag_threshold` | No | `10` | Pixels the pointer moves with the left button held before a [drag](scene-format.md#tooltips-and-drag-and-drop) starts |
+| `ui.text_edit_merge_seconds` | No | `3` | Seconds without typing that end one undo step in a [`TextArea`](scene-format.md#text-fields-of-several-lines); typing before then merges into the step |
+| `ui.text_edit_undo_limit` | No | `1024` | Undo steps a `TextArea` keeps, at least 1; the oldest go first |
+| `ui.type_search_ms` | No | `2000` | Milliseconds between key presses that still add to a popup menu's or tree's search by typing |
+| `ui.shortcut_flash_seconds` | No | `0.2` | Seconds a [button](scene-format.md#buttons) shows pressed after its shortcut; 0 shows none |
+| `audio.bus_layout` | No | | A [`.bus_layout.json`](scene-format.md#bus-layouts) file with the buses players mix into. Without one, everything plays through Master. `project validate` checks it and `export` checks and ships it |
+| `audio.mix_rate` | No | `44100` | Frames of sound mixed per second, 8000 to 192000. Sounds at other rates are resampled |
+| `audio.output_latency` | No | `15` | Milliseconds of sound queued ahead of the speakers, 1 to 500. More is steadier when frames run late; less answers sooner |
+| `audio.panning_strength_2d` | No | `0.5` | How far [`SoundPlayer2D`](scene-format.md#audio) sounds pan left and right, 0 to 4. Each player's `panning_strength` multiplies it |
+| `audio.speaker_mode` | No | `"auto"` | The speakers to mix for: `stereo`, `surround_31`, `surround_51`, `surround_71`, or `auto` for the output device's; stereo where nothing plays the sound, as headless. See [surround sound](scene-format.md#surround-sound) |
+| `audio.panning_strength_3d` | No | `0.5` | How far [`SoundPlayer3D`](scene-format.md#3d-sound) sounds pan left and right, 0 to 4. Each player's `panning_strength` multiplies it |
+| `audio.silence_threshold_db` | No | `-60` | A bus's speaker pair quieter than this, -80 to 0 dB, for `silence_seconds` stops mixing its effects until sound comes again. Lower lets reverb and delay tails ring longer |
+| `audio.silence_seconds` | No | `2` | Seconds, 0 to 5, a bus's speaker pair stays under `silence_threshold_db` before it stops |
+| `audio.input_enabled` | No | `false` | Let [microphone](scene-format.md#microphone) players record. Exports then ask for the microphone: `NSMicrophoneUsageDescription` in macOS and iOS apps, the `RECORD_AUDIO` permission on Android, and the `com.apple.security.device.audio-input` entitlement for a Mac app signed with a Developer ID and no `entitlements` file of its own (one that has its own needs that key) |
 | `audio.input_usage_description` | No | "*name* listens to the microphone." | Why the game records, which macOS and iOS show when they ask the player for the microphone. App Store review expects it to say what the game does with it |
 | `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
 | `plugins` | No | | [Plugin](#plugins) files, relative to the project, each ending in `.plugin.json` |
@@ -135,13 +134,13 @@ Status: current · Updated: 2026-11-22
 | `services` | No | | [Ad placements, products, analytics, consent, achievements and leaderboards](#services) |
 | `localization` | No | | [Translation files, the fallback locale, pseudo-localization and layout direction](#localization) |
 | `xr` | No | | [The headset's runtime: whether XR starts, the reference space and how the picture blends with the room](#xr) |
-| `threading.max_threads` | No | `-1` | Worker threads the [job system](../concepts.md#world-entities-and-components) runs threaded systems, particles and physics on beside the main thread, 0 to 63, as Godot's `threading/worker_pool/max_threads`. `-1` is one per CPU core; `0` runs everything on the main thread, as the web does. Every count gives the same results |
+| `threading.max_threads` | No | `-1` | Worker threads the [job system](../concepts.md#world-entities-and-components) runs threaded systems, particles and physics on beside the main thread, 0 to 63. `-1` is one per CPU core; `0` runs everything on the main thread, as the web does. Every count gives the same results |
 | `work.journal` | No | `true` | Whether agents' sessions write a [work journal](watching-agents.md) in `.slash/work/` |
 | `work.serve` | No | `true` | Whether sessions serve themselves read-only on the loopback interface for [watchers](watching-agents.md#watch-servers) |
 | `work.checkpoints` | No | `true` | Whether journaled sessions keep [checkpoints](watching-agents.md#checkpoints) of the files they write, the world and a frame |
 | `work.max_mb` | No | `64` | The most the project's work journals and checkpoints hold together, in MiB, at least 1; the oldest sessions' go first |
-| `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
-| `pointer.mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
+| `input` | No | The built-in `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
+| `pointer.mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones |
 | `pointer.touch_from_mouse` | No | `false` | A left click also touches the screen and dragging with it drags a finger, so touch code can be tried with a mouse |
 
 Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
@@ -149,7 +148,7 @@ Unknown keys are errors, with a "did you mean" suggestion for a misspelled one.
 A running game can change `vsync` and `max_fps` with
 [`display.set`](commands.md#displayset), and its own code with `RenderDevice::set_vsync` and
 `Loop::set_max_fps`, e.g. from an options menu. For variable refresh rate (G-Sync, FreeSync,
-ProMotion), keep V-Sync enabled and, as Godot suggests, cap the frame rate a little below the
+ProMotion), keep V-Sync enabled and cap the frame rate a little below the
 display's refresh rate. Exports ask phones for their fastest refresh rate: iOS apps set
 `CADisableMinimumFrameDurationOnPhone`, so iPhones with ProMotion run at 120 Hz, and Android apps
 pick the display's fastest mode at its current resolution. On the web the browser calls each
@@ -157,12 +156,11 @@ frame at the display's rate, and a frame cap sets how often it calls instead.
 
 ## Render scale
 
-`rendering.scaling` draws the world at a lower (or higher) resolution than the window and scales
-it to the window's size, as Godot's `rendering/scaling_3d` settings, which the Godot importer
-brings over. `bilinear` and `fsr` scale the whole world, 2D and 3D; `fsr2` and `fsr3` scale only
-the 3D world, as Godot's `fsr2` does, and draw 2D at full size. Controls, and canvas layers above the world,
-draw at the window's own size on top, so the UI stays sharp while the world costs fewer pixels;
-canvas layers below the world are scaled with it.
+`rendering.scaling` draws the world at a lower (or higher) resolution than the window and scales it
+to the window's size; the Godot importer brings the setting over. `bilinear` and `fsr` scale the
+whole world, 2D and 3D; `fsr2` and `fsr3` scale only the 3D world, and draw 2D at full size.
+Controls, and canvas layers above the world, draw at the window's own size on top, so the UI stays
+sharp while the world costs fewer pixels; canvas layers below the world are scaled with it.
 
 ```json
 "rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "sharpness": 0.2}}
@@ -170,8 +168,8 @@ canvas layers below the world are scaled with it.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. `fsr2` is FSR 2.2: the camera moves by less than a pixel each frame and the 3D world is rebuilt at the window's size from its frames, its depth and its motion vectors, then sharpened by RCAS. `fsr3` is FSR 3.1's upscaler, which Godot doesn't have: it rebuilds the 3D world from the same inputs with AMD's later passes. `metalfx_spatial` and `metalfx_temporal` are Godot's: Apple's MetalFX spatial scaler over the world, and its temporal scaler rebuilding the 3D world from the same inputs as `fsr2`, on Metal with macOS 13 or iOS 16 and a GPU that has them. Elsewhere they fall back as Godot's do: `metalfx_spatial` to `fsr`, `metalfx_temporal` to `metalfx_spatial` where that runs, else to `fsr2`, and to `fsr2` at a `scale` outside what the GPU's temporal scaler takes. `frame.capture`'s `upscaler` says which ran |
-| `scale` | `1` | The world's size over the window's, 0.25 to 2, as Godot's `scaling_3d/scale`. At `1` with `bilinear` nothing is scaled. Above `1` the world draws larger and is averaged down, always with `bilinear`, as FSR only scales up |
+| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. `fsr2` is FSR 2.2: the camera moves by less than a pixel each frame and the 3D world is rebuilt at the window's size from its frames, its depth and its motion vectors, then sharpened by RCAS. `fsr3` is FSR 3.1's upscaler: it rebuilds the 3D world from the same inputs with AMD's later passes. `metalfx_spatial` and `metalfx_temporal` are Apple's MetalFX: the spatial scaler over the world, and its temporal scaler rebuilding the 3D world from the same inputs as `fsr2`, on Metal with macOS 13 or iOS 16 and a GPU that has them. Elsewhere they fall back: `metalfx_spatial` to `fsr`, `metalfx_temporal` to `metalfx_spatial` where that runs, else to `fsr2`, and to `fsr2` at a `scale` outside what the GPU's temporal scaler takes. `frame.capture`'s `upscaler` says which ran |
+| `scale` | `1` | The world's size over the window's, 0.25 to 2. At `1` with `bilinear` nothing is scaled. Above `1` the world draws larger and is averaged down, always with `bilinear`, as FSR only scales up |
 | `sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2, for `fsr`, `fsr2` and `fsr3`: `0` is the sharpest, `2` the softest |
 | `upscaler` | | An upscaler the game adds with `render::add_upscaler` (from its own C++ or an [SDK package's](sdk-format.md) glue code), used instead of `mode` on the GPUs it supports. Lowercase letters, digits and underscores. Where it isn't added or doesn't run, the game logs a warning once and uses `mode` |
 
@@ -182,21 +180,20 @@ they work on every backend and on the software device behind `frame.capture`, wh
 [`display.set`](commands.md#displayset)'s `scaling`, and
 [examples/render-scale](../../examples/render-scale/) does.
 
-`fsr2` follows AMD's FidelityFX FSR 2.2 (MIT) pass by pass, as Godot's Forward+ renderer runs it:
-the 3D world draws at the render size with a jittered camera, the Forward+ prepass writes motion
-vectors as [TAA](#temporal-antialiasing)'s does, and FSR 2's passes (luminance, dilated depth and
-motion, reconstructed depth from the frame before, depth clip, locks, accumulation and RCAS) rebuild
-it at the window's size before the 3D post-processing. Where no opaque mesh drew, such as the sky,
-FSR 2 works the motion vector out from the depth and the camera of the frame before, as Godot's,
-so a sky stays sharp while the camera turns. The sky is seen through the same jittered camera as
-the meshes, with TAA too. It runs in Forward+ only, at a `scale` below
-`1`; in Compatibility, with the OpenGL drivers, or with no 3D in the world, the world scales with
-`bilinear` instead, as Godot falls back. TAA is off while it runs, since FSR 2 does its job. As in
-Godot, it has no reactive mask, so transparent meshes, which write no depth, can trail for a frame
-or two.
+`fsr2` follows AMD's FidelityFX FSR 2.2 (MIT) pass by pass: the 3D world draws at the render size
+with a jittered camera, the clustered renderer's prepass writes motion vectors as
+[TAA](#temporal-antialiasing)'s does, and FSR 2's passes (luminance, dilated depth and motion,
+reconstructed depth from the frame before, depth clip, locks, accumulation and RCAS) rebuild it at
+the window's size before the 3D post-processing. Where no opaque mesh drew, such as the sky, FSR 2
+works the motion vector out from the depth and the camera of the frame before, so a sky stays sharp
+while the camera turns. The sky is seen through the same jittered camera as the meshes, with TAA
+too. It runs in the clustered renderer only, at a `scale` below `1`; in the compatibility renderer,
+with the OpenGL drivers, or with no 3D in the world, the world scales with `bilinear` instead. TAA
+is off while it runs, since FSR 2 does its job. It has no reactive mask, so transparent meshes,
+which write no depth, can trail for a frame or two.
 
 `fsr3` follows the upscaler of AMD's FidelityFX Super Resolution 3.1 (FidelityFX SDK 1.1.4, MIT)
-pass by pass, with the settings Godot gives FSR 2, and runs where `fsr2` runs, from the same
+pass by pass, with the settings FSR 2 has, and runs where `fsr2` runs, from the same
 jittered frame, motion vectors and depth. Its passes prepare the inputs (dilated depth and motion,
 the farthest depth and the luma), reconstruct the depth of the frame before, build a pyramid of
 how much the luma changed since the frame before at half the render size, work out the reactive
@@ -214,43 +211,41 @@ the texture and material the window's frame draws over the screen, and `release`
 made on the device. `render::UpscalerInfo::supports` says which devices one runs on, such as a
 vendor's on its own GPUs.
 
-One that is `temporal` (DLSS, XeSS, FSR 4 from a vendor's SDK) rebuilds the 3D world from its
-depth, motion vectors and jittered camera, as `fsr2` does: `make_temporal` makes a
-`render::TemporalUpscaler`, and where `scaling.upscaler` names it and FSR 2 would run (Forward+, a
-`scale` under 1, the GPU device on Vulkan, Direct3D 12 or Metal, or the software device, and
-`supports` says yes) the device runs it in FSR 2's place. Its `upscale` gets a
+One that is `temporal` (DLSS, XeSS, FSR 4 from a vendor's SDK) rebuilds the 3D world from its depth,
+motion vectors and jittered camera, as `fsr2` does: `make_temporal` makes a
+`render::TemporalUpscaler`, and where `scaling.upscaler` names it and FSR 2 would run (the clustered
+renderer, a `scale` under 1, the GPU device on Vulkan, Direct3D 12 or Metal, or the software device,
+and `supports` says yes) the device runs it in FSR 2's place. Its `upscale` gets a
 `render::TemporalFrame`: the device's native objects (the `VkDevice` and `VkQueue`, the
-`ID3D12Device`, the `MTLDevice`), the command buffer it records into, the color, depth and
-motion textures at the render size and the output at the window's size as native images, the
-jitter in render pixels, whether the history starts over, the sharpness and the camera, as
-Godot hands its `RenderingDevice`'s objects to a `CompositorEffect`. The textures are left in the
-state shaders read them in. On the software device the textures are float pixels instead, so a
-game's tests see what its upscaler gets. Elsewhere `mode` scales the world, and `frame.capture`'s
-`upscaler` says which ran. A vendor's upscaler on Vulkan may need device extensions SDL doesn't
-turn on (DLSS asks for NVIDIA's), so check its requirements in `supports`.
+`ID3D12Device`, the `MTLDevice`), the command buffer it records into, the color, depth and motion
+textures at the render size and the output at the window's size as native images, the jitter in
+render pixels, whether the history starts over, the sharpness and the camera. The textures are left
+in the state shaders read them in. On the software device the textures are float pixels instead, so
+a game's tests see what its upscaler gets. Elsewhere `mode` scales the world, and `frame.capture`'s
+`upscaler` says which ran. A vendor's upscaler on Vulkan may need device extensions SDL doesn't turn
+on (DLSS asks for NVIDIA's), so check its requirements in `supports`.
 [examples/temporal-upscaler](../../examples/temporal-upscaler/) adds one and reads its frames.
 
 ## Rendering methods
 
-`rendering.renderer` picks how 3D [lights](scene-format.md#lights) reach meshes and how
-their colors are [finished](scene-format.md#worldenvironment), as Godot's renderers do:
+`rendering.renderer` picks how 3D [lights](scene-format.md#lights) reach meshes and how their
+colors are [finished](scene-format.md#worldenvironment):
 
 | Method | Lights | How | Colors |
 | --- | --- | --- | --- |
-| `clustered` | 8 directional and 512 omni and spot | Godot's Forward+ clusters: each frame, the CPU sorts the omni and spot lights nearest first and marks the 32-pixel tiles of the screen, and the 32 slices of depth out to the camera's far plane, that each light's range reaches. A pixel adds the directional lights, then only the lights of its tile and slice, so a plaza of hundreds of lanterns costs each pixel the few near it | Linear, in a texture of 16-bit floats: brighter than white glows through up to seven levels, then a pass tonemaps the frame |
-| `compatibility` | The first 64 of any kind, the directional ones first | Godot's Compatibility renderer: every pixel adds each light | Tonemapped as meshes draw, or through an 8-bit texture with glow or adjustments |
+| `clustered` | 8 directional and 512 omni and spot | Clusters: each frame, the CPU sorts the omni and spot lights nearest first and marks the 32-pixel tiles of the screen, and the 32 slices of depth out to the camera's far plane, that each light's range reaches. A pixel adds the directional lights, then only the lights of its tile and slice, so a plaza of hundreds of lanterns costs each pixel the few near it | Linear, in a texture of 16-bit floats: brighter than white glows through up to seven levels, then a pass tonemaps the frame |
+| `compatibility` | The first 64 of any kind, the directional ones first | the compatibility renderer: every pixel adds each light | Tonemapped as meshes draw, or through an 8-bit texture with glow or adjustments |
 
 The OpenGL drivers (`opengl`, `opengl_es`, and WebGL 2 on the web) always draw as
-`compatibility`, as Godot's do. Every other device, and `frame.capture`, draws as the project
-says; both methods light a pixel the same where a scene has 64 lights or fewer, and finish its
-color within a step or two of each other where nothing glows and nothing is transparent.
+`compatibility`. Every other device, and `frame.capture`, draws as the project says; both
+methods light a pixel the same where a scene has 64 lights or fewer, and finish its color within
+a step or two of each other where nothing glows and nothing is transparent.
 
 ## Mesh LODs
 
-`rendering.lod.threshold_pixels` (default `1`) is Godot's
-`rendering/mesh_lod/lod_change/threshold_pixels`. Each frame, a model's surfaces draw the
-coarsest of their [LODs](scene-format.md#mesh-lods) that is off by no more than this many
-pixels of the view's width, so a higher threshold draws coarser LODs nearer and saves more
+`rendering.lod.threshold_pixels` (default `1`) sets the LOD change threshold. Each frame, a model's
+surfaces draw the coarsest of their [LODs](scene-format.md#mesh-lods) that is off by no more than
+this many pixels of the view's width, so a higher threshold draws coarser LODs nearer and saves more
 triangles. `0` draws every mesh in full.
 
 ```json
@@ -260,11 +255,10 @@ triangles. `0` draws every mesh in full.
 ## Virtualized geometry streaming
 
 `rendering.virtual_geometry` sets how [virtualized](virtualized-geometry.md#streaming) surfaces
-stream their cluster pages, as Unreal's Nanite streaming pool (Godot has no virtualized
-geometry). With `streaming_pool_kb` above `0`, each surface keeps that many kilobytes of its
-clusters' triangles loaded: pages load as the camera's cuts need them, at most
-`max_page_loads_per_frame` (default `32`) a frame, and the least recently used are dropped for
-room. `0` (the default) keeps every page loaded.
+stream their cluster pages, as Unreal's Nanite streaming pool. With `streaming_pool_kb` above `0`,
+each surface keeps that many kilobytes of its clusters' triangles loaded: pages load as the camera's
+cuts need them, at most `max_page_loads_per_frame` (default `32`) a frame, and the least recently
+used are dropped for room. `0` (the default) keeps every page loaded.
 
 ```json
 "rendering": {"virtual_geometry": {"streaming_pool_kb": 256, "max_page_loads_per_frame": 2}}
@@ -272,7 +266,7 @@ room. `0` (the default) keeps every page loaded.
 
 ## Occlusion culling
 
-`rendering.occlusion_culling` is Godot's `rendering/occlusion_culling` settings. With
+`rendering.occlusion_culling` holds the occlusion culling settings. With
 `use_occlusion_culling` on, each frame leaves out the 3D meshes that
 [`Occluder3D`s](scene-format.md#occlusion-culling) hide from the camera, by rays cast
 into the occluders through a small depth buffer.
@@ -284,7 +278,7 @@ into the occluders through a small depth buffer.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `false` | Whether occluders hide meshes |
-| `rays_per_thread` | `512` | The buffer's texels over 8, as Godot's 8 threads each cast this many rays: 1 to 65536. More texels hide meshes more exactly and take longer |
+| `rays_per_thread` | `512` | The buffer's texels over 8: 1 to 65536. More texels hide meshes more exactly and take longer |
 | `jitter_projection` | `true` | Move the rays through nine places across a texel, one a frame, and keep a mesh that was seen drawn for nine frames, so thin gaps between occluders don't make meshes flicker |
 
 ## Shadows
@@ -307,9 +301,8 @@ into the occluders through a small depth buffer.
 | `positional_softness` | `soft_low` | As `directional_softness` |
 
 A device draws an atlas at most as large as its largest texture (8192 texels for WebGPU), and a
-frame with no shadowed light draws none. Larger atlases make sharper shadows and cost GPU
-memory: a 4096-texel atlas takes 64 MB. Godot's Compatibility renderer splits the positional
-atlas into quadrants of different tile sizes; here every tile is the same size.
+frame with no shadowed light draws none. Larger atlases make sharper shadows and cost GPU memory: a
+4096-texel atlas takes 64 MB. Every tile in the atlas is the same size.
 
 ## Depth of field
 
@@ -382,15 +375,14 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `volume_size` | `64` | Froxels across and down for a square frame, from 16 to 512; a wider frame takes more across and fewer down, as Godot's |
+| `volume_size` | `64` | Froxels across and down for a square frame, from 16 to 512; a wider frame takes more across and fewer down |
 | `volume_depth` | `64` | Froxels from the camera to the fog's length, from 16 to 512 |
 | `use_filter` | `true` | Blurs the fog across and down before it is gathered, which smooths it |
 
 ## Ray tracing
 
-`rendering.ray_tracing` turns on effects traced by rays in `clustered`. Godot 4.6 has none; its
-master branch has a ray tracing API in its RenderingDevice that its renderer doesn't use yet, so
-these settings are SlashEngine's own. Devices that can't trace rays draw as if they were off.
+`rendering.ray_tracing` turns on effects traced by rays in `clustered`. Devices that can't trace
+rays draw as if they were off.
 
 ```json
 "rendering": {"ray_tracing": {"shadows": true, "shadow_samples": 16}}
@@ -427,10 +419,9 @@ same size; a larger one shows sharper reflections and costs more to draw and kee
 
 ## VoxelLighting3D
 
-`rendering.voxel_lighting.quality` says how meshes trace their ambient light
-through [VoxelGIs](scene-format.md#voxelgi), as Godot's
-`rendering/global_illumination/voxel_gi/quality`: `low` traces four cones of 45 degrees, `high`
-six narrower ones, which show finer detail and cost more.
+`rendering.voxel_lighting.quality` says how meshes trace their ambient light through
+[`VoxelLighting3D`s](scene-format.md#voxelgi): `low` traces four cones of 45 degrees, `high` six
+narrower ones, which show finer detail and cost more.
 
 ```json
 "rendering": {"voxel_lighting": {"quality": "high"}}
@@ -438,27 +429,27 @@ six narrower ones, which show finer detail and cost more.
 
 ## Temporal antialiasing
 
-`rendering.anti_aliasing.taa` turns on temporal antialiasing for the 3D world in
-`clustered`, as Godot's `rendering/anti_aliasing/quality/use_taa`. Each frame moves the
-camera by less than a pixel, along the next of 16 points of a Halton sequence. Meshes write how
-far each pixel moved since the frame before, from their transforms, skins and the camera's. A
-pass then blends the frame with the frames before it, moved by those motion vectors, and clips
-the old colors to those around each pixel so that moving things leave little trail. Edges smooth
-out over about 16 frames; details thinner than a pixel, which most frames miss, fade instead.
+`rendering.anti_aliasing.taa` turns on temporal antialiasing for the 3D world in `clustered`.
+Each frame moves the camera by less than a pixel, along the next of 16 points of a Halton
+sequence. Meshes write how far each pixel moved since the frame before, from their transforms,
+skins and the camera's. A pass then blends the frame with the frames before it, moved by those
+motion vectors, and clips the old colors to those around each pixel so that moving things leave
+little trail. Edges smooth out over about 16 frames; details thinner than a pixel, which most
+frames miss, fade instead.
 
 ```json
 "rendering": {"anti_aliasing": {"taa": true}}
 ```
 
-TAA is off by default, as in Godot. It leaves the 2D canvas, controls and `compatibility`
-alone (Godot's Compatibility renderer has no TAA), and reflection probes capture without it. A
-frame with no meshes starts the history again. `frame.capture` keeps the history between
-captures, and its `frames` draws several at once.
+TAA is off by default. It leaves the 2D canvas, controls and `compatibility` alone (the
+compatibility renderer has no TAA), and reflection probes capture without it. A frame with no
+meshes starts the history again. `frame.capture` keeps the history between captures, and its
+`frames` draws several at once.
 
 ## Frame generation
 
 `rendering.frame_generation` shows a frame made between each two the game draws, as AMD's FSR 3
-frame generation does (Godot has none), so a game drawn at 40 frames a second shows 80. The
+frame generation does, so a game drawn at 40 frames a second shows 80. The
 world, with the canvas layers below it, draws into a target of its own; the frame halfway
 between it and the one before is made from the 3D world's motion vectors and depth (in
 `clustered`) and the optical flow of the two pictures (everywhere, 2D too); then the game's
@@ -480,7 +471,7 @@ while the game runs.
 
 ## Texture forms
 
-`rendering.textures` says how exports ship textures, as Godot's texture import `compress/mode`.
+`rendering.textures` says how exports ship textures.
 An export makes each texture's forms for its platform once, keeps them in the
 [asset library's](commands.md#asset-library) cache (`forms/` in `SLASH_LIBRARY_DIR` or
 `~/.slash/library`, keyed by the file's SHA-256 and the format) and ships them in place of the
@@ -493,9 +484,9 @@ naming `sprites/hero.png`; the game reads the form its GPU samples.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `compress_mode` | `lossless` | `lossless` ships the file as it is, decoded when it loads, as Godot's default for 2D. `vram_compressed` ships blocks GPUs sample as they are, a quarter of the GPU memory of RGBA8: BC7 on macOS, Windows and Linux, ASTC 4x4 on Android and iOS, and both on the web, whose browsers have one or the other. `vram_uncompressed` ships RGBA8 texels, as big on disk as in memory but ready for the GPU |
+| `compress_mode` | `lossless` | `lossless` ships the file as it is, decoded when it loads for 2D. `vram_compressed` ships blocks GPUs sample as they are, a quarter of the GPU memory of RGBA8: BC7 on macOS, Windows and Linux, ASTC 4x4 on Android and iOS, and both on the web, whose browsers have one or the other. `vram_uncompressed` ships RGBA8 texels, as big on disk as in memory but ready for the GPU |
 | `paths` | | Modes for folders (ending in `/`) and files, such as `{"ui/": "lossless", "ui/atlas.png": "vram_compressed"}`; the longest one that holds a texture wins |
-| `decals.filter` | `linear_mipmaps` | How [decals](scene-format.md#decals) sample their textures, as Godot's `rendering/textures/decals/filter`: `nearest`, `linear`, `nearest_mipmaps`, `linear_mipmaps`, `nearest_mipmaps_anisotropic` or `linear_mipmaps_anisotropic`. The mipmap filters pick a level by how far the decal is; the anisotropic ones sample as their mipmap twins |
+| `decals.filter` | `linear_mipmaps` | How [decals](scene-format.md#decals) sample their textures: `nearest`, `linear`, `nearest_mipmaps`, `linear_mipmaps`, `nearest_mipmaps_anisotropic` or `linear_mipmaps_anisotropic`. The mipmap filters pick a level by how far the decal is; the anisotropic ones sample as their mipmap twins |
 
 BC7 and ASTC are blocks of 4x4 texels, so a texture whose sides aren't multiples of 4 ships as it
 is, and the export logs a warning. Compressing keeps the colors close rather than exact, so pixel
@@ -506,13 +497,13 @@ Mipmaps aren't made yet.
 
 ## Icons
 
-`icon` names a square image, as Godot's `application/config/icon`. Give it 1024x1024 pixels:
-the App Store asks for that size, and smaller images are scaled up. Exports make each
-platform's icons from it, resized with a Lanczos filter:
+`icon` names a square image. Give it 1024x1024 pixels: the App Store asks for that size, and
+smaller images are scaled up. Exports make each platform's icons from it, resized with a Lanczos
+filter:
 
 | Platform | What the export ships |
 | --- | --- |
-| macOS | `AppIcon.icns` in the bundle's `Resources`, as Godot writes one: PNG images from 1024 to 32 pixels, and 32 and 16 pixel ones run-length encoded with masks. An opaque icon is drawn into Apple's rounded square, 824 of 1024 pixels with corners rounded 185, as macOS 11 icons are; one with transparent pixels has its own shape and stays as it is |
+| macOS | `AppIcon.icns` in the bundle's `Resources`: PNG images from 1024 to 32 pixels, and 32 and 16 pixel ones run-length encoded with masks. An opaque icon is drawn into Apple's rounded square, 824 of 1024 pixels with corners rounded 185, as macOS 11 icons are; one with transparent pixels has its own shape and stays as it is |
 | Windows | `icon.ico`, PNG images from 16 to 256 pixels, compiled into the executable as its first icon resource, which Explorer and the window show |
 | Linux | Nothing beside the executable: the window shows the icon |
 | Web | `favicon.png` (192 pixels) and `apple-touch-icon.png` (180, opaque), linked from `index.html` |
@@ -527,10 +518,10 @@ title bar and task bar, except on a Mac, which shows the bundle's.
 
 ## Gameplay code
 
-A game's own components and systems are plain C++, as Godot's scripts are; there is no scripting
-language. `gameplay.sources` names where the code is: every `.cpp` file in a folder and its
-subfolders is compiled, and so is each `.cpp` file listed. The folders, and the folders of
-listed headers, are searched for includes.
+A game's own components and systems are plain C++; there is no scripting language.
+`gameplay.sources` names where the code is: every `.cpp` file in a folder and its subfolders is
+compiled, and so is each `.cpp` file listed. The folders, and the folders of listed headers, are
+searched for includes.
 
 ```json
 "gameplay": {"sources": ["src"]}
@@ -583,11 +574,11 @@ function the program lacks, naming it.
 
 ## Plugins
 
-A plugin is a library built apart from the engine that adds components and systems to a game, as
-Godot's GDExtension. It is built against `engine/plugin/include/slash/plugin/slash_plugin.h`
-alone: a C interface that only grows, so a plugin built once loads into later engines, written in
-any language that calls C and linked to nothing of the engine's. `plugins` lists `.plugin.json`
-files (`slash-cli schema plugin`), Godot's `.gdextension` files:
+A plugin is a library built apart from the engine that adds components and systems to a game. It
+is built against `engine/plugin/include/slash/plugin/slash_plugin.h` alone: a C interface that
+only grows, so a plugin built once loads into later engines, written in any language that calls C
+and linked to nothing of the engine's. `plugins` lists `.plugin.json` files (`slash-cli schema
+plugin`):
 
 ```json
 {
@@ -683,7 +674,7 @@ in C, with its source for exports.
 
 ## Input actions
 
-`input` is Godot's input map: actions by name, each with a `deadzone` and the `events` that press
+`input` is the input map: actions by name, each with a `deadzone` and the `events` that press
 it. Gameplay code asks about actions (`input::is_action_pressed(world, "jump")`), never keys, so
 players can rebind them and agents can press them by name with
 [`input.inject`](commands.md#inputinject). From [examples/input-actions](../../examples/input-actions/):
@@ -716,7 +707,7 @@ Each binding has a `type` and the fields that say which key, button or axis:
 
 | `type` | Fields | Meaning |
 | --- | --- | --- |
-| `key` | `key` or `physical_key`, and `shift`, `ctrl`, `alt`, `meta` | A key by Godot's name (`"A"`, `"Space"`, `"Enter"`, `"Left"`, `"F5"`, `"Kp 1"`). `key` is what the layout labels it; `physical_key` is where it sits on a US QWERTY keyboard, so WASD stays in place on any layout. The modifiers named must be held; more are fine |
+| `key` | `key` or `physical_key`, and `shift`, `ctrl`, `alt`, `meta` | A key by name (`"A"`, `"Space"`, `"Enter"`, `"Left"`, `"F5"`, `"Kp 1"`). `key` is what the layout labels it; `physical_key` is where it sits on a US QWERTY keyboard, so WASD stays in place on any layout. The modifiers named must be held; more are fine |
 | `mouse_button` | `button`, and the modifiers | `left`, `right`, `middle`, `wheel_up`, `wheel_down`, `wheel_left`, `wheel_right`, `xbutton1` or `xbutton2` |
 | `joypad_button` | `button` | `a`, `b`, `x`, `y` (the bottom, right, left and top face buttons), `back`, `guide`, `start`, `left_stick`, `right_stick`, `left_shoulder`, `right_shoulder`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`, `misc1`, `paddle1` to `paddle4` or `touchpad` |
 | `joypad_motion` | `axis`, `axis_value` | A stick or trigger moved one way: `left_x`, `left_y`, `right_x`, `right_y`, `trigger_left` or `trigger_right`, and `-1` or `1`. Sticks go from -1 to 1 with y down, so up is `left_y` `-1` |
@@ -724,8 +715,8 @@ Each binding has a `type` and the fields that say which key, button or axis:
 Every binding also takes `device`: only events from that keyboard, mouse or gamepad, from 0.
 Left out, it is `-1` and matches every device.
 
-Godot's built-in actions are always there unless an entry with the same name replaces one: each
-has a deadzone of 0.5 and Godot's bindings.
+The built-in actions are always there unless an entry with the same name replaces one: each
+has a deadzone of 0.5 and default bindings.
 
 | Action | Bindings |
 | --- | --- |
@@ -738,9 +729,9 @@ has a deadzone of 0.5 and Godot's bindings.
 | `ui_page_up`, `ui_page_down`, `ui_home`, `ui_end` | PageUp, PageDown, Home, End |
 
 [Text fields](scene-format.md#text-fields) and [`TextArea`s](scene-format.md#text-fields-of-several-lines)
-edit with Godot's built-in text actions, bound to Ctrl
-on Windows, Linux, Android and the web, and to Command (and Option for words) on macOS and iOS,
-as Godot's `.macos` bindings. `input.state` and `input.actions` list them only when asked by
+edit with built-in text actions, bound to Ctrl
+on Windows, Linux, Android and the web, and to Command (and Option for words) on macOS and iOS.
+`input.state` and `input.actions` list them only when asked by
 name.
 
 | Action | Bindings on a PC | On a Mac |
@@ -804,32 +795,30 @@ locale (see [`l10n.state`](commands.md#l10nstate) and
 | `layout_direction` | `application_locale` | Which way root controls that inherit their direction lay out: `application_locale` (the game's locale), `system_locale` (the player's), `ltr` or `rtl` |
 | `force_right_to_left` | `false` | Every control right to left but those set to `ltr` |
 
-A game starts in the player's locale (the system's first preferred language, as Godot's
-`OS.get_locale`) unless `test` names one, and `l10n::set_locale` changes it while it runs. A
-locale takes the translations of the locale that matches it best and has the message (`fr`
-answers `fr_CA`, `es` before `es_AR` for `es_MX`), as Godot's `TranslationServer`. Sessions start
-in `test` or else `fallback`, never the machine's language, so their replies repeat. Exports ship
-the files, and `project validate` and exports check each one loads.
+A game starts in the player's locale (the system's first preferred language) unless `test` names
+one, and `l10n::set_locale` changes it while it runs. A locale takes the translations of the
+locale that matches it best and has the message (`fr` answers `fr_CA`, `es` before `es_AR` for
+`es_MX`). Sessions start in `test` or else `fallback`, never the machine's language, so their
+replies repeat. Exports ship the files, and `project validate` and exports check each one loads.
 
-The files read as Godot reads them:
+The files read as follows:
 
-- CSV, as its CSV translation importer: a header of `keys` then a locale per column (columns
+- CSV: a header of `keys` then a locale per column (columns
   starting with `_` are left out), then a row per message. A `?context` column tells apart
   messages written the same; a `?plural` column gives a message's plural, with its other forms in
   the rows after it whose key is empty; a `?pluralrule` row gives a column a gettext plural rule.
   `"` quotes a field, `""` is a quote inside one, and `\n`, `\t`, `\"` and `\\` in translations
   stand for what they mean. A column with no valid locale is an error.
-- gettext `.po` files, as its PO loader: `msgctxt`, `msgid`, `msgid_plural`, `msgstr` and
+- gettext `.po` files: `msgctxt`, `msgid`, `msgid_plural`, `msgstr` and
   `msgstr[n]`, with the header's `Language` and `Plural-Forms`; fuzzy entries are left out, and
   plural messages need `Plural-Forms`. `.mo` files are the same compiled by `msgfmt`.
 
-Plural forms follow the file's rule, else the locale's own (Godot's table of gettext rules, such
-as Polish's three forms), else English's. Placeholders such as `%d` stay in the translated text
-for the game's code to fill.
+Plural forms follow the file's rule, else the locale's own, else English's. Placeholders such as
+`%d` stay in the translated text for the game's code to fill.
 
 ## XR
 
-`xr` holds Godot's `xr/openxr` and `xr/shaders` settings:
+`xr` holds the OpenXR settings:
 
 ```json
 "xr": {
@@ -913,10 +902,9 @@ variables](sdk-format.md).
 
 ## Export presets
 
-`export_presets.json`, next to `project.json`, holds named ways to export the game, like Godot's
-`export_presets.cfg`. It is optional: without it, `slash-cli export <platform>` uses that
-platform's defaults. `slash-cli schema presets` prints its JSON Schema and
-`slash-cli project validate` checks it.
+`export_presets.json`, next to `project.json`, holds named ways to export the game. It is
+optional: without it, `slash-cli export <platform>` uses that platform's defaults. `slash-cli
+schema presets` prints its JSON Schema and `slash-cli project validate` checks it.
 
 ```json
 {

@@ -2,10 +2,10 @@
 
 A plugin is a library built apart from the engine, against
 [`slash_plugin.h`](../../engine/plugin/include/slash/plugin/slash_plugin.h) alone, that adds
-components and systems to a game, as Godot's GDExtension. The header is plain C and only ever
-grows, so a plugin built once keeps loading into later engines, and it can be written in any
-language that calls C. It links nothing of the engine's: its entry function is handed
-`get_proc`, which gives each engine function by name.
+components and systems to a game. The header is plain C and only ever grows, so a plugin built
+once keeps loading into later engines, and it can be written in any language that calls C. It
+links nothing of the engine's: its entry function is handed `get_proc`, which gives each engine
+function by name.
 
 [addons/orbit/orbit.c](addons/orbit/orbit.c) is one, in C: an `Orbit` component (a C struct
 whose fields it describes with offsets, types, docs and ranges) and an `orbit` system that moves

@@ -1,8 +1,8 @@
 # Animation state machine
 
-A hero whose `AnimationGraph` is a state machine, as Godot's `AnimationNodeStateMachine`: it moves,
-jumps when a condition says so and attacks when asked, going back to moving on its own after
-each. [main.scene.json](main.scene.json) gives the hero the tree and its animations:
+A hero whose `AnimationGraph` is a state machine: it moves, jumps when a condition says so and
+attacks when asked, going back to moving on its own after each. [main.scene.json](main.scene.json)
+gives the hero the tree and its animations:
 
 ```json
 "AnimationGraph": {"libraries": {"": "hero.anim.json"}, "tree_root": "hero.animtree.json"}

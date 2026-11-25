@@ -1,6 +1,6 @@
 # Large-world precision
 
-What an engine's precision allows, as Godot's `precision` build option. [main.cpp](main.cpp)
+What an engine's precision allows, set by the `precision` build option. [main.cpp](main.cpp)
 prints the step between neighboring positions at 1, 100 and 10,000 kilometers from the origin,
 drops a crate onto a floor at home and ten thousand kilometers out, and asks where the 3D world
 is drawn around for a camera out there. [expected.txt](expected.txt) holds a single-precision

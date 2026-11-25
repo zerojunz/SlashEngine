@@ -1,9 +1,9 @@
 # Decals 3D
 
-A street painted with decals, as Godot 4.6's `Decal` in its Forward+ renderer, the default
-`rendering.renderer`. [main.scene.json](main.scene.json) is a street and a brick wall seen
-through a `Camera3D` in a 320x180 window, lit by the sun and grey ambient light, with three
-`Decal`s. Each is a box that projects its textures down its -Y onto the meshes inside it:
+A street painted with decals in the clustered renderer, the default `rendering.renderer`.
+[main.scene.json](main.scene.json) is a street and a brick wall seen through a `Camera3D` in a
+320x180 window, lit by the sun and grey ambient light, with three `Decal`s. Each is a box that
+projects its textures down its -Y onto the meshes inside it:
 
 - `paint` is a dashed yellow line down the street, from an albedo texture whose gaps are clear.
 - `puddle` darkens a round patch of the street with an albedo texture (its `albedo_mix` 0.7) and
@@ -29,7 +29,7 @@ frame.capture {"path":"shots/street.png","points":[[96,120],[130,120],[214,128],
   next frame shows the line between yellow and grey, the street bare where the puddle was, and the
   sign brighter.
 
-The textures of a frame's decals are packed into one atlas with mipmaps, as Godot's, sampled by
-project.json's `rendering.textures.decals.filter` (`linear_mipmaps` by default). Godot's
-Compatibility renderer (`"renderer": "compatibility"`, and always with the OpenGL
-drivers) draws no decals.
+The textures of a frame's decals are packed into one atlas with mipmaps, sampled by
+project.json's `rendering.textures.decals.filter` (`linear_mipmaps` by default). the
+compatibility renderer (`"renderer": "compatibility"`, and always with the OpenGL drivers) draws
+no decals.

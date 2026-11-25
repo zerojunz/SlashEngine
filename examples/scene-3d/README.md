@@ -1,11 +1,11 @@
 # Scene 3D
 
-Godot's 3D nodes, as components in a scene. [main.scene.json](main.scene.json) is a table on a
+3D nodes as components in a scene. [main.scene.json](main.scene.json) is a table on a
 lawn, seen through a `Camera3D` in a 160x90 window ([project.json](project.json)):
 
 - `table` is a `BoxGeometry`. Its `Transform3D` lists `crate`, `ball` and `ring` in `children`, so
   they sit on it and move with it, as child nodes of a `Node3D` do.
-- Each mesh is a `Model3D` with one of Godot's primitive meshes (`BoxGeometry`, `SphereGeometry`,
+- Each mesh is a `Model3D` with one of the primitive meshes (`BoxGeometry`, `SphereGeometry`,
   `TorusGeometry`, `PlaneGeometry` for the lawn) and a `Surface3D` for its color, roughness and
   metal.
 - `sun` is a `SunLight3D` shining down its -z. `lamp` is an orange `PointLight3D`.

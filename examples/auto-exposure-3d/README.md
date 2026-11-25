@@ -1,23 +1,23 @@
 # Auto exposure 3D
 
-Eyes adjusting to light, as Godot 4.6's auto exposure in its Forward+ renderer, the default
+Eyes adjusting to light, with auto exposure in the clustered renderer, the default
 `rendering.renderer`. [main.scene.json](main.scene.json) is a tunnel lit by a torch, with
 daylight at its far end, seen through a `Camera3D` in a 320x180 window. The daylight is a wall
 whose `emission_energy_multiplier` is 6, so it shines six times its color, and a lamp just inside
 the mouth lights the last of the tunnel.
 
-The camera's `CameraLens` sets `auto_exposure_enabled`, as Godot's camera
-`attributes` do (a `Environment3D`'s entity can hold one too, for every camera without its
-own):
+The camera's `CameraLens` sets `auto_exposure_enabled` (a `Environment3D`'s entity can hold one too,
+for every camera without its own):
 
-- Each frame is measured: Forward+ averages the brightest channel of each pixel, in blocks of 8 by
-  8, down to one value, and the tonemap multiplies the frame by `auto_exposure_scale` (Godot's
-  0.4) over that brightness, so a dim frame is brightened and a bright one darkened.
+- Each frame is measured: the clustered renderer averages the brightest channel of each pixel, in
+  blocks of 8 by 8, down to one value, and the tonemap multiplies the frame by
+  `auto_exposure_scale` over that brightness, so a dim frame is brightened and a bright one
+  darkened.
 - `auto_exposure_speed` 1 moves the measured brightness that part of the way to the new frame's
   each second of game time, so the change is gradual.
 - `auto_exposure_max_sensitivity` 3200 lets it adapt to frames up to four times white on average
   (a sensitivity is turned into a brightness by 0.125 over `exposure_sensitivity`, 100), so
-  bright daylight stays bright, as Godot's.
+  bright daylight stays bright.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -41,10 +41,10 @@ frame.capture {"time":0,"points":[[160,90],[40,90],[160,170]],"path":"shots/tunn
 - `auto_exposure_scale` 0.8 brightens the adjusted frame at once: the scale is applied after the
   measurement, which goes on unchanged.
 - `auto_exposure_metering` `"log_average"`, with the scale back at 0.4, measures the mean of each
-  pixel's logarithm instead, as Unreal's auto exposure meters (SlashEngine's own; Godot has only
-  the average). The daylight at the far end counts for less, so six seconds later the tunnel's
-  walls and floor are about twice as bright as at the start. `shots/log_average.png` saves it.
+  pixel's logarithm instead, as Unreal's auto exposure meters. The daylight at the far end counts
+  for less, so six seconds later the tunnel's walls and floor are about twice as bright as at the
+  start. `shots/log_average.png` saves it.
 
-Godot's Compatibility renderer (`"renderer": "compatibility"`, and always with the
-OpenGL drivers) has no auto exposure: it uses `exposure_multiplier` alone, which every renderer
-applies to lights, skies, the background and emission.
+The compatibility renderer (`"renderer": "compatibility"`, and always with the OpenGL drivers)
+has no auto exposure: it uses `exposure_multiplier` alone, which every renderer applies to
+lights, skies, the background and emission.

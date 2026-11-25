@@ -1,6 +1,6 @@
 # Destruction 3D
 
-Walls and crates that break into pieces. Godot has no destruction of its own, so this follows
+Walls and crates that break into pieces. This follows
 Unreal's geometry collections: a `Destructible3D` body's mesh is cut into Voronoi cells with
 Manifold's booleans (the same code as CSG shapes), and when it breaks each cell becomes a rigid
 body of its own. [main.scene.json](main.scene.json) has a brick wall, a ball flying at it and a

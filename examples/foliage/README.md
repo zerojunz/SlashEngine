@@ -1,6 +1,6 @@
 # Foliage
 
-A meadow painted by brush, after Unreal's Foliage tool (Godot has none), in 3D and in 2D. A
+A meadow painted by brush, after Unreal's Foliage tool, in 3D and in 2D. A
 `.foliage.json` file says what one kind of plant or rock is: what it draws, how thickly a brush
 paints it, how it bends in the wind and parts for characters, whether it blocks and what
 harvesting it gives. [grass.foliage.json](grass.foliage.json) is a blade of grass,

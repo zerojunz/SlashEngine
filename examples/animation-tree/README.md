@@ -1,9 +1,8 @@
 # Animation tree
 
 The skinned arm of [skinned-meshes](../skinned-meshes/), played by an `AnimationGraph` instead of
-an `Animator`, as Godot's: it waves, and on request points with its shoulder while the
-elbow and hand keep waving. [main.scene.json](main.scene.json) gives the arm the tree and the
-model as its library:
+an `Animator`: it waves, and on request points with its shoulder while the elbow and hand keep
+waving. [main.scene.json](main.scene.json) gives the arm the tree and the model as its library:
 
 ```json
 "AnimationGraph": {"libraries": {"": "models/arm.gltf"}, "tree_root": "arm.animtree.json"}

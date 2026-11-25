@@ -1,22 +1,23 @@
 # Networking
 
-Games talk over the network as Godot's high-level multiplayer does. A peer is one machine's end
-of the game's network: a server is peer 1, and each client joins it with an ID of its own.
-Transports are kinds of peer, so code written against `net::Peer` runs over any of them.
+Games talk over the network. A peer is one machine's end of the game's network: a server is peer
+1, and each client joins it with an ID of its own. Transports are kinds of peer, so code written
+against `net::Peer` runs over any of them.
 
 Status: current · Updated: 2026-11-20
 
-| Peer | Godot's | Where |
+Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
+
+| Peer | Header | Where |
 | --- | --- | --- |
-| `net::ENetPeer` | `ENetMultiplayerPeer` | Reliable UDP over [ENet](https://github.com/lsalzman/enet): macOS, Windows, Linux, iOS and Android. Not on the web, whose browsers have no UDP sockets. IPv4 only |
-| `net::WebSocketMultiplayerPeer` | `WebSocketMultiplayerPeer` | Messages over WebSocket, reliable and in order: servers and clients on every platform but the web, where games join as clients through the browser's WebSocket |
-| `net::OfflinePeer` | `OfflineMultiplayerPeer` | A server with no one else, always connected: a game played alone runs the same code it runs online |
+| `net::ENetPeer` | `slash/net/enet.hpp` | Reliable UDP over [ENet](https://github.com/lsalzman/enet): macOS, Windows, Linux, iOS and Android. Not on the web, whose browsers have no UDP sockets. IPv4 only |
+| `net::WebSocketMultiplayerPeer` | `slash/net/websocket.hpp` | Messages over WebSocket, reliable and in order: servers and clients on every platform but the web, where games join as clients through the browser's WebSocket |
+| `net::OfflinePeer` | `slash/net/peer.hpp` | A server with no one else, always connected: a game played alone runs the same code it runs online |
 
 A world's multiplayer runs on a peer: it admits the peers that join, tells clients about each
-other through the server, relays their packets and calls remote procedures on entities, as
-Godot's `SceneMultiplayer`, and replicates entities and their fields. Sessions and exported
-games give every world one, offline until it hosts or joins, and agents drive it with the `net.*`
-commands.
+other through the server, relays their packets and calls remote procedures on entities, and
+replicates entities and their fields. Sessions and exported games give every world one, offline
+until it hosts or joins, and agents drive it with the `net.*` commands.
 
 ## Peers
 
@@ -44,8 +45,7 @@ while (client.available_packet_count() > 0) {
 `poll()` takes in what arrived and sends what waits; nothing happens between calls. Packets wait
 in the order they arrived, each with the peer that sent it (`packet_peer`), its transfer channel
 (`packet_channel`) and how it travelled (`packet_mode`), which describe the next packet
-`get_packet()` returns. Peers joining and leaving wait in `take_events()`, as Godot's
-`peer_connected` and `peer_disconnected` signals.
+`get_packet()` returns. Peers joining and leaving wait in `take_events()`.
 
 | Call | Does |
 | --- | --- |
@@ -67,18 +67,18 @@ besides channel 0 (0: as many as ENet allows, 254) and bandwidth limits in bytes
 none). Port 0 picks a free port, which `local_port()` reports. A full server leaves new clients
 unanswered until ENet's timeout ends their attempt.
 
-`create_client(address, port, channel_count = 0, in_bandwidth = 0, out_bandwidth = 0,
-local_port = 0)` connects to a server by IPv4 address or host name. As in Godot, the client picks
-its ID at random (`net::generate_unique_id()`: above 1, below 2^31) and sends it with the
-connection; the server turns away an ID below 2 or one already taken. The client is connected,
-and hears peer 1 connect, once the server answers.
+`create_client(address, port, channel_count = 0, in_bandwidth = 0, out_bandwidth = 0, local_port
+= 0)` connects to a server by IPv4 address or host name. The client picks its ID at random
+(`net::generate_unique_id()`: above 1, below 2^31) and sends it with the connection; the server
+turns away an ID below 2 or one already taken. The client is connected, and hears peer 1 connect,
+once the server answers.
 
 `set_bind_ip(ip)` picks the address servers and clients bind to: `"*"` (any, the default) or an
 IPv4 address such as `"127.0.0.1"` to listen on this machine only. `round_trip_time(id)` gives a
 connected peer's mean round trip in milliseconds.
 
 ENet's channels 0 and 1 carry transfer channel 0's reliable and unreliable packets, and transfer
-channel n is ENet channel n + 1, as Godot lays them out. Unreliable packets above ENet's MTU
+channel n is ENet channel n + 1. Unreliable packets above ENet's MTU
 (1,392 bytes) are split and lost whole if a piece is lost. `net::enet_supported()` is false on
 the web.
 
@@ -97,7 +97,7 @@ auto client = std::make_shared<net::WebSocketMultiplayerPeer>();
 (void)client->create_client("ws://game.example.com:9080/play"); // the web too
 ```
 
-`WebSocketMultiplayerPeer` is Godot's: a server listens on a TCP port (`create_server(port,
+`WebSocketMultiplayerPeer`: a server listens on a TCP port (`create_server(port,
 bind_address = "*")`; port 0 picks a free one, which `local_port()` reports) and gives each
 client that finishes its handshake an ID in a first binary message of four bytes; a client
 counts as connected, and hears peer 1 connect, once that arrives. Every packet travels
@@ -106,13 +106,13 @@ other through the server's relay. A client that doesn't finish its handshake wit
 `set_handshake_timeout` seconds (3) is dropped. `peer(id)` gives a connected peer's
 `WebSocketPeer`.
 
-`net::WebSocketPeer` is one connection, as Godot's `WebSocketPeer`, for games that talk to a
-WebSocket service of their own: `connect_to_url(url)`, then `poll()` once a tick, `ready_state()`
-(`Connecting`, `Open`, `Closing`, `Closed`), `send_text` and `put_packet` (binary), and
-`get_packet` with `was_string_packet()` to tell text from bytes. `close(code, reason)` starts a
-clean close, which `close_code()` and `close_reason()` report once the other side answers (-1
-and `""` after one that wasn't clean). Settings are taken when a connection starts, on a peer or
-on a multiplayer peer for each of its connections:
+`net::WebSocketPeer` is one connection, for games that talk to a WebSocket service of their own:
+`connect_to_url(url)`, then `poll()` once a tick, `ready_state()` (`Connecting`, `Open`,
+`Closing`, `Closed`), `send_text` and `put_packet` (binary), and `get_packet` with
+`was_string_packet()` to tell text from bytes. `close(code, reason)` starts a clean close, which
+`close_code()` and `close_reason()` report once the other side answers (-1 and `""` after one
+that wasn't clean). Settings are taken when a connection starts, on a peer or on a multiplayer
+peer for each of its connections:
 
 | Setting | Default | Means |
 | --- | --- | --- |
@@ -129,8 +129,8 @@ to `ws://` and `wss://` URLs alike, and `net::websocket_server_supported()` is f
 
 ### wss://
 
-`wss://` is WebSocket over TLS, by Mbed TLS as Godot's `StreamPeerMbedTLS`. What a connection
-trusts and shows is a `net::TlsOptions` (`slash/net/tls.hpp`), as Godot's `TLSOptions`:
+`wss://` is WebSocket over TLS, by Mbed TLS. What a connection trusts and shows is a
+`net::TlsOptions` (`slash/net/tls.hpp`):
 
 ```cpp
 // A server shows its certificate chain and private key (PEM).
@@ -151,10 +151,9 @@ closes. On the web the browser checks certificates itself, so only a server's op
 refused there.
 
 `net::generate_self_signed_certificate(issuer_name, not_before, not_after)` makes a certificate
-that is its own issuer and its key, as Godot's `Crypto.generate_self_signed_certificate`, with
-an elliptic curve key (P-256) where Godot's is RSA: for tests and servers on a local network,
-whose clients pass the certificate as their trusted chain. A client checks its `CN` against the
-host it connects to.
+that is its own issuer and its key, with an elliptic curve key (P-256): for
+tests and servers on a local network, whose clients pass the certificate as their trusted chain.
+A client checks its `CN` against the host it connects to.
 
 [`examples/websocket-peers`](../../examples/websocket-peers/) runs a server and two clients over
 WebSocket, and a world's remote calls through them over `wss://`.
@@ -171,8 +170,8 @@ auto peer = std::make_shared<net::ENetPeer>();
 ```
 
 `net::install` gives a world its `net::Multiplayer` and the `multiplayer` system (priority -950,
-right after `input`), which polls it at the start of each tick, as Godot polls a scene tree's
-multiplayer before processing nodes. It starts on an `OfflinePeer`; `set_peer` takes a peer that
+right after `input`), which polls it at the start of each tick, before any system
+runs. It starts on an `OfflinePeer`; `set_peer` takes a peer that
 is connecting or connected (null goes back offline) and forgets the peers and caches of the one
 before.
 
@@ -201,8 +200,8 @@ everyone (0) or all but one (minus an ID), relayed by the server between clients
 
 ## Remote procedure calls
 
-Every peer registers the same procedures, by name, with Godot's `@rpc` settings, and calls them
-on an entity by its ID, as Godot calls a method on a node by its path:
+Every peer registers the same procedures, by name, with their RPC settings, and calls them
+on an entity by its ID:
 
 ```cpp
 net::Multiplayer& mp = net::multiplayer(world);
@@ -223,24 +222,24 @@ mp.add_rpc("move",
 | `mode` | `Authority` (the default): only the peer the entity answers to may call it. `AnyPeer`: every peer. `Disabled`: no one. A call that isn't allowed is refused where it arrives, with an error logged |
 | `call_local` | The call also runs on the peer that makes it (`remote_sender_id()` is then its own ID). Without it, calling yourself is refused |
 | `transfer_mode`, `channel` | How the call travels |
-| `component` | The component an entity needs for the procedure to be its own, as a Godot method belongs to a node's script; `""` for every entity |
+| `component` | The component an entity needs for the procedure to be its own; `""` for every entity |
 
 The arguments are one JSON value (`null` for none), sent as compact JSON text. An entity answers
-to peer 1 unless `set_authority(id, peer)` says otherwise; by default that also sets the
-entities placed under it (`Transform2D` and `Transform3D` children) and those its instanced scene
-brought. Every peer sets the same authorities, as in Godot.
+to peer 1 unless `set_authority(id, peer)` says otherwise; by default that also sets the entities
+placed under it (`Transform2D` and `Transform3D` children) and those its instanced scene brought.
+Every peer sets the same authorities.
 
-As in Godot, the first call on an entity to a peer carries the entity's ID, and the peer answers
-with a short number used from then on, after checking that both sides have the same procedures
-for it (an error is logged if not).
+The first call on an entity to a peer carries the entity's ID, and the peer answers with a short
+number used from then on, after checking that both sides have the same procedures for it (an
+error is logged if not).
 
 [`examples/multiplayer-rpc`](../../examples/multiplayer-rpc/) plays a game on three worlds in one
 program.
 
 ## Replication
 
-Two components replicate a world, as Godot's `MultiplayerSpawner` and `NetSync`
-do a scene tree. Every peer loads the same scene with them; only entities with IDs take part.
+Two components replicate a world, `NetSpawner` and `NetSync`.
+Every peer loads the same scene with them; only entities with IDs take part.
 
 ```json
 "spawner": {"components": {"NetSpawner": {
@@ -268,7 +267,7 @@ and a peer that leaves (or a server that goes) takes what it spawned with it. Ea
 `spawned` or `despawned` world event, with the entity's ID and data `{"spawner": id}`.
 `spawn_limit` caps how many a spawner has out at once.
 
-A custom spawn is made by code on every peer, as Godot's `spawn_function`:
+A custom spawn is made by code on every peer:
 
 ```cpp
 net::Multiplayer& mp = net::multiplayer(world);
@@ -308,17 +307,17 @@ every peer must pass, checked again each tick before the game's systems (`visibi
 of its synchronizers is visible to, and despawned from those that stop seeing it, and remote
 calls on an entity with synchronizers go only to the peers that can see it.
 
-As in Godot, spawns and their synchronizers carry network IDs, and a synchronizer on an entity
-nothing spawned is named by the same short number remote calls use.
+Spawns and their synchronizers carry network IDs, and a synchronizer on an entity nothing
+spawned is named by the same short number remote calls use.
 
 ## Commands
 
 Sessions (`slash-cli`, `slash-mcp`, `test.run`) and exported games install a multiplayer in their
-world, offline. Game code reaches it with `net::multiplayer(world)`, as Godot's scripts reach
-`multiplayer`, and agents with [`net.host`](commands.md#nethost),
-[`net.join`](commands.md#netjoin), [`net.state`](commands.md#netstate),
-[`net.rpc`](commands.md#netrpc) and [`net.close`](commands.md#netclose). Each `step` polls it, so
-several sessions, in one program or several, play one game as their agents step them:
+world, offline. Game code reaches it with `net::multiplayer(world)`, and agents with
+[`net.host`](commands.md#nethost), [`net.join`](commands.md#netjoin),
+[`net.state`](commands.md#netstate), [`net.rpc`](commands.md#netrpc) and
+[`net.close`](commands.md#netclose). Each `step` polls it, so several sessions, in one program or
+several, play one game as their agents step them:
 
 ```bash
 cli=./build/dev/tools/slash-cli/slash-cli
@@ -339,40 +338,35 @@ with these commands.
 
 ## Engine notes: Networking
 
-`engine/net` is networking, as Godot's high-level multiplayer
-([docs/reference/networking.md](networking.md)). `net::Peer` is Godot's
-`MultiplayerPeer`: `poll` takes in what arrived, packets wait with their sender, channel and
-transfer mode, and peers joining and leaving wait in `take_events` (Godot's signals). Server is
-peer 1; clients pick their IDs (`generate_unique_id`). `src/enet.cpp` ports
-`ENetMultiplayerPeer` and the parts of `ENetConnection` it uses onto upstream ENet (IPv4, as
-Godot without its fork), built from its C files in `cmake/Dependencies.cmake` everywhere but the
-web (`enet_supported`); `OfflinePeer` is `OfflineMultiplayerPeer`. `src/multiplayer.cpp` ports
-`SceneMultiplayer`, `SceneCacheInterface` and `SceneRPCInterface` with entities for nodes and
-their IDs for paths: `net::install` gives a world its `Multiplayer` (in the world's context) and
-the `multiplayer` system (priority -950) that polls it; peers join (through authentication when
-there is a callback), the server announces and relays, its signals are world events, and
-`add_rpc` and `rpc` call procedures on entities by name with Godot's modes, an RPC's ID being its
-index among the entity's procedures (those whose `component` it has) by name. It replicates as
-`SceneReplicationInterface` does, comparing the world with what it tracked at each poll in place
-of Godot's tree signals: a `NetSpawner`'s authority spawns the entities extending its
-`spawnable_scenes` placed under its `spawn_path` on each peer that can see them (`spawned` and
-`despawned` events; custom spawns through `set_spawn_function`), and a `NetSync`
-sends its root's properties, `"Component/field[/part]"` read and written through reflection, as
-syncs and reliable deltas whose intervals count world time. `src/websocket.cpp` ports
-Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`: natively `WSLPeer` (the handshake, with
-Mbed TLS's SHA-1, and wslay's framing over TCP through ENet's socket calls, `TcpStream` and
-`TcpServer`; `wss://` through `TlsStream`, Godot's `StreamPeerMbedTLS`, with `net::TlsOptions`
-as its `TLSOptions` and the system's certificates from `platform::system_ca_certificates`, or
-`platform::system_trusts` on Apple platforms, as `engine/ai`'s transport;
-`generate_self_signed_certificate` makes test certificates in code), on the web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its
-events queued for `poll`). `tests/web/run.mjs` starts an echo server for the web build's test,
-`test_websocket_web.cpp`. Sessions and `runtime::Game` install a multiplayer in every world,
-offline; `engine/command/src/net.cpp` is `net.host`, `net.join`, `net.state`, `net.rpc` and
-`net.close`, which keep the transport beside it in the world's context, and `Session::restore`
-calls `Multiplayer::rebind` so entities put back by undo or a failed command stay spawned on the
-other peers. Tests talk over
-127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a
-server and three clients, `examples/multiplayer-rpc` three worlds' game,
-`examples/multiplayer-replication` bullets and players replicated between them and
+`engine/net` is networking ([docs/reference/networking.md](networking.md)). `net::Peer` is the
+transport interface: `poll` takes in what arrived, packets wait with their sender, channel and
+transfer mode, and peers joining and leaving wait in `take_events`. Server is peer 1; clients pick
+their IDs (`generate_unique_id`). `src/enet.cpp` is the ENet peer, on upstream ENet (IPv4 only),
+built from its C files in `cmake/Dependencies.cmake` everywhere but the web (`enet_supported`);
+`OfflinePeer` is the peer that is always connected. `src/multiplayer.cpp` is the multiplayer, with
+entities addressed by their IDs: `net::install` gives a world its `Multiplayer` (in the world's
+context) and the `multiplayer` system (priority -950) that polls it; peers join (through
+authentication when there is a callback), the server announces and relays, its signals are world
+events, and `add_rpc` and `rpc` call procedures on entities by name with their modes, an RPC's ID
+being its index among the entity's procedures (those whose `component` it has) by name. It
+replicates by comparing the world with what it tracked at each poll: a `NetSpawner`'s authority
+spawns the entities extending its `spawnable_scenes` placed under its `spawn_path` on each peer that
+can see them (`spawned` and `despawned` events; custom spawns through `set_spawn_function`), and a
+`NetSync` sends its root's properties, `"Component/field[/part]"` read and written through
+reflection, as syncs and reliable deltas whose intervals count world time. `src/websocket.cpp` holds
+the WebSocket peer: natively `WSLPeer` (the handshake, with Mbed TLS's SHA-1, and wslay's framing
+over TCP through ENet's socket calls, `TcpStream` and `TcpServer`; `wss://` through `TlsStream` (on
+Mbed TLS), with `net::TlsOptions` as its options and the system's certificates from
+`platform::system_ca_certificates`, or `platform::system_trusts` on Apple platforms, as
+`engine/ai`'s transport; `generate_self_signed_certificate` makes test certificates in code), on the
+web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its events queued for `poll`).
+`tests/web/run.mjs` starts an echo server for the web build's test, `test_websocket_web.cpp`.
+Sessions and `runtime::Game` install a multiplayer in every world, offline;
+`engine/command/src/net.cpp` is `net.host`, `net.join`, `net.state`, `net.rpc` and `net.close`,
+which keep the transport beside it in the world's context, and `Session::restore` calls
+`Multiplayer::rebind` so entities put back by undo or a failed command stay spawned on the other
+peers. Tests talk over 127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`).
+`examples/enet-peers` runs a server and three clients, `examples/multiplayer-rpc` three worlds'
+game, `examples/multiplayer-replication` bullets and players replicated between them and
 `examples/websocket-peers` the same game's calls over WebSocket, and `examples/network-sessions`
 plays a game on three sessions through the commands.

@@ -1,9 +1,9 @@
 # Bone attachment
 
 The waving arm of [ragdoll](../ragdoll/), on a pedestal, holding a sword through a bone
-attachment as Godot's `BoneAttachment3D`. [main.scene.json](main.scene.json) puts an attachment
-in the arm's `Transform3D` children that follows the `Hand` bone, and the sword's blade and hilt
-in the attachment's, placed in the hand's space:
+attachment. [main.scene.json](main.scene.json) puts an attachment in the arm's `Transform3D`
+children that follows the `Hand` bone, and the sword's blade and hilt in the attachment's,
+placed in the hand's space:
 
 ```json
 "grip": {"components": {

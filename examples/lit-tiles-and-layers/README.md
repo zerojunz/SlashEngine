@@ -1,6 +1,6 @@
 # Lit tiles and canvas layers
 
-A dungeon floor lit by a torch, and a HUD lit by a lantern of its own, as Godot's 2D lights. In
+A dungeon floor lit by a torch, and a HUD lit by a lantern of its own. In
 [main.scene.json](main.scene.json) the floor is a tile map layer, `night` darkens the world and a
 `ScreenLayer` named `hud` holds a panel, its own `AmbientTint2D` and a lantern.
 [main.cpp](main.cpp) draws the textures, then makes the calls an agent would make over MCP or
@@ -13,7 +13,7 @@ light.sample {"id":"panel"}
 ```
 
 - The `stone` source in [dungeon.tileset.json](dungeon.tileset.json) names a `normal_texture`
-  and a `specular_texture`, as a Godot `CanvasTexture` gives an atlas source. The normal map
+  and a `specular_texture`. The normal map
   bevels each block's edges, so the edge facing the torch is bright and the one facing away is
   dim; the specular map makes the middle of each block shine with `specular_color` and
   `specular_shininess`.
