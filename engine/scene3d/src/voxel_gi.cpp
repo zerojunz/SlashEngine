@@ -103,8 +103,7 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine VoxelLighting3D data";
-    schema["description"] = "The cells a VoxelLighting3D voxelized, as Godot's VoxelGIData: "
-                            "voxel_lighting.bake writes it.";
+    schema["description"] = "The cells a VoxelLighting3D voxelized: voxel_lighting.bake writes it.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "bounds", "octree_size", "level_counts", "cells"};
@@ -139,11 +138,10 @@ json::Value make_schema() {
         "Cells in each level of the octree, from the root, which is alone in the first.";
     properties["cells"]["type"] = "string";
     properties["cells"]["description"] =
-        "Every cell, level by level, each sorted by x, then y, then z, as Godot's VoxelGIData's "
-        "data cells: four little-endian 32-bit values, base64. The first is its place (x, y << 11, "
-        "z << 21), the second its linear albedo (red in the low byte) and how much of it is solid "
-        "(the high byte), the third its emission as RGBE9995 and the fourth its normal, three "
-        "signed bytes.";
+        "Every cell, level by level, each sorted by x, then y, then z: four little-endian 32-bit "
+        "values, base64. The first is its place (x, y << 11, z << 21), the second its linear "
+        "albedo (red in the low byte) and how much of it is solid (the high byte), the third its "
+        "emission as RGBE9995 and the fourth its normal, three signed bytes.";
     return schema;
 }
 

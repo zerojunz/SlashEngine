@@ -236,7 +236,7 @@ json::Value font_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine font";
-    schema["description"] = "A font file and how it draws, as Godot's FontFile import options.";
+    schema["description"] = "A font file and how it draws.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format", "font"};

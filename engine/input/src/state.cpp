@@ -555,9 +555,8 @@ json::Value map_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["description"] =
-        "Input actions by name, as Godot's input map, e.g. {\"jump\": {\"events\": [{\"type\": "
-        "\"key\", \"key\": \"Space\"}]}}. Godot's ui_* actions are built in; an entry with the "
-        "same name replaces one.";
+        "Input actions by name, e.g. {\"jump\": {\"events\": [{\"type\": \"key\", \"key\": "
+        "\"Space\"}]}}. The ui_* actions are built in; an entry with the same name replaces one.";
     schema["propertyNames"]["minLength"] = 1;
     schema["propertyNames"]["maxLength"] = kMaxActionName;
     schema["additionalProperties"] = std::move(action);

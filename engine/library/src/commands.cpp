@@ -3902,7 +3902,7 @@ void register_commands(command::Registry& registry) {
     swaps["minProperties"] = 1;
     refine.emplace("parts", std::move(swaps));
     json::Value rig = property("string", "A .glb figure: rig it with a generator that rigs and "
-                                         "retarget it to Godot's humanoid skeleton.");
+                                         "retarget it to the humanoid skeleton.");
     rig["enum"] = json::Array{"humanoid"};
     refine.emplace("rig", std::move(rig));
     registry.add({

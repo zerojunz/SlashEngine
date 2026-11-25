@@ -456,9 +456,8 @@ json::Value event_schema(Use use) {
     device["description"] = binding ? "Only events from this device; -1 (the default) for any."
                                     : "Which keyboard, mouse or gamepad, from 0 (the default).";
     properties["device"] = std::move(device);
-    properties["key"] =
-        string_property("key: the key as labelled, by Godot's name, e.g. \"A\", \"Space\", "
-                        "\"Left\", \"Enter\", \"Kp 1\", \"F5\".");
+    properties["key"] = string_property(
+        "key: the key as labelled, e.g. \"A\", \"Space\", \"Left\", \"Enter\", \"Kp 1\", \"F5\".");
     properties["physical_key"] = string_property(
         "key: the key at this place on a US QWERTY keyboard, whatever the layout says.");
     properties["shift"] = boolean_property(binding ? "key and mouse_button: Shift must be held."

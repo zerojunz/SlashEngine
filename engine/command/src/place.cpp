@@ -629,8 +629,7 @@ void register_place_commands(Registry& registry) {
     schema["properties"]["entities"] = std::move(entities);
     schema["properties"]["along"] = std::move(along);
     schema["properties"]["ground"] =
-        property("boolean", "Drop each onto the mesh or static body below it, as Godot's Snap "
-                            "Object to Floor. Default true.");
+        property("boolean", "Drop each onto the mesh or static body below it. Default true.");
     json::Value on = property("array", "Entities it may stand on, with those under them. "
                                        "Default anything.");
     on["items"] = property("string", "An entity ID.");

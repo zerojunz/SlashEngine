@@ -7431,9 +7431,9 @@ void register_builtin_commands(Registry& registry) {
     seek_time["minimum"] = 0;
     registry.add({
         .name = "animation.seek",
-        .description = "Moves an Animator to a time or marker and sets what its tracks set "
-                       "there at once, players its animation tracks start included, as Godot's "
-                       "seek; events wait for playback.",
+        .description =
+            "Moves an Animator to a time or marker and sets what its tracks set there at once, "
+            "players its animation tracks start included; events wait for playback.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema(
@@ -7464,9 +7464,8 @@ void register_builtin_commands(Registry& registry) {
     tree_values["minProperties"] = 1;
     registry.add({
         .name = "animation.set_parameters",
-        .description = "Sets parameters of an entity's AnimationGraph, as Godot's "
-                       "set(\"parameters/...\"), checking each against its node. Returns those "
-                       "that changed.",
+        .description = "Sets parameters of an entity's AnimationGraph, checking each against its "
+                       "node. Returns those that changed.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({{"id", id_property("An entity with an AnimationGraph.")},
@@ -7522,8 +7521,7 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "tilemap.paint",
         .description = "Paints a terrain on cells of a TileLayer2D, picking tiles for them and "
-                       "their neighbors so edges connect, as Godot's terrain painting. Returns "
-                       "how many cells changed.",
+                       "their neighbors so edges connect. Returns how many cells changed.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({{"id", layer_id},
@@ -7600,8 +7598,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "tilemap.convert",
         .description = "Turns a TileLayer2D's cells into the points at their centers, or points "
-                       "into the cells they are in, as Godot's map_to_local and local_to_map, "
-                       "through the layer's transform. Points are in the canvas it draws in.",
+                       "into the cells they are in, through the layer's transform. Points are in "
+                       "the canvas it draws in.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"id", layer_id},
@@ -7682,9 +7680,7 @@ void register_builtin_commands(Registry& registry) {
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
-            {"collisions",
-             property("boolean", "Draw collision shapes over the world, as Godot's Visible "
-                                 "Collision Shapes.")},
+            {"collisions", property("boolean", "Draw collision shapes over the world.")},
             {"frames", std::move(capture_frames)},
             {"image", property("boolean", "Return the PNG, base64, as \"png\".")},
             {"path_trace", std::move(capture_paths)},
@@ -7751,9 +7747,9 @@ void register_builtin_commands(Registry& registry) {
     convert_to["enum"] = json::Array{"world", "screen"};
     registry.add({
         .name = "canvas.convert",
-        .description = "Turns window pixels into the world through the current camera, or "
-                       "back, as Godot's get_global_mouse_position. With id, uses the canvas "
-                       "that entity draws in (its ScreenLayer's, if any, named as layer).",
+        .description =
+            "Turns window pixels into the world through the current camera, or back. With id, uses "
+            "the canvas that entity draws in (its ScreenLayer's, if any, named as layer).",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"points", std::move(convert_points)},
@@ -8080,13 +8076,11 @@ void register_builtin_commands(Registry& registry) {
     access_viewport["maxItems"] = 2;
     registry.add({
         .name = "ui.accessibility",
-        .description = "Returns what a screen reader gets, as Godot's controls describe "
-                       "themselves: the controls' tree, each with its role, name, value, "
-                       "description, tooltip, checked, range [value, min, max, step], rect, "
-                       "flags, focused, actions (besides focus, blur, show_tooltip, "
-                       "hide_tooltip and scroll_into_view) and related controls; open menus "
-                       "with their items. Also problems such as a focusable control with no "
-                       "name.",
+        .description = "Returns what a screen reader gets: the controls' tree, each with its role, "
+                       "name, value, description, tooltip, checked, range [value, min, max, step], "
+                       "rect, flags, focused, actions (besides focus, blur, show_tooltip, "
+                       "hide_tooltip and scroll_into_view) and related controls; open menus with "
+                       "their items. Also problems such as a focusable control with no name.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -8112,11 +8106,10 @@ void register_builtin_commands(Registry& registry) {
                                   "\"item\" to scroll an eighth of a page.";
     registry.add({
         .name = "ui.accessibility_action",
-        .description = "Does what a screen reader asks of a control, as Godot's accessibility "
-                       "actions: click presses a button (or picks an open menu's item) at the "
-                       "next tick, increment and decrement step a Range, set_value sets a "
-                       "Range or text field, scroll_* scroll a ScrollBox by a page. "
-                       "Returns the tick.",
+        .description =
+            "Does what a screen reader asks of a control: click presses a button (or picks an open "
+            "menu's item) at the next tick, increment and decrement step a Range, set_value sets a "
+            "Range or text field, scroll_* scroll a ScrollBox by a page. Returns the tick.",
         .capabilities = {Run},
         .effect = Effect::Edit,
         .params = params_schema(
@@ -8314,8 +8307,8 @@ void register_builtin_commands(Registry& registry) {
     json::Value grid_item = any_property("An item of the BlockMap3D's mesh library; null erases.");
     grid_item["type"] = json::Array{"string", "null"};
     json::Value orientation =
-        property("integer", "One of Godot's 24 orientations: 0 none; 16, 10 and 22 turn the "
-                            "item 90, 180 and 270 degrees about y. Default 0.");
+        property("integer", "One of the 24 orientations: 0 none; 16, 10 and 22 turn the item 90, "
+                            "180 and 270 degrees about y. Default 0.");
     orientation["minimum"] = 0;
     orientation["maximum"] = scene3d::kOrientations - 1;
     const json::Value gridmap_id = id_property("An entity with a BlockMap3D.");
@@ -8396,8 +8389,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "input.actions",
         .description = "Returns input actions with their deadzone and the events bound to each: "
-                       "Godot's ui_* actions and project.json's \"input\". Text editing actions "
-                       "(ui_text_*, ui_cut, ui_copy and so on) only when named.",
+                       "the built-in ui_* actions and project.json's \"input\". Text editing "
+                       "actions (ui_text_*, ui_cut, ui_copy and so on) only when named.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"names", names_property("Only these actions. Default: all.")}}),
@@ -8486,12 +8479,10 @@ void register_builtin_commands(Registry& registry) {
     play_pitch["maximum"] = 16;
     registry.add({
         .name = "audio.play",
-        .description = "Plays an SoundPlayer, SoundPlayer2D or SoundPlayer3D at "
-                       "the next tick, as Godot's play(): it restarts, or adds a voice up to "
-                       "max_polyphony. With "
-                       "stream, plays that sound or .audio.json file on a polyphonic player "
-                       "instead, as Godot's play_stream, starting the player if needed. Returns "
-                       "the tick it plays at.",
+        .description = "Plays an SoundPlayer, SoundPlayer2D or SoundPlayer3D at the next tick: it "
+                       "restarts, or adds a voice up to max_polyphony. With stream, plays that "
+                       "sound or .audio.json file on a polyphonic player instead, starting the "
+                       "player if needed. Returns the tick it plays at.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema(
@@ -8509,8 +8500,8 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "audio.stop",
-        .description = "Stops an SoundPlayer, SoundPlayer2D or SoundPlayer3D at "
-                       "the next tick, as Godot's stop(). Returns the tick it stops at.",
+        .description = "Stops an SoundPlayer, SoundPlayer2D or SoundPlayer3D at the next tick. "
+                       "Returns the tick it stops at.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({{"id", id_property("The player's entity.")}}, {"id"}),
@@ -8537,9 +8528,8 @@ void register_builtin_commands(Registry& registry) {
     bus_volume["maximum"] = 24;
     registry.add({
         .name = "audio.set_bus",
-        .description = "Changes a bus while the game runs, as Godot's AudioServer setters: volume, "
-                       "mute, solo, bypass_effects, or one effect's enabled. The bus layout file "
-                       "is unchanged. Returns the bus.",
+        .description = "Changes a bus while the game runs: volume, mute, solo, bypass_effects, or "
+                       "one effect's enabled. The bus layout file is unchanged. Returns the bus.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema(
@@ -8583,11 +8573,9 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "audio.record",
-        .description = "Starts or stops a bus's record effect at the next tick, as Godot's "
-                       "set_recording_active; starting drops the last recording. \"path\" writes "
-                       "the recording as a "
-                       ".wav file (needs the filesystem capability). Returns recording and "
-                       "seconds recorded.",
+        .description = "Starts or stops a bus's record effect at the next tick; starting drops the "
+                       "last recording. \"path\" writes the recording as a .wav file (needs the "
+                       "filesystem capability). Returns recording and seconds recorded.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema(

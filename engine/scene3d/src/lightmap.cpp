@@ -58,7 +58,7 @@ json::Value make_schema() {
     mesh["type"] = "object";
     mesh["additionalProperties"] = false;
     mesh["required"] = json::Array{"width", "height", "xref", "uv2", "indices"};
-    mesh["description"] = "A mesh unwrapped into lightmap UVs, as Godot's lightmap_unwrap.";
+    mesh["description"] = "A mesh unwrapped into lightmap UVs.";
     mesh["properties"]["width"] = count_schema("Its lightmap's size hint, in texels.", 1);
     mesh["properties"]["height"] = count_schema("The same, down.", 1);
     mesh["properties"]["xref"]["type"] = "string";
@@ -75,7 +75,7 @@ json::Value make_schema() {
     user["type"] = "object";
     user["additionalProperties"] = false;
     user["required"] = json::Array{"entity", "mesh", "uv_rect"};
-    user["description"] = "Where one mesh's light is, as Godot's LightmapGIData user.";
+    user["description"] = "Where one mesh's light is.";
     user["properties"]["entity"]["type"] = "string";
     user["properties"]["entity"]["minLength"] = 1;
     user["properties"]["entity"]["description"] = "The Model3D's entity ID.";
@@ -103,9 +103,8 @@ json::Value make_schema() {
     probes["type"] = "object";
     probes["additionalProperties"] = false;
     probes["required"] = json::Array{"bounds", "points", "sh", "tetrahedra", "bsp"};
-    probes["description"] =
-        "Its light probes, as Godot's LightmapGIData capture data, which meshes that move take "
-        "their light from; all in the BakedLighting3D's space.";
+    probes["description"] = "Its light probes, which meshes that move take their light from; all "
+                            "in the BakedLighting3D's space.";
     probes["properties"]["bounds"]["type"] = "array";
     probes["properties"]["bounds"]["items"]["type"] = "number";
     probes["properties"]["bounds"]["minItems"] = 6;
@@ -115,7 +114,7 @@ json::Value make_schema() {
     probes["properties"]["interior"]["type"] = "boolean";
     probes["properties"]["interior"]["default"] = false;
     probes["properties"]["interior"]["description"] =
-        "Meshes inside take only interior lightmaps' light, as Godot's interior.";
+        "Meshes inside take only interior lightmaps' light.";
     probes["properties"]["points"]["type"] = "string";
     probes["properties"]["points"]["description"] =
         "Each probe's place (x, y, z), as base64 of little-endian 32-bit floats.";
@@ -129,10 +128,10 @@ json::Value make_schema() {
         "little-endian 32-bit integers.";
     probes["properties"]["bsp"]["type"] = "string";
     probes["properties"]["bsp"]["description"] =
-        "The BSP tree that finds a point's tetrahedron, as Godot's: each node a plane (normal x, "
-        "y, z, then d; a point with normal·p > d goes over) as 32-bit floats, then over and under "
-        "as 32-bit integers (a later node, -(tetrahedron + 1), or -2147483648 for none), as "
-        "base64 of little-endian values.";
+        "The BSP tree that finds a point's tetrahedron: each node a plane (normal x, y, z, then d; "
+        "a point with normal·p > d goes over) as 32-bit floats, then over and under as 32-bit "
+        "integers (a later node, -(tetrahedron + 1), or -2147483648 for none), as base64 of "
+        "little-endian values.";
 
     json::Value keys;
     keys["pattern"] = "^[0-9a-f]{16}$";
@@ -140,8 +139,7 @@ json::Value make_schema() {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine lightmap";
-    schema["description"] = "The light a BakedLighting3D baked, as Godot's LightmapGIData: its "
-                            ".hdr texture, the meshes' "
+    schema["description"] = "The light a BakedLighting3D baked: its .hdr texture, the meshes' "
                             "lightmap UVs and where each mesh's light is. lightmap.bake writes it.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
@@ -1179,7 +1177,7 @@ json::Value lightmapping_schema() {
     speed["default"] = defaults.probe_update_speed;
     speed["description"] = "How fast a moving mesh's probe light follows it, a share a second.";
     capture["properties"]["update_speed"] = std::move(speed);
-    json::Value out = object("Baked lightmaps, as Godot's rendering/lightmapping settings.");
+    json::Value out = object("Baked lightmaps.");
     out["properties"]["bake_quality"] = std::move(quality);
     out["properties"]["bake_performance"] = std::move(performance);
     out["properties"]["probe_capture"] = std::move(capture);

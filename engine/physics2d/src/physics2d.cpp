@@ -249,7 +249,7 @@ json::Value settings_schema() {
     json::Value schema;
     schema["type"] = "object";
     schema["additionalProperties"] = false;
-    schema["description"] = "2D physics, as Godot's physics/2d project settings.";
+    schema["description"] = "2D physics.";
     json::Value& properties = schema["properties"];
     properties["gravity"] =
         number_property("Gravity's strength in pixels per second squared.", defaults.gravity);

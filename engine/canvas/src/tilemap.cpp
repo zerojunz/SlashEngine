@@ -336,8 +336,8 @@ json::Value schema() {
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     out["title"] = "SlashEngine tile set";
-    out["description"] = "Atlas textures cut into tiles, and the terrains that connect them, "
-                         "like Godot's TileSet. TileLayer2D draws them.";
+    out["description"] = "Atlas textures cut into tiles, and the terrains that connect them. "
+                         "TileLayer2D draws them.";
     out["type"] = "object";
     out["additionalProperties"] = false;
     out["required"] = json::Array{"format", "sources"};
@@ -353,13 +353,12 @@ json::Value schema() {
         return out_names;
     };
     out["properties"]["tile_shape"] =
-        property("string", "The cells' shape, as Godot's: squares, isometric diamonds, squares in "
-                           "rows offset by half a cell (connected as hexagons), or hexagons.");
+        property("string", "The cells' shape: squares, isometric diamonds, squares in rows offset "
+                           "by half a cell (connected as hexagons), or hexagons.");
     out["properties"]["tile_shape"]["enum"] = names(kTileShapeNames);
     out["properties"]["tile_shape"]["default"] = kTileShapeNames.front();
     out["properties"]["tile_layout"] =
-        property("string", "How the columns and rows of cells that aren't square lie, as "
-                           "Godot's TileLayout.");
+        property("string", "How the columns and rows of cells that aren't square lie.");
     out["properties"]["tile_layout"]["enum"] = names(kTileLayoutNames);
     out["properties"]["tile_layout"]["default"] = kTileLayoutNames.front();
     out["properties"]["tile_offset_axis"] =
@@ -377,8 +376,8 @@ json::Value schema() {
         property("array", "Navigation layers by number from 0: the navigation layers tiles' "
                           "regions are in.");
     out["properties"]["navigation_layers"]["items"]["$ref"] = "#/$defs/navigation_layer";
-    out["properties"]["custom_data_layers"] = property(
-        "array", "Values every tile has, each with a name and a type, as Godot's custom data.");
+    out["properties"]["custom_data_layers"] =
+        property("array", "Values every tile has, each with a name and a type.");
     out["properties"]["custom_data_layers"]["items"]["$ref"] = "#/$defs/custom_data_layer";
     out["properties"]["terrain_sets"] =
         property("object", "Terrain sets by name, each with the terrains whose tiles connect.");

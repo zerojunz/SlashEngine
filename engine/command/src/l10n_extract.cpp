@@ -631,8 +631,7 @@ std::string write_pot(std::string_view project_name, const std::vector<std::stri
 
 void register_l10n_extract(Registry& registry) {
     using enum Capability;
-    json::Value pot = property("string", "A .pot file to write every message to, as Godot's "
-                                         "Generate POT.");
+    json::Value pot = property("string", "A .pot file to write every message to.");
     pot["minLength"] = 1;
     json::Value add = property("array", "Translation files project.json lists (.csv or .po) to "
                                         "add the messages they lack to, untranslated.");

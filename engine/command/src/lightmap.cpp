@@ -443,11 +443,11 @@ void register_lightmap_commands(Registry& registry) {
     device["enum"] = json::Array{"cpu", "gpu"};
     registry.add({
         .name = "lightmap.bake",
-        .description = "Bakes a BakedLighting3D's light into a .lightmap.json file and its .hdr "
-                       "texels, as Godot's LightmapGI bake: the static meshes under its parent, "
-                       "lit by the lights whose light_bake_mode isn't disabled and its "
-                       "environment, with shadows and bounces, and light probes for dynamic "
-                       "meshes. Sets light_data. Returns the files, counts, size and problems.",
+        .description =
+            "Bakes a BakedLighting3D's light into a .lightmap.json file and its .hdr texels: the "
+            "static meshes under its parent, lit by the lights whose light_bake_mode isn't "
+            "disabled and its environment, with shadows and bounces, and light probes for dynamic "
+            "meshes. Sets light_data. Returns the files, counts, size and problems.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema(
@@ -465,11 +465,10 @@ void register_lightmap_commands(Registry& registry) {
     registry.add({
         .name = "voxel_lighting.bake",
         .description =
-            "Bakes a VoxelLighting3D's cells into a .voxellight.json file, as Godot's VoxelGI "
-            "bake: the static meshes under its parent that touch its box, voxelized "
-            "at its subdiv with their albedo, emission and normals. Lights are "
-            "injected as the game runs. Sets data. Returns the file, counts, cells "
-            "along each axis, levels and problems.",
+            "Bakes a VoxelLighting3D's cells into a .voxellight.json file: the static meshes under "
+            "its parent that touch its box, voxelized at its subdiv with their albedo, emission "
+            "and normals. Lights are injected as the game runs. Sets data. Returns the file, "
+            "counts, cells along each axis, levels and problems.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(voxel_gi)}, {"file", std::move(voxel_gi_file)}},
@@ -481,10 +480,9 @@ void register_lightmap_commands(Registry& registry) {
     occluder["minLength"] = 1;
     registry.add({
         .name = "occluder.bake",
-        .description = "Bakes an Occluder3D's shape from the visible, opaque meshes on "
-                       "layers of its bake_mask, as Godot's Bake Occluders: simplified to its "
-                       "bake_simplification_distance and set as its array shape. Returns the "
-                       "vertex and triangle counts and problems.",
+        .description = "Bakes an Occluder3D's shape from the visible, opaque meshes on layers of "
+                       "its bake_mask: simplified to its bake_simplification_distance and set as "
+                       "its array shape. Returns the vertex and triangle counts and problems.",
         .capabilities = {Edit},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(occluder)}}, {"id"}),
@@ -500,10 +498,9 @@ void register_lightmap_commands(Registry& registry) {
     registry.add({
         .name = "particles.bake_sdf",
         .description = "Bakes a ParticleColliderSdf3D's signed distance field into a .sdf.png "
-                       "file, as Godot's bake: the visible meshes on layers of its bake_mask under "
-                       "its parent that touch its box, at its resolution and thickness. Sets "
-                       "texture and its slices. Returns the file, counts, cells along each axis "
-                       "and problems.",
+                       "file: the visible meshes on layers of its bake_mask under its parent that "
+                       "touch its box, at its resolution and thickness. Sets texture and its "
+                       "slices. Returns the file, counts, cells along each axis and problems.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(sdf)}, {"file", std::move(sdf_file)}}, {"id"}),

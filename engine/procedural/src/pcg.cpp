@@ -340,8 +340,8 @@ json::Value node_schema() {
     offset["description"] = "transform: move by [x, y, z] in 3D or [x, y] in 2D, in world space.";
     p["offset_up"] = number("transform: move along each point's up by this much; negative sinks "
                             "it.");
-    p["rotation_degrees"] = numbers(3, "transform: turn each point by these Euler angles in "
-                                       "degrees (Godot's YXZ; 2D turns by z).");
+    p["rotation_degrees"] =
+        numbers(3, "transform: turn each point by these Euler angles in degrees.");
     p["rotate_random"] = detail::number_field(0.0F, "transform: turn about the up axis by up to "
                                                     "this many half turns either way: 1 is any "
                                                     "heading.");
