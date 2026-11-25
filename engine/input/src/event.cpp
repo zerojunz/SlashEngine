@@ -457,7 +457,7 @@ json::Value event_schema(Use use) {
                                     : "Which keyboard, mouse or gamepad, from 0 (the default).";
     properties["device"] = std::move(device);
     properties["key"] = string_property(
-        "key: the key as labelled, e.g. \"A\", \"Space\", \"Left\", \"Enter\", \"Kp 1\", \"F5\".");
+        R"(key: the key as labelled, e.g. "A", "Space", "Left", "Enter", "Kp 1", "F5".)");
     properties["physical_key"] = string_property(
         "key: the key at this place on a US QWERTY keyboard, whatever the layout says.");
     properties["shift"] = boolean_property(binding ? "key and mouse_button: Shift must be held."
