@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/physics3d/physics3d.hpp"
@@ -46,17 +47,16 @@
 #include <variant>
 #include <vector>
 
-// The Jolt physics system behind a slash world, kept in step with its 3D physics components, as
-// Godot's JoltSpace3D, JoltBody3D and JoltArea3D keep it in step with Godot's nodes.
+// The Jolt physics system behind a slash world, kept in step with its 3D physics components.
 namespace slash::physics3d::detail {
 
-// Godot's CMP_EPSILON.
+// The epsilon for approximate comparisons.
 inline constexpr float kEpsilon = 0.00001F;
 
 // Bone is a SimulatedBone3D: a rigid, kinematic or static body as its link says.
 enum class Kind : std::uint8_t { Rigid, Character, Animatable, Static, Area, Bone };
 
-// The broad phase layers: Godot's JoltBroadPhaseLayer, with its two static layers as one and
+// The broad phase layers: the two static layers as one and
 // areas in their own. Areas take no part in Jolt's step; the space finds what is in them itself.
 namespace broad {
 inline constexpr JPH::BroadPhaseLayer kStatic{0};
@@ -65,9 +65,9 @@ inline constexpr JPH::BroadPhaseLayer kArea{2};
 inline constexpr JPH::uint kCount = 3;
 } // namespace broad
 
-// Jolt's object layers as Godot's JoltLayers makes them: an object layer is its broad phase layer
+// Jolt's object layers: an object layer is its broad phase layer
 // in the top three bits and, below, the index of its collision layer and mask, so two objects
-// collide as Godot's do, when either one's mask has a bit of the other's layer.
+// collide when either one's mask has a bit of the other's layer.
 class Layers final : public JPH::BroadPhaseLayerInterface,
                      public JPH::ObjectVsBroadPhaseLayerFilter,
                      public JPH::ObjectLayerPairFilter {
@@ -160,8 +160,7 @@ inline Vec3 from_jolt(JPH::Vec3Arg v) {
 }
 
 // A place in the world, as Jolt's RVec3: doubles in a double-precision engine
-// (SLASH_REAL_T_IS_DOUBLE builds Jolt with JPH_DOUBLE_PRECISION), as Godot's Jolt module keeps
-// positions with precision=double.
+// (SLASH_REAL_T_IS_DOUBLE builds Jolt with JPH_DOUBLE_PRECISION).
 inline JPH::RVec3 to_jolt_place(Vec3 v) {
     return {v.x, v.y, v.z};
 }
@@ -179,17 +178,16 @@ inline float dot(Vec3 a, Vec3 b) {
 }
 
 [[nodiscard]] float length(Vec3 v);
-// v scaled to length 1, or zero for zero, as Godot's Vector3::normalized.
+// v scaled to length 1, or zero for zero.
 [[nodiscard]] Vec3 normalized(Vec3 v);
-// Godot's Vector3::slide: v without its part along the unit vector n.
+// v without its part along the unit vector n.
 [[nodiscard]] Vec3 slide(Vec3 v, Vec3 n);
-// Godot's Vector3::is_zero_approx.
+// Whether v is zero within a small tolerance.
 [[nodiscard]] bool zero_approx(Vec3 v);
-// acos, as Godot's Math::acos, the same bits on every platform; its argument is clamped to -1 to 1.
+// acos, the same bits on every platform; its argument is clamped to -1 to 1.
 [[nodiscard]] float acos(float x);
 
-// A transform without its scale: its basis orthonormalized as Godot's Basis::orthonormalize
-// does, and the scale that came off, as Godot's Basis::get_scale.
+// A transform without its scale: its basis orthonormalized, and the scale that came off.
 struct Unscaled {
     world::Affine3D transform; // orthonormal basis
     Vec3 scale{1.0F, 1.0F, 1.0F};
@@ -202,27 +200,25 @@ struct Unscaled {
 // The same with its origin a place in the world (to_jolt_place).
 [[nodiscard]] JPH::RMat44 place_matrix_of(const world::Affine3D& transform);
 
-// A Collider3D's Jolt shape, unscaled and in its own space, as Godot's JoltShape3D
-// subclasses build them; an error for a shape that can't be made, such as a hull of too few
-// points.
+// A Collider3D's Jolt shape, unscaled and in its own space; an error for a shape that can't be
+// made, such as a hull of too few points.
 struct BuiltShape {
     JPH::RefConst<JPH::Shape> shape;
     std::string error;
 };
 // settings gives the margins, mesh edges and world boundaries' size.
 [[nodiscard]] BuiltShape build_shape(const world::Collider3D& shape, const Settings& settings = {});
-// An Terrain3D's heights as a Jolt height field in its entity's space, as Godot's
-// JoltHeightMapShape3D builds a height map shape (mirrored along z, so Jolt splits each quad as
-// Godot does): cell (x, z) at map_scale * (x, height, z), moved back half the terrain when
+// An Terrain3D's heights as a Jolt height field in its entity's space (mirrored along z):
+// cell (x, z) at map_scale * (x, height, z), moved back half the terrain when
 // centered. Holes don't collide.
 [[nodiscard]] BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale,
                                              bool centered, const Settings& tuning = {});
-// The same scaled, made valid for the shape as Godot's JOLT_ENSURE_SCALE_VALID does (a sphere
+// The same scaled, made valid for the shape (a sphere
 // scales the same along every axis).
 [[nodiscard]] JPH::RefConst<JPH::Shape> scaled(const JPH::Shape* shape, Vec3 scale);
 
 // One shape of a body: the Collider3D of the body's entity or of an entity under it,
-// placed in the body's scaled space, as Godot's JoltShapeInstance3D.
+// placed in the body's scaled space.
 struct Part {
     entt::entity entity = entt::null; // whose Collider3D it is
     world::Collider3D shape;
@@ -282,17 +278,17 @@ struct Body {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
-    // A CSG root with use_collision, a static body of its triangles as Godot's CSGShape3D's, a
+    // A CSG root with use_collision, a static body of its triangles, a
     // BlockMap3D, a static body of its cells' shapes as its octants' bodies, an Terrain3D, a
     // static height field as its collider, or a model with collision, a static body as the one
-    // Godot's importer adds: what scene3d makes.
+    // the importer adds: what scene3d makes.
     bool generated = false;
     // Physical bones: what their simulator makes of them.
     world::PhysicalBoneMode bone_mode = world::PhysicalBoneMode::Static;
     JPH::BodyID id;
     JPH::RefConst<JPH::Shape> shape; // the body's whole shape, as Jolt has it
     // Each built part's own shape, unscaled, with its index in shape_key.parts: motion tests
-    // cast the convex ones one by one, as Godot's do.
+    // cast the convex ones one by one.
     std::vector<std::pair<std::size_t, JPH::RefConst<JPH::Shape>>> parts;
     // A BlockMap3D with one shape: its index in shape_key.grid. With more, each is a sub-shape of
     // the compound whose user data is its index.
@@ -310,21 +306,20 @@ struct Body {
     std::string surface;
     // Held still by an anchor field, as a kinematic body until it leaves.
     bool anchored = false;
-    // Static and animatable bodies: their constant velocities, which carry what touches them as
-    // Godot's surface velocities do.
+    // Static and animatable bodies: their constant velocities, which carry what touches them.
     Vec3 constant_linear_velocity;
     Vec3 constant_angular_velocity;
     // Where the components put it after the last sync or step, scale and all, to tell their
     // edits apart.
     world::Affine3D placed;
     // Kinematic bodies (animatable ones that sync to physics, characters and frozen kinematic
-    // rigid bodies): where the next step moves them, unscaled, as Godot's kinematic_transform.
+    // rigid bodies): where the next step moves them, unscaled.
     std::optional<world::Affine3D> target;
     Vec3 linear_velocity;
     Vec3 angular_velocity;
     bool sleeping = false;
     // Rigid bodies and physical bones: their gravity and total damping, set before each step
-    // from the areas they are in, as Godot's JoltBody3D.
+    // from the areas they are in.
     Vec3 gravity;
     float total_linear_damp = 0.0F;
     float total_angular_damp = 0.0F;
@@ -347,7 +342,7 @@ struct Impulse {
     Vec3 torque;
 };
 
-// One collision of a motion test, as Godot's PhysicsServer3D::MotionCollision.
+// One collision of a motion test.
 struct MotionCollision {
     Vec3 position;
     Vec3 normal;
@@ -358,11 +353,11 @@ struct MotionCollision {
     std::uint32_t collider_layer = 0;
     bool collider_is_character = false;
 
-    // Godot's MotionCollision::get_angle.
+    // The angle between the collision's normal and up.
     [[nodiscard]] float angle(Vec3 up) const { return acos(dot(normal, up)); }
 };
 
-// A motion test's result, as Godot's PhysicsServer3D::MotionResult.
+// A motion test's result.
 struct MotionResult {
     Vec3 travel;
     Vec3 remainder;
@@ -372,7 +367,7 @@ struct MotionResult {
     std::vector<MotionCollision> collisions;
 };
 
-// A motion test's parameters, as Godot's PhysicsServer3D::MotionParameters.
+// A motion test's parameters.
 struct MotionParameters {
     world::Affine3D from; // where the body starts, scale and all
     Vec3 motion;
@@ -386,7 +381,7 @@ struct MotionParameters {
 using JointKey = std::variant<world::PinJoint3D, world::HingeJoint3D, world::SlideJoint3D,
                               world::ConeJoint3D, world::SixAxisJoint3D>;
 
-// A joint's Jolt constraint, as Godot's JoltJoint3D: made where its entity was then, it stays
+// A joint's Jolt constraint: made where its entity was then, it stays
 // there when a parent carries the entity away; moving the entity's own Transform3D or naming
 // other bodies makes it again.
 struct Joint {
@@ -395,13 +390,13 @@ struct Joint {
     world::Transform3D own; // the entity's own Transform3D when it was made
     entt::entity node_a = entt::null;
     entt::entity node_b = entt::null;
-    // The bodies it joins as Godot's Joint3D passes them: body_a is always one, and body_b,
+    // The bodies it joins: body_a is always one, and body_b,
     // when null, is the world.
     entt::entity body_a = entt::null;
     entt::entity body_b = entt::null;
     JPH::BodyID id_a;
     JPH::BodyID id_b;
-    // Godot's local_ref_a and local_ref_b: the joint's frame in each body's space, scale and
+    // The joint's frame in each body's space, scale and
     // all, or in the world's for no body.
     world::Affine3D local_a;
     world::Affine3D local_b;
@@ -410,7 +405,7 @@ struct Joint {
     Vec3 com_b;
 };
 
-// A physical bone's joint to the bone above, as Godot's PhysicalBone3D::_reload_joint makes it:
+// A physical bone's joint to the bone above:
 // in the frames the two bodies were in when it was made, again when its type, joint_rotation,
 // body offset or bodies change.
 struct BoneJoint {
@@ -419,12 +414,12 @@ struct BoneJoint {
 };
 
 // What a wheel's Transform3D was made from, so the next step tells the physics' own writes from
-// edits, as Godot's VehicleWheel3D keeps where it entered the tree.
+// edits.
 struct Wheel {
     world::Affine3D mount; // where it is mounted in its vehicle's unscaled space, orthonormal
     Vec3 mount_scale{1.0F, 1.0F, 1.0F};
     world::Transform3D written;  // the Transform3D the last step gave it
-    float delta_rotation = 0.0F; // how far it rolled in the last step, as Godot's m_deltaRotation
+    float delta_rotation = 0.0F; // how far it rolled in the last step
 };
 
 // A vehicle's engine force, brake and steering when they last went to its wheels.
@@ -434,10 +429,9 @@ struct VehicleInputs {
     float steering = 0.0F;
 };
 
-// A soft body, as Godot's JoltSoftBody3D: a Jolt soft body of the entity's primitive mesh, its
+// A soft body: a Jolt soft body of the entity's primitive mesh, its
 // vertices welded where they meet, its points kept in world space. Its Jolt body has no user
-// data, so queries, motion tests and areas, which go by Body, pass it by, as Godot's Jolt areas
-// do.
+// data, so queries, motion tests and areas, which go by Body, pass it by.
 struct SoftBody {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
@@ -486,7 +480,7 @@ struct KeptPoint {
     JPH::Vec3 velocity;
 };
 
-// An Zone3D's wind, as Godot's Area3D::_initialize_wind leaves it: wind_force_magnitude along
+// An Zone3D's wind: wind_force_magnitude along
 // wind_source_path's global -Z from its origin.
 struct AreaWind {
     const Body* area = nullptr;
@@ -498,7 +492,7 @@ struct AreaWind {
 
 class Space;
 
-// Contact callbacks during a step, as Godot's JoltContactListener3D: bodies a joint keeps apart
+// Contact callbacks during a step: bodies a joint keeps apart
 // don't touch, constant velocities of static and animatable bodies carry what touches them, and
 // rigid bodies that monitor contacts note what touches them. Soft bodies skip the body their
 // parent_collision_ignore names, and a body that collides with a soft body only one way pushes
@@ -574,20 +568,20 @@ public:
 
     [[nodiscard]] Contacts contacts(const world::World& world, entt::entity entity) const;
     // The gravity and damping at a body at position from the override areas it is in and the
-    // project's settings, as Godot's JoltBody3D::_update_gravity and _update_damp.
+    // project's settings.
     [[nodiscard]] AreaForces forces(const world::World& world, const Body& body,
                                     Vec3 position) const;
 
-    // Godot's body_test_motion for a body (motion.cpp): recovers it from what it overlaps, casts
+    // The body test motion for a body (motion.cpp): recovers it from what it overlaps, casts
     // its convex shapes along the motion and collects what it touches where it stops.
     bool test_motion(const Body& body, const MotionParameters& parameters,
                      MotionResult& result) const;
 
-    // A body's velocity at a point, its constant velocities included, as Godot's
-    // JoltBody3D::get_velocity_at_position; nothing for a body Jolt no longer has.
+    // A body's velocity at a point, its constant velocities included;
+    // nothing for a body Jolt no longer has.
     [[nodiscard]] std::optional<Vec3> velocity_at(const Body& body, Vec3 position) const;
 
-    // The first body or area a ray hits, as Godot's intersect_ray without hitting from inside.
+    // The first body or area a ray hits, without hitting from inside.
     [[nodiscard]] std::optional<RayHit> cast_ray(Vec3 from, Vec3 to, const QueryFilter& filter,
                                                  bool hit_back_faces) const;
 
@@ -600,7 +594,7 @@ public:
     [[nodiscard]] static std::optional<Vec3i> grid_cell(const Body& body,
                                                         const JPH::SubShapeID& id);
 
-    // Whether a joint keeps two bodies from colliding, as Godot's collision exceptions.
+    // Whether a joint keeps two bodies from colliding.
     [[nodiscard]] bool excepted(entt::entity a, entt::entity b) const;
 
     // A soft body's, or nullptr; by its Jolt body too.
@@ -703,7 +697,7 @@ private:
     void restore_points(SoftBody& soft, const std::vector<std::optional<KeptPoint>>& kept);
     // Sets each point's inverse mass from the total mass, pinned points' to 0.
     void update_masses(SoftBody& soft);
-    // Moves pinned points to their attachments, as Godot's SoftBody3D::_update_physics_server.
+    // Moves pinned points to their attachments.
     void pre_step_soft_bodies(const world::World& world, const world::Tree3D& tree, float seconds);
     // The Area3Ds that blow wind, with where from and which way.
     [[nodiscard]] std::vector<AreaWind> area_winds(const world::World& world,
@@ -744,7 +738,7 @@ private:
     // Notes where new or moved wheels are mounted and gives vehicles' wheels the inputs that
     // changed (vehicle.cpp).
     void pre_step_vehicles(world::World& world, const world::Tree3D& tree, float seconds);
-    // Godot's VehicleBody3D::_body_state_changed for each awake vehicle after the step: casts
+    // The vehicle step for each awake vehicle after the step: casts
     // the wheels' rays, pushes the body with their suspension and friction, and rolls, steers
     // and lifts the wheels.
     void step_vehicles(world::World& world, const world::Tree3D& tree, float seconds);
@@ -813,18 +807,18 @@ struct OwnForces {
 };
 [[nodiscard]] std::optional<OwnForces> own_forces(const entt::registry& registry,
                                                   entt::entity entity, Kind kind);
-// A body's total damping from the space's and its own, as Godot's _update_damp.
+// A body's total damping from the space's and its own.
 [[nodiscard]] float with_own(float total, std::string_view mode, float own);
 
 // Sets Jolt up once per process: its allocator, factory and shape types.
 void set_up_jolt();
 
-// A body's mass properties, as Godot's JoltBody3D::_calculate_mass_properties: mass 0 or less
+// A body's mass properties: mass 0 or less
 // takes the shape's, and each axis of inertia 0 or less the shape's scaled to the mass.
 [[nodiscard]] JPH::MassProperties mass_properties(const JPH::Shape& shape, float mass,
                                                   Vec3 inertia);
 
-// Moves a character one tick, as Godot's CharacterBody3D::move_and_slide (character.cpp):
+// Moves a character one tick (character.cpp):
 // transform is its global transform, which it moves.
 void move_character(const Space& space, Body& body, world::Affine3D& transform,
                     world::CharacterMover3D& character, float seconds);

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "checks.hpp"
@@ -103,8 +104,8 @@ struct MeshSurfaceUniforms {
     std::array<Float4, 9> capture{}; // the light probes' spherical harmonics, RGB
     Float4 voxel_gi{};               // how many of voxel_gis it traces, then 0
     std::array<MeshVoxelGIUniforms, 2> voxel_gis{};
-    // Forward+'s subsurface scattering: its strength (below 0 for skin's profile), the
-    // transmittance's depth and boost, then 1 when the transmittance is on; then the
+    // The clustered renderer's subsurface scattering: its strength (below 0 for skin's profile),
+    // the transmittance's depth and boost, then 1 when the transmittance is on; then the
     // transmittance's color, linear.
     Float4 subsurface{};
     Float4 transmittance{};
@@ -142,20 +143,22 @@ struct MeshSceneUniforms {
     // ambient light's sky contribution.
     Float4 sky{};
     std::array<Float4, 3> sky_rows{}; // the world to the sky's space, a row each
-    // Forward+'s clusters (LightClusters::uniform): tiles across, a tile's words of light bits,
-    // depth slices per unit of view depth, 0.
+    // The clustered renderer's clusters (LightClusters::uniform): tiles across, a tile's words of
+    // light bits, depth slices per unit of view depth, 0.
     Float4 cluster{};
     // 1 when the frame draws SSAO, its light affect and its AO channel affect.
     Float4 ssao{};
     std::array<Float4, 3> view_rows{}; // the world to the camera's space, a row each, for normals
-    // Forward+'s reflection probes: how many, the level the roughest surfaces read, the exposure.
+    // The clustered renderer's reflection probes: how many, the level the roughest surfaces read,
+    // the exposure.
     Float4 reflections{};
-    // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality, then 1 on GPU devices when the screen texture's layers 5 and 6 hold
-    // SDFGI's ambient light and reflections (the software device hands them over in MeshMaps).
+    // 1 when meshes trace their VoxelGIs (the clustered renderer, and not a reflection probe's
+    // capture), then 1 for high quality, then 1 on GPU devices when the screen texture's layers 5
+    // and 6 hold SDFGI's ambient light and reflections (the software device hands them over in
+    // MeshMaps).
     Float4 voxel_gi{};
-    // Forward+'s decals (set_cluster_uniforms): how many, the filter (DecalFilter), the atlas's
-    // width and height in texels.
+    // The clustered renderer's decals (set_cluster_uniforms): how many, the filter (DecalFilter),
+    // the atlas's width and height in texels.
     Float4 decal_info{};
     // The target's width and height in pixels, then 1 when the screen texture's layers from 2 on
     // hold the frame's ray-traced shadows (a light's visibility a channel, four lights a layer),
@@ -165,12 +168,13 @@ struct MeshSceneUniforms {
     // The camera's view-projection without TAA's jitter: its x, y and w rows, from which decals
     // work out how far their textures move across a pixel.
     std::array<Float4, 3> clip_rows{};
-    // Forward+'s volumetric fog (VolumetricFog3D): 1 when the frame has it, one over its length,
-    // one over its detail spread and its sky affect; then the volume's froxels across, down and
-    // deep, and 0.
+    // The clustered renderer's volumetric fog (VolumetricFog3D): 1 when the frame has it, one over
+    // its length, one over its detail spread and its sky affect; then the volume's froxels across,
+    // down and deep, and 0.
     Float4 volumetric_fog{};
     Float4 fog_volume{};
-    // Every light drawn in Compatibility; in Forward+, only the directional ones.
+    // Every light drawn in the compatibility renderer; in the clustered one, only the directional
+    // ones.
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
 
@@ -246,7 +250,7 @@ static_assert(sizeof(MeshShadowUniforms) ==
               32 + (320 * kMaxDirectionalShadows) + (576 * kMaxPositionalShadows));
 static_assert(sizeof(MeshShadowPassUniforms) == 144);
 
-// Godot's Color::srgb_to_linear, for colors the CPU converts before the shader sees them.
+// The exact sRGB to linear conversion, for colors the CPU converts before the shader sees them.
 [[nodiscard]] float srgb_to_linear_exact(float value);
 
 // Where a camera matrix's camera is in the world: the inverse of the matrix applied to the origin.
@@ -279,24 +283,25 @@ mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const 
     }
     return surface;
 }
-// The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
-// directional ones, which every pixel takes; its omni and spot lights are in its LightClusters.
+// The scene's uniforms: in the compatibility renderer its first kMaxLights3D lights, in the
+// clustered one its directional ones, which every pixel takes; its omni and spot lights are in its
+// LightClusters.
 [[nodiscard]] MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene);
 // A light as the shaders take it, with its shadow slot or -1.
 [[nodiscard]] MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot,
                                                     int ray_slot = -1);
-// How many of the scene's lights a frame draws, from the first: all of them in Forward+, at most
-// kMaxLights3D in Compatibility.
+// How many of the scene's lights a frame draws, from the first: all of them in the clustered
+// renderer, at most kMaxLights3D in the compatibility one.
 [[nodiscard]] std::size_t lights_drawn(const Scene3D& scene);
 
-// Forward+'s clusters, as Godot's ClusterBuilderRD makes them, but on the CPU, so the software
-// device's are the same: the screen in tiles kClusterSize pixels across and each tile's depth in
-// kClusterSlices slices from the camera to the far plane. cells holds, for each tile in rows from
-// the top left, words words with bit i of word i / 32 set for each light that may reach the
-// tile, then for each slice the first of those lights in it in its low 16 bits and one past the
-// last in its high 16 bits (0 for none); then, when the frame has decals, the same for them in
-// decal_words words. The lights are the omni and spot ones, nearest the camera first, so that each
-// slice's lights are a short range, and the decals in place_decals' order.
+// The clustered renderer's clusters, made on the CPU so the software device's are the same: the
+// screen in tiles kClusterSize pixels across and each tile's depth in kClusterSlices slices from
+// the camera to the far plane. cells holds, for each tile in rows from the top left, words words
+// with bit i of word i / 32 set for each light that may reach the tile, then for each slice the
+// first of those lights in it in its low 16 bits and one past the last in its high 16 bits (0 for
+// none); then, when the frame has decals, the same for them in decal_words words. The lights are
+// the omni and spot ones, nearest the camera first, so that each slice's lights are a short range,
+// and the decals in place_decals' order.
 inline constexpr std::uint32_t kClusterSize = 32;
 inline constexpr std::uint32_t kClusterSlices = 32;
 struct LightClusters {
@@ -363,9 +368,9 @@ struct MeshDraw {
 // with shadow set take the directional or positional slots in order while there are some; the
 // rest, and lights without shadows, have -1.
 [[nodiscard]] std::vector<int> shadow_slots(const Scene3D& scene);
-// Each light's ray-traced shadow slot (RayTracing3D), or -1: in Forward+ with ray-traced shadows,
-// drawn lights with shadow set and a shadow opacity take the first kMaxRayShadowLights slots in
-// order. Every device works them out, whether or not it traces rays.
+// Each light's ray-traced shadow slot (RayTracing3D), or -1: in the clustered renderer with
+// ray-traced shadows, drawn lights with shadow set and a shadow opacity take the first
+// kMaxRayShadowLights slots in order. Every device works them out, whether or not it traces rays.
 [[nodiscard]] std::vector<int> ray_shadow_slots(const Scene3D& scene);
 
 // A rect of a shadow atlas, in texels from its top left.
@@ -387,11 +392,9 @@ struct ShadowPass {
     std::uint32_t caster_mask = 0xFFFFFFFFU;
 };
 
-// The shadow passes a frame draws and what its forward pass samples, as Godot's Compatibility
-// renderer lays them out: each directional light a share of its atlas (split as
-// _get_directional_shadow_rect splits it), its cascades fitted to slices of the view as
-// RendererSceneCull::_light_instance_setup_directional_shadow fits them, and each omni or spot
-// light square tiles of the other atlas, all of one size.
+// The shadow passes a frame draws and what its forward pass samples, as the compatibility renderer
+// lays them out: each directional light a share of its atlas, its cascades fitted to slices of the
+// view, and each omni or spot light square tiles of the other atlas, all of one size.
 struct ShadowPlan {
     std::uint32_t directional_size = 0; // 0: no pass draws into it
     std::uint32_t positional_size = 0;
@@ -420,14 +423,14 @@ struct ShadowPlan {
 // projection and rect.
 [[nodiscard]] SpatialUniforms shadow_spatial_uniforms(const ShadowPass& pass, const MeshDraw& draw);
 
-// Godot's depth layers: opaque draws are sorted by which sixteenth of the way to the far plane
-// they are in before their mesh.
+// Depth layers: opaque draws are sorted by which sixteenth of the way to the far plane they are in
+// before their mesh.
 inline constexpr int kMeshDepthLayers = 16;
 
-// The order to draw a frame's meshes in, as Godot's: opaque and alpha scissor ones by depth layer,
-// then by mesh and LOD, then nearest first, then alpha ones farthest first, each by how far its
-// box's center is in front of the camera; draws as far keep the order they were made in.
-// bounds(i) gives draw i's mesh's box.
+// The order to draw a frame's meshes in: opaque and alpha scissor ones by depth layer, then by mesh
+// and LOD, then nearest first, then alpha ones farthest first, each by how far its box's center is
+// in front of the camera; draws as far keep the order they were made in. bounds(i) gives draw i's
+// mesh's box.
 template <typename BoundsOf>
 [[nodiscard]] std::vector<std::size_t>
 mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene, const BoundsOf& bounds);
@@ -591,37 +594,40 @@ struct ShadowAtlas {
 struct CubeImage; // in sky_shading.hpp
 
 // The maps the fragment stage samples besides the material's textures: the shadow atlases, the
-// radiance (none when the scene's meshes aren't lit by it), and in Forward+ the clusters.
+// radiance (none when the scene's meshes aren't lit by it), and in the clustered renderer the
+// clusters.
 struct MeshMaps {
     const MeshShadowUniforms* uniforms = nullptr;
     ShadowAtlas directional;
     ShadowAtlas positional;
     const CubeImage* radiance = nullptr;
     const LightClusters* clusters = nullptr;
-    // Forward+'s screen-space ambient occlusion, a value a pixel of the target in rows from the
-    // top, when the scene's uniforms say the frame draws it, and its screen-space reflections, four
-    // (RGB premultiplied, then how much of the sky's they replace) when they say it draws them.
+    // The clustered renderer's screen-space ambient occlusion, a value a pixel of the target in
+    // rows from the top, when the scene's uniforms say the frame draws it, and its screen-space
+    // reflections, four (RGB premultiplied, then how much of the sky's they replace) when they say
+    // it draws them.
     std::span<const float> ao;
     std::span<const float> ssr;
     std::uint32_t ao_width = 0; // the target's width, for these and ray_shadows
-    // Forward+'s reflection probes, when the scene's uniforms say the frame has some, and each
-    // atlas cube's levels.
+    // The clustered renderer's reflection probes, when the scene's uniforms say the frame has some,
+    // and each atlas cube's levels.
     std::span<const MeshProbeUniforms> probes;
     const std::vector<CubeImage>* probe_cubes = nullptr;
-    // Forward+'s decals' atlas, when the clusters have decals.
+    // The clustered renderer's decals' atlas, when the clusters have decals.
     const DecalAtlas* decal_atlas = nullptr;
-    // Forward+'s volumetric fog (sample_fog_volume), when the scene's uniforms say the frame has
-    // it.
+    // The clustered renderer's volumetric fog (sample_fog_volume), when the scene's uniforms say
+    // the frame has it.
     std::span<const Float4> fog;
-    // Forward+'s ray-traced shadows, when the scene's uniforms say the frame has them: what the
-    // screen texture's layers from 2 on hold, as run_ray_shadows makes them (src/ray_shadows.hpp),
-    // kMaxRayShadowLights values a pixel in rows from the top.
+    // The clustered renderer's ray-traced shadows, when the scene's uniforms say the frame has
+    // them: what the screen texture's layers from 2 on hold, as run_ray_shadows makes them
+    // (src/ray_shadows.hpp), kMaxRayShadowLights values a pixel in rows from the top.
     std::span<const float> ray_shadows;
-    // Forward+'s ray-traced ambient light, when the scene's uniforms say the frame has it
-    // (screen's w): three values a pixel in rows from the top, as run_ray_gi makes them.
+    // The clustered renderer's ray-traced ambient light, when the scene's uniforms say the frame
+    // has it (screen's w): three values a pixel in rows from the top, as run_ray_gi makes them.
     std::span<const float> gi;
-    // Forward+'s SDFGI, when the frame has it: eight values a pixel in rows from the top, ambient
-    // light and how much of it, then reflections and how much, as run_sdfgi makes them.
+    // The clustered renderer's SDFGI, when the frame has it: eight values a pixel in rows from the
+    // top, ambient light and how much of it, then reflections and how much, as run_sdfgi makes
+    // them.
     std::span<const float> sdfgi;
     // ReSTIR's reservoirs (src/restir.hpp), when the frame lights its omni and spot lights with
     // them: restir_samples pairs a pixel in rows from the top, a light's index into clusters'
@@ -651,16 +657,16 @@ struct FloatImage {
 // capture_light in shaders/mesh.hlsl: the light probes' light along a world normal.
 [[nodiscard]] Float3 capture_light(const MeshSurfaceUniforms& surface, const Float3& n);
 
-// What a pixel's VoxelGIs give it, as trace_voxel_gis in shaders/mesh.hlsl (Godot's process_gi):
-// ambient light and reflections, linear, each with how much of the sky's it replaces in alpha.
+// What a pixel's VoxelGIs give it, as trace_voxel_gis in shaders/mesh.hlsl: ambient light and
+// reflections, linear, each with how much of the sky's it replaces in alpha.
 struct VoxelGILight {
     Float4 ambient{};
     Float4 reflection{};
 };
-// Traces the surface's VoxelGIs through atlas from a point in the world with a shading normal,
-// the direction toward the camera and a roughness, as Godot's gi.glsl: cones for the ambient
-// light (four of 45 degrees, or six narrower ones for high quality) and one along the reflection,
-// each VoxelLighting3D weighed by how far the point is inside its box.
+// Traces the surface's VoxelGIs through atlas from a point in the world with a shading normal, the
+// direction toward the camera and a roughness: cones for the ambient light (four of 45 degrees, or
+// six narrower ones for high quality) and one along the reflection, each VoxelLighting3D weighed by
+// how far the point is inside its box.
 [[nodiscard]] VoxelGILight trace_voxel_gis(const MeshSurfaceUniforms& surface, bool high_quality,
                                            const Image& atlas, const Float3& world,
                                            const Float3& normal, const Float3& view,
@@ -669,9 +675,8 @@ struct VoxelGILight {
 // A VoxelLighting3D as mesh.hlsl's Surface and volumetric_fog.hlsl's Fog hold it.
 [[nodiscard]] MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe);
 
-// The light a VoxelLighting3D gives volumetric fog at a point of the world, as Godot's
-// volumetric_fog_process.glsl gathers it: each level at the point, front to back by how solid the
-// ones before are, times its energy; nothing outside its box.
+// The light a VoxelLighting3D gives volumetric fog at a point of the world: each level at the
+// point, front to back by how solid the ones before are, times its energy; nothing outside its box.
 [[nodiscard]] Float3 fog_voxel_gi_light(const MeshVoxelGIUniforms& gi, const Image& atlas,
                                         const Float3& world);
 
@@ -718,9 +723,9 @@ struct LightReach {
 [[nodiscard]] std::optional<LightReach> light_reach(const MeshLightUniforms& light,
                                                     const Float3& world);
 
-// fs_main in shaders/mesh_normal.hlsl, Forward+'s normal-roughness prepass: the pixel's normal in
-// the camera's space (scaled from -1 to 1 into 0 to 1) and its roughness times 127 / 255, or
-// nullopt where it discards the pixel.
+// fs_main in shaders/mesh_normal.hlsl, the clustered renderer's normal-roughness prepass: the
+// pixel's normal in the camera's space (scaled from -1 to 1 into 0 to 1) and its roughness times
+// 127 / 255, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
                                                           const MeshSceneUniforms& scene,
                                                           const MeshPixel& pixel);
@@ -728,9 +733,9 @@ struct LightReach {
 // or alpha hash with its threshold there.
 [[nodiscard]] bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
                                 const Float4& color, float alpha_hash = 0.0F);
-// mesh.hlsl's alpha_hash_value and alpha_hash_threshold, Godot's compute_alpha_hash_threshold
-// with a hash of whole numbers: the alpha a pixel at position on the mesh (in the mesh's own
-// space) must reach, its neighbors across and down dx and dy further on.
+// mesh.hlsl's alpha_hash_value and alpha_hash_threshold, with a hash of whole numbers: the alpha a
+// pixel at position on the mesh (in the mesh's own space) must reach, its neighbors across and down
+// dx and dy further on.
 [[nodiscard]] float alpha_hash_value(const Float3& cell);
 [[nodiscard]] float alpha_hash_threshold(const Float3& position, const Float3& dx, const Float3& dy,
                                          float hash_scale);
@@ -744,9 +749,9 @@ std::vector<std::size_t> mesh_draw_order(std::span<const MeshDraw> draws, const 
         order[i] = i;
         depth[i] = mesh_draw_depth(draws[i], bounds(i), scene);
     }
-    // Opaque draws go by Godot's depth layer, a sixteenth of the way to the far plane, then by
-    // mesh and LOD, so a layer's draws of one mesh are next to each other and draw as
-    // instances, then nearest first.
+    // Opaque draws go by depth layer, a sixteenth of the way to the far plane, then by mesh and
+    // LOD, so a layer's draws of one mesh are next to each other and draw as instances, then
+    // nearest first.
     const float far =
         scene.projection[10] != 0.0F ? scene.projection[14] / scene.projection[10] : 0.0F;
     const auto layer = [&](std::size_t i) {

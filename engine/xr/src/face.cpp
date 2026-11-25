@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/xr/face.hpp"
 
 #include <algorithm>
@@ -10,13 +12,12 @@
 #include <string>
 #include <string_view>
 
-// The tables are Godot 4.5's, from scene/3d/xr/xr_face_modifier_3d.cpp and
-// servers/xr/xr_face_tracker.h (MIT).
+// The face shape tables follow the Unified Expressions blend shapes (MIT).
 namespace slash::xr {
 
 namespace {
 
-// The face shapes, by Unified Expressions' names, in Godot's XRFaceTracker::BlendShapeEntry order.
+// The face shapes, by Unified Expressions' names, in blend shape entry order.
 constexpr std::array<std::string_view, kFaceShapeCount> kNames{{
     "EyeLookOutRight",       // Right eye looks outwards.
     "EyeLookInRight",        // Right eye looks inwards.
@@ -395,7 +396,7 @@ std::string_view face_shape_name(std::size_t shape) {
 }
 
 std::optional<std::size_t> face_shape_named(std::string_view name) {
-    // Godot: the name in lower case, without underscores.
+    // The name in lower case, without underscores.
     std::string key;
     key.reserve(name.size());
     for (const char c : name) {

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/render/particles3d.hpp"
 
 #include "checks.hpp"
@@ -16,11 +17,8 @@
 #include <utility>
 #include <vector>
 
-// Godot's particles shader (servers/rendering/renderer_rd/shaders/particles.glsl), the code
-// ParticleProcessMaterial::_update_shader generates for 3D (scene/resources/
-// particle_process_material.cpp), its particles copy shader (particles_copy.glsl) and
-// BaseMaterial3D's billboard and particle animation code (scene/resources/material.cpp), MIT,
-// step for step, on the CPU.
+// The particles shader, the code generated for 3D, the particles copy shader and the billboard and
+// particle animation code, step for step, on the CPU.
 namespace slash::render {
 namespace {
 
@@ -55,7 +53,7 @@ Vec4 with_w(Vec3f v, float w = 0.0F) {
     return {v.x, v.y, v.z, w};
 }
 
-// Godot's normalize_or_else: v at length 1, or fallback for exactly zero.
+// v at length 1, or fallback for exactly zero.
 Vec3f normalize_or_else(Vec3f v, Vec3f fallback) {
     if (v.x == 0.0F && v.y == 0.0F && v.z == 0.0F) {
         return fallback;
@@ -131,14 +129,13 @@ const ParticleCurve& curve(const ParticleProcess3D& p, ParticleParam param) {
     return p.param_curve[static_cast<std::size_t>(param)];
 }
 
-// A curve's x, y and z at an offset, as Godot's texture(curve, ...).rgb; fallback for an axis
-// with no points.
+// A curve's x, y and z at an offset; fallback for an axis with no points.
 Vec3f sample3(const ParticleCurve3& c, float offset, float fallback) {
     return {sample_curve(c.axes[0], offset, fallback), sample_curve(c.axes[1], offset, fallback),
             sample_curve(c.axes[2], offset, fallback)};
 }
 
-// Godot's DisplayParameters, DynamicsParameters and PhysicalParameters.
+// The display, dynamics and physical parameters.
 struct Display {
     Vec3f scale{1.0F, 1.0F, 1.0F};
     float hue_rotation = 0.0F;
@@ -335,7 +332,7 @@ Vec3f initial_position(const ParticleProcess3D& p, const Display& display, std::
         const float s = turn.y;
         const float c = turn.x;
         const float oc = 1.0F - c;
-        // Godot's mat3 of these three columns, times ortho: a turn of angle about axis.
+        // The matrix of these three columns, times ortho: a turn of angle about axis.
         const Vec3f c0{c + (axis.x * axis.x * oc), (axis.x * axis.y * oc) - (axis.z * s),
                        (axis.x * axis.z * oc) + (axis.y * s)};
         const Vec3f c1{(axis.x * axis.y * oc) + (s * axis.z), c + (axis.y * axis.y * oc),
@@ -351,7 +348,7 @@ Vec3f initial_position(const ParticleProcess3D& p, const Display& display, std::
     return times(pos, p.emission_shape_scale) + p.emission_shape_offset;
 }
 
-// Godot's get_noise_direction.
+// The noise direction.
 Vec3f noise_direction(const ParticleProcess3D& p, const ParticleStep3D& step, Vec3f pos) {
     const float contrast = std::max(p.turbulence_noise_strength - 1.0F, 0.0F) * 70.0F;
     const float frequency = turbulence_frequency(p.turbulence_noise_scale);
@@ -391,7 +388,7 @@ void start(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3
     Vec3f velocity = random_direction(p, seed, p.spread) * dynamics.initial_velocity;
     if (p.emission_shape == EmissionShape::DirectedPoints) {
         if (const auto point = emission_point(p, display)) {
-            // As Godot's black default texture, a point with no normal doesn't move.
+            // Like a black default texture, a point with no normal doesn't move.
             const Vec3f normal =
                 *point < p.emission_normals.size() ? p.emission_normals[*point] : Vec3f{};
             if (p.disable_z) {
@@ -419,7 +416,7 @@ void start(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3
     particle.origin = with_w(origin);
 }
 
-// process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve, as Godot's.
+// process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve.
 Vec3f orbit_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, float life,
                          const Vec3f& origin, const Affine& emission, float delta) {
     if ((p.orbit_velocity_curve.empty() && !p.disable_z) ||
@@ -487,8 +484,7 @@ Vec3f radial_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, 
     return out;
 }
 
-// The generated process(): one step of a live particle's life.
-// Godot's safe_normalize: zero below a length of 0.001.
+// The generated process(): one step of a live particle's life. Zero below a length of 0.001.
 Vec3f safe_normalize(Vec3f v) {
     return length(v) < 0.001F ? Vec3f{} : normalize(v);
 }
@@ -618,8 +614,8 @@ struct Contact {
     float depth = 0.0F;
 };
 
-// How near a particle comes to a collider before it touches: collision_size, times the average
-// of its axes' lengths with collision_use_scale, as Godot's.
+// How near a particle comes to a collider before it touches: collision_size, times the average of
+// its axes' lengths with collision_use_scale.
 float collision_size(const Particle3D& particle, const ParticleProcess3D& p,
                      const ParticleStep3D& step) {
     if (!p.collision_use_scale) {
@@ -677,8 +673,7 @@ Contact collider_contact(std::span<const ParticleCollider3D> colliders, Vec3f po
                                     across({0.0F, 0.0F, kEpsilon})}));
             }
         } else if (collider.shape == ColliderShape3D::HeightField) {
-            // Godot reads the height field's normal and depth in its space and leaves them
-            // there, unturned.
+            // The height field's normal and depth are read in its space and left there, unturned.
             const Vec3f local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
             const Vec3f ext = collider.extents;
             const Vec3f bottom{local.x, local.y - size, local.z};
@@ -797,7 +792,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
             force = force + (normalize(Vec3f{-diff.y, diff.x, 0.0F}) * physical.tangent_accel);
         }
     } else {
-        // Godot's normalize of a zero vector makes NaNs, which the length test then skips.
+        // The normalize of a zero vector makes NaNs, which the length test then skips.
         const Vec3f across = cross(normalize(diff), normalize(p.gravity));
         if (length(across) > 0.0F) {
             force = force + (normalize(across) * physical.tangent_accel);
@@ -815,7 +810,7 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
         if (!p.damping_as_friction) {
             v -= physical.damping * delta;
         } else if (v > 0.001F) {
-            // Godot's friction, for a particle of 0.05 kg.
+            // Friction, for a particle of 0.05 kg.
             v -= v * v * physical.damping * 0.05F * delta;
         }
         velocity = v < 0.0F ? Vec3f{} : normalize(velocity) * v;
@@ -1270,8 +1265,8 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
     if (total == 0 || corners == 0 || out.size() < total * corners) {
         return;
     }
-    // View depth: back to front along the camera's z, ties in slot order, as Godot's sort
-    // buffer of every particle.
+    // View depth: back to front along the camera's z, ties in slot order, over a sort buffer of
+    // every particle.
     std::vector<std::uint32_t> sorted;
     if (draw.order == ParticleOrder3D::ViewDepth) {
         sorted.resize(total);
@@ -1291,7 +1286,7 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
         const Particle3D& particle = particles[index];
         Vertex3D* const first = out.data() + (static_cast<std::size_t>(slot) * corners);
         if (!particle.active()) {
-            // Folded onto one point, as Godot's zero scale.
+            // Folded onto one point, like a zero scale.
             for (std::size_t c = 0; c < corners; ++c) {
                 first[c] = source[c];
                 first[c].position = {0.0F, 0.0F, 0.0F};
@@ -1363,8 +1358,8 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
                 placed.z = placed.z * length(model.z);
             }
         }
-        // Normals turn with the basis, as Godot's MODELVIEW_NORMAL_MATRIX: as it is for a
-        // billboard, by its inverse's transpose otherwise.
+        // Normals turn with the basis: as it is for a billboard, by its inverse's transpose
+        // otherwise.
         const Affine inverse = placed.inverse();
         const bool billboard = draw.billboard != ParticleBillboard::Disabled;
         const auto normal_of = [&](Vec3f n) {
@@ -1378,7 +1373,7 @@ void particle_mesh_vertices_3d(std::span<const Particle3D> particles,
         const std::array<float, 4> tint{
             std::clamp(particle.color.x, 0.0F, 1.0F), std::clamp(particle.color.y, 0.0F, 1.0F),
             std::clamp(particle.color.z, 0.0F, 1.0F), std::clamp(particle.color.w, 0.0F, 1.0F)};
-        // The frame a Particles billboard shows, as Godot's particle animation.
+        // The frame a Particles billboard shows.
         const float h = static_cast<float>(std::max(draw.h_frames, 1U));
         const float vf = static_cast<float>(std::max(draw.v_frames, 1U));
         float frame = 0.0F;

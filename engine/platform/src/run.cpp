@@ -73,7 +73,7 @@ double Loop::pace() {
     if (options_.max_fps == 0) {
         return now;
     }
-    // As Godot does: aim each frame one period after the last aim, but never more than a period
+    // Aim each frame one period after the last aim, but never more than a period
     // behind or ahead of now, so a stall doesn't cause a burst of fast frames after it.
     const double period = 1.0 / options_.max_fps;
     next_frame_ += period;

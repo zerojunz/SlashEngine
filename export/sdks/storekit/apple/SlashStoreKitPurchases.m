@@ -1,4 +1,4 @@
-// The purchases backend over Apple's StoreKit, as Godot's iOS in-app store plugin uses it:
+// The purchases backend over Apple's StoreKit:
 // SKProductsRequest for the products, SKPaymentQueue for purchases and restore, and the App
 // Store receipt for the game's server to check. StoreKit 1 is the API Objective-C can call on
 // macOS 11 and iOS 14; StoreKit 2 is Swift only. Built with ARC.

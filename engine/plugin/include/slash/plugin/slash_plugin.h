@@ -1,10 +1,11 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 /*
- * SlashEngine's plugin interface, as Godot's gdextension_interface.h: a plugin is a library built
- * apart from the engine, by any compiler and in any language that calls C, that adds components
- * and systems to the games that list it. It links nothing of the engine's: the engine calls its
- * entry function with get_proc, which gives each of the functions below by name, so a plugin
- * built against one version of this header loads into later engines too. Functions are only ever
- * added; a function whose meaning changes gets a new name.
+ * SlashEngine's plugin interface: a plugin is a library built apart from the engine, by any
+ * compiler and in any language that calls C, that adds components and systems to the games that
+ * list it. It links nothing of the engine's: the engine calls its entry function with get_proc,
+ * which gives each of the functions below by name, so a plugin built against one version of this
+ * header loads into later engines too. Functions are only ever added; a function whose meaning
+ * changes gets a new name.
  *
  *   static SlashRegisterComponent register_component;
  *
@@ -118,8 +119,7 @@ typedef struct SlashComponentInfo {
 typedef struct SlashSystemInfo {
     const char* name; /* unique among every system */
     const char* doc;  /* one sentence, or NULL */
-    int32_t priority; /* lower runs first, as Godot's process_priority; the engine's are listed by
-                         engine.describe */
+    int32_t priority; /* lower runs first; the engine's are listed by engine.describe */
     void (*run)(void* userdata, SlashWorld* world, double tick_seconds);
     void* userdata;
 } SlashSystemInfo;

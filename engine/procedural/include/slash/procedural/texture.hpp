@@ -18,8 +18,8 @@
 #include <variant>
 #include <vector>
 
-// Procedural textures: .texture.json files that are made into images as they load, as Godot's
-// NoiseTexture2D, GradientTexture1D and GradientTexture2D resources. Canvas loads them as
+// Procedural textures: .texture.json files that are made into images as they load. Canvas loads
+// them as
 // textures (canvas::add_asset_types), so a sprite, tile set, material, style box or model
 // material can name one wherever it names a .png file.
 //
@@ -34,14 +34,14 @@
 //                               {"offset": 1, "color": [0.8, 0.9, 1, 1]}]}
 //   }
 //
-// Every field but "format" and "type" is optional, with Godot's default. The pixels are the same
+// Every field but "format" and "type" is optional, with a default. The pixels are the same
 // on every machine. A file of "type": "graph" is a texture graph instead
 // (slash/procedural/texture_graph.hpp).
 namespace slash::procedural {
 
 inline constexpr std::string_view kTextureSuffix = ".texture.json";
 
-// Godot's NoiseTexture2D. Godot's generate_mipmaps is left out: textures here have one level.
+// A noise texture. Mipmaps are left out: textures here have one level.
 struct NoiseTexture2D {
     int width = 512;
     int height = 512;
@@ -56,18 +56,18 @@ struct NoiseTexture2D {
     NoiseSettings noise;
 };
 
-// Godot's GradientTexture1D: the gradient across width pixels, one high. Godot's use_hdr is left
+// The gradient across width pixels, one high. HDR is left
 // out: textures here are 8 bits a channel.
 struct GradientTexture1D {
     int width = 256;
     Gradient gradient;
 };
 
-// Godot's GradientTexture2D.Fill and Repeat.
+// A gradient texture's fill and repeat modes.
 enum class GradientFill : std::uint8_t { Linear, Radial, Square };
 enum class GradientRepeat : std::uint8_t { None, Repeat, Mirror };
 
-// Godot's GradientTexture2D: the gradient from fill_from to fill_to, in UV coordinates (0 to 1
+// A gradient texture: the gradient from fill_from to fill_to, in UV coordinates (0 to 1
 // across the texture).
 struct GradientTexture2D {
     int width = 64;
@@ -95,16 +95,15 @@ using ProceduralTexture = std::variant<NoiseTexture2D, GradientTexture1D, Gradie
 // The texture as a .texture.json document, leaving out fields at their defaults.
 [[nodiscard]] json::Value texture_to_json(const ProceduralTexture& texture);
 
-// The texture's RGBA8 pixels, as Godot makes them: NoiseTexture2D::_generate_texture (Noise's
-// get_image or get_seamless_image, the color ramp, then bump_map_to_normal_map),
-// GradientTexture1D::_update and GradientTexture2D::_update.
+// The texture's RGBA8 pixels: for noise, the image (seamless or not), the color ramp, then the
+// bump map to normal map; for gradients, the gradient across the texture.
 [[nodiscard]] render::Image make_image(const ProceduralTexture& texture);
 
 // Whether a path names a texture: an image file (render::is_image_path), a .texture.json file
 // (with a graph's output after "::") or a texture gameplay code made (asset::is_made_path).
 [[nodiscard]] bool is_texture_path(std::string_view path);
 
-// Makes a texture from pixels gameplay code drew, as Godot's ImageTexture.create_from_image, an
+// Makes a texture from pixels gameplay code drew, an
 // asset at "made:<name>" in the assets the world's modules load from (canvas::install attaches
 // them): a sprite, tile set, Picture or Surface3D can name the path. Making it again
 // with the same name changes it in place, and renderers upload it again. Returns the path, or
@@ -129,12 +128,12 @@ decode_texture(std::string_view path, std::string_view bytes,
 [[nodiscard]] Result<render::Image> load_texture(asset::Assets& assets, std::string_view path,
                                                  std::string_view text);
 
-// Godot's Noise::get_image (seamless false) or get_seamless_image: one gray byte a pixel.
+// The noise image (seamless or not): one gray byte a pixel.
 [[nodiscard]] std::vector<std::uint8_t> noise_image(const Noise& noise, int width, int height,
                                                     bool invert, bool in_3d_space, bool normalize,
                                                     bool seamless, float blend_skirt = 0.1F);
 
-// Godot's Image::bump_map_to_normal_map on an image's red channel: tangent-space normals, wrapped
+// A bump map to normal map on an image's red channel: tangent-space normals, wrapped
 // at the edges.
 void bump_to_normal_map(render::Image& image, float bump_scale);
 

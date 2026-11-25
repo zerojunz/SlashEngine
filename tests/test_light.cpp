@@ -86,7 +86,7 @@ std::vector<Vertex2D> rect(float x0, float y0, float x1, float y1, float u0 = 0.
 
 } // namespace
 
-TEST_CASE("light modes and shadow filters have Godot's names") {
+TEST_CASE("light modes and shadow filters have their names") {
     CHECK(slash::render::light_mode_name(LightMode::LightOnly) == "light_only");
     CHECK(slash::render::parse_light_mode("unshaded") == LightMode::Unshaded);
     CHECK_FALSE(slash::render::parse_light_mode("lit").has_value());
@@ -133,7 +133,7 @@ TEST_CASE("points fall in their light's shadow row by angle or across the direct
     CHECK(coord.depth == doctest::Approx(0.25));
 }
 
-TEST_CASE("shade mixes the ambient color and lights into a pixel as Godot does") {
+TEST_CASE("shade mixes the ambient color and lights into a pixel") {
     const Float4 ambient{0.2F, 0.2F, 0.4F, 1.0F};
     const ShadePixel pixel{.position = {50.0F, 50.0F},
                            .color = {0.5F, 1.0F, 1.0F, 1.0F},

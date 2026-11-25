@@ -15,10 +15,9 @@
 #include <vector>
 
 // SDK packages: a closed vendor SDK (an ad network, DLSS, Steamworks, a store or analytics
-// service) added to a game without touching the engine, as Godot's Android and iOS plugins are.
+// service) added to a game without touching the engine.
 // A package is a folder in the project with an sdk.json file that names the vendor's binaries
 // for each platform:
-//
 //   {
 //     "format": 1,
 //     "name": "hello",
@@ -35,7 +34,6 @@
 //                 "defines": ["HELLO_APP_ID=\"${HELLO_APP_ID}\""]}
 //     }
 //   }
-//
 // project.json's "sdks" lists the packages' folders. Exports fetch each download once into
 // sdks_dir(), checked against its SHA-256, build a package's own CMake project with the game's
 // compilers, and link the packages whose platforms include the export's. A shared library is

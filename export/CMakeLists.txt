@@ -93,9 +93,9 @@ if(SLASH_GAME_MICROPHONE)
 endif()
 
 # A game that enables XR draws into a headset through OpenXR. On Android it asks for the OpenXR
-# runtime as Godot's export does in XR mode: the Khronos loader's permissions and queries (from
-# its openxr_loader_for_android manifest), head tracking, and the categories that start the
-# activity in the headset (Khronos's, and Meta's for Quest runtimes that predate it).
+# runtime with the Khronos loader's permissions and queries (from its openxr_loader_for_android
+# manifest), head tracking, and the categories that start the activity in the headset (Khronos's,
+# and Meta's for Quest runtimes that predate it).
 set(SLASH_ANDROID_XR_CATEGORIES "")
 if(SLASH_GAME_XR)
     string(APPEND SLASH_ANDROID_PERMISSIONS

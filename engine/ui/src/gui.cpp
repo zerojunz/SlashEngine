@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "internal.hpp"
 #include "line_edit.hpp"
 #include "text_edit.hpp"
@@ -27,16 +28,10 @@
 #include <utility>
 #include <vector>
 
-// The gui system sends input events to controls as Godot's Viewport does
-// (scene/main/viewport.cpp: _gui_input_event, _gui_call_input, _gui_find_control_at_pos and
-// _update_mouse_over), moves focus as Widget does (scene/gui/control.cpp:
-// find_next_valid_focus, find_prev_valid_focus and _get_focus_neighbor with the legacy
-// strategy, Godot's default) and presses buttons as BaseButton does
-// (scene/gui/base_button.cpp), edits text as TextField and TextArea do (scene/gui/line_edit.cpp,
-// and text_editor.cpp for TextArea), and scrolls as ScrollBar and ScrollBox do
-// (scene/gui/scroll_bar.cpp and scroll_container.cpp). Its state is kept by entity ID, since
-// sessions make entities anew when they roll a command back. Drag and drop, tooltips, context
-// menus and cursor shapes aren't here.
+// The gui system sends input events to controls, moves focus, presses buttons, edits text as
+// TextField and TextArea do and scrolls as ScrollBar and ScrollBox do. Its state is kept by entity
+// ID, since sessions make entities anew when they roll a command back. Drag and drop, tooltips,
+// context menus and cursor shapes aren't here.
 namespace slash::ui {
 namespace {
 
@@ -107,7 +102,7 @@ struct ScrollStatus {
     double time_since_motion = 0.0;
 };
 
-// A TextArea's scroll bars', which are its children in Godot.
+// A TextArea's scroll bars.
 struct TextEditBars {
     BarStatus h;
     BarStatus v;
@@ -245,7 +240,7 @@ const GuiState* state_of(const world::World& world) {
 }
 
 // A ScrollBox's or TextArea's bars have no entities, so the gui system names one by its
-// control's ID and the bar's name, as Godot names a ScrollBox's _h_scroll and _v_scroll.
+// control's ID and the bar's name.
 // IDs have no '/'.
 constexpr std::string_view kHBar = "/h_scroll";
 constexpr std::string_view kVBar = "/v_scroll";
@@ -306,7 +301,7 @@ bool is_container(const world::World& world, entt::entity entity) {
                 world::PanelBox, world::ScrollBox>(entity);
 }
 
-// The mouse filter a control has: its own, or its type's as Godot's constructors set them.
+// The mouse filter a control has: its own, or its type's default.
 Filter mouse_filter(const world::World& world, entt::entity entity) {
     const std::string_view filter = mouse_filter_name(world, entity);
     if (filter == "ignore") {
@@ -524,7 +519,7 @@ ButtonStatus& status_of(const world::World& world, GuiState& state, entt::entity
 
 // ---- Text fields ----
 
-// Godot's LineEdit: a third click this soon after a double click, this near it, selects all.
+// A third click this soon after a double click, this near it, selects all.
 constexpr double kTripleClickSeconds = 0.6;
 constexpr float kTripleClickTolerance = 5.0F;
 
@@ -562,13 +557,13 @@ void sync_edit(const world::TextField& edit, EditState& s) {
     s.known = true;
 }
 
-// Godot's String::strip_escapes: without control characters, which a TextField can't show.
+// Without control characters, which a TextField can't show.
 std::u32string strip_escapes(std::u32string text) {
     std::erase_if(text, [](char32_t c) { return c < 0x20U; });
     return text;
 }
 
-// One TextField being worked on, as Godot's LineEdit methods work on its members: its text as
+// One TextField being worked on: its text as
 // characters, its caret column in the component and the rest in its EditState. With a layout it
 // shapes its text as the layout does, to scroll, hit test and find words and characters.
 class Editor {
@@ -666,8 +661,7 @@ public:
         shape();
     }
 
-    // Commits what the input method is composing. Godot's apply_ime doesn't emit text_changed;
-    // this does, as for typing.
+    // Commits what the input method is composing. It emits text_changed, as for typing.
     void apply_ime() {
         if (s_.ime_text.empty()) {
             return;
@@ -1138,9 +1132,8 @@ private:
     std::optional<Field> field_;
 };
 
-// TextField's NOTIFICATION_FOCUS_ENTER: it starts editing, unless arrow keys moved focus to it.
-// Godot emits editing_toggled even when it was already editing or can't edit; this emits it
-// only when editing starts.
+// A TextField gaining focus: it starts editing, unless arrow keys moved focus to it.
+// editing_toggled is emitted only when editing starts.
 void line_edit_focus_enter(world::World& world, GuiState& state, const std::string& id) {
     const entt::entity entity = world.find(id);
     if (entity == entt::null || !world.ecs().all_of<world::TextField>(entity) ||
@@ -1590,7 +1583,7 @@ void fire(world::World& world, GuiState& state, entt::entity entity, bool by_mou
 
 // ---- Sliders ----
 
-// Godot's Slider: a held gamepad direction steps it again after half a second, then 20 times a
+// A Slider: a held gamepad direction steps it again after half a second, then 20 times a
 // second.
 constexpr double kRepeatDelay = kSliderRepeatDelay;
 constexpr double kRepeatRate = 1.0 / 20.0;
@@ -1993,7 +1986,7 @@ bool drop_matches(const json::Value& pattern, const json::Value& data) {
     });
 }
 
-// Whether Godot's Key::CMD_OR_CTRL is held: Command on a Mac, Ctrl elsewhere.
+// Whether Cmd-or-Ctrl is held: Command on a Mac, Ctrl elsewhere.
 bool command_held(const world::World& world) {
     return input::is_key_pressed(world, input::host_keyboard() == input::Keyboard::Mac
                                             ? input::Key::Meta
@@ -2413,7 +2406,7 @@ private:
         }
 
         // The items' area: the panel inside its margins, less the scroll bar (twice in right to
-        // left, as Godot's).
+        // left).
         Vec2 area_position = view.position;
         Vec2 area_size = view.size;
         if (view.bar_width > 0.0F) {
@@ -2493,7 +2486,7 @@ private:
         }
 
         if (event.type == input::EventType::MouseMotion) {
-            // Godot skips motion with no velocity.
+            // Motion with no velocity is skipped.
             if (event.relative && *event.relative == Vec2{}) {
                 return;
             }
@@ -4197,8 +4190,7 @@ private:
             if (!drag.preview.empty() || !drag.preview_text.empty()) {
                 state_.popups_changed = true;
             }
-            // Godot keeps the control under the pointer and finds the one that takes the drop
-            // again when it drops; this keeps the one that takes it, which agents are told.
+            // The one that takes the drop is kept, which agents are told.
             const Target under = find_control(event.position);
             drag.over = under.entity != entt::null
                             ? id(gui_drop(under.entity, event.position, true))
@@ -4317,7 +4309,7 @@ public:
         if (found == nullptr) {
             return;
         }
-        // Unlike Godot, which keeps the tooltip shown when the control has none, it goes.
+        // The tooltip goes when the control has none.
         cancel_tooltip(state_);
         TooltipStatus& tooltip = state_.tooltip;
         tooltip.control = id(control);
@@ -4517,7 +4509,7 @@ private:
             grab(world_, state_, id(entity), true);
         }
         editor.select(caret_column_tmp, editor.caret());
-        // Godot emits text_changed even when the text was dropped on its own selection.
+        // text_changed is emitted even when the text was dropped on its own selection.
         if (editor.text() != before) {
             s.text_changed_dirty = true;
         }
@@ -4956,8 +4948,8 @@ private:
         }
     }
 
-    // Control::_get_focus_neighbor: the side's focus_neighbor field, else the closest control
-    // with focus_mode "all" that way in the same root, as Godot's legacy strategy measures.
+    // The side's focus_neighbor field, else the closest control
+    // with focus_mode "all" that way in the same root.
     // Sides are left, top, right and bottom.
     [[nodiscard]] entt::entity focus_neighbor(entt::entity from, std::size_t side,
                                               int count) const {

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "gpu_device.hpp"
 
 #include "checks.hpp"
@@ -112,15 +113,15 @@ namespace {
 // Textures are 8-bit RGBA, the one color format every backend can sample, draw into and read,
 // or the compressed formats the GPU samples.
 constexpr SDL_GPUTextureFormat kTextureFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-// The radiance's cubes are RGB10A2, as Godot's.
+// The radiance's cubes are RGB10A2.
 constexpr SDL_GPUTextureFormat kRadianceFormat = SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM;
-// A Forward+ frame's world and glow's levels are half floats, as Godot's Forward+ buffers.
+// A clustered frame's world and glow's levels are half floats.
 constexpr SDL_GPUTextureFormat kHdrFormat = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
-// Auto exposure's luminance textures: one float a texel, as Godot's.
+// Auto exposure's luminance textures: one float a texel.
 constexpr SDL_GPUTextureFormat kLuminanceFormat = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
-// Forward+'s normal-roughness prepass draws into bytes.
+// The clustered renderer's normal-roughness prepass draws into bytes.
 constexpr SDL_GPUTextureFormat kNormalFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-// TAA's motion vectors are two half floats, as Godot's velocity buffer.
+// TAA's motion vectors are two half floats.
 constexpr SDL_GPUTextureFormat kVelocityFormat = SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT;
 
 constexpr SDL_GPUTextureFormat ssao_gpu_format(SsaoFormat format) {
@@ -138,8 +139,8 @@ constexpr SDL_GPUTextureFormat ssao_gpu_format(SsaoFormat format) {
 }
 
 // Direct3D 12's SSAO shaders, each for a group of ssao.hlsl's passes (SSAO_PASS_FIRST to
-// SSAO_PASS_LAST), as Godot's are: the depth, the gather, the importance map, the blur and the
-// interleave. WARP loses the device running the shader with every pass in it.
+// SSAO_PASS_LAST): the depth, the gather, the importance map, the blur and the interleave. WARP
+// loses the device running the shader with every pass in it.
 constexpr std::array<std::array<std::uint32_t, 2>, 5> kSsaoShaderGroups{
     {{0, 0}, {1, 3}, {4, 8}, {9, 11}, {12, 14}}};
 
@@ -501,7 +502,7 @@ Fsr2PassCode fsr3_pass_code(Fsr3Pass pass) {
             .targets = kFsr3AccumulateTargets};
 }
 
-// Godot's canvas blend modes, for straight-alpha colors.
+// The canvas blend modes, for straight-alpha colors.
 SDL_GPUColorTargetBlendState blend_state(BlendMode mode) {
     SDL_GPUColorTargetBlendState blend{};
     blend.enable_blend = true;
@@ -2155,9 +2156,9 @@ public:
         }
         if (!in_frame_ && rays_ != nullptr && frame.scene && frame.scene->path_trace &&
             !frame.scene->capture) {
-            // A path-traced frame on a device that traces rays: its paths stand for its meshes
-            // and their effects, in Forward+, so its world goes through the post passes as the
-            // software device's does.
+            // A path-traced frame on a device that traces rays: its paths stand for its meshes and
+            // their effects, in the clustered renderer, so its world goes through the post passes
+            // as the software device's does.
             Frame traced = frame;
             Scene3D& scene = *traced.scene;
             scene.method = RenderMethod::ForwardPlus;
@@ -2425,7 +2426,7 @@ public:
     }
 
     // A frame that draws a face of a reflection probe's cube: the world alone, linear, into the
-    // Forward+ world target at the atlas's size, which end_frame copies into the raw cube.
+    // clustered world target at the atlas's size, which end_frame copies into the raw cube.
     Result<bool> begin_capture(const Frame& frame) {
         if (frame.target != TextureId::None) {
             return make_error(ErrorCode::InvalidArgument,
@@ -3190,7 +3191,7 @@ private:
         CullMode cull = CullMode::Back;
         bool blended = false;             // an Alpha material's, which writes no depth
         BlendMode blend = BlendMode::Mix; // when blended
-        bool clustered = false;           // Forward+'s fragment stage
+        bool clustered = false;           // the clustered fragment stage
         ShaderId game = ShaderId::None;   // a game's spatial shader's fragment stages
         MeshPass pass = MeshPass::Color;  // the prepass's only with a game's shader
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
@@ -3204,8 +3205,8 @@ private:
         std::uint32_t capacity = 0;
     };
 
-    // A game's shader (create_shader). A spatial shader's fragment is the Compatibility
-    // renderer's, and it has Forward+'s and the prepasses' too; its vertex stages, the motion
+    // A game's shader (create_shader). A spatial shader's fragment is the compatibility renderer's,
+    // and it has the clustered renderer's and the prepasses' too; its vertex stages, the motion
     // prepass's and its shadow passes' stages only where it runs them (a vertex(), or
     // ALPHA_SCISSOR_THRESHOLD for the shadows), else the mesh shader's draw.
     struct GameShader {
@@ -3222,8 +3223,8 @@ private:
         std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> effect_pipelines;
     };
 
-    // A spatial shader's fragment stages: the Compatibility renderer's, Forward+'s and the
-    // prepasses', each reading the material's uniforms after the mesh shader's.
+    // A spatial shader's fragment stages: the compatibility renderer's, the clustered renderer's
+    // and the prepasses', each reading the material's uniforms after the mesh shader's.
     Result<ShaderId> create_spatial_shader(const CompiledShader& shader) {
         const auto bytes = [](const std::vector<std::uint32_t>& words) {
             return std::span<const unsigned char>(
@@ -4051,7 +4052,7 @@ private:
                game_shaders_.at(material.shader).vertex != nullptr;
     }
 
-    // Forward+'s fragment stage, which reads the clusters' storage buffers, unless it is made
+    // The clustered fragment stage, which reads the clusters' storage buffers, unless it is made
     // already.
     Result<void> make_clustered_shader() {
         if (clustered_shader_ != nullptr) {
@@ -4128,7 +4129,7 @@ private:
 
     // The pipeline drawing a material's meshes into a target format, made the first time a frame
     // needs it: it culls as the material says, an Alpha material's blends and writes no depth, and
-    // a clustered one lights with Forward+'s clusters.
+    // a clustered one lights with the clustered renderer's clusters.
     Result<SDL_GPUGraphicsPipeline*> mesh_pipeline_for(SDL_GPUTextureFormat format,
                                                        const Material3D& material, bool clustered) {
         const bool blended = material.transparency == Transparency::Alpha;
@@ -4387,7 +4388,7 @@ private:
             }
         }
         if (shadow_sampler_ == nullptr) {
-            // Each tap compares four texels and blends the results, as Godot's shadow sampler.
+            // Each tap compares four texels and blends the results.
             SDL_GPUSamplerCreateInfo info{};
             info.min_filter = SDL_GPU_FILTER_LINEAR;
             info.mag_filter = SDL_GPU_FILTER_LINEAR;
@@ -4812,8 +4813,8 @@ private:
         // SDFGI, which frames without meshes go without, as their prepass.
         const bool sdfgi = plan != nullptr && uses_sdfgi(scene) && !path_traced_ &&
                            find_sdfgi_frames(frame_.target) != nullptr;
-        // What every draw samples besides its material's textures: the shadow atlases, the
-        // radiance and, in Forward+, the SSAO and the SSR.
+        // What every draw samples besides its material's textures: the shadow atlases, the radiance
+        // and, in the clustered renderer, the SSAO and the SSR.
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 5> samplers{};
         std::vector<std::size_t> order;
         if (plan != nullptr) {
@@ -4957,7 +4958,7 @@ private:
             normals.load_op = SDL_GPU_LOADOP_CLEAR;
             normals.store_op = SDL_GPU_STOREOP_STORE;
             if (motion) {
-                // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
+                // FSR 2 works the sky's motion vectors out from the depth.
                 targets[1] = normals;
                 if (taa != nullptr) {
                     targets[1].texture = taa->velocity.at(1 - taa->last);
@@ -5388,8 +5389,8 @@ private:
         return {};
     }
 
-    // The scene's radiance, as Godot's Compatibility renderer draws its radiance map: the sky into
-    // each face of the raw cube, its mipmaps, then each level of each face filtered from it.
+    // The scene's radiance, as the compatibility renderer draws its radiance map: the sky into each
+    // face of the raw cube, its mipmaps, then each level of each face filtered from it.
     void draw_radiance(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
         const SDL_GPUTextureSamplerBinding texture = binding(radiance_texture(scene), true);
         for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
@@ -5460,8 +5461,8 @@ private:
     }
 
     // The format the sky and meshes draw in, for a frame whose target has frame's: half floats for
-    // Forward+, whose post passes draw them over the target; RGBA8 for a Compatibility scene the
-    // post passes process; otherwise the target's own.
+    // the clustered renderer, whose post passes draw them over the target; RGBA8 for a
+    // compatibility scene the post passes process; otherwise the target's own.
     static SDL_GPUTextureFormat world_format(const Scene3D& scene, SDL_GPUTextureFormat frame) {
         if (scene.method == RenderMethod::ForwardPlus) {
             return kHdrFormat;
@@ -5469,9 +5470,9 @@ private:
         return post_processes(scene.post) ? kTextureFormat : frame;
     }
 
-    // The texture the sky and meshes draw into, and what it is cleared to: for Forward+ the
-    // clear color made linear.
-    // With FSR 2, its texture at the render size, which it upscales into Forward+'s world.
+    // The texture the sky and meshes draw into, and what it is cleared to: for the clustered
+    // renderer the clear color made linear.
+    // With FSR 2, its texture at the render size, which it upscales into the clustered world.
     [[nodiscard]] SDL_GPUTexture* world_texture(const Scene3D& scene) const {
         if (scene.method == RenderMethod::ForwardPlus) {
             return uses_fsr2(scene) ? fsr2_textures_.color : forward_targets_.world;
@@ -5514,10 +5515,10 @@ private:
         return pipeline;
     }
 
-    // Forward+'s post passes: their shaders, their pipeline for each target format, the world's
-    // texture of half floats at the frame's size and, with auto exposure, the luminance textures
-    // of floats, kept from frame to frame. Glow's and depth of field's textures are the frame
-    // graph's (draw_forward_post). Made at the start of a frame that needs them.
+    // The clustered renderer's post passes: their shaders, their pipeline for each target format,
+    // the world's texture of half floats at the frame's size and, with auto exposure, the luminance
+    // textures of floats, kept from frame to frame. Glow's and depth of field's textures are the
+    // frame graph's (draw_forward_post). Made at the start of a frame that needs them.
     Result<void> prepare_forward(SDL_GPUTextureFormat format, std::uint32_t width,
                                  std::uint32_t height, bool auto_exposure) {
         if (forward_shaders_[0] == nullptr) {
@@ -5866,9 +5867,9 @@ private:
         return draws;
     }
 
-    // Whether a frame traces rays: on a device with rays, in Forward+ with ray-traced shadows and
-    // a light that has a ray slot, with ray-traced ambient occlusion and SSAO, with ray-traced
-    // reflections and SSR, or with ray-traced global illumination.
+    // Whether a frame traces rays: on a device with rays, in the clustered renderer with ray-traced
+    // shadows and a light that has a ray slot, with ray-traced ambient occlusion and SSAO, with
+    // ray-traced reflections and SSR, or with ray-traced global illumination.
     [[nodiscard]] bool traces_rays(const Scene3D& scene) const {
         return rays_ != nullptr &&
                (!ray_shadow_lights(scene).empty() || ray_occlusion(scene).has_value() ||
@@ -6357,9 +6358,9 @@ private:
         return {};
     }
 
-    // The pipeline drawing meshes that cull as cull says into the subsurface pass: Forward+'s
-    // fragment stage giving each pixel's diffuse light and strength, where the opaque pass left
-    // its depth, writing none.
+    // The pipeline drawing meshes that cull as cull says into the subsurface pass: the clustered
+    // fragment stage giving each pixel's diffuse light and strength, where the opaque pass left its
+    // depth, writing none.
     Result<SDL_GPUGraphicsPipeline*> subsurface_pipeline_for(CullMode cull) {
         SDL_GPUGraphicsPipeline*& made =
             subsurface_mesh_pipelines_.at(static_cast<std::size_t>(cull));
@@ -7852,11 +7853,10 @@ private:
         SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
     }
 
-    // FSR 2's passes, as Godot's FSR 2 effect dispatches them: the world, drawn at the render size
-    // with jitter, upscaled by the depth buffer, the prepass's motion vectors and the target's
-    // frames before into Forward+'s world at the frame's size, which the post passes read. The
-    // frames before keep the camera the frame was seen from without its jitter; a reset frame
-    // starts them at 0, as the software device's.
+    // FSR 2's passes: the world, drawn at the render size with jitter, upscaled by the depth
+    // buffer, the prepass's motion vectors and the target's frames before into the clustered world
+    // at the frame's size, which the post passes read. The frames before keep the camera the frame
+    // was seen from without its jitter; a reset frame starts them at 0, as the software device's.
     void upscale_fsr2(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
                       const std::array<float, 2>& jitter) {
         if (frames.fsr3) {
@@ -7959,12 +7959,11 @@ private:
         frames.view_projection = view_projection;
     }
 
-    // MetalFX's temporal scaler, as Godot runs it, or the game's temporal upscaler: FSR 2's dilate
-    // pass first works the sky's motion vectors out from the depth (where the prepass left
-    // kInvalidMotion), then the upscaler upscales the world with the depth and those motion
-    // vectors and its own frames before into a texture at the frame's size, which is copied into
-    // Forward+'s world for the post passes. A failure is logged, and the copy shows what the
-    // texture held.
+    // MetalFX's temporal scaler, or the game's temporal upscaler: FSR 2's dilate pass first works
+    // the sky's motion vectors out from the depth (where the prepass left kInvalidMotion), then the
+    // upscaler upscales the world with the depth and those motion vectors and its own frames before
+    // into a texture at the frame's size, which is copied into the clustered world for the post
+    // passes. A failure is logged, and the copy shows what the texture held.
     void upscale_external(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
                           const std::array<float, 2>& jitter) {
         const std::size_t next = 1 - frames.last;
@@ -8417,10 +8416,10 @@ private:
         return texture;
     }
 
-    // Forward+'s post passes, as a frame graph: depth of field's, auto exposure's luminance
-    // passes, glow's levels and the tonemap pass into the frame. The world, the frame, the depth
-    // buffer and auto exposure's textures, kept from frame to frame, are imported; depth of
-    // field's and glow's textures are transient, so those whose uses don't overlap share one.
+    // The clustered renderer's post passes, as a frame graph: depth of field's, auto exposure's
+    // luminance passes, glow's levels and the tonemap pass into the frame. The world, the frame,
+    // the depth buffer and auto exposure's textures, kept from frame to frame, are imported; depth
+    // of field's and glow's textures are transient, so those whose uses don't overlap share one.
     void draw_forward_post(SDL_GPUCommandBuffer* commands, const Scene3D& scene, bool clear) {
         using detail::GraphPassKind;
         using detail::GraphResource;
@@ -8545,8 +8544,8 @@ private:
             scene_world = resource(DofTexture::Out);
         }
         GraphResource brightness = kNoResource;
-        // As Godot's Luminance::luminance_reduction: the last pass moves from the last frame's
-        // brightness, then the brightness texture and the last level swap.
+        // The last pass moves from the last frame's brightness, then the brightness texture and the
+        // last level swap.
         const bool luminance = post.auto_exposure && !forward_targets_.luminance.empty();
         if (luminance) {
             const bool set = !forward_targets_.measured ||
@@ -9165,8 +9164,8 @@ private:
         return uploaded;
     }
 
-    // Builds the frame's Forward+ clusters and copies them to the GPU, with the decals' atlas when
-    // it changes.
+    // Builds the frame's clusters and copies them to the GPU, with the decals' atlas when it
+    // changes.
     Result<void> upload_clusters(SDL_GPUCopyPass* copy, const Scene3D& scene) {
         decal_atlas_.update(scene);
         const DecalAtlas& atlas = decal_atlas_.atlas();
@@ -9368,9 +9367,9 @@ private:
     std::uint32_t next_mesh_ = 1;
     // mesh_instanced.hlsl's vertex stage, which draws runs of draws, then mesh.hlsl's fragment.
     std::array<SDL_GPUShader*, 2> mesh_shaders_{};
-    SDL_GPUShader* clustered_shader_ = nullptr; // Forward+'s fragment stage
+    SDL_GPUShader* clustered_shader_ = nullptr; // the clustered fragment stage
     std::vector<MeshPipeline> mesh_pipelines_;
-    // Forward+'s clusters for the frame, made as it is sent, and the buffers they go in.
+    // The clusters for the frame, made as it is sent, and the buffers they go in.
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
     StorageBuffer fog_items_;   // volumetric fog's volumes and VoxelGIs (fog_items)
@@ -9453,9 +9452,9 @@ private:
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> post_pipelines_;
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> sky_pipelines_;
     PostTargets post_targets_;
-    // What Forward+'s post passes draw with: their shaders, a pipeline for each target format,
-    // the world's texture of half floats at the frame's size and glow's levels, made with the
-    // first frame that glows.
+    // What the clustered renderer's post passes draw with: their shaders, a pipeline for each
+    // target format, the world's texture of half floats at the frame's size and glow's levels, made
+    // with the first frame that glows.
     struct ForwardTargets {
         SDL_GPUTexture* world = nullptr;
         // Auto exposure's luminance textures, made with the first frame that uses it, and the

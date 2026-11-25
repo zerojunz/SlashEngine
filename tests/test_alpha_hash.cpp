@@ -173,7 +173,7 @@ TEST_CASE("alpha hash's noise is whole-number math, the same on every machine") 
 
 TEST_CASE("alpha hash keeps the share of pixels a surface's alpha says, at any scale") {
     // A step of 1/64 is a whole level, which hashes cells a pixel wide; 1/90 blends two levels,
-    // which Godot's three cases keep even.
+    // which the three cases keep even.
     for (const float step : {1.0F / 64.0F, 1.0F / 90.0F, 0.37F}) {
         CAPTURE(step);
         for (const float alpha : {0.1F, 0.3F, 0.5F, 0.8F}) {

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "fsr2.hpp"
@@ -11,26 +12,25 @@
 #include <cstdint>
 #include <span>
 
-// What every device shares for a Forward+ frame's temporal antialiasing, as Godot 4.6's use_taa:
-// the camera's jitter, the motion vectors the prepass writes, and the resolve pass of
-// shaders/taa.hlsl, with its CPU twin, which the software device uses. Each frame of a target is
-// drawn with its projection moved across a pixel by the next of 16 points of a Halton sequence
-// (Godot's RendererSceneCull::render_camera), the prepass writes how far each opaque pixel moved
-// since the frame before in texture coordinates (Godot's MOTION_VECTORS), and the resolve blends
-// the frame with the ones before it, moved by those motion vectors and clipped to the colors around
-// each pixel (Godot's taa_resolve.glsl, from Spartan Engine's TAA). Godot's compute shader runs as
-// a pass that draws one triangle over its target; it loads texels and filters in code, keeping
-// every load inside its texture, so every device draws the same values.
+// What every device shares for a clustered frame's temporal antialiasing: the camera's jitter, the
+// motion vectors the prepass writes, and the resolve pass of shaders/taa.hlsl, with its CPU twin,
+// which the software device uses. Each frame of a target is drawn with its projection moved across
+// a pixel by the next of 16 points of a Halton sequence, the prepass writes how far each opaque
+// pixel moved since the frame before in texture coordinates, and the resolve blends the frame with
+// the ones before it, moved by those motion vectors and clipped to the colors around each pixel
+// (from Spartan Engine's TAA). The compute shader runs as a pass that draws one triangle over its
+// target; it loads texels and filters in code, keeping every load inside its texture, so every
+// device draws the same values.
 namespace slash::render::detail {
 
-// Whether a scene's frame uses TAA: in Forward+ only, as Godot's, and never a probe's capture.
-// FSR 2 takes its place, as Godot turns TAA off with it.
+// Whether a scene's frame uses TAA: in the clustered renderer only, and never a probe's capture.
+// FSR 2 takes its place, so TAA is off with it.
 [[nodiscard]] inline bool uses_taa(const Scene3D& scene) {
     return scene.method == RenderMethod::ForwardPlus && scene.use_taa && !scene.capture &&
            !uses_fsr2(scene);
 }
-// Whether a scene's frame keeps its prepass for frame generation (frame_generation.hpp): Forward+,
-// not a capture or path traced.
+// Whether a scene's frame keeps its prepass for frame generation (frame_generation.hpp): the
+// clustered renderer, not a capture or path traced.
 [[nodiscard]] inline bool uses_frame_generation(const Scene3D& scene) {
     return scene.frame_generation && scene.method == RenderMethod::ForwardPlus && !scene.capture &&
            !scene.path_trace;
@@ -41,19 +41,18 @@ namespace slash::render::detail {
     return uses_taa(scene) || uses_fsr2(scene) || uses_frame_generation(scene);
 }
 
-// The jitter's points, as Godot's default for TAA.
+// The jitter's points.
 inline constexpr std::uint32_t kTaaPhases = 16;
 // The textures the resolve pass reads, as TaaInputs lists them.
 inline constexpr std::uint32_t kTaaSlots = 5;
 
-// Godot's get_halton_value: the index's point of the Halton sequence of base, from -1 to 1.
+// The index's point of the Halton sequence of base, from -1 to 1.
 [[nodiscard]] float halton(std::uint32_t index, std::uint32_t base);
 // The jitter of a target's frame-th frame with TAA, in clip space: its point of the sequence (bases
 // 2 and 3) over the target's size, so at most half a pixel each way.
 [[nodiscard]] std::array<float, 2> taa_jitter(std::uint64_t frame, std::uint32_t width,
                                               std::uint32_t height);
-// projection moved by jitter in clip space, as Godot's Projection::add_jitter_offset on the
-// correction it applies to its camera's projection: jitter times w added to x and y.
+// projection moved by jitter in clip space: jitter times w added to x and y.
 [[nodiscard]] Mat4 jittered(const Mat4& projection, const std::array<float, 2>& jitter);
 
 // The mesh passes' camera for a frame with TAA: the scene's, jittered, with the frame before's
@@ -61,16 +60,16 @@ inline constexpr std::uint32_t kTaaSlots = 5;
 [[nodiscard]] MeshCameraUniforms
 taa_camera_uniforms(const Scene3D& scene, const std::array<float, 2>& jitter, const Mat4& previous);
 
-// The motion vector of a pixel, as Godot's scene shader works it out from where its surface is in
-// clip space now and was in the frame before, each without its frame's jitter: the move from now
-// to before in texture coordinates (x right, y down). It is the prepass's second target.
+// The motion vector of a pixel, worked out from where its surface is in clip space now and was in
+// the frame before, each without its frame's jitter: the move from now to before in texture
+// coordinates (x right, y down). It is the prepass's second target.
 [[nodiscard]] std::array<float, 2> motion_vector(const Float4& clip, const Float4& previous);
 
-// taa.hlsl's uniforms: b0 in space3, Godot's push constants.
+// taa.hlsl's uniforms: b0 in space3, the push constants.
 struct TaaUniforms {
     std::array<std::uint32_t, 4> size{}; // the frame's width and height
-    // How many texels the motion may change by and the history still count (2.5), and the
-    // variance clipping's box size for the frame's height, as Godot's TAA::resolve sets them.
+    // How many texels the motion may change by and the history still count (2.5), and the variance
+    // clipping's box size for the frame's height.
     Float4 params{};
 };
 static_assert(sizeof(TaaUniforms) == 32);

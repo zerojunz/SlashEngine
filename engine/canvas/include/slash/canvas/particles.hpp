@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -8,10 +9,9 @@
 #include <string_view>
 #include <vector>
 
-// Particles, as Godot's CPUParticles2D: each Emitter2D entity emits, moves and ages its
-// particles every tick on the CPU, with the same results on every platform, and CanvasRenderer
-// draws them. Particles are not part of the world's components, so scenes, snapshots and undo
-// leave them as they are, as Godot doesn't save them either.
+// Particles: each Emitter2D entity emits, moves and ages its particles every tick on the CPU, with
+// the same results on every platform, and CanvasRenderer draws them. Particles are not part of the
+// world's components, so scenes, snapshots and undo leave them as they are.
 namespace slash::canvas {
 
 // One live particle.
@@ -25,8 +25,7 @@ struct Particle {
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
     float age = 0.0F;      // seconds since it was emitted
     float lifetime = 1.0F; // seconds it lives
-    // Where it is in the texture's frames, as Godot's particle animation: 0 is the first frame
-    // and 1 is one past the last.
+    // Where it is in the texture's frames: 0 is the first frame and 1 is one past the last.
     float frame = 0.0F;
     std::uint32_t index = 0; // its emission slot, from 0 to amount - 1
 };

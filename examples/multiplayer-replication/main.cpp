@@ -1,8 +1,7 @@
-// Three worlds in one program share an arena over ENet, replicated as Godot's
-// NetSpawner and NetSync replicate a scene tree: the server spawns a
-// player for each client, which the client then moves, bullets that fly on every peer and change
-// color when they hit, and a treasure only alice can see; bullets and a player that leaves are
-// despawned everywhere. IDs change every run, so the output names peers by role.
+// Three worlds in one program share an arena over ENet, replicated: the server spawns a player for
+// each client, which the client then moves, bullets that fly on every peer and change color when
+// they hit, and a treasure only alice can see; bullets and a player that leaves are despawned
+// everywhere. IDs change every run, so the output names peers by role.
 #include "slash/net/enet.hpp"
 #include "slash/net/multiplayer.hpp"
 #include "slash/world/component_registry.hpp"

@@ -1,10 +1,9 @@
-// Particles, as Godot's CPUParticles2D: main.scene.json has a fountain, a one-shot burst of
-// sparks, smoke that was already rising when the scene opened, and a portal whose particles
-// orbit in the entity's own coordinates.
+// Particles: main.scene.json has a fountain, a one-shot burst of sparks, smoke that was already
+// rising when the scene opened, and a portal whose particles orbit in the entity's own coordinates.
 //
-// This program makes the dot texture, checks the particles with particles.eval as an agent
-// would, with no screenshot, hears the sparks finish and sets them off again, then draws the
-// scene into a texture.
+// This program makes the dot texture, checks the particles with particles.eval as an agent would,
+// with no screenshot, hears the sparks finish and sets them off again, then draws the scene into a
+// texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

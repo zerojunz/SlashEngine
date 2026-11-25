@@ -14,28 +14,25 @@
 #include <string_view>
 #include <vector>
 
-// Drawing the world smaller than the screen and scaling it up, as Godot's scaling_3d settings:
-// the canvas renderer draws the world into an upscaler's input at the render size, the upscaler
-// scales it to the screen's size, and the controls draw over it at full size. "bilinear" (a
-// filtered stretch) and "fsr" (AMD's FidelityFX Super Resolution 1: shaders/fsr_easu.hlsl and
-// fsr_rcas.hlsl) are built in, drawn with the device's own calls, so they run on every backend
-// and the software device; so is "metalfx_spatial" (Apple's MetalFX spatial scaler), on a device
-// that has it. A game adds others with add_upscaler, from an SDK package's glue code for one that
-// ships as a vendor's closed library. "fsr2" (FidelityFX Super Resolution 2), "fsr3" (FSR 3.1's
-// upscaler, which Godot doesn't have) and "metalfx_temporal" (MetalFX's temporal scaler) are the
-// 3D renderer's own instead: a Forward+ frame draws its 3D smaller and upscales it in the device
-// with the depth buffer and motion vectors, and the 2D draws over it at full size, as Godot's.
-// Where MetalFX isn't, its modes fall back as Godot's do (scaling_mode_on). A game adds temporal
+// Drawing the world smaller than the screen and scaling it up: the canvas renderer draws the world
+// into an upscaler's input at the render size, the upscaler scales it to the screen's size, and the
+// controls draw over it at full size. "bilinear" (a filtered stretch) and "fsr" (AMD's FidelityFX
+// Super Resolution 1: shaders/fsr_easu.hlsl and fsr_rcas.hlsl) are built in, drawn with the
+// device's own calls, so they run on every backend and the software device; so is "metalfx_spatial"
+// (Apple's MetalFX spatial scaler), on a device that has it. A game adds others with add_upscaler,
+// from an SDK package's glue code for one that ships as a vendor's closed library. "fsr2"
+// (FidelityFX Super Resolution 2), "fsr3" (FSR 3.1's upscaler) and "metalfx_temporal" (MetalFX's
+// temporal scaler) are the 3D renderer's own instead: a clustered frame draws its 3D smaller and
+// upscales it in the device with the depth buffer and motion vectors, and the 2D draws over it at
+// full size. Where MetalFX isn't, its modes fall back (scaling_mode_on). A game adds temporal
 // upscalers of its own (DLSS, XeSS, FSR 4 from a vendor's SDK) with add_upscaler too: the device
 // runs one in place of FSR 2, handing it the frame's textures as the native API's objects
-// (TemporalFrame), as Godot hands its RenderingDevice's to a CompositorEffect.
+// (TemporalFrame).
 namespace slash::render {
 
-// How a frame's world is scaled, as Godot's rendering/scaling_3d settings (project.json's
-// rendering.scaling).
+// How a frame's world is scaled (project.json's rendering.scaling).
 struct Scaling {
-    // "bilinear", "fsr", "fsr2", "fsr3", "metalfx_spatial" or "metalfx_temporal", as Godot's
-    // scaling_3d/mode.
+    // "bilinear", "fsr", "fsr2", "fsr3", "metalfx_spatial" or "metalfx_temporal".
     std::string mode = "bilinear";
     // The render size over the screen's, from 0.25 to 2: below 1 draws fewer pixels and scales
     // up, above 1 draws more and scales down (always bilinear, as FSR only scales up).
@@ -71,19 +68,18 @@ inline constexpr std::string_view kMetalFxTemporal = "metalfx_temporal";
 // Why a mode isn't one, for project validation: unknown, with the closest name. Empty for a
 // built-in mode.
 [[nodiscard]] std::string scaling_mode_problem(std::string_view mode);
-// The mode a device runs for these settings, as Godot's RendererViewport falls back:
-// metalfx_temporal where MetalFX's temporal scaler isn't becomes metalfx_spatial, or fsr2 where
-// that isn't either, and fsr2 at a scale outside the temporal scaler's (MetalFxSupport);
-// metalfx_spatial where it isn't becomes fsr; an unknown mode is bilinear. Every other mode is
-// itself.
+// The mode a device runs for these settings, with fallbacks: metalfx_temporal where MetalFX's
+// temporal scaler isn't becomes metalfx_spatial, or fsr2 where that isn't either, and fsr2 at a
+// scale outside the temporal scaler's (MetalFxSupport); metalfx_spatial where it isn't becomes fsr;
+// an unknown mode is bilinear. Every other mode is itself.
 [[nodiscard]] std::string_view scaling_mode_on(const Scaling& scaling, const RenderDevice& device);
 
-// Whether a frame with these settings upscales its 3D with FSR 2, FSR 3, MetalFX's temporal
-// scaler (scaling_mode_on is fsr2, fsr3 or metalfx_temporal) or the game's own temporal upscaler
-// (temporal_upscaler_on) on this device: in Forward+ (method), at a scale under 1, on a device
-// that draws Forward+ (every one but OpenGL's), as Godot runs them. The frame's Scene3D then
-// takes the scale, sharpness and which upscaler (render::Fsr2Scaling) and no upscaler scales the
-// world; choose_upscaler's bilinear scaling stands in otherwise, as Godot falls back to it.
+// Whether a frame with these settings upscales its 3D with FSR 2, FSR 3, MetalFX's temporal scaler
+// (scaling_mode_on is fsr2, fsr3 or metalfx_temporal) or the game's own temporal upscaler
+// (temporal_upscaler_on) on this device: in the clustered renderer (method), at a scale under 1, on
+// a device that draws it (every one but OpenGL's). The frame's Scene3D then takes the scale,
+// sharpness and which upscaler (render::Fsr2Scaling) and no upscaler scales the world;
+// choose_upscaler's bilinear scaling stands in otherwise.
 [[nodiscard]] bool uses_fsr2(const Scaling& scaling, RenderMethod method,
                              const RenderDevice& device);
 
@@ -93,8 +89,8 @@ inline constexpr std::string_view kMetalFxTemporal = "metalfx_temporal";
 [[nodiscard]] std::string temporal_upscaler_on(const Scaling& scaling, RenderMethod method,
                                                const RenderDevice& device);
 
-// The render size for a screen of output pixels, as Godot sizes its render buffers: output times
-// scale, rounded down, from 1 to kMaxTextureSize.
+// The render size for a screen of output pixels: output times scale, rounded down, from 1 to
+// kMaxTextureSize.
 [[nodiscard]] std::uint32_t render_size(std::uint32_t output, float scale);
 
 // A frame's sizes in pixels: the world's render and the screen it is scaled to.

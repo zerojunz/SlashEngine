@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/assert.hpp"
@@ -39,7 +40,7 @@ inline constexpr float kPixelsPerMeter = 64.0F;
 inline constexpr float kLinearSlop = 0.005F * kPixelsPerMeter;
 
 // Every shape's category has this bit, so Box2D's own filter passes every pair to ours, which
-// follows Godot's rule; the low 32 bits are the shape's collision layer.
+// applies the layer and mask rule; the low 32 bits are the shape's collision layer.
 inline constexpr std::uint64_t kShapeBit = std::uint64_t{1} << 32U;
 // Every query's category; a query's mask is the layers it looks in.
 inline constexpr std::uint64_t kQueryBit = std::uint64_t{1} << 33U;
@@ -202,7 +203,7 @@ struct RigidKey {
     bool sleep_enabled = true;
     // Kilograms a square meter from the body's physics material; above 0 it sets the mass.
     float density = 0.0F;
-    // Godot's custom center of mass, in pixels in the body's space.
+    // The custom center of mass, in pixels in the body's space.
     bool custom_center = false;
     Vec2 center;
 
@@ -269,8 +270,8 @@ struct Body {
 
 using JointKey = std::variant<world::PinJoint2D, world::SpringJoint2D, world::TrackJoint2D>;
 
-// A joint, made where its entity was then. As Godot's, it stays there when a parent carries the
-// entity away; moving the entity's own Transform2D makes it again.
+// A joint, made where its entity was then. It stays there when a parent carries the entity away;
+// moving the entity's own Transform2D makes it again.
 struct Joint {
     b2JointId id = b2_nullJointId;
     JointKey key;
@@ -380,7 +381,7 @@ public:
     // Box2D's allocations and what its world holds, for World::memory.
     [[nodiscard]] world::MemoryPart memory() const;
     // The gravity and damping at a body from the override areas it is in and the project's
-    // settings, as Godot's GodotBody2D::integrate_forces.
+    // settings.
     [[nodiscard]] AreaForces forces(const world::World& world, const world::Tree2D& tree,
                                     entt::entity entity) const;
     // The .physics_material.json file at a path, read through the world's assets and kept until
@@ -399,9 +400,8 @@ private:
     void build_tile_shapes(world::World& world, Body& body, TileShapes tiles, Vec2 scale);
     void read_back(world::World& world, const world::Tree2D& tree);
     void move_characters(world::World& world, const world::Tree2D& tree, float seconds);
-    // The areas that change each body's gravity or damping (Godot's area pairs): those whose
-    // shapes overlap the body's and whose mask has its layer, highest priority first, then in
-    // the order the areas were made.
+    // The areas that change each body's gravity or damping: those whose shapes overlap the body's
+    // and whose mask has its layer, highest priority first, then in the order the areas were made.
     using AreaLists = std::unordered_map<entt::entity, std::vector<const Body*>>;
     [[nodiscard]] AreaLists area_lists(const world::World& world) const;
     [[nodiscard]] AreaForces forces(const world::World& world, const world::Tree2D& tree,
@@ -462,7 +462,7 @@ inline const ShapeInfo* info_of(b2ShapeId shape) {
 // The space installed in a world, or nullptr.
 [[nodiscard]] Space* find_space(world::World& world);
 
-// Moves a character one tick, as Godot's move_and_slide (character.cpp).
+// Moves a character one tick (move_and_slide in character.cpp).
 void move_character(b2WorldId space, Body& body, world::Transform2D& transform,
                     world::CharacterMover2D& character, float seconds);
 

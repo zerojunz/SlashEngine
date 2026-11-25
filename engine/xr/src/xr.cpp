@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/xr/xr.hpp"
 
 #include "internal.hpp"
@@ -77,7 +79,7 @@ bool is_identity(const world::Affine3D& transform) {
     return transform == world::Affine3D{};
 }
 
-// Godot's Node3D::set_transform: the basis split into a rotation and a scale.
+// The basis split into a rotation and a scale.
 world::Transform3D placed(world::Transform3D transform, const world::Affine3D& to) {
     const float sign = dot(cross(to.x, to.y), to.z) < 0.0F ? -1.0F : 1.0F;
     transform.position = unsigned_zeros(to.origin);
@@ -154,7 +156,7 @@ std::vector<entt::entity> xr_nodes(const world::World& world, const world::Tree3
     return nodes;
 }
 
-// The current XROrigin3D, as Godot's: the one with current set, else the first.
+// The current XROrigin3D: the one with current set, else the first.
 entt::entity current_origin(const world::World& world, const world::Tree3D& tree) {
     entt::entity first = entt::null;
     for (const entt::entity entity : tree.order()) {

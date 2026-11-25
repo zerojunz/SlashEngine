@@ -91,8 +91,7 @@ struct Physics {
         return entity;
     }
 
-    // A 20 by 40 character whose velocity gains gravity off the floor, as Godot's template
-    // script does.
+    // A 20 by 40 character whose velocity gains gravity off the floor, as a template script does.
     entt::entity hero(std::string_view id, Vec2 position) {
         const entt::entity entity = add(id, position);
         world.ecs().emplace<world::CharacterMover2D>(entity);
@@ -400,7 +399,7 @@ TEST_CASE("a character lands, walks, stops at walls and stays put on slopes") {
         slope.get<world::CharacterMover2D>("hero").velocity.x = 100.0F;
     });
     CHECK(climber.on_floor);
-    // Godot's floor_constant_speed is off, so the slope slows it: 50 pixels becomes 37.
+    // floor_constant_speed is off, so the slope slows it: 50 pixels becomes 37.
     CHECK(slope.position("hero").x > rest.x + 35.0F);
     CHECK(slope.position("hero").y < rest.y - 20.0F);
 }
@@ -487,7 +486,7 @@ TEST_CASE("a character rides a moving platform and keeps its velocity when it le
     CHECK(physics.position("hero").x == doctest::Approx(start.x + 60.0F).epsilon(0.001));
     CHECK(hero.platform_velocity.x == doctest::Approx(120.0F).epsilon(0.01));
 
-    // Jumping off keeps the lift's velocity, as Godot's platform_on_leave add_velocity.
+    // Jumping off keeps the lift's velocity.
     physics.get<world::CharacterMover2D>("hero").velocity = {0.0F, -300.0F};
     physics.step(1, [&] { physics.get<world::Transform2D>("lift").position.x += 2.0F; });
     CHECK_FALSE(hero.on_floor);
@@ -622,7 +621,7 @@ TEST_CASE("joints pin, spring and slide bodies") {
 
 TEST_CASE("a joint stays where it was made when a parent carries it") {
     Physics physics;
-    // A pendulum whose pin is the bob's own child, 100 pixels left of it at (0, 0), as Godot
+    // A pendulum whose pin is the bob's own child, 100 pixels left of it at (0, 0), as
     // scenes often keep a joint: the bob swinging away doesn't take the pin along.
     const entt::entity bob = physics.crate("bob", {100.0F, 0.0F}, 10.0F);
     const entt::entity pin = physics.add("pin", {-100.0F, 0.0F});
@@ -639,7 +638,7 @@ TEST_CASE("a joint stays where it was made when a parent carries it") {
     physics.step(120);
     CHECK(distance(physics.position("bob"), pivot) == doctest::Approx(50.0F).epsilon(0.02));
 
-    // A joint's lengths are in its own space, as Godot's: scaled twice, a 50 pixel groove from
+    // A joint's lengths are in its own space: scaled twice, a 50 pixel groove from
     // (500, 0) reaches 100 pixels down, and the bead starts 25 * 2 along it.
     physics.crate("bead", {500.0F, 50.0F}, 10.0F);
     const entt::entity groove = physics.add("groove", {500.0F, 0.0F});
@@ -734,7 +733,7 @@ TEST_CASE("the same scene simulates the same every time") {
     CHECK(run() == run());
 }
 
-TEST_CASE("a body takes the shapes of child entities with no body of their own, as Godot's") {
+TEST_CASE("a body takes the shapes of child entities with no body of their own") {
     Physics physics;
     // A wall with no shape of its own, built of two bricks: one beside it, one turned and
     // doubled further along.
@@ -816,7 +815,7 @@ TEST_CASE("rigid bodies, characters and areas use their children's shapes") {
 
 TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     Physics physics;
-    // A zone with no gravity from x 0 to 200. Overrides apply without monitoring, as Godot's.
+    // A zone with no gravity from x 0 to 200. Overrides apply without monitoring.
     const entt::entity zone = physics.add("zone", {100.0F, 0.0F});
     auto& area = physics.world.ecs().emplace<world::Zone2D>(zone);
     area.detects = false;
@@ -830,7 +829,7 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
         return physics2d::gravity(physics.world, physics.world.find(id)).value();
     };
 
-    // The first step finds what is in the zone, as Godot's area pairs; from the next it floats.
+    // The first step finds what is in the zone; from the next it floats.
     physics.step(30);
     CHECK(physics.position("floating").y < 10.0F);
     CHECK(physics.position("falling").y > 100.0F);
@@ -904,13 +903,13 @@ TEST_CASE("an area's space overrides change gravity and damping, by priority") {
     crate.linear_damp = 2.0F;
     CHECK(gravity("floating").linear_damp == doctest::Approx(2.0F));
 
-    // Only bodies in the area's mask, as Godot's area pairs.
+    // Only bodies in the area's mask.
     area.collision_mask = 2;
     physics.step(2);
     CHECK(gravity("floating").gravity == Vec2{0.0F, 1960.0F});
     CHECK(gravity("floating").areas.empty());
 
-    // Characters get the gravity too, for their own velocity, as Godot's get_gravity.
+    // Characters get the gravity too, for their own velocity.
     area.collision_mask = 1;
     physics.hero("hero", {50.0F, 0.0F});
     physics.step();
@@ -991,7 +990,7 @@ TEST_CASE("constant velocities carry what touches a body without moving it") {
           doctest::Approx(180.0F).epsilon(0.01));
 }
 
-TEST_CASE("a character's floor and wall options work as Godot's") {
+TEST_CASE("a character's floor and wall options work") {
     // A 30 degree slope, as in the walking test.
     const auto ramp_world = [](Physics& physics) {
         const entt::entity ramp = physics.add("ramp", {});

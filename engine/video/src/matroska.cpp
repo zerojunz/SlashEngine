@@ -1,5 +1,5 @@
 // WebM and Matroska files (RFC 9559), read for their AV1 video and audio tracks and written with
-// PCM or Opus audio, as Godot's video players read the containers of their codecs.
+// PCM or Opus audio.
 
 #include "opus.hpp"
 

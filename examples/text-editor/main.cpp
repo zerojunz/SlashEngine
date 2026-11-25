@@ -1,11 +1,11 @@
-// A text field of several lines, as Godot's TextEdit: main.scene.json is a letter to write, a
-// TextArea that wraps its lines and highlights the caret's, with a word count under it. The
-// word_count system below reads the TextArea's text_changed events, as gameplay code does.
+// A text field of several lines: main.scene.json is a letter to write, a TextArea that wraps its
+// lines and highlights the caret's, with a word count under it. The word_count system below reads
+// the TextArea's text_changed events, as gameplay code does.
 //
-// This program writes the letter as an agent does over MCP or JSON-RPC: a click, typed text and
-// new lines with input.inject, a double click to select a word and type over it, undo and redo,
-// a tab, and the wheel to scroll, reading the events with events.read and the field with
-// ui.layout. Then it draws the letter into a texture.
+// This program writes the letter as an agent does over MCP or JSON-RPC: a click, typed text and new
+// lines with input.inject, a double click to select a word and type over it, undo and redo, a tab,
+// and the wheel to scroll, reading the events with events.read and the field with ui.layout. Then
+// it draws the letter into a texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

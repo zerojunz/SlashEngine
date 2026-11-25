@@ -1,12 +1,11 @@
-// A cutscene's sound, as Godot's audio playback tracks: intro.anim.json's audio tracks start
-// sounds on the door's and the narrator's AudioStreamPlayers at their keys. Each sound plays on a
-// voice of the player's own, beside whatever the player plays itself, so a cutscene can speak
-// over a player's music.
+// A cutscene's sound: intro.anim.json's audio tracks start sounds on the door's and the narrator's
+// SoundPlayers at their keys. Each sound plays on a voice of the player's own, beside whatever the
+// player plays itself, so a cutscene can speak over a player's music.
 //
-// This program writes the sounds (square waves made without libm, so they are the same
-// everywhere), then plays the scene as an agent does over MCP or JSON-RPC: step runs ticks,
-// audio.state shows how many of each player's sounds came from tracks, audio.capture measures
-// what played, and animation.seek jumps back for a second take of a line.
+// This program writes the sounds (square waves made without libm, so they are the same everywhere),
+// then plays the scene as an agent does over MCP or JSON-RPC: step runs ticks, audio.state shows
+// how many of each player's sounds came from tracks, audio.capture measures what played, and
+// animation.seek jumps back for a second take of a line.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -91,15 +90,15 @@ int main() {
     call(session, "step", R"({"ticks": 40})");
     call(session, "audio.state", R"({"ids": ["narrator"]})");
 
-    // A jump starts no sound, as Godot's update-only seek. Jumping back to the "retake" marker,
-    // just before the line's key, plays the line again once playback passes the key.
+    // A jump starts no sound. Jumping back to the "retake" marker, just before the line's key,
+    // plays the line again once playback passes the key.
     call(session, "animation.seek", R"({"id": "director", "marker": "retake"})");
     call(session, "audio.state", R"({"ids": ["narrator"]})");
     call(session, "step", R"({"ticks": 10})");
     call(session, "audio.state", R"({"ids": ["narrator"]})");
 
     // The sigh plays at 2.5 seconds, and the animation's end at 3 seconds stops it, 0.3 seconds
-    // before the sound's own end, as Godot stops a finished animation's sounds.
+    // before the sound's own end: a finished animation stops its sounds.
     call(session, "step", R"({"ticks": 95})");
     call(session, "audio.state", R"({"ids": ["narrator"]})");
     call(session, "step", R"({"ticks": 30})");

@@ -1,15 +1,15 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include <cstdint>
 #include <string_view>
 
-// Godot's tween easing (scene/animation/easing_equations.h and Tween::run_equation): a value
-// eased from initial by delta over duration, by a transition type and an ease type. Sines,
-// powers and exponentials go through slash::cos_sin, exp and ln, so eased values are the same
-// bits everywhere.
+// Tween easing: a value eased from initial by delta over duration, by a transition type and an
+// ease type. Sines, powers and exponentials go through slash::cos_sin, exp and ln, so eased values
+// are the same bits everywhere.
 namespace slash {
 
-// Tween::TransitionType, in Godot's order.
+// The curve a value follows.
 enum class Transition : std::uint8_t {
     Linear,
     Sine,
@@ -25,7 +25,7 @@ enum class Transition : std::uint8_t {
     Spring,
 };
 
-// Tween::EaseType, in Godot's order.
+// Which end of the curve eases.
 enum class Ease : std::uint8_t { In, Out, InOut, OutIn };
 
 // The names of transitions and eases as files write them ("linear", "sine", ...; "in", "out",
@@ -33,7 +33,7 @@ enum class Ease : std::uint8_t { In, Out, InOut, OutIn };
 [[nodiscard]] bool parse_transition(std::string_view name, Transition& out);
 [[nodiscard]] bool parse_ease(std::string_view name, Ease& out);
 
-// Tween::run_equation: the value at time of a change from initial by delta lasting duration.
+// The value at time of a change from initial by delta lasting duration.
 [[nodiscard]] float run_equation(Transition transition, Ease ease, float time, float initial,
                                  float delta, float duration);
 

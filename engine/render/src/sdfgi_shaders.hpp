@@ -12513,9 +12513,9 @@ R"wgsl(                        v_27[1i] = vec2<i32>(6i, 5i);
 }
 )wgsl"};
 
-inline constexpr char kSdfgiHlsl[] = R"hlsl(// SDFGI's passes over its cascades (Godot 4.6's sdfgi_preprocess.glsl, sdfgi_direct_light.glsl
-// and sdfgi_integrate.glsl): one compute shader whose uniforms say which pass runs. src/sdfgi.cpp
-// is its CPU twin, and src/sdfgi_gpu.hpp lays out its buffers and lists the passes
+inline constexpr char kSdfgiHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// SDFGI's passes over its cascades: one compute shader whose uniforms say which pass runs.
+// src/sdfgi.cpp is its CPU twin, and src/sdfgi_gpu.hpp lays out its buffers and lists the passes
 // (SdfgiPass). Keep them in step. sdfgi_voxelize.hlsl sums the triangles into cells first and
 // sdfgi_gather.hlsl gives each pixel its light after.
 
@@ -12563,6 +12563,7 @@ RWStructuredBuffer<uint> probe_words : PROBES;
 RWStructuredBuffer<uint> scratch : SCRATCH;
 RWStructuredBuffer<uint> history_words : HISTORY;
 
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // What SDFGI's compute shaders share: the cascades' words as src/sdfgi.hpp lays them out, and the
 // helpers of src/sdfgi.cpp, its CPU twin, line for line. A shader that includes this declares
 // cell_words, field_words, probe_words and items first (read-only or not), and Params.
@@ -12789,7 +12790,7 @@ uint probe_parity(Cascade c, int3 probe) {
     return uint(world.x & 1) | (uint(world.y & 1) << 1u) | (uint(world.z & 1) << 2u);
 }
 
-// Godot's octahedron_encode (to 0 to 1) and its inverse.
+// The octahedral encoding (to 0 to 1) and its inverse.
 float2 octahedron_encode(float3 n) {
     n /= abs(n.x) + abs(n.y) + abs(n.z);
     float2 xy = n.xy;
@@ -13177,7 +13178,7 @@ R"hlsl(                                if (inside_grid(base + read)) {
                 }
                 uint sum = 0u;
                 uint avg = 0u;
-                // Sides, then edges, then the corner, as Godot reads them.
+                // Sides, then edges, then the corner.
                 int3 takes[7] = {int3(1, 0, 0), int3(0, 1, 0), int3(0, 0, 1), int3(0, 1, 1),
                                  int3(1, 0, 1), int3(1, 1, 0), int3(1, 1, 1)};
                 [unroll] for (uint t = 0u; t < 7u; ++t) {

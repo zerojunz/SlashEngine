@@ -14,13 +14,13 @@ struct SDL_Window;
 
 namespace slash::input {
 
-// Turns SDL's events into input events and queues them in a world, as Godot's display servers
-// do with the OS's: keys by SDL keycode and scancode, the mouse and fingers in window
-// coordinates (the space sprites and controls are drawn in), and gamepads, opened as they
-// connect and numbered from 0. SDL's own mouse events made from touches are skipped, since the
-// input state emulates the mouse from touches itself. A window losing focus releases everything.
-// Typed text, from the keyboard, an input method or an on-screen keyboard, comes as key presses
-// with a character and no key, and an input method's composition as Ime events.
+// Turns SDL's events into input events and queues them in a world: keys by SDL keycode and
+// scancode, the mouse and fingers in window coordinates (the space sprites and controls are drawn
+// in), and gamepads, opened as they connect and numbered from 0. SDL's own mouse events made from
+// touches are skipped, since the input state emulates the mouse from touches itself. A window
+// losing focus releases everything. Typed text, from the keyboard, an input method or an on-screen
+// keyboard, comes as key presses with a character and no key, and an input method's composition as
+// Ime events.
 class SdlReader {
 public:
     SdlReader() = default;

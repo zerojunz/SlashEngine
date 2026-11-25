@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/l10n/l10n.hpp"
 
 #include "slash/asset/assets.hpp"
@@ -139,7 +141,7 @@ const std::string* lookup(const State& state, const Get& get) {
     return found;
 }
 
-// Pseudo-localization, as Godot's TranslationDomain.
+// Pseudo-localization.
 
 constexpr std::array<std::string_view, 52> kAccented{
     "Å", "ß", "Ç", "Ð", "É", "F́", "Ĝ", "Ĥ", "Ĩ", "Ĵ", "ĸ", "Ł", "Ḿ", "й", "Ö", "Ṕ", "Q́", "Ř",
@@ -655,7 +657,7 @@ std::string pseudolocalize(const Pseudolocalization& settings, std::string_view 
     if (settings.fake_bidi) {
         text = fake_bidi(settings, text);
     }
-    // As Godot's _add_padding, in its float: length * ratio / 2 underscores each side, rounded
+    // Padding: length * ratio / 2 underscores each side, rounded
     // down.
     const auto count = static_cast<std::size_t>(
         static_cast<float>(length) * static_cast<float>(settings.expansion_ratio) / 2.0F);

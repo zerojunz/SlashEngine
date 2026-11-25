@@ -8,13 +8,11 @@
 #include <array>
 #include <memory>
 
-// Apple's MetalFX scalers in the GPU device on Metal, as Godot's MFXSpatialEffect and
-// MFXTemporalEffect (servers/rendering/renderer_rd/effects/metal_fx.mm) run them. SDL3's GPU API
-// doesn't show Metal's objects, so the scalers take them through the calls
-// cmake/patches/sdl-native-handles.cmake adds (native.hpp) and encode between SDL's passes in its
-// command buffer. MetalFX is
-// linked weakly, so games still start on macOS 11 and iOS 14, where it isn't. Off Apple's
-// platforms (metalfx_none.cpp) there is none.
+// Apple's MetalFX scalers in the GPU device on Metal. SDL3's GPU API doesn't show Metal's objects,
+// so the scalers take them through the calls cmake/patches/sdl-native-handles.cmake adds
+// (native.hpp) and encode between SDL's passes in its command buffer. MetalFX is linked weakly, so
+// games still start on macOS 11 and iOS 14, where it isn't. Off Apple's platforms
+// (metalfx_none.cpp) there is none.
 namespace slash::render::detail {
 
 // One MetalFX scaler, made for its textures' sizes and formats: a spatial one, or a temporal one,
@@ -57,8 +55,8 @@ struct MetalFxTemporalFrame {
                                                    MetalFxScalerPtr& scaler,
                                                    const MetalFxTemporalFrame& frame);
 
-// The temporal scaler's jitter for FSR 2's (Fsr2Uniforms::jitter_scale, render pixels with y
-// down), as Godot hands it over: y flipped.
+// The temporal scaler's jitter for FSR 2's (Fsr2Uniforms::jitter_scale, render pixels with y down):
+// y flipped.
 [[nodiscard]] constexpr std::array<float, 2> metalfx_jitter(const std::array<float, 2>& fsr2) {
     return {fsr2[0], -fsr2[1]};
 }

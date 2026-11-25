@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -40,14 +41,14 @@ namespace slash::world {
 class World;
 }
 
-// The 3D world, as Godot's 3D nodes draw it: Transform3D trees (world/tree3d.hpp), meshes
+// The 3D world: Transform3D trees (world/tree3d.hpp), meshes
 // (Model3D with a primitive mesh and a Surface3D, or a glTF model), the current
 // Camera3D, the SunLight3D, PointLight3D and SpotLight3D lights and the Environment3D,
 // turned into a frame's render::Scene3D and mesh draws (render/mesh.hpp). canvas::CanvasRenderer
-// draws them under the canvas, as Godot's viewports draw 3D under 2D.
+// draws them under the canvas.
 namespace slash::scene3d {
 
-// The camera the world is seen through, as Godot's Viewport::get_camera_3d: the first Camera3D
+// The camera the world is seen through: the first Camera3D
 // with current set in tree order, else the first one; null with none.
 [[nodiscard]] entt::entity current_camera(const world::World& world, const world::Tree3D& tree);
 
@@ -61,15 +62,15 @@ inline constexpr real_t kRenderOriginGrid = 1024;
 struct CameraView {
     std::array<float, 16> view{};
     std::array<float, 16> projection{};
-    world::Affine3D eye; // where the camera is, as Godot's get_camera_transform: view undone
+    world::Affine3D eye; // where the camera is: view undone
 };
 
-// The view through a camera at global for a target of aspect width over height, as Godot's
-// Camera3D: its transform orthonormalized and moved by h_offset and v_offset, and its projection
+// The view through a camera at global for a target of aspect width over height: its
+// transform orthonormalized and moved by h_offset and v_offset, and its projection
 // spanning fov (or size) across the axis keep_aspect names. The same bits on every platform.
 [[nodiscard]] CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& global,
                                      float aspect);
-// The view from a headset's eye, as Godot's XRCamera3D draws one: placed at eye and seeing the
+// The view from a headset's eye: placed at eye and seeing the
 // field of view whose edges' tangents are left, right, down and up (render::frustum), with the
 // current camera's near and far, 0.05 and 4000 without one.
 [[nodiscard]] CameraView eye_view(const world::World& world, const world::Affine3D& eye, float left,
@@ -110,8 +111,7 @@ struct Environment {
     std::string sky_texture_field;
     entt::entity entity = entt::null; // the Environment3D, if there is one
     // The entity whose CameraLens the camera uses, or entt::null, and its
-    // exposure_multiplier (times its sensitivity's normalization with physical light units), as
-    // Godot's exposure normalization: the
+    // exposure_multiplier (times its sensitivity's normalization with physical light units): the
     // background, the sky (and so its light) and post's auto exposure have it already, and the
     // frame's lights, the sky's suns and emission take it too.
     entt::entity attributes = entt::null;
@@ -120,18 +120,17 @@ struct Environment {
 };
 [[nodiscard]] Environment environment(const world::World& world, render::Color clear,
                                       entt::entity camera = entt::null);
-// The environment of the first Environment3D made, before any camera's attributes, as
-// Godot's environment bakes take it (a BakedLighting3D's).
+// The environment of the first Environment3D made, before any camera's attributes, which is the
+// one environment bakes take (a BakedLighting3D's).
 [[nodiscard]] Environment world_environment(const world::World& world, render::Color clear);
 
-// Whether the world's lights, backgrounds and emission use Godot's physical light units: lux,
+// Whether the world's lights, backgrounds and emission use physical light units: lux,
 // lumens and nits, with lights tinted by their color temperature. canvas::set_settings sets it from
 // rendering.physical_light_units.
 void set_physical_light_units(world::World& world, bool on);
 [[nodiscard]] bool physical_light_units(const world::World& world);
 
-// The entity whose CameraLens a camera uses, as Godot's Camera3D.attributes and
-// Environment3D.camera_attributes: the camera's own, else the first Environment3D's;
+// The entity whose CameraLens a camera uses: the camera's own, else the first Environment3D's;
 // entt::null when neither has one.
 [[nodiscard]] entt::entity camera_attributes(const world::World& world, entt::entity camera);
 
@@ -144,7 +143,7 @@ lights(const world::World& world, const world::Tree3D& tree,
        const std::function<world::Affine3D(entt::entity)>& global,
        std::vector<entt::entity>* entities = nullptr);
 
-// The suns a sky shows, as Godot's: the DirectionalLight3Ds visible in the tree whose sky_mode
+// The suns a sky shows: the DirectionalLight3Ds visible in the tree whose sky_mode
 // isn't "light_only", in tree order, at most render::kMaxSkyLights.
 [[nodiscard]] std::vector<render::SkyLight>
 sky_lights(const world::World& world, const world::Tree3D& tree,
@@ -205,7 +204,7 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 
 // The meshes of a world that can't draw, in the order their entities were made: an entity with
 // more than one primitive mesh, a Model3D with none or with both a model and a primitive
-// mesh, and settings Godot refuses (a torus whose radii are equal). With the world's file reader
+// mesh, and unsupported settings (a torus whose radii are equal). With the world's file reader
 // set, each model is read and checked as check_model does, and the bone names of Skeleton3Ds,
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
 // be made (check_csg), path followers that can't follow (world::check_paths), GridMaps whose
@@ -222,8 +221,8 @@ check_meshes(const world::ComponentRegistry& components, const json::Value& scen
              const world::FileReader& reader);
 
 // The material a Model3D's material_override or a compositor effect names, as
-// ShaderMaterialSource reads it: a Surface3D's file, or a spatial or compositor material,
-// Godot's ShaderMaterial, its shader made on the device and its params' values and the time
+// ShaderMaterialSource reads it: a Surface3D's file, or a spatial or compositor material, its
+// shader made on the device and its params' values and the time
 // filled in.
 struct OverrideMaterial {
     std::optional<world::Surface3D> standard; // a .standard_material.json file's
@@ -272,8 +271,8 @@ struct Frame3D {
 // Draws a world's meshes through a render device, keeping their meshes on the device between
 // frames: meshes of equal settings share one, each model's meshes and images are made once, and
 // a mesh no entity used last frame goes. Static meshes a BakedLighting3D baked take their ambient
-// light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances, and
-// dynamic ones their ambient light from its light probes, eased as they move. In Forward+, the
+// light, and their baked lights' light, from its lightmap, and dynamic ones their ambient light
+// from its light probes, eased as they move. In the clustered renderer, the
 // other meshes take ambient light and reflections from the VoxelGIs their bounds touch, whose
 // cells the lights are injected into again whenever they change, and into whose light the
 // dynamic meshes in their boxes are plotted again whenever they move or change (their materials'
@@ -312,7 +311,7 @@ public:
         cluster_streaming_ = settings;
     }
     // How fast moving meshes' light from light probes follows them, a share a second
-    // (rendering/lightmapping/probe_capture/update_speed, 15 as Godot's).
+    // (rendering/lightmapping/probe_capture/update_speed, default 15).
     void set_probe_update_speed(double speed) { probe_update_speed_ = speed; }
     // The GGX samples the sky's radiance and reflection probes' cubes are blurred with
     // (rendering/reflections/sky_reflections/ggx_samples, render::Radiance3D::ggx_samples).
@@ -321,7 +320,7 @@ public:
     // Where the last frame's world was drawn around: the frame's positions are relative to it,
     // so meshes, lights and the camera stay near the origin in the floats the device draws with.
     // In double-precision builds (slash::real_t is double) it is the camera's place rounded to
-    // kRenderOriginGrid meters, as Godot's camera-relative rendering; otherwise it is always zero.
+    // kRenderOriginGrid meters (camera-relative rendering); otherwise it is always zero.
     [[nodiscard]] Vec3 render_origin() const noexcept { return render_origin_; }
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
@@ -329,18 +328,19 @@ public:
     // shown at time seconds of game time, over which auto exposure adapts and from which depth of
     // field's jitter is seeded, its depth of field blurred as depth_of_field says, its ambient
     // occlusion worked out as ssao says and its reflections as ssr says: nullopt when the world
-    // has no camera, and nothing 3D draws. The mesh draws wait for draw(). In Forward+ (method),
-    // the ReflectionProbes' cubes that need it are drawn here, in frames of their own on the
+    // has no camera, and nothing 3D draws. The mesh draws wait for draw(). In the clustered
+    // renderer (method), the ReflectionProbes' cubes that need it are drawn here, in frames of
+    // their own on the
     // device, into an atlas as reflection_atlas says; so call it before the frame begins. Its
-    // VoxelGIs' cones are traced as Godot's high quality setting traces them where
-    // voxel_gi_high_quality is set. With use_taa, the frame is antialiased over time, as Godot's
-    // use_taa, its meshes given the transforms they were drawn at in the last frame; so it is with
+    // VoxelGIs' cones are traced at high quality where voxel_gi_high_quality is set. With
+    // use_taa, the frame is antialiased over time, its meshes given the transforms they were
+    // drawn at in the last frame; so it is with
     // fsr2, which draws its 3D smaller and upscales it with FSR 2 (render::uses_fsr2 says when).
     // Its Decals' textures are sampled with decal_filter, and its volumetric fog's froxels are as
     // volumetric_fog says. A model's surfaces are drawn at the coarsest LOD that is off by no more
-    // than mesh_lod_threshold pixels, as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
+    // than mesh_lod_threshold pixels (rendering/mesh_lod/lod_change/threshold_pixels).
     // With occlusion on, meshes the OccluderInstance3Ds hide from the camera aren't drawn, though
-    // they still cast shadows and show in reflection probes, as Godot's raycast occlusion culling.
+    // they still cast shadows and show in reflection probes.
     // ray_tracing sets the frame's ray-traced effects, which devices that trace rays draw.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
@@ -449,7 +449,7 @@ private:
         // Every cluster of its cut culled, and it casts no shadow: it isn't drawn.
         bool hidden = false;
     };
-    // Picks each draw's LOD as Godot's Forward+ does for a camera at camera_position, seen
+    // Picks each draw's LOD for a camera at camera_position, seen
     // through projection at width pixels across with a threshold of threshold_pixels.
     // Virtualized draws are cut for the camera into clusters instead, unless cut is false (a
     // reflection probe's faces draw the camera's cut), and with culled, the clusters out of its
@@ -502,8 +502,7 @@ private:
     void cull_clusters(Draw& draw, Cut& cut, const ClusterView& cluster_view,
                        const CameraView& camera);
     // Casts the occlusion buffer for the camera from the world's occluders and leaves the meshes
-    // it hides out of the frame, as Godot's _scene_cull leaves them out of the camera's list:
-    // drawn only into shadow maps when they cast shadows.
+    // it hides out of the camera's list, drawn only into shadow maps when they cast shadows.
     void cull_occluded(const world::World& world, const world::Tree3D& tree, const CameraView& view,
                        const world::Camera3D& lens, float width, float height,
                        const render::OcclusionCulling& settings);
@@ -558,8 +557,8 @@ private:
         std::shared_ptr<const FleshPose> flesh;
         float flesh_at = 0.0F;
         // Skinned on the device (RenderDevice::gpu_skinning): its skin, or on_cpu where the
-        // device couldn't take it, and what bounds its moved vertices, as Godot bounds a skin
-        // by its bones' boxes: each joint's box of the rest vertices it weighs (empty, min
+        // device couldn't take it, and what bounds its moved vertices, by its bones' boxes: each
+        // joint's box of the rest vertices it weighs (empty, min
         // above max, where it weighs none), the box of those no joint weighs, and each blend
         // shape's largest offset along each axis.
         render::SkinId skin = render::SkinId::None;
@@ -594,13 +593,13 @@ private:
     // material, whose images that can't load are problems at the entity's model_field.
     render::Material3D surface_material(const SurfaceMaterial& from, entt::entity entity,
                                         const std::string& model_field);
-    // A CSG root's result, drawn as Godot draws its root shape's mesh.
+    // A CSG root's result.
     // A FracturePiece3D's piece of its mesh, or a damaged Destructible3D's mesh.
     void add_piece(const world::World& world, entt::entity entity, const world::Model3D& instance,
                    const world::Affine3D& place, render::ShadowCasting casting);
     void add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                  const world::Affine3D& place, std::uint32_t cull_mask);
-    // A ModelInstances3D's model at each instance, as Godot draws a MultiMesh.
+    // A ModelInstances3D's model at each instance.
     void add_multimesh(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const std::function<world::Affine3D(entt::entity)>& global,
                        std::uint32_t cull_mask, float interpolation);
@@ -612,11 +611,10 @@ private:
     void add_impostor(entt::entity entity, const world::FoliageType& type, const Bounds& box,
                       const world::Affine3D& placed, const world::Affine3D& camera,
                       std::uint32_t layers, render::ShadowCasting casting);
-    // A BlockMap3D's octants, drawn as Godot draws their MultiMeshes.
+    // A BlockMap3D's octants.
     void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      std::uint32_t cull_mask);
-    // Turns a draw placed at place to face the camera when standard is a billboard, as Godot's
-    // BaseMaterial3D's billboard_mode.
+    // Turns a draw placed at place to face the camera when standard is a billboard.
     void face_camera(const world::Surface3D& standard, const world::Affine3D& place,
                      Draw& draw) const;
     // A mesh drawn at each particle: one of its surfaces, where its part puts it, with what it is
@@ -635,7 +633,7 @@ private:
                          std::shared_ptr<const Model>& model, std::string_view no_mesh);
     // A Emitter3D's mesh at each of its particles, part of the way (interpolation) from
     // where they were before the last tick, placed by place with local_coords and turned toward
-    // a camera at camera by a billboard material, as Godot draws its MultiMesh: one mesh per
+    // a camera at camera by a billboard material: one mesh per
     // surface on the device, its vertices made again each frame.
     void add_particles(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const world::Affine3D& camera, std::uint32_t cull_mask, float interpolation);
@@ -718,8 +716,8 @@ private:
         world::Affine3D transform;
         float exposure = 1.0F;
     };
-    // The light probes' light a moving mesh took, eased toward where it is as Godot's
-    // lightmap_probe_update_speed eases it.
+    // The light probes' light a moving mesh took, eased toward where it is at the
+    // lightmap_probe_update_speed.
     struct Captured {
         std::array<std::array<float, 3>, 9> sh{};
         double time = 0.0;
@@ -752,8 +750,9 @@ private:
     void add_decals(const world::World& world, const world::Tree3D& tree,
                     const std::function<world::Affine3D(entt::entity)>& global,
                     std::uint32_t cull_mask, float exposure, render::Decals3D& out);
-    // The frame's pipeline file (pipeline_of): the passes it turns off, and in Forward+ its
-    // enabled effects after their code ran, their compositor materials read through the override
+    // The frame's pipeline file (pipeline_of): the passes it turns off, and in the clustered
+    // renderer its enabled effects after their code ran, their compositor materials read through
+    // the override
     // material source. Those that can't draw are left out, with a problem.
     void add_effects(const world::World& world, entt::entity camera, render::RenderMethod method,
                      Frame3D& frame);
@@ -773,7 +772,7 @@ private:
     // The lightmap of the entity's part, and its triangles from first, count of them, as a mesh
     // on the device with their lightmap UVs, made once; nullptr when it has none, or its mesh
     // changed since the bake, with a problem. A model's surface (with_lods) has LODs made from
-    // those, as Godot's importer makes them after the unwrap; lods is set to them.
+    // those, after the unwrap; lods is set to them.
     const render::LightmapShading* lit_surface(entt::entity entity, std::uint32_t part,
                                                const LitSource& source, std::uint32_t first,
                                                std::uint32_t count, render::MeshId& mesh,
@@ -912,7 +911,7 @@ private:
     std::unordered_map<entt::entity, ProbeSlot> probe_slots_;
     std::uint64_t frame_ = 0;
     std::size_t lights_ = 0;
-    // Auto exposure, as Godot's auto exposure version: the attributes it follows, the version of
+    // Auto exposure: the attributes it follows, the version of
     // its measure (0 for none) and the game time of the last frame.
     entt::entity exposure_entity_ = entt::null;
     std::uint64_t exposure_version_ = 0;

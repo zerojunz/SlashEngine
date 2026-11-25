@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/particle_collision.hpp"
 
 #include "geometry.hpp"
@@ -21,9 +22,8 @@
 #include <utility>
 #include <vector>
 
-// Godot's GPUParticlesCollisionSDF3D bake (scene/3d/gpu_particles_collision_3d.cpp) and the
-// height field its renderer draws (RendererSceneRenderRD::render_particle_collider_heightfield),
-// ported. Godot's code is MIT.
+// The bake of a ParticleColliderSdf3D's distances and the height field of a
+// ParticleColliderHeight3D, ported.
 namespace slash::scene3d {
 namespace {
 
@@ -64,7 +64,7 @@ bool opaque(const world::Surface3D* material) {
 }
 
 // Which of what draws gives its triangles: those on a layer of mask under scope, and whether
-// CSG roots and GridMaps must be on one too (Godot's SDF bake takes every node with get_meshes),
+// CSG roots and GridMaps must be on one too (an SDF bake takes every node with meshes),
 // whether only opaque surfaces count (a depth pass draws no others) and whether HTerrains do.
 struct Gather {
     std::uint32_t mask = 0xFFFFFFFFU;
@@ -232,7 +232,7 @@ std::size_t gather_triangles(const world::World& world, const world::Tree3D& tre
 
 // ---- The SDF bake
 
-// Godot's SIGN: 0 for 0.
+// SIGN: 0 for 0.
 float sign_of(float v) {
     if (v > 0.0F) {
         return 1.0F;
@@ -266,7 +266,7 @@ public:
         for (std::size_t i = 0; i < triangles_.size(); ++i) {
             const Triangle& t = triangles_[i];
             faces[i].index = static_cast<std::uint32_t>(i);
-            // Godot halves the sum of the three corners.
+            // The sum of the three corners is halved.
             faces[i].center = (t[0] + t[1] + t[2]) * 0.5F;
             if (thickness_ > 0.0F) {
                 faces[i].center = faces[i].center - (planes_[i].normal * (thickness_ * 0.5F));
@@ -537,7 +537,7 @@ Result<ParticleSdfBake> bake_particle_sdf(const world::World& world, entt::entit
                                               static_cast<float>(z)} *
                                          cell_size);
                 const std::size_t at = (((z * cells[1]) + y) * cells[0]) + x;
-                // Converted to half, as Godot's image; subnormals flushed to 0, which devices read.
+                // Converted to half; subnormals flushed to 0, which devices read.
                 std::uint16_t half = render::float_to_half(baker.distance(p));
                 if ((half & 0x7C00U) == 0) {
                     half = 0;
@@ -647,7 +647,7 @@ render::ParticleHeightField3D particle_height_field(const world::World& world,
     std::vector<Triangle> triangles;
     gather_triangles(world, tree, to_camera, gather, models, triangles, problems);
     // Each texel's center: x across from -extents.x, y down from extents.z; depth 1 at the camera
-    // (Godot's depth is reversed) to 0 twice the half height below it, where the texture clears.
+    // (depth is reversed) to 0 twice the half height below it, where the texture clears.
     const auto width = static_cast<float>(out.width);
     const auto height = static_cast<float>(out.height);
     const float depth_range = extents.y * 2.0F;

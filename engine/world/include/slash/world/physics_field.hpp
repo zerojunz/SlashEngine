@@ -1,8 +1,8 @@
 #pragma once
 
-// Physics fields, as Unreal's Chaos Fields (Godot has none): what a world's PhysicsField3Ds (or
-// PhysicsField2Ds) do at a place. 3D and 2D physics apply them to their bodies each step, and
-// CPU particles feel their forces, so one field acts on everything in its reach at once.
+// Physics fields, as Unreal's Chaos Fields: what a world's PhysicsField3Ds (or PhysicsField2Ds) do
+// at a place. 3D and 2D physics apply them to their bodies each step, and CPU particles feel their
+// forces, so one field acts on everything in its reach at once.
 
 #include "slash/core/math.hpp"
 #include "slash/world/components.hpp"

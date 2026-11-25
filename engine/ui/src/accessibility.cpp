@@ -12,7 +12,7 @@
 namespace slash::ui {
 namespace {
 
-// Text as a control shows it, as Godot's Node::atr.
+// Text as a control shows it.
 std::string shown(const world::World& world, bool translate, const std::string& text) {
     return translate && !text.empty() ? l10n::tr(world, text) : text;
 }
@@ -110,8 +110,8 @@ private:
         return tree_.elements.size() - 1;
     }
 
-    // Node, CanvasItem, Widget, then the control's own class, each in its turn, as Godot sends
-    // NOTIFICATION_ACCESSIBILITY_UPDATE from the base class down.
+    // Node, CanvasItem, Widget, then the control's own class, each in its turn, from the base
+    // class down.
     AccessElement control(entt::entity entity, const Placed& placed) {
         AccessElement out;
         out.entity = entity;
@@ -376,7 +376,7 @@ private:
     std::unordered_map<entt::entity, std::size_t> menus_;
 };
 
-// The Range a control is, as Godot's Range: a Slider's, ScrollBar's or ProgressBar's.
+// The Range a control is: a Slider's, ScrollBar's or ProgressBar's.
 std::optional<Range> range_at(const world::World& world, entt::entity entity) {
     const auto& ecs = world.ecs();
     if (const auto* slider = ecs.try_get<world::Slider>(entity); slider != nullptr) {

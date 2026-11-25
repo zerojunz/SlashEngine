@@ -1,6 +1,6 @@
-// Light projectors as Godot 4.6's Forward+ casts them (a texture through a spot light's cone or
-// an omni light's dual paraboloid, from the decal atlas), SlashEngine's scrolling light functions,
-// and IES profiles read from LM-63 files and baked into projector textures.
+// Light projectors in the clustered renderer (a texture through a spot light's cone or an omni
+// light's dual paraboloid, from the decal atlas), SlashEngine's scrolling light functions, and
+// IES profiles read from LM-63 files and baked into projector textures.
 
 #include "../engine/render/src/decal.hpp"
 #include "../engine/render/src/mesh_shading.hpp"
@@ -325,7 +325,7 @@ TEST_CASE("spot and omni lights cast their projectors, scrolled, on every device
     CHECK(front[1] > 60);
     CHECK(front[0] < 5);
 
-    // Without a projector the light is white; Compatibility casts none, as Godot's.
+    // Without a projector the light is white; Compatibility casts none.
     render::Scene3D plain = spot;
     plain.lights[0].projector = nullptr;
     const Image white = draw(*software, plain);

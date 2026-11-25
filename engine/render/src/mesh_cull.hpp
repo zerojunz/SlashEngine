@@ -1,11 +1,10 @@
-// Culling a frame's mesh draws on the GPU, as Unity's GPU-driven pipeline does before its
-// indirect draws, and drawing runs of them as instances: shaders/mesh_cull.hlsl tests each draw's
-// box against the camera's view in a thread of its own, then lists each run's draws in view and
-// writes the run's indirect arguments, as many instances as draws in view, which
+// Culling a frame's mesh draws on the GPU, as Unity's GPU-driven pipeline does before its indirect
+// draws, and drawing runs of them as instances: shaders/mesh_cull.hlsl tests each draw's box
+// against the camera's view in a thread of its own, then lists each run's draws in view and writes
+// the run's indirect arguments, as many instances as draws in view, which
 // shaders/mesh_instanced.hlsl draws by. A run is draws of one mesh and material next to each other
-// in the camera's order (mesh_draw_order), as Godot's Forward+ draws repeated elements as
-// instances of one draw. cull_meshes is its CPU twin; box_in_view is what the software device
-// skips draws by.
+// in the camera's order (mesh_draw_order), drawn as instances of one draw. cull_meshes is its CPU
+// twin; box_in_view is what the software device skips draws by.
 
 #pragma once
 

@@ -1,5 +1,5 @@
-// Spatial shaders: a game's own 3D shaders, as Godot's shader_type spatial, whose fragment() gives
-// a mesh's surface.
+// Spatial shaders: a game's own 3D shaders, of shader_type spatial, whose fragment() gives a
+// mesh's surface.
 
 #include "devices.hpp"
 
@@ -230,7 +230,7 @@ Mat4 placed(float degrees, float x, float y, float z) {
             static_cast<float>(turn.y), 0, static_cast<float>(turn.x),  0, x, y, z, 1};
 }
 
-// A shader that reads the built-ins Godot's surfaces are made of, in view space as Godot's.
+// A shader that reads the built-ins surfaces are made of, in view space.
 render::ShaderSource surface() {
     return {.path = "shaders/surface.hlsl",
             .code = R"(float stripe(float x) {
@@ -773,7 +773,7 @@ TEST_CASE("devices draw spatial shaders only on meshes, and canvas shaders only 
         device->destroy_shader(mesh_shader.value());
         device->destroy_shader(sprite_shader.value());
     }
-    // A spatial shader without a backend's Forward+ stages can't be made there.
+    // A spatial shader without a backend's clustered-renderer stages can't be made there.
     render::CompiledShader missing = spatial;
     missing.clustered = {};
     missing.cpu_fragment.clear();
@@ -1045,7 +1045,7 @@ TEST_CASE("a spatial shader's light() compiles into the mesh shader's lit stages
                         "    ALPHA = UV.x;\n    ALPHA_SCISSOR_THRESHOLD = 0.5;\n"));
     CHECK(cut.shadow.hlsl.find("#define GAME_LIGHT") == std::string::npos);
     CHECK_FALSE(cut.shadow.spirv.empty());
-    // A shader without one has none, and light()'s built-ins are light()'s alone, as Godot's.
+    // A shader without one has none, and light()'s built-ins are light()'s alone.
     const render::CompiledShader plain = compiled(glow());
     CHECK_FALSE(plain.light_used);
     CHECK(plain.cpu_light.empty());
@@ -1169,7 +1169,7 @@ TEST_CASE("every device draws spatial shaders' light() as the software device do
     }
 }
 
-TEST_CASE("a spatial material reads Godot's render modes, and its textures take slots from 0") {
+TEST_CASE("a spatial material reads its render modes, and its textures take slots from 0") {
     auto parsed = canvas::parse_material(parse(R"({
       "format": 1,
       "params": {
@@ -1203,7 +1203,7 @@ TEST_CASE("a spatial material reads Godot's render modes, and its textures take 
           render::ShaderSource::Param{
               .name = "pattern", .components = 0, .slot = 1, .source_color = true});
 
-    // Colors are linear in the shader, as Godot's source_color makes them.
+    // Colors are linear in the shader, as source_color makes them.
     auto instance = canvas::instantiate(material, {{"metal", json::Value(0.25)}}, 3.0);
     REQUIRE(instance.ok());
     CHECK(instance.value().shader_type == render::ShaderType::Spatial);

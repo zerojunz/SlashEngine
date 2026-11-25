@@ -27,7 +27,7 @@ import org.slashengine.services.PurchasesBackend;
 import org.slashengine.services.Reports;
 
 /**
- * The purchases backend over Google Play Billing, as Godot's Google Play Billing plugin uses it:
+ * The purchases backend over Google Play Billing:
  * product details for the products, the billing flow for purchases, consuming consumables and
  * acknowledging the rest when the game finishes them, and the purchases Play holds for restore.
  * Transactions and receipts are Play's purchase tokens, which the game's server checks with the

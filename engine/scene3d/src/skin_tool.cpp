@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/skin_tool.hpp"
 
 #include <algorithm>
@@ -16,8 +17,8 @@ namespace {
 
 constexpr int kNone = -1;
 
-// Godot's DisjointSet (core/templates/disjoint_set.h): union by rank, its elements and sets
-// listed in the order they were first inserted, as its insertion-ordered HashMap lists them.
+// A disjoint set: union by rank, its elements and sets
+// listed in the order they were first inserted, as an insertion-ordered HashMap lists them.
 class DisjointSet {
 public:
     void insert(std::size_t x) {
@@ -93,7 +94,7 @@ struct Node {
     int parent = kNone;
     std::vector<std::size_t> children;
     int height = 0;
-    int key = 0;        // its index in the file, which Godot sorts by
+    int key = 0;        // its index in the file, which it sorts by
     bool joint = false; // a joint of some skin
     bool mesh = false;
     bool skinned = false; // a mesh a skin deforms
@@ -227,7 +228,7 @@ private:
         }
     }
 
-    // _capture_nodes_in_skin, with Godot's test of a joint's place in the list (> 0, so the
+    // Captures the nodes in a skin, with the test of a joint's place in the list (> 0, so the
     // first joint doesn't count).
     bool capture_in_skin(Skin& skin, std::size_t index) const {
         bool found = false;
@@ -304,7 +305,7 @@ private:
         DisjointSet sets;
         for (const Skin& skin : skins_) {
             std::set<std::size_t> visited;
-            std::set<std::size_t> all; // ordered by index, as Godot's RBSet
+            std::set<std::size_t> all; // ordered by index
             for (const std::size_t i : skin.joints) {
                 all.insert(i);
                 recurse_children(i, all, visited);
@@ -327,7 +328,7 @@ private:
             }
         }
 
-        // Joins sets whose tops are siblings, or one under another, keeping Godot's loop, which
+        // Joins sets whose tops are siblings, or one under another, in a loop that
         // stops at the set itself.
         {
             std::vector<std::vector<std::size_t>> groups;

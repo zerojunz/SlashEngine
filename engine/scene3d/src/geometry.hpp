@@ -1,8 +1,9 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
-// Godot's float vector math that the bakes follow bit for bit (core/math: Vector3, Plane, AABB,
-// Face3 and Geometry3D's triangle and box test), shared by the lightmap's probes and
-// VoxelLighting3D's voxelizer. Godot's code is MIT; its triangle and box test is Tomas
+// Float vector math that the bakes follow bit for bit (vectors, planes, boxes, faces and a
+// triangle and box test), shared by the lightmap's probes and
+// VoxelLighting3D's voxelizer. The triangle and box test is Tomas
 // Akenine-Möller's, public domain.
 
 #include "slash/core/math.hpp"
@@ -13,7 +14,7 @@
 
 namespace slash::scene3d::detail {
 
-// Godot's CMP_EPSILON.
+// The epsilon for approximate comparisons.
 inline constexpr float kEpsilon = 0.00001F;
 
 inline float component(Vec3 v, int axis) {
@@ -45,7 +46,7 @@ inline float length(Vec3 v) {
     return std::sqrt(dot(v, v));
 }
 
-// As Godot's Vector3::normalize: zero stays zero.
+// Normalizes; zero stays zero.
 inline Vec3 normalized(Vec3 v) {
     const float squared = dot(v, v);
     if (squared == 0.0F) {
@@ -63,7 +64,7 @@ inline Vec3 multiply(Vec3 a, Vec3 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z};
 }
 
-// As Godot's Math::is_equal_approx.
+// Approximate equality.
 inline bool equal_approx(float a, float b) {
     if (a == b) {
         return true;
@@ -79,12 +80,12 @@ inline bool equal_approx(Vec3 a, Vec3 b) {
     return equal_approx(a.x, b.x) && equal_approx(a.y, b.y) && equal_approx(a.z, b.z);
 }
 
-// A plane, as Godot's: the points p with normal·p = d.
+// A plane: the points p with normal·p = d.
 struct Plane {
     Vec3 normal;
     float d = 0.0F;
 
-    // Plane(p1, p2, p3), clockwise, as Godot's.
+    // Plane(p1, p2, p3), clockwise.
     static Plane through(Vec3 a, Vec3 b, Vec3 c) {
         Plane out;
         out.normal = normalized(cross(a - c, a - b));
@@ -120,7 +121,7 @@ struct Plane {
     }
 };
 
-// An AABB, as Godot's.
+// An axis-aligned bounding box.
 struct Box {
     Vec3 position;
     Vec3 size;

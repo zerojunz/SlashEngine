@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/net/peer.hpp"
 
 #include <random>
@@ -18,13 +19,12 @@ void Peer::peer_disconnected(int peer) {
 }
 
 std::uint32_t generate_unique_id() {
-    // Godot's MultiplayerPeer::generate_unique_id hashes the clock and addresses; the system's
-    // random source does the same job.
+    // The system's random source gives the ID.
     std::random_device device;
     std::uint32_t id = 0;
     while (id == 0 || id == 1) {
         id = device();
-        // MurmurHash3's finalizer, as Godot's hash_fmix32.
+        // MurmurHash3's finalizer.
         id ^= id >> 16U;
         id *= 0x85ebca6bU;
         id ^= id >> 13U;
@@ -35,7 +35,7 @@ std::uint32_t generate_unique_id() {
     return id;
 }
 
-// As Godot's, an offline peer has nothing to read and drops what it is given.
+// An offline peer has nothing to read and drops what it is given.
 Result<std::span<const std::uint8_t>> OfflinePeer::get_packet() {
     return std::span<const std::uint8_t>();
 }

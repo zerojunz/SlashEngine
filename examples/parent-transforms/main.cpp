@@ -1,12 +1,12 @@
-// Parent transforms: entities placed in another's space, as Godot's Node2D children.
+// Parent transforms: entities placed in another's space.
 //
-// The scene is a boat in a 320x180 window, a static body. Its Transform2D lists a deck (the
-// body's shape), a mast and a cannon as children, and the mast lists a flag, so they all move,
-// turn and draw with the boat. A rock made after the boat draws over it. The agent reads where
-// the flag is, sails and rocks the boat, lifts it over the rock, drops a barrel into it, fires a
-// top-level shot, puts the cannon under the boat, tries to make the tree a loop and sinks the
-// boat. Games ship PNG files made in an image editor; this example draws its textures in code,
-// so the repository holds no images.
+// The scene is a boat in a 320x180 window, a static body. Its Transform2D lists a deck (the body's
+// shape), a mast and a cannon as children, and the mast lists a flag, so they all move, turn and
+// draw with the boat. A rock made after the boat draws over it. The agent reads where the flag is,
+// sails and rocks the boat, lifts it over the rock, drops a barrel into it, fires a top-level shot,
+// puts the cannon under the boat, tries to make the tree a loop and sinks the boat. Games ship PNG
+// files made in an image editor; this example draws its textures in code, so the repository holds
+// no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

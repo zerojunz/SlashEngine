@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/core/expression.hpp"
@@ -12,18 +14,17 @@
 #include <utility>
 #include <vector>
 
-// Translation tables, as Godot's Translation: the translated text of each message (its source
+// Translation tables: the translated text of each message (its source
 // text, and a context that tells apart messages written the same) in one locale, with gettext's
-// plural forms. They come from gettext .po and .mo files and from CSV files, read as Godot's
-// TranslationLoaderPO and ResourceImporterCSVTranslation read them.
+// plural forms. They come from gettext .po and .mo files and from CSV files.
 namespace slash::l10n {
 
 // A gettext plural rule, "nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 ? 1 : 2);", which
-// picks the form of a message for a number, as Godot's PluralRules: the expression is split at
-// its "?" and ":" into tests that run as Godot's Expression.
+// picks the form of a message for a number: the expression is split at
+// its "?" and ":" into tests.
 class PluralRules {
 public:
-    // The rule, or why it isn't one, as Godot's PluralRules::parse.
+    // The rule, or why it isn't one.
     [[nodiscard]] static Result<PluralRules> parse(std::string_view rules);
 
     [[nodiscard]] int nplurals() const { return nplurals_; }
@@ -43,7 +44,7 @@ private:
     std::shared_ptr<const Test> tests_;
 };
 
-// One locale's messages, as Godot's Translation.
+// One locale's messages.
 class Translation {
 public:
     // The locale, standardized (standardize_locale).
@@ -108,12 +109,12 @@ struct TranslationFile {
 
 // A gettext .po file, as TranslationLoaderPO reads it: msgctxt, msgid, msgid_plural, msgstr and
 // msgstr[n], fuzzy entries left out, and the locale and Plural-Forms from the header. An error
-// for what Godot refuses to load, naming the line.
+// for what it refuses to load, naming the line.
 [[nodiscard]] Result<TranslationFile> read_po(std::string_view text);
 // A gettext .mo file, compiled from a .po file, as TranslationLoaderPO reads one.
 [[nodiscard]] Result<TranslationFile> read_mo(std::string_view bytes);
 
-// How a CSV translation file is read, as Godot's csv_translation importer's options.
+// How a CSV translation file is read: the importer's options.
 struct CsvOptions {
     char delimiter = ',';              // ',', ';' or '\t'
     bool unescape_keys = false;        // read \n, \t, \" and \\ in the keys as what they stand for
@@ -131,20 +132,20 @@ struct CsvOptions {
 [[nodiscard]] Result<TranslationFile> read_translation_file(std::string_view path,
                                                             std::string_view text);
 
-// The placeholders of a text: the conversions of Godot's String::sprintf ("%d", "%.2f", "%s"),
-// which take their values in order, and the names of String::format ("{name}", "{0}").
+// The placeholders of a text: the printf conversions ("%d", "%.2f", "%s"),
+// which take their values in order, and the names ("{name}", "{0}").
 struct Placeholders {
     std::vector<std::string> conversions; // "%d", "%s": each one's letter, in order
     std::set<std::string> names;          // "{name}"
 };
 [[nodiscard]] Placeholders placeholders_of(std::string_view text);
 // Why a translation's placeholders don't fit its source's, or "": sprintf's conversions must
-// come in the same order, since they take their values so; String::format's names must be the
+// come in the same order, since they take their values so; the names must be the
 // source's (an unknown one would show as written).
 [[nodiscard]] std::string placeholder_problem(std::string_view source, std::string_view translated);
 
-// Writing translation files as Godot's tools write them.
-// Text for a .po file's quotes, as Godot's c_escape: backslashes, quotes, line breaks and tabs.
+// Writing translation files.
+// Text for a .po file's quotes: backslashes, quotes, line breaks and tabs.
 [[nodiscard]] std::string po_escape(std::string_view text);
 // A keyword and its string, a line per line of text, as POTGenerator::_write_msgid:
 // "msgid \"Play\"\n".

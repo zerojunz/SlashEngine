@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/asset/assets.hpp"
@@ -34,10 +35,9 @@
 #include <utility>
 #include <vector>
 
-// 2D drawing, as Godot's canvas: Sprite2D, Flipbook2D, TileLayer2D, Emitter2D and
-// GpuEmitter2D
-// entities drawn through a render device, in world pixels with y down, seen through the current
-// Camera2D (camera2d.hpp) and shaded by 2D lights (light.hpp).
+// 2D drawing: Sprite2D, Flipbook2D, TileLayer2D, Emitter2D and GpuEmitter2D entities drawn through
+// a render device, in world pixels with y down, seen through the current Camera2D (camera2d.hpp)
+// and shaded by 2D lights (light.hpp).
 namespace slash::canvas {
 
 // Asset types: "texture" (.png, .bmp and .ktx2 files as render::Image), "sprite_frames"
@@ -78,11 +78,10 @@ sprite_quad(const world::Sprite2D& sprite, const world::Transform2D& transform,
 [[nodiscard]] world::Transform2D interpolate(const world::Transform2D& from,
                                              const world::Transform2D& to, double alpha);
 
-// What a 2D entity takes from the sprites, tile map layers and particles of its parents, as
-// Godot's CanvasItem: their z_index added to its own, hidden with them, and tinted by their
-// modulate. As Godot's, the sum of z_index stops at a parent whose z_as_relative is false, and a
-// top_level entity takes neither z_index nor tint from the parents it is placed above, though
-// they still hide it.
+// What a 2D entity takes from the sprites, tile map layers and particles of its parents: their
+// z_index added to its own, hidden with them, and tinted by their modulate. The sum of z_index
+// stops at a parent whose z_as_relative is false, and a top_level entity takes neither z_index nor
+// tint from the parents it is placed above, though they still hide it.
 struct Inherited {
     int z_index = 0;
     bool visible = true;
@@ -90,8 +89,7 @@ struct Inherited {
 };
 [[nodiscard]] Inherited inherited(const world::World& world, const world::Tree2D& tree,
                                   entt::entity entity);
-// An entity's z_index with its parents' when relative (Godot's z_as_relative), held to Godot's
-// -4096 to 4096.
+// An entity's z_index with its parents' when relative (z_as_relative), held to -4096 to 4096.
 [[nodiscard]] int z_index(int own, bool relative, const Inherited& from_parents);
 
 // ---- What a frame drew, for frame summaries ----
@@ -178,8 +176,7 @@ struct CanvasOptions {
     // Seconds of game time, which materials read as time and animated tiles play by. Callers
     // pass the moment the frame shows, between ticks too; see material_time.
     double time = 0.0;
-    // Draw every collision shape over the world, as Godot's Visible Collision Shapes
-    // (debug_draw.hpp).
+    // Draw every collision shape over the world (debug_draw.hpp).
     bool collisions = false;
     // Path trace the 3D world (render::Scene3D::path_trace), with every mesh at its own LOD,
     // none hidden by occluders, and neither TAA nor FSR 2.
@@ -208,10 +205,9 @@ struct CanvasOptions {
     std::function<void()> between_frames{}; // NOLINT(readability-redundant-member-init)
 };
 
-// A point on the screen in a canvas's pixels, as Godot's get_canvas_transform().affine_inverse():
-// in the world's, through the current camera, or in those of the ScreenLayer the entity in
-// draws in, for a screen of ui::settings' viewport size (world::screen_transform). Godot's
-// get_global_mouse_position is to_world(world, mouse, entity).
+// A point on the screen in a canvas's pixels: in the world's, through the current camera, or in
+// those of the ScreenLayer the entity in draws in, for a screen of ui::settings' viewport size
+// (world::screen_transform). The global mouse position is to_world(world, mouse, entity).
 [[nodiscard]] Vec2 to_world(const world::World& world, Vec2 point, entt::entity in = entt::null);
 // The other way: a point of the canvas the entity in draws in (the world's when null) on the
 // screen.
@@ -238,29 +234,27 @@ public:
     void before_tick(const world::World& world);
 
     // Draws one frame: the target cleared, the 3D world drawn through its current Camera3D
-    // (scene3d.hpp) when it has one, then each canvas in order (world::Canvases), then
-    // the popup menus, tooltip and drag preview, then the overlay's controls. The world's
-    // canvas is every visible sprite, tile map layer and particles not in a ScreenLayer, in
-    // z_index order, then the order entities were made, seen through the current Camera2D,
-    // then the collision shapes if the options ask, then the controls not in a ScreenLayer
-    // (ui.hpp), on the screen. A ScreenLayer's is its own sprites, layers and particles, then
-    // its controls, all placed by its transform. Controls are laid out in a viewport of the
-    // options' width and height, or ui::settings' when they are 0. The children of a
-    // Parallax2D with a repeat_size draw again at each repeat, as Godot repeats them. A layer
-    // draws its
-    // cells row by row, each tile's region centered on its cell, moved by the entity's
-    // Transform2D if it has one. Particles draw as their emitter's draw_order says, each its
-    // texture's frame (or a white pixel) centered on it, turned, scaled and colored; a
+    // (scene3d.hpp) when it has one, then each canvas in order (world::Canvases), then the popup
+    // menus, tooltip and drag preview, then the overlay's controls. The world's canvas is every
+    // visible sprite, tile map layer and particles not in a ScreenLayer, in z_index order, then the
+    // order entities were made, seen through the current Camera2D, then the collision shapes if the
+    // options ask, then the controls not in a ScreenLayer (ui.hpp), on the screen. A ScreenLayer's
+    // is its own sprites, layers and particles, then its controls, all placed by its transform.
+    // Controls are laid out in a viewport of the options' width and height, or ui::settings' when
+    // they are 0. The children of a Parallax2D with a repeat_size draw again at each repeat. A
+    // layer draws its cells row by row, each tile's region centered on its cell, moved by the
+    // entity's Transform2D if it has one. Particles draw as their emitter's draw_order says, each
+    // its texture's frame (or a white pixel) centered on it, turned, scaled and colored; a
     // GpuEmitter2D's system on the device first runs the steps it hasn't (gpu_particles.hpp). A
     // sprite or tile that can't draw, such as one whose texture or material is missing, or whose
     // material_params name a param the material doesn't have, is left out with one warning in the
     // log. On the null device a window frame checks and counts them but draws nothing.
     //
-    // When the world has a light or a AmbientTint2D, every sprite and layer of the world's
-    // canvas is shaded by them, as its material's light_mode says (normal by default), with its
-    // normal and specular textures; those in CanvasLayers are unshaded, as Godot's lights shine
-    // on layer 0 unless told otherwise. A light that can't shine, such as one whose texture is
-    // missing, is left out with one warning.
+    // When the world has a light or a AmbientTint2D, every sprite and layer of the world's canvas
+    // is shaded by them, as its material's light_mode says (normal by default), with its normal and
+    // specular textures; those in ScreenLayers are unshaded, as lights shine on layer 0 unless told
+    // otherwise. A light that can't shine, such as one whose texture is missing, is left out with
+    // one warning.
     [[nodiscard]] Result<void> draw(const world::World& world, const CanvasOptions& options);
 
     // Sprites the last frame drew.

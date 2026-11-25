@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/gpu_particles.hpp"
 
 #include "slash/core/json.hpp"
@@ -33,7 +34,7 @@ std::uint64_t next_serial() {
     return ++serial;
 }
 
-// One GpuEmitter3D's state: Godot's GPUParticles3D node and its particles storage, and the steps
+// One GpuEmitter3D's state: the emitter and its particles, and the steps
 // kept. As canvas's GpuEmitter2D emitter, without sub-emitters or trails.
 struct Emitter {
     std::uint64_t serial = next_serial();
@@ -230,7 +231,7 @@ public:
             e.inactive = false;
             e.inactive_time = 0.0F;
         } else {
-            // Godot's storage waits 1.2 lifetimes for the last particles to die.
+            // The storage waits 1.2 lifetimes for the last particles to die.
             e.inactive_time += s_.speed_scale * static_cast<float>(seconds);
             if (e.inactive_time > lifetime_of(s_) * 1.2) {
                 e.inactive = true;
@@ -249,7 +250,7 @@ public:
         const float time_scale = std::max(s_.speed_scale, 0.0F);
         if (fixed_fps > 0) {
             const float frame_time = 1.0F / static_cast<float>(fixed_fps);
-            // Fewer than 10 ticks a second runs slower rather than stall, as Godot.
+            // Fewer than 10 ticks a second runs slower rather than stall.
             const float delta = std::clamp(static_cast<float>(seconds), 0.0F, 0.1F);
             float todo = e.remainder + (delta * time_scale);
             while (todo >= frame_time || e.clear) {
@@ -328,13 +329,13 @@ bool tick(Emitter& e, GpuEmitter3D& settings, const Affine3D& transform, std::st
     return finished;
 }
 
-// An axis-aligned box, as Godot's AABB, by its corners.
+// An axis-aligned box, by its corners.
 struct Box3 {
     Vec3 low;
     Vec3 high;
 };
 
-// A box in an entity's space placed by its transform, as Godot's Transform3D::xform(AABB).
+// A box in an entity's space placed by its transform.
 Box3 placed(const Affine3D& transform, Vec3 position, Vec3 size) {
     Box3 out{transform.origin, transform.origin};
     const std::array<Vec3, 3> axes{transform.x, transform.y, transform.z};
@@ -352,7 +353,7 @@ Box3 placed(const Affine3D& transform, Vec3 position, Vec3 size) {
     return out;
 }
 
-// As Godot's AABB::intersects: boxes that only touch don't.
+// Whether boxes intersect: boxes that only touch don't.
 bool intersects(const Box3& a, const Box3& b) {
     return a.low.x < b.high.x && b.low.x < a.high.x && a.low.y < b.high.y && b.low.y < a.high.y &&
            a.low.z < b.high.z && b.low.z < a.high.z;
@@ -484,7 +485,7 @@ render::ParticleCollider3D collider_for_particles(const FoundCollider& found,
         out.extents = {static_cast<float>(found.extents.x * scale.x),
                        static_cast<float>(found.extents.y * scale.y),
                        static_cast<float>(found.extents.z * scale.z)};
-        // Godot's SDFs take no scale that isn't uniform.
+        // SDFs take no scale that isn't uniform.
         out.scale = (scale.x + scale.y + scale.z) * 0.333333333333F;
         out.sdf = found.sdf;
         out.heights = found.heights;
@@ -492,7 +493,7 @@ render::ParticleCollider3D collider_for_particles(const FoundCollider& found,
     return out;
 }
 
-// An SDF of one cell 1 m from everything, which Godot's SDFs without a texture read (its default
+// An SDF of one cell 1 m from everything, which SDFs without a texture read (the default
 // white 3D texture).
 std::shared_ptr<const render::ParticleSdf3D> far_sdf() {
     static const auto kFar = std::make_shared<const render::ParticleSdf3D>(
@@ -500,7 +501,7 @@ std::shared_ptr<const render::ParticleSdf3D> far_sdf() {
     return kFar;
 }
 
-// A field of one white texel, which Godot's vector fields without a texture read.
+// A field of one white texel, which vector fields without a texture read.
 std::shared_ptr<const render::ParticleField3D> white_field() {
     static const auto kWhite =
         std::make_shared<const render::ParticleField3D>(render::ParticleField3D{
@@ -816,7 +817,7 @@ struct GpuParticleSystem3D {
             auto& component = ecs.get<GpuEmitter3D>(entity);
             const Affine3D transform = tree.global(entity);
             // The attractors whose bounds touch its visibility box and whose layer_filter shares a
-            // bit with its layers, as Godot's scene cull pairs them; at most 32, and 7 fields.
+            // bit with its layers; at most 32, and 7 fields.
             paired.attractors.clear();
             paired.colliders.clear();
             const auto* simulation = ecs.try_get<world::ParticleSimulation3D>(entity);

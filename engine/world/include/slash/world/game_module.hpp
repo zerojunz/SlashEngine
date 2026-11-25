@@ -8,14 +8,12 @@
 #include <string>
 #include <vector>
 
-// A game's own C++ code, as Godot's scripts are: the components and systems it adds to the
+// A game's own C++ code: the components and systems it adds to the
 // engine's. The game defines one function with SLASH_GAME_MODULE in its gameplay sources:
-//
 //   SLASH_GAME_MODULE(game) {
 //       game.add_component<Health>().set_doc("Hit points.");
 //       game.add_system("regeneration", regenerate, {.doc = "Heals 1 point a second."});
 //   }
-//
 // Exports link the sources into the game. slash-cli and slash-mcp load them from the library
 // gameplay.build makes, and load it again when it is rebuilt: the world keeps its entities, and
 // each component of the game's types keeps its values field by field.

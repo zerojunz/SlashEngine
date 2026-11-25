@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/canvas/tilemap.hpp"
@@ -17,10 +18,9 @@
 #include <unordered_map>
 #include <vector>
 
-// 2D lights in a world, as Godot's: PointLight2D, SunLight2D, Occluder2D and
-// AmbientTint2D made into what the render device shades draws with (render::Lighting and each
-// draw's render::Shading). Shadows
-// are cast on the CPU into one row of render::kShadowMapWidth texels per shadowed light: a point
+// 2D lights in a world: PointLight2D, SunLight2D, Occluder2D and AmbientTint2D made into what the
+// render device shades draws with (render::Lighting and each draw's render::Shading). Shadows are
+// cast on the CPU into one row of render::kShadowMapWidth texels per shadowed light: a point
 // light's row goes round it from -pi, holding the nearest occluder's distance at each angle, and a
 // directional light's goes across its direction, holding the nearest occluder's depth along it.
 namespace slash::canvas {
@@ -43,7 +43,7 @@ struct SceneLight {
 // then its roll when it has one.
 [[nodiscard]] std::string light_atlas_key(const SceneLight& light);
 
-// How lights shade one canvas's draws, as Godot's viewport lights each canvas it draws.
+// How lights shade one canvas's draws.
 struct CanvasLighting {
     // A AmbientTint2D is in it or an enabled light's layer range holds its layer, so its draws
     // are shaded.
@@ -103,11 +103,11 @@ struct ShadowCache {
     std::unordered_map<entt::entity, Row> rows;
 };
 
-// The world's lighting, through its canvases (or all in the world's with none). A light that
-// can't shine, such as one whose texture doesn't load, is left out with a problem. Tiles cast
-// shadows through their occluders when tile_sets loads their tile sets, as Godot's TileMapLayer
-// makes a light occluder of each. transform_of, cache, canvases and tile_sets may be empty. time,
-// in seconds, scrolls point lights' textures by their texture_scroll.
+// The world's lighting, through its canvases (or all in the world's with none). A light that can't
+// shine, such as one whose texture doesn't load, is left out with a problem. Tiles cast shadows
+// through their occluders when tile_sets loads their tile sets, making a light occluder of each.
+// transform_of, cache, canvases and tile_sets may be empty. time, in seconds, scrolls point lights'
+// textures by their texture_scroll.
 [[nodiscard]] SceneLighting collect_lighting(const world::World& world, const LightImage& images,
                                              const TransformOf& transform_of,
                                              std::vector<LightProblem>& problems,

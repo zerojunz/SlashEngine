@@ -1,13 +1,12 @@
-// Areas that change a sound's bus, and effects that measure and keep what plays, as Godot's
-// Zone2D audio bus override, AudioEffectPitchShift, AudioEffectSpectrumAnalyzer,
-// AudioEffectCapture and AudioEffectRecord. audio/default.bus_layout.json puts a spectrum
-// analyzer, a capture and a record effect on Master, a pitch shift an octave up on Voice and a
-// reverb on Cave; the cave's Zone2D sends 2D sounds inside it to Cave.
+// Areas that change a sound's bus, and effects that measure and keep what plays.
+// audio/default.bus_layout.json puts a spectrum analyzer, a capture and a record effect on Master,
+// a pitch shift an octave up on Voice and a reverb on Cave; the cave's Zone2D sends 2D sounds
+// inside it to Cave.
 //
 // This program writes the sound files (square waves, made without libm so they are the same
-// everywhere), then plays the game as an agent does over MCP or JSON-RPC: audio.spectrum reads
-// the analyzer, audio.state shows the bus each player plays through, and audio.record records
-// Master and writes the recording to a .wav file.
+// everywhere), then plays the game as an agent does over MCP or JSON-RPC: audio.spectrum reads the
+// analyzer, audio.state shows the bus each player plays through, and audio.record records Master
+// and writes the recording to a .wav file.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"

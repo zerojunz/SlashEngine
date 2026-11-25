@@ -1,10 +1,9 @@
 #pragma once
 
 // Ragdoll profiles, SlashEngine's own after Unreal's physics assets and its Physical Animation
-// component (Godot has no profiles: its SimulatedBone3D nodes are made one by one). A
-// .ragdoll.json file names, for each bone of a character or creature, the body over it (shape,
-// size, mass), the joint that holds it to the body of the bone above (limits), and the muscle
-// that drives it toward the animated pose (stiffness, damping, strength), with how the whole
+// component. A .ragdoll.json file names, for each bone of a character or creature, the body over it
+// (shape, size, mass), the joint that holds it to the body of the bone above (limits), and the
+// muscle that drives it toward the animated pose (stiffness, damping, strength), with how the whole
 // keeps its balance, takes hits and gets back up. Ragdoll3D bodies are named by a model's bone
 // names in meters, and Ragdoll2D bodies by the entities of a Transform2D tree in pixels.
 

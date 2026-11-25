@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/scene3d.hpp"
 
 #include "slash/asset/assets.hpp"
@@ -169,7 +170,7 @@ render::Light3D light_base(const T& light, render::LightType type, bool units) {
     out.color = rgb(light.light_color);
     out.energy = light.light_negative ? -light.light_energy : light.light_energy;
     if (units) {
-        // Godot's physical light units: the color tinted by the temperature in linear light, and
+        // Physical light units: the color tinted by the temperature in linear light, and
         // the energy by the lux or lumens.
         out.color = render::tint_by_temperature(out.color, light.light_temperature);
         if constexpr (std::is_same_v<T, world::SunLight3D>) {
@@ -191,7 +192,7 @@ render::Light3D light_base(const T& light, render::LightType type, bool units) {
     out.shadow_caster_mask = light.shadow_caster_mask;
     out.baked = light.light_bake_mode == "static";
     out.volumetric_fog_energy = light.light_volumetric_fog_energy;
-    // SDFGI leaves out lights whose bake mode is disabled, as Godot's.
+    // SDFGI leaves out lights whose bake mode is disabled.
     out.indirect_energy = light.light_bake_mode == "disabled" ? 0.0F : light.light_indirect_energy;
     return out;
 }
@@ -300,9 +301,9 @@ std::array<float, 4> rgba(const Vec4& color) {
     return {color.x, color.y, color.z, color.w};
 }
 
-// The sky material on a Environment3D's entity as a frame's sky, as Godot's Sky: the first of
+// The sky material on a Environment3D's entity as a frame's sky: the first of
 // SkyGradient, SkyScattering and SkyPanorama it has, or a default
-// SkyGradient, as Godot's new scenes have.
+// SkyGradient.
 void add_sky(const world::World& world, entt::entity entity, Environment& out) {
     const auto& ecs = world.ecs();
     const auto* procedural = ecs.try_get<const world::SkyGradient>(entity);
@@ -466,7 +467,7 @@ CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& glo
     } else {
         float fov_y = camera.fov;
         if (keep_width) {
-            // Godot's Projection::get_fovy with 1 / aspect: the height's angle for a width's.
+            // The height's angle for a width's, with 1 / aspect.
             const Vec2 half = cos_sin(camera.fov * 0.5F * kRadians);
             fov_y = atan2(half.y / half.x, aspect) * 2.0F * kDegrees;
         }
@@ -518,7 +519,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
                       .b = env.background_color.z,
                       .a = env.background_color.w};
     }
-    // With physical light units, the background and sky shine by their nits too, as Godot's.
+    // With physical light units, the background and sky shine by their nits too.
     const float energy = env.background_energy_multiplier *
                          (physical_light_units(world) ? env.background_intensity : 1.0F);
     out.background = {.r = background.r * energy,
@@ -527,7 +528,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
                       .a = background.a};
     out.entity = environments.front();
     const bool sky = env.background_mode == "sky";
-    // Godot's RasterizerSceneGLES3::_setup_environment: a sky's light (its radiance) lights
+    // A sky's light (its radiance) lights
     // surfaces through ambient_light_color, by ambient_light_sky_contribution.
     const bool sky_ambient =
         env.ambient_light_source == "sky" || (env.ambient_light_source == "background" && sky);
@@ -577,7 +578,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
         gi.enabled = true;
         gi.cascades = env.field_lighting_cascades;
         gi.min_cell_size = env.field_lighting_min_cell_size;
-        // Godot's sdfgi_y_scale: heights count twice as much at 50 percent.
+        // The SDFGI y scale: heights count twice as much at 50 percent.
         gi.y_scale = 1.5F;
         if (env.field_lighting_y_scale == "50_percent") {
             gi.y_scale = 2.0F;
@@ -642,8 +643,8 @@ Environment world_environment(const world::World& world, render::Color clear) {
     if (!sky) {
         out.sky.kind = render::SkyKind::None;
         if (env.fog_enabled) {
-            // Fog over the background, as Godot draws it: a sky of the background's color,
-            // which its energy multiplies twice, as Godot's fog sky material does.
+            // Fog over the background: a sky of the background's color,
+            // which its energy multiplies twice.
             out.sky.kind = render::SkyKind::Color;
             out.sky.color = {out.background.r, out.background.g, out.background.b};
         }
@@ -654,7 +655,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
         }
     }
     out.post.exposure = env.tonemap_exposure;
-    // As Godot's Environment::_update_tonemap: AgX has a white of its own.
+    // AgX has a white of its own.
     out.post.white =
         out.post.tonemapper == render::Tonemapper::Agx ? env.tonemap_agx_white : env.tonemap_white;
     out.post.agx_contrast = env.tonemap_agx_contrast;
@@ -671,8 +672,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
         out.post.glow_levels.at(i) = env.glow_levels[i];
         sum += env.glow_levels[i];
     }
-    // As Godot's Environment::_update_glow. Where every level is 0 Godot divides by 0; here they
-    // stay 0.
+    // Where every level is 0 they stay 0, with no divide by 0.
     if (env.glow_normalized && sum != 0.0F) {
         for (float& level : out.post.glow_levels) {
             level /= sum;
@@ -724,14 +724,13 @@ Environment environment(const world::World& world, render::Color clear, entt::en
         return out;
     }
     const auto& attributes = world.ecs().get<const world::CameraLens>(out.attributes);
-    // Godot's exposure normalization without physical light units is exposure_multiplier alone.
-    // As its bg_energy_multiplier, it brightens the background and the sky, and so the sky's
+    // The exposure normalization without physical light units is exposure_multiplier alone.
+    // Like bg_energy_multiplier, it brightens the background and the sky, and so the sky's
     // light, but not ambient_light_color or fog; a fogged background's sky, which the background's
     // energy multiplies twice, takes it twice.
     out.exposure = attributes.exposure_multiplier;
     if (physical_light_units(world)) {
-        // With physical light units, times the sensitivity's exposure normalization, as Godot's
-        // CameraAttributesPractical::calculate_exposure_normalization.
+        // With physical light units, times the sensitivity's exposure normalization.
         out.exposure *= render::exposure_normalization(attributes.exposure_sensitivity);
     }
     out.background.r *= out.exposure;
@@ -741,7 +740,7 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     if (out.sky.kind == render::SkyKind::Color) {
         out.sky.color = {out.background.r, out.background.g, out.background.b};
     }
-    // Depth of field, as Godot's CameraAttributesPractical::_update_dof_blur.
+    // Depth of field.
     out.post.dof_far = attributes.dof_blur_far_enabled;
     out.post.dof_far_distance = attributes.dof_blur_far_distance;
     out.post.dof_far_transition = attributes.dof_blur_far_transition;
@@ -758,8 +757,7 @@ Environment environment(const world::World& world, render::Color clear, entt::en
                                 "is above 0 for auto exposure; drawing without it"});
         return out;
     }
-    // As Godot's CameraAttributesPractical::_update_auto_exposure, which turns sensitivities into
-    // luminances.
+    // Auto exposure turns sensitivities into luminances.
     const float luminance = 0.125F / attributes.exposure_sensitivity;
     out.post.auto_exposure = true;
     out.post.auto_exposure_scale = attributes.auto_exposure_scale;
@@ -817,7 +815,7 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
         sun.color = rgb(light.light_color);
         sun.energy = light.light_negative ? -light.light_energy : light.light_energy;
         if (physical_light_units(world)) {
-            // As Godot's sky: the sun's color as the light's, energy times its lux.
+            // The sun's color as the light's, energy times its lux.
             sun.color = render::tint_by_temperature(sun.color, light.light_temperature);
             sun.energy *= light.light_intensity_lux;
         }
@@ -1525,7 +1523,7 @@ void Renderer::find_lightmaps(const world::World& world, float exposure,
                                std::to_string(data.height * data.slices) +
                                " its slices take: bake it again";
             } else {
-                // Half floats, as Godot keeps lightmaps.
+                // Half floats, for lightmaps.
                 std::vector<std::uint8_t> bytes(std::size_t{texels.width} * texels.height * 8);
                 for (std::size_t i = 0; i < std::size_t{texels.width} * texels.height; ++i) {
                     const std::array<std::uint16_t, 4> half{
@@ -1613,7 +1611,7 @@ render::LightmapCapture Renderer::capture(entt::entity entity, const Vec3& cente
         return out;
     }
     const LightmapSh& target = *taken;
-    // Godot eases a mesh's light by its lightmap_probe_update_speed (probe_update_speed_, 15 by
+    // A mesh's light eases by its lightmap_probe_update_speed (probe_update_speed_, 15 by
     // default) times the frame's time;
     // the first frame, and after game time goes back, it is set at once.
     auto [found, made] = captured_.try_emplace(entity);
@@ -1698,7 +1696,7 @@ const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::u
             }
             lit_indices.push_back(at->second);
         }
-        // Godot's importer makes a mesh's LODs after its unwrap, from the unwrapped vertices.
+        // A mesh's LODs are made after its unwrap, from the unwrapped vertices.
         ModelSurface unwrapped;
         if (fits && with_lods) {
             unwrapped.vertices = lit_vertices;
@@ -1826,7 +1824,7 @@ Result<render::MeshId> Renderer::soft_mesh(const std::string& key, const Primiti
                           "the soft body's points don't match its mesh's vertices");
     }
     std::vector<render::Vertex3D>& vertices = *vertices_made;
-    // As Godot's SoftBody3D: each vertex where its point is, with the smooth normal of the
+    // Each vertex where its point is, with the smooth normal of the
     // faces around it; the rest of the vertex stays as the mesh made it.
     for (std::size_t i = 0; i < vertices.size(); ++i) {
         const Vec3 position = pose->positions[i];
@@ -1999,7 +1997,7 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         (flesh == nullptr || skinned.flesh_at == flesh_at)) {
         return skinned.id;
     }
-    // A device that skins moves the vertices itself, as Godot's skeleton compute shader does,
+    // A device that skins moves the vertices itself,
     // unless flesh moves them after. A skin it can't take moves on the CPU.
     if (device_->gpu_skinning() && flesh == nullptr && !skinned.on_cpu) {
         if (skinned.skin == render::SkinId::None) {
@@ -2019,7 +2017,7 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         device_->destroy_skin(skinned.skin);
         skinned.skin = render::SkinId::None;
     }
-    // Blend shapes first, then the skin, as Godot's skeleton shader moves them.
+    // Blend shapes first, then the skin.
     if (any_blend(shape_weights)) {
         blend_vertices(surface, shape_weights, skinned_vertices_);
         if (!joints.empty()) {
@@ -2233,7 +2231,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     }
     const Model& model = *source.value().model;
     // Its material, or a Surface3D on the entity, takes the place of every
-    // surface's, as Godot's material_override.
+    // surface's.
     bool shadows_disabled = false;
     const std::optional<render::Material3D> override =
         override_material(world, entity, instance, shadows_disabled);
@@ -2298,7 +2296,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     }
     const std::string skin_prefix =
         "skin:" + std::to_string(entt::to_integral(entity)) + ":" + prefix;
-    // A moving mesh takes the light probes' light at its bounds' middle, as Godot's.
+    // A moving mesh takes the light probes' light at its bounds' middle.
     render::LightmapCapture captured;
     if (instance.lighting_mode == "dynamic") {
         auto center = model_centers_.find(prefix);
@@ -2668,7 +2666,7 @@ void Renderer::add_multimesh(const world::World& world, entt::entity entity,
 
 void Renderer::add_gridmap(const world::World& world, entt::entity entity,
                            const world::Affine3D& place, std::uint32_t cull_mask) {
-    // An octant's MultiMesh instances are on the first render layer, as Godot makes them.
+    // An octant's MultiMesh instances are on the first render layer.
     constexpr std::uint32_t kLayers = 1;
     const std::shared_ptr<const GridMesh> mesh = grid_mesh(world, entity);
     problems_.insert(problems_.end(), mesh->problems.begin(), mesh->problems.end());
@@ -2756,7 +2754,7 @@ void Renderer::add_foliage(const world::World& world, entt::entity entity,
             const float distance =
                 std::sqrt((to_camera.x * to_camera.x) + (to_camera.y * to_camera.y) +
                           (to_camera.z * to_camera.z));
-            // Faded out over its cull distance, as Godot's visibility range fade.
+            // Faded out over its cull distance.
             float fade = 1.0F;
             if (type->cull_distance.y > 0.0F) {
                 if (distance >= type->cull_distance.y) {
@@ -2999,8 +2997,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
         const Billboard mode =
             look != nullptr ? billboard_of(look->billboard) : Billboard::Disabled;
         const bool keep_scale = look != nullptr && look->billboard_keep_scale;
-        // The texture coordinates are moved here, so a particle's frame comes after uv1, as in
-        // Godot's shader.
+        // The texture coordinates are moved here, so a particle's frame comes after uv1.
         const std::array<float, 2> uv_scale = made.uv1_scale;
         const std::array<float, 2> uv_offset = made.uv1_offset;
         made.uv1_scale = {1.0F, 1.0F};
@@ -3022,7 +3019,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
             }
             const world::Affine3D placed =
                 billboard(model_place * piece.place, camera, mode, keep_scale, p.angle);
-            // Normals turn with the basis, as Godot's MODELVIEW_NORMAL_MATRIX: as it is for a
+            // Normals turn with the basis: as it is for a
             // billboard, its inverse's transpose otherwise.
             const world::Affine3D inverse = placed.inverse();
             const auto normal_of = [&](Vec3 n) {
@@ -3468,7 +3465,7 @@ namespace {
 Bounds placed_bounds(const Bounds& box, const std::array<float, 16>& m);
 
 // Whether a box in the world is out of a camera's view: all its corners beyond one side of the
-// view, or behind the camera, as Godot's frustum culling leaves out an instance's AABB.
+// view, or behind the camera.
 bool out_of_view(const Bounds& box, const CameraView& view) {
     std::array<int, 5> beyond{};
     for (int corner = 0; corner < 8; ++corner) {
@@ -3514,8 +3511,8 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     if (casting != render::ShadowCasting::ShadowsOnly && out_of_view(box, view)) {
         return;
     }
-    // Each draw pass's mesh, which a pass after the first draws only when it names one, as in
-    // Godot; problems show before the first tick too.
+    // Each draw pass's mesh, which a pass after the first draws only when it names one;
+    // problems show before the first tick too.
     struct Pass {
         std::vector<ParticlePiece> pieces;
         std::shared_ptr<const Model> model;
@@ -3704,7 +3701,7 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
                 at.anim_loop = standard->particles_anim_loop;
             }
             // The texture coordinates are moved as the vertices are made, so a particle's frame
-            // comes after uv1, as in Godot's shader.
+            // comes after uv1.
             at.uv_scale = made.uv1_scale;
             at.uv_offset = made.uv1_offset;
             made.uv1_scale = {1.0F, 1.0F};
@@ -3930,7 +3927,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
 
 namespace {
 
-// rendering/global_illumination/voxel_gi: the most lights Godot injects into a VoxelLighting3D.
+// rendering/global_illumination/voxel_gi: the most lights injected into a VoxelLighting3D.
 constexpr std::size_t kMaxVoxelGILights = 32;
 
 // The bounds of a box under a column-major transform.
@@ -3952,15 +3949,15 @@ Bounds placed_bounds(const Bounds& box, const std::array<float, 16>& m) {
     return out;
 }
 
-// Whether two boxes overlap, as Godot's AABB::intersects.
+// Whether two boxes overlap.
 bool touches(const Bounds& a, const Bounds& b) {
     return a.min.x < b.max.x && b.min.x < a.max.x && a.min.y < b.max.y && b.min.y < a.max.y &&
            a.min.z < b.max.z && b.min.z < a.max.z;
 }
 
-// The bounds of an omni or spot light's reach, as Godot's LightStorage::light_get_aabb: a cube
+// The bounds of an omni or spot light's reach: a cube
 // its range across for an omni light, the box round its cone for a spot light (a cube for a cone
-// of 90 degrees or more, whose box Godot's tangent turns inside out).
+// of 90 degrees or more, whose tangent turns the box inside out).
 Bounds light_bounds(const render::Light3D& light) {
     const Vec3 at{light.position[0], light.position[1], light.position[2]};
     const float range = light.range;
@@ -3999,8 +3996,8 @@ std::pair<float, std::string_view> indirect_of(const world::World& world, const 
     return {light.light_indirect_energy, light.light_bake_mode};
 }
 
-// The lights a VoxelLighting3D of data, placed at place, whose box in the world is box, injects, as
-// Godot pairs them: the omni and spot lights whose bake_mode isn't "disabled" and whose reach
+// The lights a VoxelLighting3D of data, placed at place, whose box in the world is box, injects:
+// the omni and spot lights whose bake_mode isn't "disabled" and whose reach
 // touches its box, then every directional light, at most kMaxVoxelGILights.
 std::vector<VoxelGILight> voxel_gi_lights(const world::World& world, std::span<const Shone> shone,
                                           const VoxelGIData& data, const world::Affine3D& place,
@@ -4127,7 +4124,7 @@ const Renderer::VoxelObject& Renderer::voxel_object(const world::World& world,
             };
         }
         // What can't be read, its draws report; its emission is plotted at an exposure of 1, as
-        // Godot's dynamic objects without physical light units.
+        // dynamic objects are without physical light units.
         std::vector<Problem> unread;
         made->meshes = voxel_gi_meshes(world, entity, sources, 1.0F, unread);
         for (const VoxelGIMesh& mesh : made->meshes) {
@@ -4165,7 +4162,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     std::vector<Traced> traced;
     std::vector<entt::entity> seen;
     std::optional<std::vector<Shone>> shone;
-    // The dynamic MeshInstance3Ds, as Godot's dynamic GI instances, read once a VoxelLighting3D
+    // The dynamic MeshInstance3Ds, read once a VoxelLighting3D
     // needs them.
     struct Moving {
         entt::entity entity = entt::null;
@@ -4212,8 +4209,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
         const VoxelGISettings settings{.dynamic_range = gi.dynamic_range,
                                        .propagation = gi.propagation,
                                        .use_two_bounces = gi.use_two_bounces};
-        // The lights are injected again when they or the settings change, as Godot's light
-        // cache and voxel_gi_needs_update.
+        // The lights are injected again when they or the settings change.
         const bool relit = !kept->lit || lights != kept->lights || settings != kept->settings;
         if (relit) {
             kept->texture = light_voxel_gi(data, kept->octree, lights, settings, &world.pool());
@@ -4221,9 +4217,8 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
             kept->lights = std::move(lights);
             kept->settings = settings;
         }
-        // The dynamic meshes whose bounds touch its box, as Godot pairs them with it, plotted
-        // into its light again whenever they move or change, as Godot plots them each frame it
-        // has any.
+        // The dynamic meshes whose bounds touch its box, plotted
+        // into its light again whenever they move or change, each frame it has any.
         if (!moving) {
             moving.emplace();
             for (const entt::entity object : made<world::Model3D>(world)) {
@@ -4344,8 +4339,8 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
         voxel_atlas_key_ = std::move(key);
     }
 
-    // Each draw traces the VoxelGIs its bounds touch, at most two in the order they were made, as
-    // Godot pairs them (MAX_INSTANCE_PAIRS); lightmapped, captured, terrain and shadow-only draws
+    // Each draw traces the VoxelGIs its bounds touch, at most two in the order they were made;
+    // lightmapped, captured, terrain and shadow-only draws
     // take none.
     std::vector<render::VoxelGIProbe> probes;
     probes.reserve(traced.size());
@@ -4382,8 +4377,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
             draw.material.voxel_gi = shading;
         }
     }
-    // Volumetric fog takes the light of the first kMaxFogVoxelGIs, as Godot's
-    // volumetric_fog_update takes its first MAX_VOXEL_GI_INSTANCES.
+    // Volumetric fog takes the light of the first kMaxFogVoxelGIs.
     if (fog.enabled) {
         fog.voxel_gi_atlas = voxel_atlas_;
         fog.voxel_gis.assign(
@@ -4475,7 +4469,7 @@ std::optional<Frame3D> Renderer::prepare(
     }
     // Positions are drawn relative to the render origin, which double-precision builds keep near
     // the camera, so what the device sees in floats stays near the origin however far the world
-    // reaches, as Godot's double builds keep rendering camera-relative.
+    // reaches.
     render_origin_ =
         render_origin_for(view_ ? view_->eye.origin : tree.global(camera, locals).origin);
     const auto global = [&](entt::entity entity) {
@@ -4503,7 +4497,7 @@ std::optional<Frame3D> Renderer::prepare(
     frame.scene.ambient_energy = env.ambient_energy;
     frame.scene.post = env.post;
     if (env.post.auto_exposure) {
-        // As Godot's auto exposure version: the brightness is measured afresh when auto exposure
+        // The brightness is measured afresh when auto exposure
         // turns on or follows other attributes, and here when game time goes back too, as after a
         // restore; otherwise it moves toward the frame's by auto_exposure_speed per second.
         if (exposure_version_ == 0 || env.attributes != exposure_entity_ || time < exposure_time_) {
@@ -4527,11 +4521,11 @@ std::optional<Frame3D> Renderer::prepare(
     frame.scene.sdfgi = env.sdfgi;
     frame.scene.volumetric_fog.settings = volumetric_fog;
     if (depth_of_field.use_jitter) {
-        // Godot seeds the jitter at random each frame; the game time keeps frames repeatable.
+        // The jitter is seeded from the game time, which keeps frames repeatable.
         frame.scene.post.dof_jitter_seed = static_cast<float>(time - std::floor(time)) * 1000.0F;
     }
     if (env.post.adjustments && !env.color_correction.empty()) {
-        // Sampled smoothly, as Godot samples its LUTs.
+        // Sampled smoothly, as LUTs are.
         auto lut = textures_(env.color_correction, render::Filter::Linear);
         const char* const field = "/components/Environment3D/adjustment_color_correction";
         if (!lut) {
@@ -4604,7 +4598,7 @@ std::optional<Frame3D> Renderer::prepare(
         if (!tree.visible(entity)) {
             continue;
         }
-        // A mesh the camera doesn't see still casts, as Godot's: it draws only into shadow maps.
+        // A mesh the camera doesn't see still casts: it draws only into shadow maps.
         render::ShadowCasting casting = casting_of(instance.cast_shadow);
         if ((instance.layers & lens.layer_filter) == 0) {
             if (casting == render::ShadowCasting::Off) {
@@ -4756,7 +4750,7 @@ std::optional<Frame3D> Renderer::prepare(
         destroy_voxel_gis();
     }
     if (env.exposure != 1.0F || physical_light_units(world)) {
-        // With physical light units, emission shines by its nits too, as Godot's.
+        // With physical light units, emission shines by its nits too.
         const bool units = physical_light_units(world);
         for (Draw& draw : draws_) {
             draw.material.emission_energy *=
@@ -4764,7 +4758,7 @@ std::optional<Frame3D> Renderer::prepare(
         }
     }
     // TAA, FSR 2 and frame generation move each mesh's pixels by how far it moved since the last
-    // frame, as Godot's prev_transform: each entity's draws, in order, keep where they were drawn.
+    // frame: each entity's draws, in order, keep where they were drawn.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn;
     const bool moving = use_taa || fsr2 || frame_generation_;
     if (moving && method == render::RenderMethod::ForwardPlus) {
@@ -4790,7 +4784,7 @@ std::optional<Frame3D> Renderer::prepare(
     drawn_ = std::move(drawn);
     drawn_origin_ = render_origin_;
     // A spatial shader's vertex() places corners where they were with the time of the frame before
-    // too, as Godot's prev_data.time.
+    // too.
     const double step = moving && drawn_time_ && *drawn_time_ <= time ? time - *drawn_time_ : 0.0;
     // A spatial shader's WIND is the wind at its mesh's origin, as the wind system blows it.
     const world::WindField wind(world, tree);
@@ -4865,7 +4859,7 @@ std::optional<Frame3D> Renderer::prepare(
             {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});
     }
     cull_occluded(world, tree, view, lens, width, height, occlusion);
-    // Model surfaces draw at the LODs the camera picks, into shadow maps too, as Godot's.
+    // Model surfaces draw at the LODs the camera picks, into shadow maps too.
     // Virtualized ones leave out the clusters the camera can't see, unless rays or SDFGI, which
     // see the frame's triangles from elsewhere, need them.
     const bool rays = ray_tracing.shadows || ray_tracing.ambient_occlusion ||
@@ -5024,7 +5018,7 @@ void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,
         d.emission_energy = decal.emission_energy * exposure;
         d.modulate = {decal.tint.x, decal.tint.y, decal.tint.z, decal.tint.w};
         d.albedo_mix = decal.albedo_mix;
-        // Godot's setters keep the upper and lower fades at 0 or more, and its inspector the
+        // The upper and lower fades are kept at 0 or more, and the
         // normal fade from 0 to 1.
         d.normal_fade = std::clamp(decal.normal_fade, 0.0F, 1.0F);
         d.upper_fade = std::max(decal.upper_fade, 0.0F);
@@ -5099,7 +5093,7 @@ void Renderer::add_fog_volumes(const world::World& world, const world::Tree3D& t
         }
         render::FogVolume3D v;
         v.transform = global(entity).matrix();
-        // Godot's set_size keeps each axis at 0 or more.
+        // Each axis is kept at 0 or more.
         v.size = {static_cast<float>(std::max<real_t>(volume.size.x, 0.0F)),
                   static_cast<float>(std::max<real_t>(volume.size.y, 0.0F)),
                   static_cast<float>(std::max<real_t>(volume.size.z, 0.0F))};
@@ -5137,7 +5131,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
         placed.origin = placed.origin - render_origin_;
         return placed;
     };
-    // The probes, largest first as Godot sorts them, then in the order they were made.
+    // The probes, largest first, then in the order they were made.
     struct Found {
         entt::entity entity;
         const world::ReflectionProbe* probe;
@@ -5223,7 +5217,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                            .interior = p.interior,
                            .enable_shadows = p.enable_shadows};
         if (p.update_mode == "always" || slot->second.drawn != key) {
-            // Godot's _render_reflection_probe_step: the world from origin_offset through each
+            // The world from origin_offset through each
             // face, linear and unprocessed, with no SSAO, SSR or probes.
             render::Scene3D scene = frame.scene;
             scene.method = render::RenderMethod::ForwardPlus;
@@ -5249,7 +5243,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                                               static_cast<float>(p.origin_offset.y),
                                               static_cast<float>(p.origin_offset.z)};
             // Its LODs are picked from where the cube is drawn, by its own threshold over the
-            // atlas's cube size, as Godot's _render_reflection_probe_step.
+            // atlas's cube size.
             pick_lods(f.place.apply(p.origin_offset),
                       render::probe_face_projection(size, offset, p.max_distance, 0), false,
                       static_cast<float>(settings.reflection_size), p.mesh_lod_threshold, false);
@@ -5628,7 +5622,7 @@ void Renderer::cull_occluded(const world::World& world, const world::Tree3D& tre
                               .far = lens.far,
                               .orthogonal = lens.projection == "orthogonal"},
                              frame_, settings.jitter);
-    // Each draw is tested by its own bounds where it is drawn, where Godot tests an instance's
+    // Each draw is tested by its own bounds where it is drawn, not by an instance's
     // whole mesh: a surface it hides can't be seen either way. Double-sided casters stay drawn,
     // since a mesh drawn only into shadow maps casts as its material culls.
     const auto& ecs = world.ecs();

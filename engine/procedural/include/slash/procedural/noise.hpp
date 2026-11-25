@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -10,7 +11,7 @@
 #include <string>
 #include <vector>
 
-// Noise, as Godot's FastNoiseLite resource (modules/noise/fastnoise_lite.cpp), on Auburn's
+// Noise, on Auburn's
 // FastNoiseLite: simplex, cellular, Perlin and value noise, with fractals and domain warping.
 // Gameplay code samples it while a game runs:
 //
@@ -24,13 +25,13 @@
 // and the module builds with no fused multiply-adds.
 namespace slash::procedural {
 
-// Godot's FastNoiseLite.NoiseType.
+// The noise type.
 enum class NoiseType : std::uint8_t { Simplex, SimplexSmooth, Cellular, Perlin, ValueCubic, Value };
-// Godot's FastNoiseLite.FractalType.
+// The fractal type.
 enum class FractalType : std::uint8_t { None, Fbm, Ridged, PingPong };
-// Godot's FastNoiseLite.CellularDistanceFunction.
+// The cellular distance function.
 enum class CellularDistance : std::uint8_t { Euclidean, EuclideanSquared, Manhattan, Hybrid };
-// Godot's FastNoiseLite.CellularReturnType.
+// The cellular return type.
 enum class CellularReturn : std::uint8_t {
     CellValue,
     Distance,
@@ -40,12 +41,12 @@ enum class CellularReturn : std::uint8_t {
     Distance2Mul,
     Distance2Div,
 };
-// Godot's FastNoiseLite.DomainWarpType.
+// The domain warp type.
 enum class DomainWarpType : std::uint8_t { Simplex, SimplexReduced, BasicGrid };
-// Godot's FastNoiseLite.DomainWarpFractalType.
+// The domain warp fractal type.
 enum class DomainWarpFractal : std::uint8_t { None, Progressive, Independent };
 
-// A FastNoiseLite resource's settings, with Godot's defaults.
+// A FastNoiseLite's settings, with defaults.
 struct NoiseSettings {
     NoiseType noise_type = NoiseType::SimplexSmooth;
     int seed = 0;
@@ -70,7 +71,7 @@ struct NoiseSettings {
     float domain_warp_fractal_gain = 0.5F;
 };
 
-// Noise of some settings, as Godot's FastNoiseLite samples it: the offset added, the point
+// Noise of some settings: the offset added, the point
 // warped when domain warping is on, then the noise. Cheap to copy; safe to sample from many
 // threads at once.
 class Noise {
@@ -90,7 +91,7 @@ public:
     [[nodiscard]] float get_noise_2d(float x, float y) const;
     [[nodiscard]] float get_noise_3d(float x, float y, float z) const;
 
-    // Godot's Noise.get_image as values: width by height samples at whole coordinates (x, y), or
+    // The noise as values: width by height samples at whole coordinates (x, y), or
     // (x, y, z) in 3D space, rows from the top.
     [[nodiscard]] std::vector<float> get_values(int width, int height, bool in_3d_space = false,
                                                 int z = 0) const;
@@ -101,8 +102,8 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-// JSON Schema for a FastNoiseLite's settings as files write them: Godot's property names, enum
-// values in snake_case ("simplex_smooth", "ping_pong"), each optional with Godot's default.
+// JSON Schema for a FastNoiseLite's settings as files write them: property names, enum
+// values in snake_case ("simplex_smooth", "ping_pong"), each optional with its default.
 [[nodiscard]] json::Value noise_schema();
 
 // Every error in a noise object, each with the JSON Pointer of the bad value under at.
@@ -112,7 +113,7 @@ private:
 // The settings a noise object holds, or its first error.
 [[nodiscard]] Result<NoiseSettings> parse_noise(const json::Value& doc);
 
-// The settings as a noise object, leaving out those at Godot's defaults.
+// The settings as a noise object, leaving out those at their defaults.
 [[nodiscard]] json::Value noise_to_json(const NoiseSettings& settings);
 
 } // namespace slash::procedural

@@ -1,4 +1,5 @@
-// Color temperature and physical light units, as Godot's Light3D and CameraAttributes.
+// Color temperature and physical light units.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/core/math.hpp"
 #include "slash/render/light.hpp"
@@ -10,7 +11,7 @@
 namespace slash::render {
 namespace {
 
-// Godot's Color::linear_to_srgb for one channel, through slash::exp and ln.
+// One channel linear to sRGB, through slash::exp and ln.
 float to_srgb(float c) {
     if (c < 0.0031308F) {
         return 12.92F * c;
@@ -21,7 +22,7 @@ float to_srgb(float c) {
     return (1.055F * slash::exp(slash::ln(c) / 2.4F)) - 0.055F;
 }
 
-// Godot's Color::srgb_to_linear for one channel.
+// One channel sRGB to linear.
 float to_linear(float c) {
     if (c < 0.04045F) {
         return c * (1.0F / 12.92F);
@@ -32,8 +33,7 @@ float to_linear(float c) {
 } // namespace
 
 std::array<float, 3> color_temperature(float kelvin) {
-    // Krystek's approximation of the Planckian locus in CIE 1960 UCS (u, v), as Godot's
-    // Light3D::get_correlated_color.
+    // Krystek's approximation of the Planckian locus in CIE 1960 UCS (u, v).
     const float t = kelvin;
     const float t2 = t * t;
     const float u = (0.860117757F + (1.54118254e-4F * t) + (1.28641212e-7F * t2)) /
@@ -81,7 +81,7 @@ float omni_light_units(float lumens) {
 }
 
 float spot_light_units(float lumens) {
-    // Godot keeps a spot light's intensity whatever its cone, to keep it easy to control.
+    // A spot light's intensity stays the same whatever its cone, to keep it easy to control.
     constexpr float kPi = std::numbers::pi_v<float>;
     return lumens / (kPi * kPi);
 }

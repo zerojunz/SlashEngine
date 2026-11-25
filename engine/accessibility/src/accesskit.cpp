@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/accessibility/accesskit.hpp"
 
 #include "internal.hpp"
@@ -23,7 +24,7 @@
 namespace slash::accessibility {
 namespace {
 
-// Godot's role map (AccessibilityDriverAccessKit's constructor), by ui::AccessElement's names.
+// The role map, by ui::AccessElement's names.
 accesskit_role role_of(std::string_view role) {
     static const std::unordered_map<std::string_view, accesskit_role> roles{
         {"container", ACCESSKIT_ROLE_GENERIC_CONTAINER},
@@ -50,7 +51,7 @@ accesskit_role role_of(std::string_view role) {
     return found != roles.end() ? found->second : ACCESSKIT_ROLE_UNKNOWN;
 }
 
-// The actions the controls take, by ui::accessibility_action's names, as Godot's action map.
+// The actions the controls take, by ui::accessibility_action's names.
 constexpr std::array<std::pair<std::string_view, accesskit_action>, 14> kActions{{
     {"click", ACCESSKIT_ACTION_CLICK},
     {"focus", ACCESSKIT_ACTION_FOCUS},
@@ -81,8 +82,8 @@ struct Shared {
     std::atomic<bool> reading{false}; // activated and not deactivated
 };
 
-// The tree an adapter starts with when an assistive technology first asks, as Godot's
-// _accessibility_initial_tree_update_callback: the window, busy until the first update.
+// The tree an adapter starts with when an assistive technology first asks: the window, busy until
+// the first update.
 accesskit_tree_update* initial_tree(void* userdata) {
     auto* shared = static_cast<Shared*>(userdata);
     shared->resend = true;
@@ -102,7 +103,7 @@ void deactivated(void* userdata) {
 }
 #endif
 
-// Queued for the next update, as Godot's driver defers each action's callable.
+// Queued for the next update: each action's callable is deferred.
 void action_requested(accesskit_action_request* request, void* userdata) {
     auto* shared = static_cast<Shared*>(userdata);
     if (std::optional<Request> ours = request_of(*request); ours) {
@@ -274,7 +275,7 @@ private:
     }
 
     // AT-SPI places the tree in the window's bounds on the screen, which X11 gives and Wayland
-    // doesn't, as Godot's accessibility_set_window_rect.
+    // doesn't.
     void place_window() {
 #if defined(__linux__)
         int x = 0;
@@ -302,8 +303,7 @@ private:
 #endif
     }
 
-    // Whether the system's screen reader runs, as Godot's
-    // DisplayServer::accessibility_screen_reader_active; on Linux, whether AT-SPI reads.
+    // Whether the system's screen reader runs; on Linux, whether AT-SPI reads.
     [[nodiscard]] bool screen_reader_running() const {
 #ifdef _WIN32
         BOOL running = FALSE;

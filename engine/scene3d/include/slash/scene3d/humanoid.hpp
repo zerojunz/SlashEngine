@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -14,12 +15,10 @@
 #include <string_view>
 #include <vector>
 
-// Humanoids retargeted to one skeleton, as Godot 4.6's importer retargets them: its
-// SkeletonProfileHumanoid (scene/resources/skeleton_profile.cpp), BoneMapper's auto mapping
-// (editor/scene/3d/bone_map_editor_plugin.cpp) and the skeleton renamer, rest fixer and track
-// organizer that run on import (editor/import/3d/post_import_plugin_skeleton_*.cpp), line for
-// line where they can. A retargeted model's bones have the profile's names and its rests turned
-// as the profile's are, so one model's animations play on every other:
+// Humanoids retargeted to one skeleton: a humanoid profile, an automatic bone mapping, and a
+// skeleton renamer, rest fixer and track organizer that run on import. A retargeted model's bones
+// have the profile's names and its rests turned as the profile's are, so one model's animations
+// play on every other:
 //
 //   scene3d::RetargetOptions options;
 //   options.bone_map = scene3d::auto_map_bones(model);
@@ -33,9 +32,9 @@ namespace slash::scene3d {
 // children's heads, to one child's (tail), or nowhere, at the end of a chain.
 enum class TailDirection : std::uint8_t { AverageChildren, SpecificChild, End };
 
-// A bone of the profile, as SkeletonProfile's bones: its name, its parent's ("" for the root),
-// which way it points, its reference pose in its parent (a basis in Godot's row order, then an
-// origin), its group in Godot's editor, and whether a humanoid must have it.
+// A bone of the profile: its name, its parent's ("" for the root),
+// which way it points, its reference pose in its parent (a basis in row order, then an
+// origin), its group in the editor, and whether a humanoid must have it.
 struct ProfileBone {
     std::string_view name;
     std::string_view parent;
@@ -47,7 +46,7 @@ struct ProfileBone {
     bool required = false;
 };
 
-// Godot's SkeletonProfileHumanoid: its 56 bones, from Root, Hips and Spine to each finger's
+// The humanoid profile: its 56 bones, from Root, Hips and Spine to each finger's
 // distal bone, in its order.
 [[nodiscard]] std::span<const ProfileBone> humanoid_profile();
 // The profile bone with this name, or -1.
@@ -57,18 +56,18 @@ struct ProfileBone {
 inline constexpr std::string_view kProfileRoot = "Root";
 inline constexpr std::string_view kScaleBaseBone = "Hips";
 
-// Which bone of a model each profile bone is, as Godot's BoneMap: by profile bone name, the name
+// Which bone of a model each profile bone is: by profile bone name, the name
 // of a node of the model. Bones it leaves out are unmapped.
 using BoneMap = std::map<std::string, std::string, std::less<>>;
 
-// Guesses a bone map from a model's bone names and hierarchy, as Godot's BoneMapper auto
-// mapping: Hips by name, the bones above it for Root, then feet, legs, toes, hands, fingers,
+// Guesses a bone map from a model's bone names and hierarchy: Hips by name, the bones above it
+// for Root, then feet, legs, toes, hands, fingers,
 // arms, neck, head, eyes, jaw, chest and spine, each by words in its name ("thigh", "forearm"),
 // "left" or "right" (or "l" or "r" alone) and where it is in the hierarchy. It works on the
 // model's largest skeleton (model_skeletons); empty when it finds no hips.
 [[nodiscard]] BoneMap auto_map_bones(const Model& model);
 
-// What retarget_model does beyond Godot's defaults, as its import options name them.
+// What retarget_model does beyond its defaults, as its import options name them.
 struct RetargetOptions {
     BoneMap bone_map;
     // fix_silhouette: turns bones that point more than silhouette_threshold degrees away from
@@ -97,8 +96,8 @@ struct RetargetReport {
     float motion_scale = 1.0F;
 };
 
-// Retargets a model's skeleton to the humanoid profile, as Godot's importer does with a bone map
-// and its default options: folds the nodes above the skeleton into its roots
+// Retargets a model's skeleton to the humanoid profile with a bone map
+// and default options: folds the nodes above the skeleton into its roots
 // (apply_node_transforms), renames the mapped bones to the profile's names (moving nodes that
 // have a profile name aside, "Spine" becoming "Spine2"), turns each bone's rest so mapped bones
 // lie as the profile's do and every animation, skin and node under a bone moves with them
@@ -108,7 +107,7 @@ struct RetargetReport {
 // model with no skin.
 [[nodiscard]] Result<RetargetReport> retarget_model(Model& model, const RetargetOptions& options);
 
-// A model's motion scale, as Godot's Skeleton3D::motion_scale after retargeting normalizes
+// A model's motion scale, as set after retargeting normalizes
 // position tracks: how high its Hips node is above its origin at rest; 0 for a model without a
 // skin or a node named Hips. Position tracks of one such model playing on another scale by the
 // ratio of theirs (blend_animation), so a short character walks with shorter steps.

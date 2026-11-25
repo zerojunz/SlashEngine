@@ -1,12 +1,12 @@
 // A game's own temporal upscaler, as DLSS, XeSS or FSR 4 come in from a vendor's SDK.
 //
 // render::add_upscaler takes one marked temporal with a make_temporal function. Where the project
-// names it and FSR 2 would run (Forward+, a scale under 1), the device runs it in FSR 2's place
-// and hands it each frame's color, depth and motion vectors at the render size, the output at the
-// window's size, the camera's jitter and whether its history starts over. On a GPU those are the
-// native API's objects (a VkImage, an ID3D12Resource, an MTLTexture) and the command buffer, which
-// a vendor's library takes; on the software device, which frame.capture draws with, they are
-// float pixels, so a game sees what its upscaler gets on any machine.
+// names it and FSR 2 would run (the clustered renderer, a scale under 1), the device runs it in FSR
+// 2's place and hands it each frame's color, depth and motion vectors at the render size, the
+// output at the window's size, the camera's jitter and whether its history starts over. On a GPU
+// those are the native API's objects (a VkImage, an ID3D12Resource, an MTLTexture) and the command
+// buffer, which a vendor's library takes; on the software device, which frame.capture draws with,
+// they are float pixels, so a game sees what its upscaler gets on any machine.
 //
 // This one splats: each frame it moves its history by the motion vectors, then writes each render
 // pixel's color into the window pixel its jittered sample fell in. Over a few frames the jitter

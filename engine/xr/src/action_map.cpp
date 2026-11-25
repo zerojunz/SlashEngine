@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/xr/openxr.hpp"
 
 #include <initializer_list>
@@ -8,7 +10,7 @@
 namespace slash::xr {
 namespace {
 
-// A path on both hands' controllers, as Godot writes
+// A path on both hands' controllers, written
 // "/user/hand/left<path>,/user/hand/right<path>".
 std::vector<std::string> both(std::string_view path) {
     return {"/user/hand/left" + std::string(path), "/user/hand/right" + std::string(path)};

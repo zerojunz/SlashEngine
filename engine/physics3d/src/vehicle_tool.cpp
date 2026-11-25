@@ -560,8 +560,7 @@ void drive_vehicle(world::World& world, const world::Tree3D& tree, entt::entity 
                      .speed = static_cast<float>(speed)};
 
     // Each wheel's share: the differential splits the force (a tracked vehicle's wheels don't
-    // steer; its tracks slew it, below), and brakes are impulses a step, as Godot's
-    // Wheel3D takes them.
+    // steer; its tracks slew it, below), and brakes are impulses a step.
     const bool tracked = recipe.kind == "tracked";
     int front_driven = 0;
     for (const world::VehicleWheel& w : recipe.wheels) {

@@ -25,10 +25,9 @@
 #include <utility>
 #include <vector>
 
-// TextArea, as Godot's (scene/gui/text_edit.cpp): the events, carets, selections, scrolling and
-// undo steps expected here follow it. Text is drawn in a box font at 20 pixels, every character
-// 12 pixels wide and a space 5, in rows 24 pixels apart (the font's 20 and line_spacing's 4),
-// so where clicks land is easy to work out.
+// TextArea: the events, carets, selections, scrolling and undo steps expected here follow it.
+// Text is drawn in a box font at 20 pixels, every character 12 pixels wide and a space 5, in rows
+// 24 pixels apart (the font's 20 and line_spacing's 4), so where clicks land is easy to work out.
 
 namespace asset = slash::asset;
 namespace command = slash::command;
@@ -293,7 +292,7 @@ TEST_CASE("a click puts the caret in a TextArea; typing and Enter edit its lines
     CHECK(request.caret == static_cast<int>(kMargin));
 
     // Each insertion edits lines; text_changed and caret_changed come once, at the end of the
-    // tick, as Godot defers them.
+    // tick.
     CHECK(f.send(typed("Hi")) == "lines_edited_from notes 0-0, lines_edited_from notes 0-0, "
                                  "text_changed notes, caret_changed notes");
     CHECK(f.text("notes") == "Hi");
@@ -359,7 +358,7 @@ TEST_CASE("arrow keys move between lines and keep the caret's x; Home and End go
     f.tap("Up", kShift);
     CHECK(f.selection("notes") == range(1, 2, 2, 16));
     CHECK(f.caret("notes") == Caret{1, 2});
-    // Removed lines are reported as Godot's are, from the last to the first.
+    // Removed lines are reported, from the last to the first.
     CHECK(f.tap("Backspace") == "lines_edited_from notes 2-1, text_changed notes");
     CHECK(f.text("notes") == "hello big world\nhi");
     CHECK(f.selection("notes") == Selection{});
@@ -409,7 +408,7 @@ TEST_CASE("undo and redo step through typing, which merges until the typist paus
     f.step();
     f.send(typed("ab"));
     f.send(typed("cd"));
-    // Typing without a pause is one step, as Godot's: an insertion a character, chained.
+    // Typing without a pause is one step: an insertion a character, chained.
     CHECK(f.tap("Z", kCtrl) ==
           "lines_edited_from notes 0-0, lines_edited_from notes 0-0, lines_edited_from notes 0-0, "
           "lines_edited_from notes 0-0, text_changed notes, caret_changed notes");
@@ -622,7 +621,7 @@ TEST_CASE("wrap_mode boundary wraps lines at words, and Up and Down move by rows
     f.tap("Up");
     f.tap("Up");
     CHECK(f.caret("notes") == Caret{0, 0});
-    // End goes to the end of the row, before its last character as Godot's, then of the line.
+    // End goes to the end of the row, before its last character, then of the line.
     f.tap("End");
     CHECK(f.caret("notes") == Caret{0, 13});
     f.tap("End");
@@ -646,7 +645,7 @@ TEST_CASE("Tab types a tab while tab_input_mode is on; ui_focus_mode turns it of
     // A tab is as wide as four spaces, from the line's start.
     f.send(typed("x"));
     CHECK(f.view("notes").caret_position.x == kMargin + (4.0F * 5.0F) + kBox);
-    // Ctrl+M toggles it, as Godot's ui_focus_mode, and Tab then moves focus.
+    // Ctrl+M toggles it, and Tab then moves focus.
     f.tap("M", kCtrl);
     CHECK_FALSE(f.edit("notes").tab_input_mode);
     f.tap("Tab");
@@ -789,7 +788,7 @@ TEST_CASE("a TextArea draws its box, current line, selection, text, caret and sc
     const std::vector<ui::Box>& over = placed.overlays.at(entity);
     REQUIRE(over.size() == 3);
     CHECK(over[0].position.x == kMargin + kBox);
-    // It ends both margins above the bottom, as Godot's _update_scrollbars places it.
+    // It ends both margins above the bottom.
     CHECK(over[1].position == Vec2{292.0F, kMargin});
     CHECK(over[1].size == Vec2{8.0F, 92.0F});
     CHECK(over[2].position.y == kMargin);
@@ -804,7 +803,7 @@ TEST_CASE("a TextArea's minimum size is its style, or its text with scroll_fit_c
     CHECK(minimum() == Vec2{8.0F, 8.0F});
     f.set("notes", R"({"TextArea": {"scroll_fit_content_height": true,
                                     "scroll_fit_content_width": true}})");
-    // The widest line and 10 pixels, as Godot's.
+    // The widest line and 10 pixels.
     const Vec2 fit = minimum();
     CHECK(fit.y == 8.0F + (2.0F * kRow));
     CHECK(fit.x == 8.0F + (3.0F * kBox) + 10.0F);
@@ -1191,7 +1190,7 @@ TEST_CASE("breakpoints, bookmarks and gutter entries move with the lines they're
     f.tap("Enter");
     CHECK(f.text("code") == "a\n\n\nb\nc\nd");
     CHECK(lines() == Lines{{3, 5}, {4}, {5}, {4}});
-    // Joining a line onto the one before drops what was on it, as Godot does.
+    // Joining a line onto the one before drops what was on it.
     CHECK(f.tap("Backspace") ==
           "lines_edited_from code 3-2, breakpoint_toggled code 3, breakpoint_toggled code 5, "
           "breakpoint_toggled code 4, text_changed code, caret_changed code");

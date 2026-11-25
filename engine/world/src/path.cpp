@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/world/path.hpp"
 
 #include "slash/world/world.hpp"
@@ -14,11 +15,11 @@
 namespace slash::world {
 namespace {
 
-constexpr float kCmpEpsilon = 0.00001F; // Godot's CMP_EPSILON
-constexpr float kUnitEpsilon = 0.001F;  // Godot's UNIT_EPSILON
+constexpr float kCmpEpsilon = 0.00001F; // The epsilon for approximate comparisons.
+constexpr float kUnitEpsilon = 0.001F;  // The epsilon for unit lengths.
 constexpr int kBakeStages = 10;         // the most times _bake halves a segment
 
-// ---- Godot's float helpers (core/math/math_funcs.h) ----
+// ---- Float helpers ----
 
 bool is_zero_approx(float v) {
     return std::abs(v) < kCmpEpsilon;
@@ -220,7 +221,7 @@ Quat quaternion_of(const Affine3D& b) {
         temp[1] = (m[0][2] - m[2][0]) * s;
         temp[2] = (m[1][0] - m[0][1]) * s;
     } else {
-        // The largest diagonal entry, the first of equals as Godot picks it.
+        // The largest diagonal entry, the first of equals.
         std::size_t i = 0;
         if (m[0][0] < m[1][1]) {
             i = m[1][1] < m[2][2] ? 2 : 1;

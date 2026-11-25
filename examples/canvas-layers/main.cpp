@@ -1,12 +1,11 @@
-// Canvas layers and parallax, as Godot's CanvasLayer and Parallax2D.
+// Canvas layers and parallax.
 //
 // A level 1600 pixels wide scrolls in a 320x180 window behind a camera the player carries. The
-// hills are a Parallax2D's child: they move at a quarter of the camera's speed and repeat every
-// 320 pixels, so they always fill the window. The clouds scroll at half speed and drift on their
-// own. The heart and the coin counter are in a ScreenLayer, so they stay put on the screen.
-// canvas.convert turns a window pixel, such as a click, into the world, as Godot's
-// get_global_mouse_position. Games ship PNG files made in an image editor; this example draws
-// its textures in code, so the repository holds no images.
+// hills are a Parallax2D's child: they move at a quarter of the camera's speed and repeat every 320
+// pixels, so they always fill the window. The clouds scroll at half speed and drift on their own.
+// The heart and the coin counter are in a ScreenLayer, so they stay put on the screen.
+// canvas.convert turns a window pixel, such as a click, into the world. Games ship PNG files made
+// in an image editor; this example draws its textures in code, so the repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

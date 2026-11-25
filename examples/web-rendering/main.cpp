@@ -1,11 +1,11 @@
-// Drawing with OpenGL ES 3.0, which browsers call WebGL 2: how a web export draws, since SDL3's
-// GPU API has no web backend. The opengl render driver picks it anywhere else the system has
-// OpenGL ES (Android, Linux), as Godot's compatibility renderer.
+// Drawing with OpenGL ES 3.0, which browsers call WebGL 2: how a web export draws, since SDL3's GPU
+// API has no web backend. The opengl render driver picks it anywhere else the system has OpenGL ES
+// (Android, Linux): the compatibility renderer.
 //
-// This program writes the scene's textures, then draws main.scene.json into a texture on the
-// OpenGL ES device, or on the software device where there is no OpenGL ES (macOS, Windows), and
-// prints what each pixel shows. The two draw the same pixels, so the output is the same either
-// way: CI checks it on Linux with Mesa's OpenGL ES and on macOS and Windows on the CPU.
+// This program writes the scene's textures, then draws main.scene.json into a texture on the OpenGL
+// ES device, or on the software device where there is no OpenGL ES (macOS, Windows), and prints
+// what each pixel shows. The two draw the same pixels, so the output is the same either way: CI
+// checks it on Linux with Mesa's OpenGL ES and on macOS and Windows on the CPU.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

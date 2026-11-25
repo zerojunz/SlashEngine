@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -27,10 +28,10 @@ class World;
 struct VoxelLighting3D;
 } // namespace slash::world
 
-// VoxelLighting3D, as Godot 4.6's VoxelLighting3D (scene/3d/voxel_gi.cpp): a box of the world
+// VoxelLighting3D: a box of the world
 // voxelized into an octree of cells, each holding the albedo, emission and normal of the static
-// meshes in it (scene/3d/voxelizer.cpp), baked into a .voxellight.json file. Lights are injected
-// into the cells as Godot's voxel_gi.glsl injects them on the GPU, here on the CPU on the job pool,
+// meshes in it, baked into a .voxellight.json file. Lights are injected
+// into the cells on the CPU on the job pool,
 // whenever the lights change: direct light with shadows marched through the cells' distance field,
 // a second bounce traced through the first, and the light averaged up the octree. Each level's
 // light is a level of the 3D texture lit meshes trace cones through for their ambient light and
@@ -39,15 +40,15 @@ namespace slash::scene3d {
 
 inline constexpr std::string_view kVoxelGISuffix = ".voxellight.json";
 
-// A cell as Godot's VoxelGIData keeps its data cells: its place in its level's cells (x, y << 11,
+// A cell, as stored in its data: its place in its level's cells (x, y << 11,
 // z << 21), its albedo and how much of it is solid (RGBA8, linear; only the deepest cells have an
 // albedo), its emission (RGBE9995) and its normal (three snorm8).
 using VoxelGICell = std::array<std::uint32_t, 4>;
 
-// A .voxellight.json file, as Godot's VoxelGIData: the box it voxelized in its VoxelLighting3D's
+// A .voxellight.json file: the box it voxelized in its VoxelLighting3D's
 // space, its cells along each axis at the deepest level, the exposure its emission was baked with,
 // and its cells, level by level from the root (level_counts of each), each level sorted by x, then
-// y, then z, as Godot's Voxelizer sorts them.
+// y, then z.
 struct VoxelGIData {
     std::array<float, 3> bounds_position{0.0F, 0.0F, 0.0F};
     std::array<float, 3> bounds_size{0.0F, 0.0F, 0.0F};
@@ -74,19 +75,19 @@ struct VoxelGIData {
 void add_voxel_gi_types(asset::Assets& assets);
 
 // The cells along each axis of a VoxelLighting3D's box of size at subdiv (6 for "64" up to 9 for
-// "512"), as Godot's VoxelGI::get_estimated_cell_size: 2^subdiv along its longest side, halved
+// "512"): 2^subdiv along its longest side, halved
 // along each other side while half the longest side still covers it.
 [[nodiscard]] std::array<std::uint32_t, 3> voxel_gi_octree_size(std::array<float, 3> size,
                                                                 int subdiv);
 // The depth of the octree a VoxelLighting3D of subdiv "64", "128", "256" or "512" bakes: 6 to 9, or
 // 0 for any other name.
 [[nodiscard]] int voxel_gi_subdiv(std::string_view name);
-// The transform from a VoxelLighting3D's space to its cells', as Godot's to_cell_xform: the box's
+// The transform from a VoxelLighting3D's space to its cells': the box's
 // corner at 0, one unit a cell.
 [[nodiscard]] world::Affine3D voxel_gi_to_cell(const VoxelGIData& data);
 
-// What a voxelized surface is made of, as Godot's Voxelizer bakes a material: its albedo and its
-// emission, linear, as kVoxelGIMaterialSize texels square, the textures shrunk with Godot's cubic
+// What a voxelized surface is made of: its albedo and its
+// emission, linear, as kVoxelGIMaterialSize texels square, the textures shrunk with a cubic
 // filter and read at a point's texture coordinate wrapped, and the faces a moving mesh's material
 // hides when it is plotted (the voxelizer takes every face).
 inline constexpr std::uint32_t kVoxelGIMaterialSize = 128;
@@ -116,8 +117,8 @@ struct VoxelGIMesh {
     std::vector<Surface> surfaces;
 };
 
-// Voxelizes meshes in a VoxelLighting3D's box of size (centered on its origin) at subdiv, as
-// Godot's Voxelizer: each triangle that touches the box goes down an octree of cells to the deepest
+// Voxelizes meshes in a VoxelLighting3D's box of size (centered on its origin) at subdiv:
+// each triangle that touches the box goes down an octree of cells to the deepest
 // level, each cell there takes its albedo, emission and normal from a 4x4 scan of it, then the
 // cells are sorted and the levels above take how much of them is solid. exposure is the
 // baked_exposure the materials' emission has. The same cells on every platform.
@@ -129,7 +130,7 @@ inline constexpr std::uint32_t kVoxelGIEmpty = 0xFFFFFFFF;
 
 // What injecting light needs besides the cells: each cell's children (bit 0 of their index is x,
 // bit 1 y and bit 2 z), the first cell of each level and one past the last, and the distance from
-// each place at the deepest level to the nearest cell there, as Godot's get_sdf_3d_image: 0 for a
+// each place at the deepest level to the nearest cell there: 0 for a
 // cell, else 1 more than the distance in cells, up to 255.
 struct VoxelGIOctree {
     std::vector<std::array<std::uint32_t, 8>> children;
@@ -139,7 +140,7 @@ struct VoxelGIOctree {
 // The octree of valid data (validate_voxel_gi), on pool's threads where given.
 [[nodiscard]] VoxelGIOctree voxel_gi_octree(const VoxelGIData& data, jobs::Pool* pool = nullptr);
 
-// A light injected into a VoxelLighting3D's cells, as Godot's VoxelGILight: in the cells' space,
+// A light injected into a VoxelLighting3D's cells: in the cells' space,
 // energy light_energy times light_indirect_energy, color linear, radius its range in cells,
 // direction the way it shines.
 struct VoxelGILight {
@@ -175,10 +176,9 @@ struct VoxelGITexture {
     std::vector<std::array<std::uint32_t, 3>> sizes;
     std::vector<std::vector<std::uint8_t>> levels;
 };
-// The light of lights in the cells, as Godot's VoxelGIInstance::update: each deepest cell's light
-// (MODE_COMPUTE_LIGHT), averaged up the octree (MODE_UPDATE_MIPMAPS) and written into the texture
-// (MODE_WRITE_TEXTURE); then with use_two_bounces again with each deepest cell's light plus what
-// six cones traced through that texture bring it (MODE_SECOND_BOUNCE). Cells are lit on pool's
+// The light of lights in the cells: each deepest cell's light, averaged up the octree and
+// written into the texture; then with use_two_bounces again with each deepest cell's light plus
+// what six cones traced through that texture bring it. Cells are lit on pool's
 // threads where given; the same texels on every platform and for any number of threads.
 [[nodiscard]] VoxelGITexture light_voxel_gi(const VoxelGIData& data, const VoxelGIOctree& octree,
                                             std::span<const VoxelGILight> lights,
@@ -193,11 +193,11 @@ struct VoxelGITexture {
 voxel_gi_meshes(const world::World& world, entt::entity entity, const LightmapSources& sources,
                 float exposure, std::vector<Problem>& problems);
 
-// Moving meshes plotted into a VoxelLighting3D's light, as Godot's dynamic objects
-// (VoxelGIInstance::update): each object (its transform into the VoxelLighting3D's space) is drawn
+// Moving meshes plotted into a VoxelLighting3D's light: each object (its transform into the
+// VoxelLighting3D's space) is drawn
 // from the six faces of its box into maps 16 times finer than the cells, its nearest surfaces'
-// albedo, normal and emission lit by lights as the cells are (MODE_DYNAMIC_LIGHTING), then halved
-// level by level and blended over each level of texture from level 0 (MODE_DYNAMIC_SHRINK_PLOT).
+// albedo, normal and emission lit by lights as the cells are, then halved
+// level by level and blended over each level of texture from level 0.
 // Pixels are lit on pool's threads where given; the same texels on every platform and for any
 // number of threads. A texture that isn't the data's light is left alone.
 void plot_voxel_gi_objects(VoxelGITexture& texture, const VoxelGIData& data,
@@ -220,7 +220,7 @@ struct VoxelGIAtlas {
 [[nodiscard]] Result<VoxelGIAtlas> voxel_gi_atlas(const VoxelGITexture& texture);
 
 // The VoxelLighting3D a mesh traces (render::VoxelGIProbe), of the component voxel_gi placed at
-// transform with data's light in atlas, as Godot's GI::setup_voxel_gi_instances sets one up: the
+// transform with data's light in atlas: the
 // world to its cells, the atlas's levels, its bias, normal bias and interior, and its light's
 // scale, its dynamic range times its energy times exposure_normalization (the camera's exposure
 // normalization over data's baked_exposure where the camera has attributes, else 1).
@@ -231,9 +231,9 @@ struct VoxelGIAtlas {
                                                   float exposure_normalization = 1.0F);
 
 // The light from a light in the world (render::Light3D, light_energy times
-// light_indirect_energy) that a VoxelLighting3D placed at transform injects, as
-// VoxelGIInstance::update turns it into the cells' space; it casts shadows through the cells where
-// light.shadow is set. Lights Godot leaves out (a directional light whose sky_mode is "sky_only")
+// light_indirect_energy) that a VoxelLighting3D placed at transform injects, in the cells' space;
+// it casts shadows through the cells where
+// light.shadow is set. Lights it leaves out (a directional light whose sky_mode is "sky_only")
 // are the caller's to leave out.
 [[nodiscard]] VoxelGILight voxel_gi_light(const render::Light3D& light, float indirect_energy,
                                           const VoxelGIData& data,
@@ -246,7 +246,7 @@ struct VoxelGIBake {
     std::vector<Problem> problems;
 };
 
-// Bakes the cells of a VoxelLighting3D entity, as Godot's VoxelGI::bake: the static MeshInstance3Ds
+// Bakes the cells of a VoxelLighting3D entity: the static MeshInstance3Ds
 // (gi_mode "static") visible under the entity's parent (everything for a root) that touch its box,
 // with their materials read through sources (lightmap.hpp's), at its subdiv, its emission at the
 // exposure_multiplier of camera_attributes' CameraLens.

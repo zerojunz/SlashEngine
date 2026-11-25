@@ -1921,7 +1921,7 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
         "materials": [{"name": "Paint", "standard": {}, "textures": {"albedo": 0}}],
         "meshes": [{"materials": [0], "name": "Quad", "triangles": 2, "vertices": 4}],
         "parts": [{"mesh": 0, "node": "Quad"}]})"));
-    // And as an FBX file, whose materials always show vertex colors, as Godot's importer makes
+    // And as an FBX file, whose materials always show vertex colors, as the importer makes
     // them.
     slash::test::Fbx fbx;
     fbx.geometry(10, "Quad", {-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0},
@@ -2117,7 +2117,7 @@ TEST_CASE("entity.place stands entities on what is below, apart and along a path
     // A mesh is stood on too, and a second box asked to go partly where the crate is moves aside
     // to the nearest spot where it only touches, half a box a ring. (Asked to go right under the
     // crate's middle, the crate's bottom and the floor's top would tie.) Asked to go higher, it
-    // would stand on the crate, as Godot's snap does.
+    // would stand on the crate.
     CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [-3, 2, 0]}]})") ==
           parse(R"({"placed": [{"id": "barrel", "on": "step", "position": [-3, 1.5, 0]}]})"));
     CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [2.6, 0, 0]}]})") ==
@@ -2671,7 +2671,7 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
           parse(R"({"file": "nav/level.navmesh.json", "vertices": 4, "polygons": 2})"));
     const std::optional<std::string> level = read("nav/level.navmesh.json");
     REQUIRE(level);
-    // Clockwise seen from above, as Godot's bakes are, so their normals point down.
+    // Clockwise seen from above, so their normals point down.
     CHECK(parse(*level) == parse(R"({"format": 1,
         "vertices": [[-4.5, 0.5, -4.5], [-4.5, 0.5, 4.5], [4.5, 0.5, 4.5], [4.5, 0.5, -4.5]],
         "polygons": [[3, 2, 0], [0, 2, 1]]})"));
@@ -2917,7 +2917,7 @@ TEST_CASE("occluder.bake sets an occluder's shape from the meshes around it, and
     engine.ok("undo");
     CHECK(shape().shape == "quad");
     CHECK(shape().vertices.empty());
-    // With nothing to bake, it fails, as Godot's bake does.
+    // With nothing to bake, it fails.
     engine.ok("component.set", R"({"id": "occluder", "components": {
         "Occluder3D": {"bake_mask": 2}}})");
     auto reply =
@@ -2959,7 +2959,7 @@ TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them
     CHECK_FALSE(read("sdf.sdf.png"));
 
     // The texture holds the cells' distances, less than 0 within a cell behind the sphere's faces
-    // (its thickness) and more than 0 elsewhere, deep inside too, as Godot's.
+    // (its thickness) and more than 0 elsewhere, deep inside too.
     CHECK(engine.ok("particles.bake_sdf", R"({"id": "sdf"})") == baked);
     const std::optional<std::string> png = read("sdf.sdf.png");
     REQUIRE(png);
@@ -3309,7 +3309,7 @@ TEST_CASE("wind.sample returns the wind WindSource3Ds blow, with gusts and point
     engine.fails("wind.sample", R"({"points": [[0]]})", command::code::kInvalidParams);
 }
 
-TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them as Godot's, and CPU "
+TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them, and CPU "
           "particles drift") {
     // A sheet held up by its corners, in wind blowing straight down through it.
     const auto sag = [](std::string_view extra) {
@@ -3331,7 +3331,7 @@ TEST_CASE("wind pushes soft bodies by their drag, Area3Ds blow them as Godot's, 
     const double blown = sag(R"(, {"command": "entity.create", "params": {"id": "gale",
         "components": {"Transform3D": {"rotation": [-1.5707964, 0, 0]},
                        "WindSource3D": {"strength": 30, "turbulence": 0}}}})");
-    // An Zone3D's wind, as Godot's, from a source above it blowing down its -z.
+    // An Zone3D's wind, from a source above it blowing down its -z.
     const double area = sag(R"(, {"command": "entity.create", "params": {"id": "vent",
         "components": {"Transform3D": {"position": [0, 4, 0], "rotation": [-1.5707964, 0, 0]}}}},
         {"command": "entity.create", "params": {"id": "draft", "components": {
@@ -3450,7 +3450,7 @@ TEST_CASE("particles.eval runs a GpuEmitter2D's steps on the CPU") {
     CHECK(engine.ok("particles.eval", R"({"id": "jet"})") ==
           parse(R"({"alive": 0, "bounds": null})"));
     engine.ok("step", R"({"ticks": 30})");
-    // White is Godot's hue matrix's white, as its particles are.
+    // White is the hue matrix's white, as its particles are.
     CHECK(engine.ok("particles.eval", R"({"id": "jet", "list": true, "max_results": 1})") ==
           parse(R"({"alive": 4, "bounds": [100, 20, 0, 0], "particles": [
               {"age": 0.5, "color": [0.999, 0.999, 1, 1], "position": [100, 20], "rotation": 0,
@@ -3942,7 +3942,7 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     CHECK(engine.ok("animation.eval", R"({"id": "hero", "animation": "fade", "times": [0.125],
                                           "tracks": ["Sprite2D/modulate/a"]})") ==
           parse(R"({"length": 0.5, "loop": "none", "tracks": {"Sprite2D/modulate/a": [0.75]}})"));
-    // A track with a target is named after it, as Godot's "Node:property".
+    // A track with a target is named after it as "Node:property".
     CHECK(engine.ok("animation.eval", R"({"path": "hero.anim.json", "animation": "fade",
                                           "times": [0.5]})") ==
           parse(R"({"length": 0.5, "loop": "none",
@@ -4951,7 +4951,7 @@ TEST_CASE("in surround, audio.state and audio.capture report each speaker") {
     CHECK(voice.find("id")->as_string() == "voice");
     CHECK(*voice.find("volume") == parse("[0, 0]"));
     CHECK(*voice.find("speakers") == parse(R"({"center": 1, "lfe": 1, "rear": [0, 0]})"));
-    // Straight ahead, Godot's Spcap puts most of it on the center and front speakers.
+    // Straight ahead, Spcap puts most of it on the center and front speakers.
     const json::Value& buzz = state.find("players")->as_array().at(0);
     CHECK(buzz.find("id")->as_string() == "buzz");
     CHECK(*buzz.find("volume") == parse("[0.5467, 0.5467]"));
@@ -5206,7 +5206,7 @@ TEST_CASE("model.cleanup gives a model collision, which model.inspect reports") 
     CHECK(hulls >= 2);
     CHECK(hulls <= 6);
     CHECK(made.find("collision")->find("trimesh") == nullptr);
-    // The file keeps them as Godot's collision hints, so it reads back with them.
+    // The file keeps them as collision hints, so it reads back with them.
     const json::Value brief =
         engine.ok("model.inspect", R"({"path": "props/arch.glb", "brief": true})");
     const json::Value* collision = brief.find("collision");
@@ -5296,7 +5296,7 @@ f 5/5/2 6/6/2 7/7/2 8/8/2
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("model.retarget renames a rigged humanoid's bones for Godot's humanoid skeleton") {
+TEST_CASE("model.retarget renames a rigged humanoid's bones for the humanoid skeleton") {
     const std::string root = "command_retarget_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root + "/source").ok());

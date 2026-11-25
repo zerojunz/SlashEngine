@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/platform/fonts.hpp"
 
 #include "slash/platform/file.hpp"
@@ -54,7 +56,7 @@ constexpr std::uint32_t kPageSize = 1024;
 constexpr std::size_t kShapeCacheSize = 1024;
 // FreeType's 26.6 fixed point.
 constexpr double kUnitsPerPixel = 64.0;
-// How deep fallbacks of fallbacks go, as Godot's limit on font fallback recursion.
+// How deep fallbacks of fallbacks go.
 constexpr int kMaxFallbackDepth = 64;
 // Installed fonts tried, one after another, for the characters of a run no font of its chain has.
 constexpr std::size_t kMaxSystemFaces = 4;
@@ -325,7 +327,7 @@ std::string script_code(hb_script_t script) {
     return {tag.data(), 4};
 }
 
-// Godot's shaped_text_tab_align: each tab's advance reaches the next tab stop after the text
+// Aligns tabs: each tab's advance reaches the next tab stop after the text
 // since the last tab, going through the paragraph in its direction.
 void align_tabs(Shaped& shaped, std::string_view text, const std::vector<float>& stops) {
     if (std::ranges::any_of(stops, [](float stop) { return stop <= 0.0F; })) {
@@ -557,7 +559,7 @@ struct Fonts::Impl {
         if (found != face.metrics.end()) {
             return found->second;
         }
-        // Distance fields scale the metrics of msdf_size, as Godot's do.
+        // Distance fields scale the metrics of msdf_size.
         const int at = face.msdf() ? face.settings.msdf_size : size;
         set_size(face, at);
         const double scale = face.msdf() ? static_cast<double>(size) / at : 1.0;
@@ -612,7 +614,7 @@ struct Fonts::Impl {
         return chain;
     }
 
-    // A chain in the order its fonts are tried for a run, as Godot's FontPriorityList: the first
+    // A chain in the order its fonts are tried for a run: the first
     // font, then fallbacks for the script and language, those for the script only, then the rest.
     [[nodiscard]] std::vector<std::uint32_t> ordered(const Chain& chain, std::string_view script,
                                                      std::string_view language) const {
@@ -647,7 +649,7 @@ struct Fonts::Impl {
     }
 
     // The face of an installed font file, or of a collection, that has a character: the most
-    // regular one (upright, weight nearest 400), as Godot picks a system font's face.
+    // regular one (upright, weight nearest 400).
     std::optional<std::uint32_t> system_face_in(const std::string& path, char32_t character) {
         const std::shared_ptr<const FontData> data = system_file(path);
         if (!data) {
@@ -745,7 +747,7 @@ struct Fonts::Impl {
         unsigned int count = 0;
         const hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buffer, &count);
         const hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &count);
-        // Glyph images draw at whole pixels, so their advances are whole too, as Godot's are
+        // Glyph images draw at whole pixels, so their advances are whole too,
         // without subpixel positioning.
         const auto pixels = [round](hb_position_t value) {
             const double exact = static_cast<double>(value) / kUnitsPerPixel;
@@ -786,7 +788,7 @@ struct Fonts::Impl {
         std::vector<std::uint32_t> tried; // faces shaping text[start, end) now, outermost first
     };
 
-    // Shapes text[start, end) with the run's fonts from the one at index on, as Godot's
+    // Shapes text[start, end) with the run's fonts from the one at index on:
     // _shape_run: characters a font has no glyph for are shaped again with the next font, then
     // with installed fonts; what no font has is drawn with the first font's missing-glyph box.
     void shape_run(std::vector<Glyph>& out, RunContext& run, std::size_t start, std::size_t end,
@@ -1201,7 +1203,7 @@ struct Fonts::Impl {
             return put_coverage(coverage(bitmap), bitmap.width, bitmap.rows,
                                 face.ft->glyph->bitmap_left, face.ft->glyph->bitmap_top);
         }
-        // Godot's outline: a stroke a quarter of outline_size in pixels each side of the edge.
+        // The outline: a stroke a quarter of outline_size in pixels each side of the edge.
         FT_Stroker_Set(stroker, static_cast<FT_Fixed>(outline) * 16, FT_STROKER_LINECAP_BUTT,
                        FT_STROKER_LINEJOIN_ROUND, 0);
         FT_Glyph glyph = nullptr;
@@ -1221,7 +1223,7 @@ struct Fonts::Impl {
         return out;
     }
 
-    // A glyph's distance field, made from its outline at msdf_size, as Godot's MSDF fonts are.
+    // A glyph's distance field, made from its outline at msdf_size.
     std::optional<GlyphImage> rasterize_msdf(Face& face, std::uint32_t index) {
         set_size(face, face.settings.msdf_size);
         if (FT_Load_Glyph(face.ft, index, FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP) != 0 ||
@@ -1345,7 +1347,7 @@ Result<TextLayout> Fonts::layout(std::string_view text, const LayoutOptions& opt
         i += length;
         start = i;
     }
-    // Lines are as tall as the tallest font drawn in them, as Godot's.
+    // Lines are as tall as the tallest font drawn in them.
     layout.metrics = impl_->metrics(*impl_->faces[chain.value().faces[0]], options.font_size);
     std::vector<std::uint32_t> used;
     for (const Glyph& glyph : layout.glyphs) {
@@ -1412,7 +1414,7 @@ bool Fonts::trim(TextLayout& layout, std::size_t line_index, float width, Overru
     float dots_width = 0.0F;
     if (add_dots && line.count > 0) {
         // The ellipsis from the line's first font that has it, then the layout's fonts in
-        // order, as Godot looks for one; three dots where none has it.
+        // order; three dots where none has it.
         std::vector<std::uint32_t> faces{at(0).face};
         if (const auto chain = impl_->chain_for(layout.font); chain) {
             for (const std::uint32_t face : chain.value().faces) {

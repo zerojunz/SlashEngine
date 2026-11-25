@@ -263,7 +263,7 @@ TEST_CASE("FabrikIK3D, CcdIK3D and JacobianIK3D carry their chains to the target
                 "target": "goal"}]}})");
         CHECK(scene3d::check_meshes(scene.world).empty());
 
-        // Godot's solvers turn each joint at most angular_delta_limit a step, max_iterations
+        // The solvers turn each joint at most angular_delta_limit a step, max_iterations
         // steps a tick, so the chain gets there over ticks rather than at once.
         const Vec3 rest = scene.positions(arm).at("Tip");
         CHECK(near(rest, {0.0F, 4.0F, 0.0F}));
@@ -494,7 +494,7 @@ TEST_CASE("BoneLookAt3D eases into a new direction over its duration") {
         scene.world.step(1.0 / 60.0);
     }
     const Vec3 before = scene.positions(arm).at("Hand");
-    // The goal crosses the wrist's x axis close by, which Godot's look-at takes as a flip: the
+    // The goal crosses the wrist's x axis close by, which the look-at takes as a flip: the
     // bone swings over to the other side, easing through the half second.
     scene.move(goal, {-3.0F, 2.05F, 0.0F});
     for (int i = 0; i < 15; ++i) {

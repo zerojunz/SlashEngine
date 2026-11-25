@@ -127,8 +127,8 @@ float dot(Vec3 a, Vec3 b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
-// Whether every triangle winds clockwise seen from the side its corners' normals face, as
-// Godot's front faces do.
+// Whether every triangle winds clockwise seen from the side its corners' normals face, as front
+// faces do.
 bool clockwise(const scene3d::ModelSurface& surface) {
     for (std::size_t i = 0; i + 2 < surface.indices.size(); i += 3) {
         const render::Vertex3D& a = surface.vertices[surface.indices[i]];
@@ -190,7 +190,7 @@ struct Scene {
 
 } // namespace
 
-TEST_CASE("glTF models load as Godot's importer reads them") {
+TEST_CASE("glTF models load") {
     MemoryFiles files;
     CHECK(scene3d::is_model_path("models/ship.gltf"));
     CHECK(scene3d::is_model_path("models/ship.glb"));
@@ -216,21 +216,21 @@ TEST_CASE("glTF models load as Godot's importer reads them") {
     REQUIRE(m.meshes[0].surfaces.size() == 1);
     const scene3d::ModelSurface& surface = m.meshes[0].surfaces[0];
     CHECK(surface.material == 0);
-    // The corners stay four, each triangle's last two swapped for Godot's clockwise winding.
+    // The corners stay four, each triangle's last two swapped for clockwise winding.
     REQUIRE(surface.vertices.size() == 4);
     CHECK(surface.indices == std::vector<std::uint32_t>{0, 2, 1, 0, 3, 2});
     CHECK(clockwise(surface));
     CHECK(near(surface.vertices[0].uv, {0.0F, 1.0F}));
     for (const render::Vertex3D& v : surface.vertices) {
         CHECK(near(v.normal, {0.0F, 0.0F, 1.0F}));
-        // MikkTSpace's tangent points along +u, as Godot's SurfaceTool makes it.
+        // MikkTSpace's tangent points along +u, as the surface tool makes it.
         CHECK(near(v.tangent, {1.0F, 0.0F, 0.0F, 1.0F}));
     }
 
     REQUIRE(m.materials.size() == 2);
     const world::Surface3D& glass = m.materials[0].standard;
     CHECK(m.materials[0].name == "Glass");
-    // glTF colors are linear; Godot's are sRGB.
+    // glTF colors are linear; the engine's are sRGB.
     CHECK(near(glass.albedo_color.x, 0.735357F));
     CHECK(near(glass.albedo_color.y, 0.484529F));
     CHECK(near(glass.albedo_color.z, 0.0F));
@@ -247,7 +247,7 @@ TEST_CASE("glTF models load as Godot's importer reads them") {
     CHECK(cutout.shading == "unshaded");
     CHECK(cutout.transparency == "alpha_scissor");
     CHECK(near(cutout.alpha_scissor_threshold, 0.25F));
-    CHECK(near(cutout.metallic, 0.0F)); // no pbrMetallicRoughness: Godot's defaults
+    CHECK(near(cutout.metallic, 0.0F)); // no pbrMetallicRoughness: the defaults
     CHECK(cutout.cull_mode == "back");
 
     REQUIRE(m.parts.size() == 1);
@@ -343,7 +343,7 @@ TEST_CASE("glTF primitives without normals get flat ones, and corner colors colo
     CHECK(clockwise(surface));
     for (const render::Vertex3D& v : surface.vertices) {
         CHECK(near(v.normal, {0.0F, 0.0F, 1.0F}));
-        // With no texture coordinates, Godot's stand-in tangent.
+        // With no texture coordinates, a stand-in tangent.
         CHECK(near(v.tangent, {0.0F, -1.0F, 0.0F, 1.0F}));
     }
     CHECK(surface.vertices[0].rgba == std::array<std::uint8_t, 4>{255, 0, 0, 255});
@@ -351,8 +351,7 @@ TEST_CASE("glTF primitives without normals get flat ones, and corner colors colo
     REQUIRE(m.materials.size() == 1);
     CHECK(surface.material == 0);
     CHECK(m.materials[0].standard.vertex_color_use_as_albedo);
-    // With no scene, the nodes without parents are drawn; one without a name is named for its
-    // mesh, as Godot's importer names it.
+    // With no scene, the nodes without parents are drawn; one without a name is named for its mesh.
     REQUIRE(m.parts.size() == 1);
     CHECK(m.parts[0].node == "Mesh");
 }
@@ -394,7 +393,7 @@ TEST_CASE("glTF files name buffers and images beside them, or carry them inside"
     CHECK(textured.standard.roughness_texture_channel == "green");
     CHECK(textured.standard.normal_enabled);
     CHECK(near(textured.standard.normal_scale, 0.5F));
-    // An emission texture adds to black, as Godot's importer leaves emissiveFactor out.
+    // An emission texture adds to black, and emissiveFactor is left out.
     CHECK(textured.standard.emission_enabled);
     CHECK(near(textured.standard.emission.x, 0.0F));
     CHECK(scene3d::check_model(files.files["models/quad.gltf"], "models/quad.gltf", files.reader())
@@ -652,7 +651,7 @@ vn 0 0 1
 
 } // namespace
 
-TEST_CASE("OBJ models load as Godot's importer reads them as a scene") {
+TEST_CASE("OBJ models load as a scene") {
     MemoryFiles files;
     files.files["models/shapes.obj"] = std::string(kObjQuad) + R"(f 1/1/1 2/2/1 3/3/1 4/4/1
 o Pentagon
@@ -678,14 +677,14 @@ f -5//1 -4//1 -3//1 -2//1 -1//1
     CHECK(m.materials.empty());
     CHECK(m.images.empty());
 
-    // The quad: two triangles from the first corner, equal corners merged, clockwise as Godot's.
+    // The quad: two triangles from the first corner, equal corners merged, clockwise.
     REQUIRE(m.meshes[0].surfaces.size() == 1);
     const scene3d::ModelSurface& quad = m.meshes[0].surfaces[0];
     CHECK(quad.material == -1);
     REQUIRE(quad.vertices.size() == 4);
     CHECK(quad.indices == std::vector<std::uint32_t>{0, 2, 1, 0, 3, 2});
     CHECK(clockwise(quad));
-    // OBJ's v runs up the texture, Godot's down it.
+    // OBJ's v runs up the texture, the engine's down it.
     CHECK(near(quad.vertices[0].uv, {0.0F, 1.0F}));
     for (const render::Vertex3D& v : quad.vertices) {
         CHECK(near(v.normal, {0.0F, 0.0F, 1.0F}));
@@ -699,7 +698,7 @@ f -5//1 -4//1 -3//1 -2//1 -1//1
     REQUIRE(pentagon.vertices.size() == 5);
     CHECK(clockwise(pentagon));
     for (const render::Vertex3D& v : pentagon.vertices) {
-        // With no texture coordinates, Godot's stand-in tangent for the normal.
+        // With no texture coordinates, a stand-in tangent for the normal.
         CHECK(near(v.tangent, {0.0F, -1.0F, 0.0F, 1.0F}));
     }
     CHECK(near(pentagon.vertices[0].position, {0.0F, 0.0F, 1.0F}));
@@ -884,7 +883,7 @@ TEST_CASE("models write as glTF files that load back as written") {
     read_cutout.albedo_image = 0;
     same_material(m.materials[2], read_cutout);
 
-    // Every corner as written, and the triangles in Godot's order again.
+    // Every corner as written, and the triangles in their order again.
     const auto same_surface = [](const scene3d::ModelSurface& read,
                                  const scene3d::ModelSurface& wrote) {
         CHECK(read.indices == wrote.indices);
@@ -946,7 +945,7 @@ f -5//1 -4//1 -3//1 -2//1 -1//1
     same_surface(again.value().meshes[1].surfaces.at(0), obj.value().meshes[1].surfaces.at(0));
 }
 
-TEST_CASE("OBJ files without normals get smooth ones by Godot's smoothing groups") {
+TEST_CASE("OBJ files without normals get smooth ones by their smoothing groups") {
     MemoryFiles files;
     // Two faces at a right angle, sharing an edge: one facing +z, one -y.
     files.files["fold.obj"] = R"(v 0 0 0
@@ -981,7 +980,7 @@ f 1 2 4
     }
 }
 
-TEST_CASE("OBJ material libraries become StandardMaterial3Ds as Godot's importer makes them") {
+TEST_CASE("OBJ material libraries become StandardMaterial3Ds") {
     MemoryFiles files;
     files.files["models/crate.obj"] = "mtllib ../materials/crate.mtl\n" + std::string(kObjQuad) +
                                       R"(usemtl Wood
@@ -1031,7 +1030,7 @@ map_Ks smoke.tga
     CHECK(near(wood.standard.albedo_color.y, 0.4F));
     CHECK(near(wood.standard.albedo_color.z, 0.2F));
     CHECK(near(wood.standard.albedo_color.w, 1.0F));
-    // Godot's importer takes the metallic from the specular color, or the shininess after it.
+    // The metallic is taken from the specular color, or the shininess after it.
     CHECK(near(wood.standard.metallic, 0.5F));
     CHECK(near(wood.standard.roughness, 1.0F));
     CHECK(wood.standard.normal_enabled);
@@ -1053,7 +1052,7 @@ map_Ks smoke.tga
     CHECK(glass.albedo_image == -1);
 
     // Each usemtl starts a surface; a material the library lacks, and the faces of an object
-    // before its first usemtl, take Godot's default material.
+    // before its first usemtl, take the default material.
     REQUIRE(m.meshes.size() == 2);
     REQUIRE(m.meshes[0].surfaces.size() == 3);
     CHECK(m.meshes[0].surfaces[0].material == 0);
@@ -1114,7 +1113,7 @@ TEST_CASE("OBJ files that can't load say why, and libraries that can't are left 
           "line 5: its corners \"1/1\" and \"2\" don't have the same parts (v, v/vt, v/vt/vn or "
           "v//vn)");
 
-    // A library that can't be read or is broken leaves its materials out, as Godot's importer.
+    // A library that can't be read or is broken leaves its materials out.
     const std::string face = "v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl A\nf 1 2 3\n";
     files.files["models/broken.mtl"] = "Kd 1 0 0\nnewmtl A\n";
     files.files["models/libraries.obj"] =
@@ -1187,7 +1186,7 @@ Fbx fbx_quad(std::vector<std::int32_t> materials = {}) {
 
 } // namespace
 
-TEST_CASE("FBX models load as Godot's importer reads them, in meters with y up") {
+TEST_CASE("FBX models load in meters with y up") {
     // As Blender writes one: z up and centimeters, a mesh under an empty node.
     Fbx file;
     file.up_axis = 2;
@@ -1226,7 +1225,7 @@ TEST_CASE("FBX models load as Godot's importer reads them, in meters with y up")
         REQUIRE(surface.vertices.size() == 4);
         CHECK(surface.indices.size() == 6);
         CHECK(clockwise(surface));
-        // Meters; normals made for a mesh without them; the texture's v runs down, as Godot's.
+        // Meters; normals made for a mesh without them; the texture's v runs down.
         CHECK(near(surface.vertices[0].position, {-1.0F, -1.0F, 0.0F}));
         CHECK(near(surface.vertices[0].uv, {0.0F, 1.0F}));
         for (const render::Vertex3D& v : surface.vertices) {
@@ -1289,7 +1288,7 @@ TEST_CASE("FBX meshes keep their normals, tangents, colors and a surface per mat
     for (const render::Vertex3D& v : front.vertices) {
         CHECK(near(v.normal, {0.0F, 0.0F, 1.0F}));
         CHECK(v.rgba == std::array<std::uint8_t, 4>{255, 0, 0, 255});
-        // No texture coordinates, so Godot's stand-in tangent for the normal.
+        // No texture coordinates, so a stand-in tangent for the normal.
         CHECK(near(v.tangent, {0.0F, -1.0F, 0.0F, 1.0F}));
     }
     for (const render::Vertex3D& v : back.vertices) {
@@ -1299,7 +1298,7 @@ TEST_CASE("FBX meshes keep their normals, tangents, colors and a surface per mat
     CHECK(loaded.value().materials.size() == 2);
 }
 
-TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes them") {
+TEST_CASE("FBX materials become StandardMaterial3Ds") {
     Fbx file = fbx_quad({0});
     // Phong: the diffuse color times its factor, and emission.
     FbxNode& glow = file.material(30, "Glow", "phong");
@@ -1358,7 +1357,7 @@ TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes th
     CHECK(g.emission_energy_multiplier == 2.0F);
     CHECK(m.materials[0].albedo_image == -1);
 
-    // The texture, found in the textures folder beside the model as Godot looks for it. Its
+    // The texture, found in the textures folder beside the model. Its
     // texels set the colors, times the factor (alpha too), and its clear ones a cutout.
     const scene3d::ModelMaterial& w = m.materials[1];
     REQUIRE(w.albedo_image >= 0);
@@ -1371,7 +1370,7 @@ TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes th
     CHECK(near(w.standard.uv_scale, {2.0F, 3.0F, 1.0F}));
 
     // PBR: metalness and roughness, the roughness from its texture's red channel, and the normal
-    // map. A four-part color takes its alpha from its third part, as Godot's importer does.
+    // map. A four-part color takes its alpha from its third part.
     const scene3d::ModelMaterial& p = m.materials[2];
     CHECK(near(p.standard.albedo_color.x, 0.537099F));
     CHECK(near(p.standard.albedo_color.w, 0.75F));
@@ -1388,7 +1387,7 @@ TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes th
               .empty());
 }
 
-TEST_CASE("FBX textures are found where Godot's importer looks, and those that aren't reported") {
+TEST_CASE("FBX textures are found where the loader looks, and those that aren't reported") {
     Fbx file = fbx_quad({0});
     FbxNode& material = file.material(30, "Many");
     (void)material;
@@ -1509,14 +1508,14 @@ TEST_CASE("Model3D draws a model recipe, built as it loads") {
     CHECK(pixel(captured.value().image, 2, 2) == Rgba{0, 0, 255, 255});
 }
 
-TEST_CASE("glTF skins, bones and animations load as Godot's importer reads them") {
+TEST_CASE("glTF skins, bones and animations load") {
     MemoryFiles files;
     files.files["arm.gltf"] = slash::test::arm().gltf();
     const auto loaded = load(files, "arm.gltf");
     REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
     const scene3d::Model& model = loaded.value();
 
-    // Every node, parents first, as Godot's bones are.
+    // Every node, parents first.
     REQUIRE(model.nodes.size() == 4);
     std::vector<std::string> names;
     std::vector<int> parents;
@@ -1557,7 +1556,7 @@ TEST_CASE("glTF skins, bones and animations load as Godot's importer reads them"
         }
     }
 
-    // Animations as long as their last key; a "-loop" name loops, as Godot's import hint.
+    // Animations as long as their last key; a "-loop" name loops.
     REQUIRE(model.animations.size() == 2);
     CHECK(model.animations[0].name == "Bend");
     CHECK(model.animations[0].length == doctest::Approx(1.0));
@@ -1572,7 +1571,7 @@ TEST_CASE("glTF skins, bones and animations load as Godot's importer reads them"
     CHECK(near(box.min, {-0.5F, 0.0F, 0.0F}));
     CHECK(near(box.max, {0.5F, 2.0F, 0.0F}));
 
-    // Names Godot can't take in a node path are changed as its importer changes them, and names
+    // Names that can't be in a node path are changed, and names
     // made unique; nodes without names are named for what they are.
     slash::test::Gltf named = quad();
     named.document["nodes"] = parse(R"([{"name": "a.b:c", "children": [1, 2, 3]},
@@ -1588,7 +1587,7 @@ TEST_CASE("glTF skins, bones and animations load as Godot's importer reads them"
     CHECK(names == std::vector<std::string>{"a_b_c", "Arm", "Arm2", "Mesh", "Node"});
 }
 
-TEST_CASE("skins move vertices as Godot's skeleton shader, posed by animations and bones") {
+TEST_CASE("skins move vertices, posed by animations and bones") {
     MemoryFiles files;
     files.files["arm.gltf"] = slash::test::arm().gltf();
     const auto loaded = load(files, "arm.gltf");
@@ -1637,7 +1636,7 @@ TEST_CASE("skins move vertices as Godot's skeleton shader, posed by animations a
         }
     }
 
-    // Half way through, an eighth of a turn, by Godot's slerp.
+    // Half way through, an eighth of a turn, by slerp.
     pose = scene3d::rest_pose(model);
     scene3d::blend_animation(model, model, bend, 0.5, 1.0F, {}, pose);
     const float eighth = std::sqrt(0.5F);
@@ -1699,7 +1698,7 @@ TEST_CASE("skins move vertices as Godot's skeleton shader, posed by animations a
     CHECK(near(skinned(pose)[{0.5F, 2.0F}], {-1.0F, 1.5F, 0.0F}));
 }
 
-TEST_CASE("FBX skins and animation stacks load as Godot's importer reads them") {
+TEST_CASE("FBX skins and animation stacks load") {
     MemoryFiles files;
     files.files["arm.gltf"] = slash::test::arm().gltf();
     const auto gltf = load(files, "arm.gltf");
@@ -1894,7 +1893,7 @@ TEST_CASE("Animator plays a model's animations on the skinned mesh its entity dr
     CHECK(more[1].path == "/components/Skeleton3D");
 }
 
-TEST_CASE("glTF morph targets load as Godot's importer makes them blend shapes") {
+TEST_CASE("glTF morph targets load as blend shapes") {
     MemoryFiles files;
     files.files["face.gltf"] = slash::test::face().gltf();
     const auto loaded = load(files, "face.gltf");
@@ -1904,7 +1903,7 @@ TEST_CASE("glTF morph targets load as Godot's importer makes them blend shapes")
     CHECK(mesh.blend_shapes == std::vector<std::string>{"smile", "wide"});
     CHECK(mesh.blend_weights == std::vector<float>{0.0F, 0.0F});
     CHECK(scene3d::summarize(model).blend_shapes == std::vector<std::string>{"smile", "wide"});
-    // The offsets follow the vertices through the tangents Godot's importer makes.
+    // The offsets follow the vertices through the tangents.
     const scene3d::ModelSurface& surface = mesh.surfaces.at(0);
     REQUIRE(surface.blend_shapes.size() == 2);
     REQUIRE(surface.blend_shapes[0].positions.size() == surface.vertices.size());
@@ -1951,7 +1950,7 @@ TEST_CASE("glTF morph targets load as Godot's importer makes them blend shapes")
     CHECK(scene3d::mesh_weights(mesh, weights) ==
           std::vector<float>{weights.at("smile"), weights.at("wide")});
 
-    // Unnamed targets are named as Godot's importer names them, and the mesh's weights kept.
+    // Unnamed targets are named, and the mesh's weights kept.
     slash::test::Gltf plain = slash::test::face();
     json::Value& doc_mesh = plain.document["meshes"].as_array()[0];
     doc_mesh.as_object().erase("extras");
@@ -2245,7 +2244,7 @@ TEST_CASE("cleanup_model stands a model up at its size and budget, and write_glb
     CHECK(error_of(scene3d::cleanup_model(other, {})).find("skins") != std::string::npos);
 }
 
-TEST_CASE("Godot's collision import hints give a model collision, which write_glb keeps") {
+TEST_CASE("collision import hints give a model collision, which write_glb keeps") {
     // A yard: a floor that only collides, a crate that collides as its convex hull and a post
     // that only draws.
     MemoryFiles files;
@@ -2303,7 +2302,7 @@ f 13 14 15
         CHECK(crate.convex);
         CHECK(crate.points.size() == 8);
         CHECK(crate.indices.size() == 36);
-        // The hull's faces wind as Godot's, clockwise seen from outside.
+        // The hull's faces wind, clockwise seen from outside.
         for (std::size_t i = 0; i + 2 < crate.indices.size(); i += 3) {
             const Vec3 a = crate.points[crate.indices[i]];
             const Vec3 b = crate.points[crate.indices[i + 1]];

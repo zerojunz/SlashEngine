@@ -1,10 +1,9 @@
-// Particles colliding with baked shapes and the ground in 3D, as Godot's
-// ParticleColliderSdf3D and ParticleColliderHeight3D: in main.scene.json snow falls
-// onto a yard with a mound in it, which a height field draws from above, and sparks fall onto a
-// round statue, whose signed distance field particles.bake_sdf bakes from its mesh.
+// Particles colliding with baked shapes and the ground in 3D: in main.scene.json snow falls onto a
+// yard with a mound in it, which a height field draws from above, and sparks fall onto a round
+// statue, whose signed distance field particles.bake_sdf bakes from its mesh.
 //
-// This program bakes the statue's field, then checks where the snow and the sparks came to rest
-// by counting particles, as an agent would, with no screenshot.
+// This program bakes the statue's field, then checks where the snow and the sparks came to rest by
+// counting particles, as an agent would, with no screenshot.
 
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/command/builtin.hpp"
@@ -110,9 +109,9 @@ int main() {
 
     call(session, "scene.open", R"({"path": "main.scene.json"})");
 
-    // The statue's distances, baked from the meshes on its bake_mask's layers in its box, as
-    // Godot's Bake SDF: 16 cells along each side, each closer than its thickness behind a face
-    // less than 0. The bake sets the collider's texture to the .sdf.png file it writes.
+    // The statue's distances, baked from the meshes on its bake_mask's layers in its box: 16 cells
+    // along each side, each closer than its thickness behind a face less than 0. The bake sets the
+    // collider's texture to the .sdf.png file it writes.
     call(session, "particles.bake_sdf", R"({"id": "statue_sdf"})");
 
     // Three seconds: the height field is drawn from above once, and the snow settles on what it
@@ -121,14 +120,14 @@ int main() {
     count_snow(session);
     count_sparks(session);
 
-    // Without a texture an SDF collider holds nothing, as Godot's: the sparks fall through.
+    // Without a texture an SDF collider holds nothing: the sparks fall through.
     call(session, "component.set",
          R"({"id": "statue_sdf", "components": {"ParticleColliderSdf3D": {"texture": ""}}})");
     call(session, "step", R"({"ticks": 60})");
     count_sparks(session);
 
     // A height field with follow_camera_enabled steps after the current camera a meter at a time
-    // along its x and z axes, as Godot's.
+    // along its x and z axes.
     call(session, "batch", R"({"commands": [
         {"command": "component.set", "params": {"id": "snowfield", "components": {
             "ParticleColliderHeight3D": {"follow_camera_enabled": true}}}},

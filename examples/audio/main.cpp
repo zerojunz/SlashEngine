@@ -1,13 +1,12 @@
-// Sound, as Godot's AudioServer: an SoundPlayer plays music through the Music bus, an
-// SoundPlayer2D plays footsteps through the Sfx bus, panned and faded by where they are
-// from the Listener2D, and both buses mix into Master. audio/default.bus_layout.json sets up
-// the buses, as Godot's default_bus_layout.tres, and audio/steps.audio.json takes turns between
-// two footstep sounds, as Godot's AudioStreamRandomizer.
+// Sound: a SoundPlayer plays music through the Music bus, a SoundPlayer2D plays footsteps through
+// the Sfx bus, panned and faded by where they are from the Listener2D, and both buses mix into
+// Master. audio/default.bus_layout.json sets up the buses, and audio/steps.audio.json takes turns
+// between two footstep sounds.
 //
-// This program writes the sound files (a square wave and two clicks, made without libm so they
-// are the same everywhere), then plays the game as an agent does over MCP or JSON-RPC: step runs
-// ticks, audio.state shows buses and players, audio.play and audio.set_bus change what plays,
-// and audio.capture measures what a bus played, or writes it to a .wav file to listen to.
+// This program writes the sound files (a square wave and two clicks, made without libm so they are
+// the same everywhere), then plays the game as an agent does over MCP or JSON-RPC: step runs ticks,
+// audio.state shows buses and players, audio.play and audio.set_bus change what plays, and
+// audio.capture measures what a bus played, or writes it to a .wav file to listen to.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"

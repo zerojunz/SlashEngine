@@ -46,7 +46,7 @@ using world::StaticBody3D;
 using world::Transform3D;
 using world::Zone3D;
 
-// Godot optimizes the broad phase before a query once this many bodies were added since.
+// The broad phase is optimized before a query once this many bodies were added since.
 constexpr int kOptimizeAfter = 128;
 
 // What Jolt has allocated, for every space in the process, with each block's size kept before
@@ -122,7 +122,7 @@ void jolt_trace(const char* format, ...) {
     log::warn("Jolt Physics", {{"message", std::string(text.data())}});
 }
 
-// Godot's rules for two bodies' materials: the smaller friction, the sum of bounces up to 1.
+// The rules for two bodies' materials: the smaller friction, the sum of bounces up to 1.
 float combine_friction(const JPH::Body& a, const JPH::SubShapeID& /*a_part*/, const JPH::Body& b,
                        const JPH::SubShapeID& /*b_part*/) {
     return std::abs(std::min(a.GetFriction(), b.GetFriction()));
@@ -133,7 +133,7 @@ float combine_bounce(const JPH::Body& a, const JPH::SubShapeID& /*a_part*/, cons
     return std::clamp(a.GetRestitution() + b.GetRestitution(), 0.0F, 1.0F);
 }
 
-// The kind of body an entity is, by Godot's node it stands for; the first wins if it has two.
+// The kind of body an entity is, by the component it has; the first wins if it has two.
 std::optional<Kind> kind_of(const entt::registry& registry, entt::entity entity) {
     if (registry.all_of<RigidBody3D>(entity)) {
         return Kind::Rigid;
@@ -239,7 +239,7 @@ world::Affine3D shape_transform(const Collider3D& shape) {
 ShapeKey shape_key_of(const entt::registry& registry, const world::Tree3D& tree,
                       entt::entity entity) {
     ShapeKey key;
-    // Godot's custom center of mass, which its Jolt module puts in with an offset shape.
+    // A custom center of mass, which is put in with an offset shape.
     if (const auto* rigid = registry.try_get<RigidBody3D>(entity);
         rigid != nullptr && rigid->center_of_mass_mode == "custom") {
         key.center_of_mass = rigid->center_of_mass;
@@ -247,7 +247,7 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree3D& tree,
     if (const auto* shape = registry.try_get<Collider3D>(entity); shape != nullptr) {
         key.parts.push_back({.entity = entity, .shape = *shape, .local = shape_transform(*shape)});
     }
-    // As a Godot CollisionObject3D takes the shapes of its Collider3D children: child
+    // An entity takes the shapes of its Collider3D children: child
     // entities with shapes and no body of their own, placed by their own transforms.
     if (const auto* transform = registry.try_get<Transform3D>(entity); transform != nullptr) {
         for (const entt::entity child : transform->children) {
@@ -309,7 +309,7 @@ JPH::EAllowedDOFs dofs_of(const RigidBody3D& rigid, JPH::EMotionType motion) {
     lock(rigid.axis_lock_angular_x || rigid.lock_rotation, EAllowedDOFs::RotationX);
     lock(rigid.axis_lock_angular_y || rigid.lock_rotation, EAllowedDOFs::RotationY);
     lock(rigid.axis_lock_angular_z || rigid.lock_rotation, EAllowedDOFs::RotationZ);
-    // Jolt can't lock every axis; Godot unlocks them all, and says to freeze the body instead.
+    // Jolt can't lock every axis; all are unlocked, and the body should be frozen instead.
     if (dofs == 0) {
         return EAllowedDOFs::All;
     }
@@ -330,7 +330,7 @@ RigidKey rigid_key_of(const RigidBody3D& rigid) {
             .can_sleep = rigid.can_sleep};
 }
 
-// A physical bone's body as Godot's PhysicalBone3D sets it up: rigid while it simulates,
+// A physical bone's body: rigid while it simulates,
 // kinematic while it follows its bone and static otherwise, with no inertia of its own.
 RigidKey bone_key_of(const SimulatedBone3D& bone, world::PhysicalBoneMode mode) {
     JPH::EMotionType motion = JPH::EMotionType::Static;
@@ -374,7 +374,7 @@ void warn_shape(const world::World& world, entt::entity entity, std::string_view
               {{"entity", std::string(world.id_of(entity))}, {"problem", std::string(problem)}});
 }
 
-// Godot's integrate for an area's space override: whether the value is done, so later areas
+// The integrate rule for an area's space override: whether the value is done, so later areas
 // and the project's settings don't add to it.
 template <typename T, typename Get>
 bool integrate(T& value, const std::string& mode, Get get) {
@@ -642,7 +642,7 @@ void ContactListener::contact(const JPH::Body& a, const JPH::Body& b,
     if (first == nullptr || second == nullptr || a.IsSensor() || b.IsSensor()) {
         return;
     }
-    // Godot's _try_override_collision_response: when only one of the two has the other's layer
+    // When only one of the two has the other's layer
     // in its mask, the other one isn't pushed.
     if (a.IsDynamic() || b.IsDynamic()) {
         const bool first_sees = (first->mask & second->layer) != 0;
@@ -655,7 +655,7 @@ void ContactListener::contact(const JPH::Body& a, const JPH::Body& b,
             settings.mInvInertiaScale1 = 0.0F;
         }
     }
-    // Godot's _try_apply_surface_velocities: a static or kinematic body's constant velocities
+    // A static or kinematic body's constant velocities
     // carry what touches it.
     const bool surface_a = !a.IsDynamic();
     const bool surface_b = !b.IsDynamic();
@@ -701,7 +701,7 @@ void set_up_jolt() {
         JPH::AlignedAllocate = jolt_aligned_allocate;
         JPH::AlignedFree = jolt_aligned_free;
         JPH::Trace = jolt_trace;
-        // For the process's life, as Godot's JoltPhysicsServer3D keeps it.
+        // For the process's life.
         JPH::Factory::sInstance = new JPH::Factory(); // NOLINT(cppcoreguidelines-owning-memory)
         JPH::RegisterTypes();
     });
@@ -772,7 +772,7 @@ void Space::reset() {
 
 namespace {
 
-// Jolt's simulation settings from Godot's physics/jolt_physics_3d/simulation ones.
+// Jolt's simulation settings from the project's.
 JPH::PhysicsSettings physics_settings(const Settings& settings) {
     JPH::PhysicsSettings physics;
     physics.mBaumgarte = settings.baumgarte_stabilization_factor;
@@ -782,7 +782,7 @@ JPH::PhysicsSettings physics_settings(const Settings& settings) {
     physics.mLinearCastMaxPenetration = settings.continuous_cd_max_penetration;
     physics.mBodyPairCacheMaxDeltaPositionSq = settings.body_pair_contact_cache_distance_threshold *
                                                settings.body_pair_contact_cache_distance_threshold;
-    // Jolt takes the cosine of half the angle, as Godot hands it over.
+    // Jolt takes the cosine of half the angle.
     physics.mBodyPairCacheCosMaxDeltaRotationDiv2 =
         slash::cos_sin(settings.body_pair_contact_cache_angle_threshold / 2.0F).x;
     physics.mNumVelocitySteps = static_cast<JPH::uint>(std::max(settings.velocity_steps, 2));
@@ -889,14 +889,14 @@ void Space::create_system() {
     temp_ = std::make_unique<JPH::TempAllocatorImplWithMallocFallback>(megabytes * 1024U * 1024U);
     jobs_ = std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
     system_ = std::make_unique<JPH::PhysicsSystem>();
-    // Godot's physics/jolt_physics_3d limits and simulation settings.
+    // The project's limits and simulation settings.
     system_->Init(static_cast<JPH::uint>(std::max(settings_.max_bodies, 1)), 0,
                   static_cast<JPH::uint>(std::max(settings_.max_body_pairs, 8)),
                   static_cast<JPH::uint>(std::max(settings_.max_contact_constraints, 8)), layers_,
                   layers_, layers_);
     system_->SetPhysicsSettings(physics_settings(settings_));
     // Gravity and damping are the space's own, from the areas each body is in; Jolt's gravity
-    // is the default gravity, which only soft bodies feel, as Godot's JoltSpace3D sets it.
+    // is the default gravity, which only soft bodies feel.
     system_->SetGravity(to_jolt(settings_.gravity_vector * settings_.gravity));
     system_->SetContactListener(&listener_);
     system_->SetSoftBodyContactListener(&listener_);
@@ -966,7 +966,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
         single_transform = local.transform;
         ++built;
     }
-    // A CSG root's triangles, as Godot's ConcavePolygonShape3D of them, in the root's space.
+    // A CSG root's triangles as a concave polygon shape, in the root's space.
     if (key.csg != nullptr && !key.csg->empty()) {
         world::Collider3D faces;
         faces.shape = "concave_polygon";
@@ -981,7 +981,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             ++built;
         }
     }
-    // A BlockMap3D's cells' shapes, as Godot's GridMap adds each to its octant's body: cells of
+    // A BlockMap3D's cells' shapes, each added to its octant's body: cells of
     // the same item share each built shape.
     if (key.grid != nullptr) {
         std::vector<std::pair<const world::Collider3D*, JPH::RefConst<JPH::Shape>>> shapes;
@@ -1013,7 +1013,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             ++built;
         }
     }
-    // Models' collision, as the shapes of the static body Godot's importer adds, placed where
+    // Models' collision, as the shapes of a static body, placed where
     // the entities drawing them are.
     for (const ShapeKey::Model& model : key.models) {
         for (const world::Collider3D& part : *model.shapes) {
@@ -1096,10 +1096,10 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
     settings.mUserData = reinterpret_cast<std::uint64_t>(&body); // NOLINT
     settings.mFriction = body.friction;
     settings.mRestitution = body.bounce;
-    // Damping is the space's, before each step, as Godot's.
+    // Damping is the space's, before each step.
     settings.mLinearDamping = 0.0F;
     settings.mAngularDamping = 0.0F;
-    // So is gravity: Jolt's applies to soft bodies only, as Godot's.
+    // So is gravity: Jolt's applies to soft bodies only.
     settings.mGravityFactor = 0.0F;
     settings.mMaxLinearVelocity = settings_.max_linear_velocity;
     settings.mMaxAngularVelocity = settings_.max_angular_velocity;
@@ -1163,8 +1163,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
                                                    {},
                                                    {}}
                                           : fields_of(registry, entity, kind);
-    // A physics material overrides the body's own friction and bounce, as Godot's
-    // physics_material_override.
+    // A physics material overrides the body's own friction and bounce.
     float density = 0.0F;
     float strength = 0.0F;
     std::string surface;
@@ -1182,7 +1181,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     if (kind == Kind::Bone) {
         const auto link = bone_links_.find(entity);
         bone_mode = link != bone_links_.end() ? link->second.mode : world::PhysicalBoneMode::Static;
-        // Godot's PhysicalBone3D::_stop_physics_simulation: a bone its simulator leaves out is
+        // A bone its simulator leaves out is
         // in no layer and sees none.
         if (bone_mode == world::PhysicalBoneMode::Off) {
             fields.layer = 0;
@@ -1511,8 +1510,8 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .model = nullptr};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
-    // A model's collision makes a static body with Godot's defaults, as its importer's
-    // StaticBody3D: layer and mask 1, friction 1, no bounce.
+    // A model's collision makes a static body with these defaults: layer and mask 1, friction 1,
+    // no bounce.
     for (scene3d::ModelBody& body : models) {
         const MadeShape shape{.layer = 1,
                               .mask = 1,
@@ -1567,7 +1566,6 @@ AreaForces Space::forces(const world::World& world, const Body& body, Vec3 posit
         const auto& component = world.ecs().get<Zone3D>(area->entity);
         out.areas.push_back(area->entity);
         if (!gravity_done) {
-            // Godot's JoltArea3D::compute_gravity.
             gravity_done = integrate(out.gravity, component.gravity_mode, [&] {
                 if (!component.gravity_point) {
                     return component.gravity_direction * component.gravity;
@@ -1611,7 +1609,7 @@ void Space::pre_step(const world::World& world, float seconds) {
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
     pre_step_joints(seconds);
 
-    // Impulses queued since the last step, as Godot applies them when they're called.
+    // Impulses queued since the last step; each is applied when it's called.
     for (const Impulse& impulse : impulses_) {
         const Body* target = body(impulse.entity);
         const JPH::Body* jolt =
@@ -1641,7 +1639,6 @@ void Space::pre_step(const world::World& world, float seconds) {
             continue;
         }
         if (jolt->IsKinematic()) {
-            // Godot's JoltBody3D::_move_kinematic.
             if (jolt->IsActive()) {
                 jolt->SetLinearVelocity(JPH::Vec3::sZero());
                 jolt->SetAngularVelocity(JPH::Vec3::sZero());
@@ -1673,8 +1670,7 @@ void Space::pre_step(const world::World& world, float seconds) {
             interface.ActivateBody(body->id);
         }
         body->contacts.clear();
-        // Godot's JoltBody3D::_integrate_forces: damping first, then gravity, then the
-        // constant forces.
+        // Damping first, then gravity, then the constant forces.
         const AreaForces forces = this->forces(world, *body, from_jolt_place(jolt->GetPosition()));
         body->gravity = forces.gravity * own->gravity_scale;
         body->total_linear_damp =
@@ -1728,7 +1724,7 @@ void Space::read_back(world::World& world, const world::Tree3D& tree) {
             transform.position = global.origin;
             transform.rotation = world::euler(global);
         } else {
-            // As Godot sets a body's global transform: its own is what puts it there.
+            // The body's own transform puts it there.
             const Vec3 scale = body->shape_key.scale;
             world::Affine3D scaled_global = global;
             scaled_global.x = global.x * scale.x;

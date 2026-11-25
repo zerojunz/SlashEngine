@@ -1,13 +1,11 @@
-// Screen-space reflections for a frame's 3D world, as Godot 4.6's Forward+ renderer makes them
-// (servers/rendering/renderer_rd/shaders/effects/screen_space_reflection_downsample.glsl,
-// screen_space_reflection_hiz.glsl, screen_space_reflection.glsl,
-// screen_space_reflection_filter.glsl and screen_space_reflection_resolve.glsl): a pyramid of the
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Screen-space reflections for a frame's 3D world, in the clustered renderer: a pyramid of the
 // prepass's nearest depths (Hi-Z), a ray from each pixel stepped across it to where it hits the
 // frame before, a pyramid of the reflections blurred for rough surfaces, and the reflections at the
-// frame's size for the meshes' color pass. Godot's compute shaders run as passes that draw one
-// triangle over their target; they load texels and filter in code, so every device draws the same
-// values. ssr_trace.hlsl defines SSR_TRACE for the trace, which draws its reflection and mip level
-// into two targets. Keep it in step with src/ssr.cpp, its CPU twin.
+// frame's size for the meshes' color pass. The passes draw one triangle over their target; they
+// load texels and filter in code, so every device draws the same values. ssr_trace.hlsl defines
+// SSR_TRACE for the trace, which draws its reflection and mip level into two targets. Keep it in
+// step with src/ssr.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -78,7 +76,7 @@ static const float kFilterWeights[7] = {0.07130343198685299, 0.1315141208431224,
                                         0.07130343198685299};
 // The filter's rows reach this many rows past each edge of the level.
 static const int kFilterBorder = 3;
-// Mip levels are stored as a fraction of 14 in a byte, as Godot's.
+// Mip levels are stored as a fraction of 14 in a byte.
 static const float kMipScale = 14.0;
 
 // x to the power y for x of 0 or more.
@@ -132,8 +130,8 @@ float4 trilinear(Texture2D<float4> tex, float2 uv, float lod, uint2 size, uint l
     return a + (b - a) * fraction;
 }
 
-// A pixel's roughness from the normal-roughness buffer's alpha: Godot keeps dynamic objects'
-// roughness flipped above half, which these never are.
+// A pixel's roughness from the normal-roughness buffer's alpha: dynamic objects' roughness is kept
+// flipped above half, which these never are.
 float decode_roughness(float alpha) {
     float roughness = alpha;
     if (roughness > 0.5) {
@@ -153,8 +151,8 @@ float depth_at(int2 p) {
 
 // --- The pyramid, as screen_space_reflection_downsample.glsl and _hiz.glsl ---
 
-// The source pixels a texel of the next level covers, in the order Godot's shaders read them:
-// 2x2, then the third column and row of a source of odd width or height. count says how many.
+// The source pixels a texel of the next level covers, in the order the passes read them: 2x2, then
+// the third column and row of a source of odd width or height. count says how many.
 int footprint(out int2 offsets[9]) {
     offsets[0] = int2(0, 0);
     offsets[1] = int2(1, 0);

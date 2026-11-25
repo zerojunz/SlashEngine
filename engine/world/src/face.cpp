@@ -2072,7 +2072,7 @@ SculptedHead sculpt_head(const CharacterFace& face, const HeadShape& head) {
             hidden.push_back(tucked);
         }
     }
-    // Triangles, as Godot's sphere winds them: the row above first, then round from the back.
+    // Triangles, wound as a sphere's are: the row above first, then round from the back.
     const auto at = [&](std::size_t i, std::size_t j) {
         return static_cast<std::uint32_t>((i * columns) + j);
     };

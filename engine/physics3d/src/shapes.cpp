@@ -23,7 +23,7 @@ namespace slash::physics3d::detail {
 
 namespace {
 
-// Godot's active_edge_threshold as its cosine: mesh edges sharper than it collide.
+// The active edge threshold as its cosine: mesh edges sharper than it collide.
 float active_edge_cos(const Settings& settings) {
     return slash::cos_sin(settings.active_edge_threshold).x;
 }
@@ -80,14 +80,14 @@ Unscaled unscale(const world::Affine3D& transform) {
     Vec3 z = transform.z;
     Unscaled out;
     out.scale = {length(x), length(y), length(z)};
-    // A mirrored basis: its scale is negative and its rotation the rest, as Godot's get_scale.
+    // A mirrored basis: its scale is negative and its rotation the rest.
     if (dot(x, cross(y, z)) < 0.0F) {
         out.scale = out.scale * -1.0F;
         x = x * -1.0F;
         y = y * -1.0F;
         z = z * -1.0F;
     }
-    // Godot's Basis::orthonormalize, by Gram-Schmidt.
+    // The basis made orthonormal, by Gram-Schmidt.
     x = normalized(x);
     y = normalized(y - (x * dot(x, y)));
     z = normalized(z - (x * dot(x, z)) - (y * dot(y, z)));
@@ -130,11 +130,11 @@ JPH::RMat44 place_matrix_of(const world::Affine3D& transform) {
 }
 
 BuiltShape build_shape(const world::Collider3D& shape, const Settings& settings) {
-    // Godot's collision_margin_fraction: no more of a box, cylinder or hull than this fraction
+    // The collision margin fraction: no more of a box, cylinder or hull than this fraction
     // of its shortest half extent is rounded off.
     const float margin_fraction = std::max(settings.collision_margin_fraction, 0.0F);
     if (shape.shape == "box") {
-        // Godot's JoltBoxShape3D.
+        // A box.
         const Vec3 half = column_scale(shape.size, 0.5F);
         const float margin =
             std::min<real_t>(shape.margin, std::min({half.x, half.y, half.z}) * margin_fraction);
@@ -201,7 +201,7 @@ BuiltShape build_shape(const world::Collider3D& shape, const Settings& settings)
         triangles.reserve(shape.backface_collision ? 2 * count : count);
         const auto float3 = [](Vec3 v) { return JPH::Float3(v.x, v.y, v.z); };
         for (std::size_t i = 0; i < shape.faces.size(); i += 3) {
-            // Jolt winds the other way round, as Godot's JoltConcavePolygonShape3D swaps them.
+            // Jolt winds the other way round, so the triangles are swapped.
             const Vec3 a = shape.faces[i];
             const Vec3 b = shape.faces[i + 1];
             const Vec3 c = shape.faces[i + 2];
@@ -221,7 +221,7 @@ BuiltShape build_shape(const world::Collider3D& shape, const Settings& settings)
         if (l == 0.0F) {
             return {nullptr, "a world boundary's plane normal must not be zero"};
         }
-        // Godot's plane holds the points p where normal . p = d; Jolt's, normal . p + c = 0.
+        // A plane holds the points p where normal . p = d; Jolt's, normal . p + c = 0.
         const JPH::Plane plane(to_jolt(normal * (1.0F / l)), -shape.plane.w / l);
         return made(
             JPH::PlaneShapeSettings(plane, nullptr, settings.world_boundary_shape_size / 2.0F),
@@ -237,7 +237,7 @@ BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale,
         return {};
     }
     const auto count = static_cast<std::size_t>(r);
-    // Rows reversed, to undo the mirroring that makes Jolt split quads as Godot does.
+    // Rows reversed, to undo the mirroring that changes how Jolt splits quads.
     std::vector<float> rows(count * count);
     for (int z = 0; z < r; ++z) {
         const auto row = static_cast<std::size_t>(r - 1 - z);
@@ -343,7 +343,7 @@ std::vector<Vec3> convex_hull_triangles(std::span<const Vec3> points) {
         if (face->mRemoved) {
             continue;
         }
-        // Jolt winds faces counterclockwise from outside; Godot's go the other way.
+        // Jolt winds faces counterclockwise from outside; SlashEngine's go the other way.
         std::vector<int> corners;
         const JPH::ConvexHullBuilder::Edge* edge = face->mFirstEdge;
         do {

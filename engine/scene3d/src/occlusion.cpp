@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/occlusion.hpp"
 
 #include "geometry.hpp"
@@ -51,7 +52,7 @@ std::vector<entt::entity> made(const world::World& world) {
     return out;
 }
 
-// Godot's CLAMP macro, which compares as written.
+// The CLAMP macro, which compares as written.
 template <typename T>
 T clamp(T value, T low, T high) {
     if (value < low) {
@@ -60,7 +61,7 @@ T clamp(T value, T low, T high) {
     return value > high ? high : value;
 }
 
-// Godot's MIN and MAX macros, which keep the second of a NaN pair.
+// The MIN and MAX macros, which keep the second of a NaN pair.
 float min_of(float a, float b) {
     return a < b ? a : b;
 }
@@ -174,7 +175,7 @@ float hit(const std::array<Vec3, 3>& triangle, Vec3 origin, Vec3 dir) {
     return dot(e2, q) * inverse;
 }
 
-// Godot's StandardMaterial3D check in OccluderInstance3D::_bake_material_check.
+// The StandardMaterial3D check for baking occluders.
 bool bakes(const world::Surface3D* material) {
     return material == nullptr || material->transparency == "disabled";
 }
@@ -195,8 +196,8 @@ bool same_triangle(const int* a, const int* b) {
     return l == r;
 }
 
-// SurfaceTool::strip_mesh_arrays: points repeated exactly merge, then triangles with a repeated
-// corner and triangles seen before go. As Godot's, the triangles seen are kept where they were
+// Points repeated exactly merge, then triangles with a repeated
+// corner and triangles seen before go. The triangles seen are kept where they were
 // first found, which later ones may have moved over, and compared as they are when looked up.
 void strip(std::vector<Vec3>& vertices, std::vector<int>& indices) {
     std::vector<unsigned int> remap(vertices.size());

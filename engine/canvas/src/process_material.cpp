@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "graph.hpp"
 
 #include "slash/canvas/gpu_particles.hpp"
@@ -40,7 +41,7 @@ constexpr std::array<std::pair<std::string_view, render::SubEmitterMode>, 5> kSu
     {"at_start", render::SubEmitterMode::AtStart},
 }};
 
-// Godot's names for the parameters, by ParticleParam, with what each is and its range.
+// The names of the parameters, by ParticleParam, with what each is and its range.
 struct ParamInfo {
     std::string_view name;
     std::string_view what;
@@ -138,8 +139,7 @@ json::Value curve_schema(std::string_view description) {
     return schema;
 }
 
-// A curve for each of x, y and z, as Godot's CurveXYZTexture, or one curve for all three, as its
-// CurveTexture.
+// A curve for each of x, y and z, or one curve for all three.
 json::Value curve3_schema(std::string_view description) {
     json::Value axes;
     axes["type"] = "object";
@@ -195,7 +195,7 @@ std::string curve_name(std::size_t param) {
     return info.curve_name.empty() ? param_name(param, "_curve") : std::string(info.curve_name);
 }
 
-// Whether a param's curve may be a curve per axis, as Godot's CurveXYZTexture.
+// Whether a param's curve may be a curve per axis.
 bool xyz_curve(std::size_t param) {
     return param == static_cast<std::size_t>(ParticleParam::Scale) ||
            param == static_cast<std::size_t>(ParticleParam::OrbitVelocity);

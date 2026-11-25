@@ -11,9 +11,9 @@ namespace slash::net {
 // Whether this build has ENet: every platform but the web, whose browsers have no UDP sockets.
 bool enet_supported();
 
-// A Peer over ENet's reliable UDP, as Godot's ENetMultiplayerPeer: a server that clients join by
+// A Peer over ENet's reliable UDP: a server that clients join by
 // address and port, each client sending to the server, which relays. Channels 0 and 1 of ENet
-// carry reliable and unreliable packets of transfer channel 0, as Godot's; transfer channel n
+// carry reliable and unreliable packets of transfer channel 0; transfer channel n
 // is ENet channel n + 1. IPv4 only.
 class ENetPeer final : public Peer {
 public:

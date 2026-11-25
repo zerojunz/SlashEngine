@@ -1,13 +1,12 @@
-// Avoidance, as Godot's NavigationAgent2D avoidance: main.scene.json has a plaza with a fountain
-// and walkers (NavAgent2D with avoidance_enabled): two from the west and two from the east
-// meeting head on, and a courier crossing them from the north, round the fountain. The courier
-// has the highest avoidance_priority, so it makes way for no one and the others make way for it.
-// A cart (a NavObstacle2D with a velocity) rolls across the plaza on its own.
+// Avoidance: main.scene.json has a plaza with a fountain and walkers (NavAgent2D with
+// avoidance_enabled): two from the west and two from the east meeting head on, and a courier
+// crossing them from the north, round the fountain. The courier has the highest avoidance_priority,
+// so it makes way for no one and the others make way for it. A cart (a NavObstacle2D with a
+// velocity) rolls across the plaza on its own.
 //
-// As in a Godot game, gameplay code asks each agent to go toward its next path position by
-// setting its velocity, and moves it at the safe velocity avoidance gives back, which steers it
-// round the others, the fountain and the cart. Then the program asks the commands about it, as
-// an agent would.
+// Gameplay code asks each agent to go toward its next path position by setting its velocity, and
+// moves it at the safe velocity avoidance gives back, which steers it round the others, the
+// fountain and the cart. Then the program asks the commands about it, as an agent would.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -39,9 +38,9 @@ float length(Vec2 v) {
     return std::sqrt((v.x * v.x) + (v.y * v.y));
 }
 
-// Before the navigation system: each walker asks to head for its next path position, as a
-// Godot script setting NavAgent2D.velocity in _physics_process would; a walker that has
-// arrived asks to stand still.
+// Before the navigation system: each walker asks to head for its next path position, as gameplay
+// code setting NavAgent2D.velocity each physics tick would; a walker that has arrived asks to stand
+// still.
 void steer(world::World& world, double /*seconds*/) {
     for (const auto [entity, agent, transform] :
          world.ecs().view<world::NavAgent2D, world::Transform2D>().each()) {

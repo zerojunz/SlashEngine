@@ -193,7 +193,7 @@ TEST_CASE("a process material reads in 3D: vectors with z and curves per axis") 
     CHECK(read.disable_z);
     CHECK(read.directional_velocity_min == 2.0F);
     CHECK(read.directional_velocity_curve.axes[2].size() == 2);
-    // One curve serves every axis, as Godot's CurveTexture.
+    // One curve serves every axis.
     CHECK(read.scale_curve.axes[0] == read.scale_curve.axes[2]);
     CHECK(read.scale_over_velocity_curve.axes[1].at(0).y == 2.0F);
 
@@ -218,7 +218,7 @@ TEST_CASE("a process material reads in 3D: vectors with z and curves per axis") 
     CHECK(too_long[0].path == "/direction");
 }
 
-TEST_CASE("3D particles start along direction and fall with gravity, as Godot's") {
+TEST_CASE("3D particles start along direction and fall with gravity") {
     const render::ParticleProcess3D process = process_3d(R"({
         "format": 1, "direction": [0, 0, 1], "spread": 0,
         "initial_velocity_min": 2, "initial_velocity_max": 2, "gravity": [0, -10, 0]
@@ -249,7 +249,7 @@ TEST_CASE("3D particles start along direction and fall with gravity, as Godot's"
     CHECK(std::ranges::none_of(particles, [](const auto& p) { return p.active(); }));
 }
 
-TEST_CASE("3D emission shapes and disable_z place particles as Godot's") {
+TEST_CASE("3D emission shapes and disable_z place particles") {
     SUBCASE("a sphere") {
         std::vector<render::Particle3D> particles(64);
         render::process_particles_3d(
@@ -345,7 +345,7 @@ TEST_CASE("a 3D particle system runs and fills meshes on every device as on the 
     CHECK_FALSE(null_device->create_particles_3d(0).ok());
 }
 
-TEST_CASE("3D particles draw in lifetime and view depth order, aligned as Godot's") {
+TEST_CASE("3D particles draw in lifetime and view depth order, aligned") {
     std::vector<render::Particle3D> particles(3);
     for (std::size_t i = 0; i < particles.size(); ++i) {
         particles[i].flags = render::kParticleActive;
@@ -388,7 +388,7 @@ TEST_CASE("3D particles draw in lifetime and view depth order, aligned as Godot'
     CHECK(turned[0].position[2] == doctest::Approx(0.5));
 }
 
-TEST_CASE("GpuEmitter3D steps its emission each tick and a one_shot finishes as Godot's") {
+TEST_CASE("GpuEmitter3D steps its emission each tick and a one_shot finishes") {
     Scene scene;
     scene.files["spark.particles.json"] = R"({"format": 1, "gravity": [0, 0, 0],
         "direction": [0, 1, 0], "spread": 0, "initial_velocity_min": 1, "initial_velocity_max": 1})";
@@ -490,7 +490,7 @@ TEST_CASE("GpuEmitter3D draw passes without a mesh are reported") {
     CHECK(problems[1].path == "/components/GpuEmitter3D/draw_pass_2");
 }
 
-TEST_CASE("GpuEmitter3D pairs with the attractors its box touches, as Godot's scene cull") {
+TEST_CASE("GpuEmitter3D pairs with the attractors its box touches") {
     Scene scene;
     scene.files["still.particles.json"] =
         R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
@@ -589,7 +589,7 @@ TEST_CASE("GpuEmitter3D drifts with the wind by its wind_influence") {
     CHECK(stone[0].velocity.x == 0.0F);
 }
 
-TEST_CASE("GpuEmitter3D falls onto a collision box and bounces off a sphere, as Godot's") {
+TEST_CASE("GpuEmitter3D falls onto a collision box and bounces off a sphere") {
     Scene scene;
     scene.files["drop.particles.json"] =
         R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
@@ -656,7 +656,7 @@ TEST_CASE("GpuEmitter3D falls onto a collision box and bounces off a sphere, as 
     CHECK(scene.live(hiding).empty());
 }
 
-TEST_CASE("GpuEmitter3D rests on a baked SDF of the meshes around it, as Godot's") {
+TEST_CASE("GpuEmitter3D rests on a baked SDF of the meshes around it") {
     Scene scene;
     scene.files["drop.particles.json"] =
         R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
@@ -675,7 +675,7 @@ TEST_CASE("GpuEmitter3D rests on a baked SDF of the meshes around it, as Godot's
         "ParticleColliderSdf3D": {"size": [4, 2, 4], "resolution": "32", "thickness": 2,
                                        "bake_mask": 1}})");
 
-    // Godot's cells: 32 along the longest side, the others as many whole cells as fit.
+    // The cells: 32 along the longest side, the others as many whole cells as fit.
     CHECK(scene3d::particle_sdf_cells({4.0F, 2.0F, 4.0F}, "32") ==
           std::array<std::uint32_t, 3>{32, 16, 32});
     CHECK(scene3d::particle_sdf_cells({4.0F, 2.0F, 4.0F}, "33") ==
@@ -697,7 +697,7 @@ TEST_CASE("GpuEmitter3D rests on a baked SDF of the meshes around it, as Godot's
     CHECK(scene3d::particle_sdf(texture, 1, 32).value() == baked.value().sdf);
     CHECK_FALSE(scene3d::particle_sdf(texture, 64, 1).ok());
 
-    // Without a texture it collides with nothing: a field of 1s, as Godot's white.
+    // Without a texture it collides with nothing: a field of 1s, white.
     scene.step();
     auto kept = scene3d::particle_steps_3d(scene.world, emitter);
     REQUIRE(kept.has_value());
@@ -753,7 +753,7 @@ TEST_CASE("GpuEmitter3D rests on a height field drawn from above, which follows 
     const entt::entity field = scene.create("field", R"({"Transform3D": {},
         "ParticleColliderHeight3D": {"size": [6, 4, 6], "resolution": "256",
                                                "heightfield_mask": 1}})");
-    // A second height field: Godot's particles take only the first.
+    // A second height field: the particles take only the first.
     scene.create("second", R"({"Transform3D": {},
         "ParticleColliderHeight3D": {"size": [6, 4, 6], "resolution": "256",
                                                "heightfield_mask": 1}})");
@@ -797,7 +797,7 @@ TEST_CASE("GpuEmitter3D rests on a height field drawn from above, which follows 
     CHECK(moved.z == doctest::Approx(-3.0));
 }
 
-TEST_CASE("a vector field attractor cuts its texture into slices, as Godot's Texture3D importer") {
+TEST_CASE("a vector field attractor cuts its texture into slices") {
     // Four 1x2 slices side by side, two across and two down, each texel its own red.
     render::Image image;
     image.width = 2;

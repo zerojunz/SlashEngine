@@ -104,7 +104,7 @@ std::size_t lines_in(const fs::path& path) {
 
 } // namespace
 
-TEST_CASE("Blender is found as Godot finds it, and must be 3.0 or later") {
+TEST_CASE("Blender is found on the usual paths, and must be 3.0 or later") {
     Variable version("FAKE_BLENDER_VERSION", "");
     auto blender = scene3d::find_blender(SLASH_FAKE_BLENDER);
     REQUIRE_MESSAGE(blender.ok(), error_of(blender));
@@ -142,7 +142,7 @@ TEST_CASE("Blender is found as Godot finds it, and must be 3.0 or later") {
     CHECK(contains(blender.error().message, "SLASH_BLENDER_PATH names \"no/such/blender\""));
 }
 
-TEST_CASE("the export script uses Godot's import options for the Blender it runs on") {
+TEST_CASE("the export script uses the import options for the Blender it runs on") {
     const scene3d::Blender blender42{.program = "blender", .major = 4, .minor = 2};
     std::string script =
         scene3d::blend_export_script(blender42, "models/house.blend", "out/house.glb");

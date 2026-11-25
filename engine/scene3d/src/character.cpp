@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-// Characters are built of Godot's primitive meshes, each placed by a transform that turns and
+// Characters are built of primitive meshes, each placed by a transform that turns and
 // stretches it over the recipe's measures (world::character_measures), so the same recipe gives
 // the same model, bit for bit, everywhere: the library builds with -ffp-contract=off and angles
 // go through slash::cos_sin.
@@ -152,7 +152,7 @@ real_t palm_half_width(const CharacterMeasures& m) {
     return m.forearm_radius * 1.1F;
 }
 
-// The skeleton a recipe's measures place: Godot's humanoid profile's bones in its order, each
+// The skeleton a recipe's measures place: the humanoid profile's bones in its order, each
 // turned as the profile's is but pointing where the body's next bone is (its tail), then a
 // twist bone along each upper and lower arm and leg, which skin near the shoulder, wrist, hip
 // and ankle follows, as MetaHuman's and Mixamo's rigs have.

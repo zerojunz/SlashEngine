@@ -773,8 +773,8 @@ std::vector<Vec2> box(real_t x0, real_t y0, real_t x1, real_t y1) {
     return {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
 }
 
-// Points on a part's shape a meter across, as Godot's primitive meshes are made: enough of them
-// that the outline of the turned shape seen from any side is its own.
+// Points on a part's shape a meter across: enough of them that the outline of the turned shape seen
+// from any side is its own.
 std::vector<Vec3> shape_points(std::string_view shape) {
     std::vector<Vec3> out;
     constexpr int kAround = 16;

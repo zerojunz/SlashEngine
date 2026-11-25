@@ -91,7 +91,7 @@ TEST_CASE("project.json's rendering.textures is read and checked, the longest pa
     CHECK(textures.mode_for("ui/atlas/icons.png") == "vram_uncompressed");
     CHECK(textures.mode_for("ui/logo.png") == "vram_compressed");
     CHECK(textures.mode_for("uix/button.png") == "vram_compressed"); // folders end in '/'
-    // Lossless unless a project says otherwise, as Godot imports 2D textures.
+    // Lossless unless a project says otherwise.
     json::Value plain = parse(R"({"format": 1, "name": "Plain", "main_scene": "m.scene.json"})");
     CHECK(slash::runtime::parse_project(plain).value().texture_import.mode_for("a.png") ==
           "lossless");

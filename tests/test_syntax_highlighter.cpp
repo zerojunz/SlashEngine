@@ -15,8 +15,7 @@
 #include <string_view>
 #include <vector>
 
-// SyntaxColors, as Godot's (scene/resources/syntax_highlighter.cpp): the colors expected here
-// follow _get_line_syntax_highlighting_impl step by step.
+// SyntaxColors: the colors expected here follow the line highlighting step by step.
 
 namespace asset = slash::asset;
 namespace ui = slash::ui;
@@ -132,7 +131,7 @@ TEST_CASE("color region keys must be symbols, one region per start key") {
     CHECK(region != -1);
 }
 
-TEST_CASE("check finds a SyntaxColors with no TextArea and color regions Godot refuses") {
+TEST_CASE("check finds a SyntaxColors with no TextArea and color regions that are refused") {
     asset::Assets assets{asset::FileSource{
         .read = [](std::string_view) -> slash::Result<std::string> {
             return slash::make_error(slash::ErrorCode::NotFound, "no files");

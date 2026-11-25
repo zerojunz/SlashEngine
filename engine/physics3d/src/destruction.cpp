@@ -1,4 +1,4 @@
-// Destruction (Godot has none; Unreal's geometry collections and Chaos's connection graph are
+// Destruction (Unreal's geometry collections and Chaos's connection graph are
 // the model): a Destructible3D is replaced by a rigid body per piece of its mesh's fracture
 // (scene3d::fracture_of), each moving as that part of the body moved, when its health runs out
 // (impacts, damage_body, damage_area) or break_body says so. With a profile

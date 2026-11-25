@@ -37,7 +37,7 @@ using slash::test::Gltf;
 constexpr float kPi = 3.14159265F;
 
 // A smooth sphere of radius 1 as a glTF model: rings by segments quads, its seam's corners twice
-// for their texture coordinates, as Godot's SphereMesh makes one.
+// for their texture coordinates.
 Gltf sphere(int rings, int segments) {
     std::vector<float> positions;
     std::vector<float> normals;
@@ -146,7 +146,7 @@ struct Scene {
 
 } // namespace
 
-TEST_CASE("models' surfaces get LODs as Godot's importer makes them, each about half the last") {
+TEST_CASE("models' surfaces get LODs, each about half the last") {
     const scene3d::Model model = load_sphere(16, 32);
     REQUIRE(model.meshes.size() == 1);
     const scene3d::ModelSurface& surface = model.meshes[0].surfaces.at(0);
@@ -189,7 +189,7 @@ TEST_CASE("models' surfaces get LODs as Godot's importer makes them, each about 
         CHECK(again.lods[i].distance == surface.lods[i].distance);
     }
 
-    // Too few triangles to halve have none, as Godot's importer leaves them.
+    // Too few triangles to halve have none.
     const scene3d::Model small = load_sphere(2, 2);
     CHECK(small.meshes[0].surfaces.at(0).lods.empty());
 }
@@ -206,7 +206,7 @@ TEST_CASE("pick_lod picks the coarsest LOD that looks right from where it is see
     CHECK(scene3d::pick_lod({}, 1.0F, 100.0F, 0.005F) == 0);
 }
 
-TEST_CASE("models draw coarser LODs further from the camera, as Godot's Forward+ picks them") {
+TEST_CASE("models draw coarser LODs further from the camera in the clustered renderer") {
     Scene scene;
     const entt::entity ball = scene.create(
         "ball",
@@ -229,7 +229,7 @@ TEST_CASE("models draw coarser LODs further from the camera, as Godot's Forward+
     CHECK(scene.drawn() == std::array<std::size_t, 2>{1, 0});
 }
 
-TEST_CASE("project.json's lod threshold is read as Godot's") {
+TEST_CASE("project.json's lod threshold is read") {
     const auto threshold = [](std::string_view rendering) {
         return render::mesh_lod_threshold(json::parse(rendering).value());
     };

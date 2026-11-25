@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "tree_run.hpp"
 
 #include <algorithm>
@@ -12,16 +14,16 @@
 namespace slash::animation::detail {
 namespace {
 
-// Godot's HUGE_LENGTH: longer than any animation, for what has no end.
+// A length longer than any animation, for what has no end.
 constexpr double kHugeLength = 31540000.0;
 
 constexpr std::array<std::string_view, 4> kRequests = {"none", "fire", "abort", "fade_out"};
 enum class Request : std::uint8_t { None, Fire, Abort, FadeOut };
 
-// How a node passes its own track weights on to an input, as Godot's FilterAction.
+// How a node passes its own track weights on to an input.
 enum class Filter : std::uint8_t { Ignore, Pass, Stop, Blend };
 
-// Godot's AnimationNode::NodeTimeInfo.
+// The length, position and step of a node's time.
 struct NodeTimeInfo {
     double length = 0.0;
     double position = 0.0;
@@ -46,7 +48,7 @@ struct NodeTimeInfo {
 constexpr std::string_view kStart = "Start";
 constexpr std::string_view kEnd = "End";
 
-// Godot's AnimationNodeStateMachinePlayback: a state machine's state between ticks, kept in its
+// A state machine's state between ticks, kept in its
 // "playback" parameter, and the requests made of it.
 struct Playback {
     std::string current;
@@ -70,7 +72,7 @@ struct Playback {
 
     [[nodiscard]] bool is_end() const { return current == kEnd && fading_from.empty(); }
 
-    // Godot's _travel_main and _start_main.
+    // Travels to a state, or starts one.
     void travel_main(std::string state, bool reset_on_teleport) {
         travel_request = std::move(state);
         reset_request_on_teleport = reset_on_teleport;
@@ -188,7 +190,7 @@ json::Value json_of(const Playback& playback) {
     return out;
 }
 
-// Godot's String::split("/"), keeping empty parts.
+// Splits a path at "/", keeping empty parts.
 std::vector<std::string> split_path(std::string_view path) {
     std::vector<std::string> out;
     std::size_t begin = 0;
@@ -219,7 +221,7 @@ std::uint64_t mix(std::uint64_t x) {
     return x ^ (x >> 31U);
 }
 
-// A number from 0 to 1 that depends only on what it is given, in place of Godot's Math::randd.
+// A number from 0 to 1 that depends only on what it is given, so runs repeat.
 double random_unit(std::uint64_t seed, std::string_view path, double time) {
     std::uint64_t hash = mix(seed);
     for (const char c : path) {
@@ -247,7 +249,7 @@ float distance(Vec2 a, Vec2 b) {
     return std::sqrt(dot(a - b, a - b));
 }
 
-// Godot's Geometry2D::is_point_in_triangle.
+// Whether a point is in a triangle.
 bool in_triangle(Vec2 s, Vec2 a, Vec2 b, Vec2 c) {
     const Vec2 an = a - s;
     const Vec2 bn = b - s;
@@ -259,7 +261,7 @@ bool in_triangle(Vec2 s, Vec2 a, Vec2 b, Vec2 c) {
     return (cross(cn, an) > 0.0F) == orientation;
 }
 
-// Godot's Geometry2D::get_closest_point_to_segment.
+// The closest point to a point on a segment.
 Vec2 closest_on_segment(Vec2 point, Vec2 from, Vec2 to) {
     const Vec2 p = point - from;
     const Vec2 n = to - from;
@@ -277,7 +279,7 @@ Vec2 closest_on_segment(Vec2 point, Vec2 from, Vec2 to) {
     return from + (n * d);
 }
 
-// Godot's AnimationNodeBlendSpace2D::_blend_triangle: a point's barycentric weights.
+// A point's barycentric weights in a blend space triangle.
 std::array<float, 3> triangle_weights(Vec2 pos, const std::array<Vec2, 3>& points) {
     for (std::size_t i = 0; i < 3; ++i) {
         if (approx(pos, points.at(i))) {
@@ -321,7 +323,7 @@ public:
         if (!out_.invalid.empty()) {
             out_.instances.clear();
         }
-        // The state machines' playbacks, which Godot keeps as objects in the parameters.
+        // The state machines' playbacks, kept as objects in the parameters.
         for (const auto& [index, playback] : playbacks_) {
             set(index, "playback", json_of(playback));
         }
@@ -348,7 +350,7 @@ private:
         const json::Value value = get(index, name);
         return value.is_number() ? static_cast<int>(value.as_double()) : -1;
     }
-    // As Godot's set_parameter, which does nothing while a node is processed only to test it.
+    // Sets a parameter, which does nothing while a node is processed only to test it.
     void set(int index, std::string_view name, json::Value value) {
         if (!testing_) {
             parameters_.set(node(index), name, std::move(value));
@@ -368,7 +370,7 @@ private:
         return n.name.empty() ? std::string(tree_node_type_name(n.type)) : n.name;
     }
 
-    // Godot's AnimationNodeAnimation::get_node_time_info: the animation's length and loop, or
+    // The animation's length and loop, or
     // the node's custom timeline's.
     [[nodiscard]] NodeTimeInfo animation_time(int index, const Animation* animation) const {
         NodeTimeInfo out;
@@ -387,14 +389,14 @@ private:
         return out;
     }
 
-    // Godot's AnimationNode::get_node_time_info: what the node stored last tick.
+    // What the node stored last tick.
     [[nodiscard]] NodeTimeInfo stored_time(int index) const {
         return {.length = number(index, "current_length"),
                 .position = number(index, "current_position"),
                 .delta = number(index, "current_delta")};
     }
 
-    // Godot's AnimationNode::process (and AnimationNodeAnimation's): the node's time from where
+    // Processes a node: the node's time from where
     // it was, then its own processing, then its time info stored.
     NodeTimeInfo process(int index, const PlaybackInfo& in, bool test_only) {
         const bool outer = testing_;
@@ -419,7 +421,7 @@ private:
         return out;
     }
 
-    // Godot's AnimationNode::_blend_node: the child's track weights from this node's, through its
+    // The child's track weights from this node's, through its
     // filters, then the child processed.
     NodeTimeInfo blend(int index, int child, PlaybackInfo info, Filter filter, bool sync,
                        bool test_only) {
@@ -468,7 +470,7 @@ private:
         return process(child, info, test_only);
     }
 
-    // Godot's AnimationNode::blend_input: the node connected to one of a blend tree node's inputs.
+    // The node connected to one of a blend tree node's inputs.
     NodeTimeInfo blend_input(int index, int input, PlaybackInfo info, Filter filter, bool sync,
                              bool test_only) {
         const TreeNode& n = node(index);
@@ -485,7 +487,7 @@ private:
                      test_only);
     }
 
-    // Godot's AnimationNode::blend_node: one of a blend space's points.
+    // One of a blend space's points.
     NodeTimeInfo blend_point(int index, int point, PlaybackInfo info, Filter filter, bool sync,
                              bool test_only) {
         return blend(index, node(index).children[static_cast<std::size_t>(point)], info, filter,
@@ -551,7 +553,7 @@ private:
         return {};
     }
 
-    // Godot's AnimationNodeAnimation::_process.
+    // Runs an animation node.
     NodeTimeInfo run_animation(int index, const PlaybackInfo& info, bool test_only) {
         const TreeNode& n = node(index);
         const Animation* animation = context_.animation(n.animation);
@@ -666,7 +668,7 @@ private:
             }
         } else {
             cur_playback_time = std::clamp(cur_playback_time, 0.0, std::max(anim_size, 0.0));
-            // Started and finished, as Godot's tree emits them: the first tick seeks to 0.
+            // Started and finished are emitted as the tree runs: the first tick seeks to 0.
             if (!test_only) {
                 if (is_started) {
                     out_.signals.push_back({"animation_started", n.animation});
@@ -702,7 +704,7 @@ private:
         return out;
     }
 
-    // Godot's AnimationNodeOneShot::_process.
+    // Runs a one-shot node.
     NodeTimeInfo run_one_shot(int index, const PlaybackInfo& info, bool test_only) {
         const TreeNode& n = node(index);
         const json::Value request_value = get(index, "request");
@@ -928,7 +930,7 @@ private:
         return blend_input(index, 0, pi, Filter::Ignore, sync, test_only);
     }
 
-    // Godot's AnimationNodeTransition::_process.
+    // Runs a transition node.
     NodeTimeInfo run_transition(int index, const PlaybackInfo& info, bool test_only) {
         const TreeNode& n = node(index);
         const int input_count = static_cast<int>(n.transitions.size());
@@ -940,8 +942,8 @@ private:
             }
             return -1;
         };
-        // Godot's pending_update, every tick: an index out of range goes to the first input.
-        // Unlike Godot, the first tick already plays it.
+        // Every tick, an index out of range goes to the first input.
+        // The first tick already plays it.
         if (const int stored = integer(index, "current_index");
             stored < 0 || stored >= input_count) {
             set(index, "prev_index", -1);
@@ -1070,8 +1072,8 @@ private:
         return cur_nti;
     }
 
-    // As Godot's discrete carry, the new point plays on from where the old one was, a pingpong
-    // loop going the same way. (Godot means to copy the way it goes, but its call does nothing.)
+    // As in a discrete carry, the new point plays on from where the old one was, a pingpong
+    // loop going the same way.
     void carry_backward(int from, int to) {
         if (node(from).type == TreeNodeType::Animation &&
             node(to).type == TreeNodeType::Animation) {
@@ -1079,7 +1081,7 @@ private:
         }
     }
 
-    // Godot's AnimationNodeBlendSpace1D::_process.
+    // Runs a 1D blend space.
     NodeTimeInfo run_blend_space_1d(int index, const PlaybackInfo& info, bool test_only) {
         const TreeNode& n = node(index);
         const int count = static_cast<int>(n.children.size());
@@ -1199,7 +1201,7 @@ private:
         return mind;
     }
 
-    // Godot's AnimationNodeBlendSpace2D::_process.
+    // Runs a 2D blend space.
     NodeTimeInfo run_blend_space_2d(int index, const PlaybackInfo& info, bool test_only) {
         const TreeNode& n = node(index);
         const int count = static_cast<int>(n.children.size());
@@ -1303,9 +1305,9 @@ private:
         return mind;
     }
 
-    // State machines, as Godot's AnimationNodeStateMachine and AnimationNodeStateMachinePlayback.
+    // State machines.
 
-    // Where a state machine goes next, as Godot's NextInfo.
+    // Where a state machine goes next.
     struct NextInfo {
         std::string node;
         double xfade = 0.0;
@@ -1317,7 +1319,7 @@ private:
         const MachineTransition* advanced = nullptr;
     };
 
-    // A transition as Godot's _check_group_transition finds it: a grouped state machine's
+    // A transition as a group check finds it: a grouped state machine's
     // transitions from its Start and to its End are those into and out of it in its parent.
     struct GroupTransition {
         const MachineTransition* transition = nullptr;
@@ -1353,7 +1355,7 @@ private:
                node(index).state_machine_type == StateMachineType::Grouped;
     }
 
-    // Godot's AnimationNode::find_node_by_path: the node a path of names leads to from a node,
+    // The node a path of names leads to from a node,
     // or -1. A state machine's Start and End lead nowhere.
     [[nodiscard]] int find_node_by_path(int index, std::string_view path) const {
         int at = index;
@@ -1390,7 +1392,7 @@ private:
     }
 
     // A grouped state machine's playback for its parent to call: the real one, or, while
-    // testing, a copy that goes when copies does, as Godot duplicates it.
+    // testing, a copy that goes when copies does.
     Playback& child_playback(int index, bool test_only, std::deque<Playback>& copies) {
         Playback& real = playback(index);
         if (!test_only) {
@@ -1400,7 +1402,7 @@ private:
         return copies.back();
     }
 
-    // Godot's AnimationNodeStateMachine::blend_node for a state; Start and End play nothing.
+    // Blends a state's node; Start and End play nothing.
     NodeTimeInfo blend_state(int machine, std::string_view name, const PlaybackInfo& info,
                              bool test_only) {
         const MachineState* s = state(machine, name);
@@ -1410,8 +1412,8 @@ private:
         return blend(machine, s->node, info, Filter::Ignore, true, test_only);
     }
 
-    // Godot's AnimationNodeStateMachine::_process: the requests callers set in its parameters,
-    // as calls to Godot's start, travel, next and stop in that order, then its playback.
+    // Runs a state machine: the requests callers set in its parameters,
+    // as calls to start, travel, next and stop in that order, then its playback.
     NodeTimeInfo run_state_machine(int index, const PlaybackInfo& info, bool test_only) {
         Playback copy;
         Playback* pb = &playback(index);
@@ -1447,7 +1449,7 @@ private:
         return out;
     }
 
-    // Godot's _start.
+    // Starts a playback.
     static void start(Playback& pb) {
         pb.playing = true;
         pb.current = !pb.start_request.empty() ? pb.start_request : std::string(kStart);
@@ -1456,7 +1458,7 @@ private:
         pb.start_request.clear();
     }
 
-    // Godot's _clear_path_children.
+    // Clears the paths of grouped children.
     void clear_path_children(int machine, const Playback& pb, bool test_only) {
         for (const MachineState& s : node(machine).states) {
             if (!is_grouped(s.node)) {
@@ -1472,7 +1474,7 @@ private:
         }
     }
 
-    // Godot's _start_children: starts the grouped state machines a path goes into on its states.
+    // Starts the grouped state machines a path goes into on its states.
     void start_children(int machine, Playback& pb, const std::string& path, bool test_only) {
         if (node(machine).state_machine_type == StateMachineType::Grouped) {
             return; // Only the top state machine does this.
@@ -1493,7 +1495,7 @@ private:
         pb.reset_request = false;
     }
 
-    // Godot's _travel_children: the travel paths inside the grouped state machines a path goes
+    // The travel paths inside the grouped state machines a path goes
     // into, or, when one has none, a start on each.
     bool travel_children(int machine, Playback& pb, const std::string& path,
                          bool allow_transition_to_self, bool parent_same_state, bool test_only) {
@@ -1573,7 +1575,7 @@ private:
         return found_route;
     }
 
-    // Godot's _travel.
+    // Travels to a state.
     bool travel(int machine, Playback& pb, bool allow_transition_to_self, bool test_only) {
         std::vector<std::string> path;
         const bool found = make_travel_path(machine, pb, allow_transition_to_self, path, test_only);
@@ -1583,7 +1585,7 @@ private:
         return found;
     }
 
-    // Godot's _validate_path: a path to a grouped state machine goes on to the state after its
+    // A path to a grouped state machine goes on to the state after its
     // Start.
     [[nodiscard]] std::string validate_path(int machine, const std::string& path) const {
         if (node(machine).state_machine_type == StateMachineType::Grouped) {
@@ -1603,7 +1605,7 @@ private:
         return target;
     }
 
-    // Godot's _make_travel_path: the cheapest way through the transitions that can be taken
+    // The cheapest way through the transitions that can be taken
     // from the current state to the travel request, by A* over the states' positions, each step
     // costing its length times its transition's priority.
     bool make_travel_path(int machine, Playback& pb, bool allow_transition_to_self,
@@ -1734,7 +1736,7 @@ private:
         return found_route;
     }
 
-    // Godot's AnimationNodeStateMachinePlayback::_process.
+    // Processes a state machine's playback.
     NodeTimeInfo process_playback(int machine, Playback& pb, const PlaybackInfo& info,
                                   bool test_only) {
         const TreeNode& n = node(machine);
@@ -1918,7 +1920,7 @@ private:
         return pb.current_nti;
     }
 
-    // Godot's _transition_to_next_recursive: takes the transitions that can be taken now, one
+    // Takes the transitions that can be taken now, one
     // after another in a tick, until one cross-fades. Whether it reached End.
     bool transition_to_next_recursive(int machine, Playback& pb, double delta, bool test_only) {
         pb.reset_request_for_fading_from = false;
@@ -1994,7 +1996,7 @@ private:
         return next.node == kEnd;
     }
 
-    // Godot's _can_transition_to_next.
+    // Whether the transition to the next state can be taken.
     bool can_transition_to_next(int machine, Playback& pb, const NextInfo& next, bool test_only) {
         if (next.node.empty()) {
             return false;
@@ -2022,7 +2024,7 @@ private:
         return true;
     }
 
-    // Godot's _get_parent_playback: a grouped state machine's parent's playback, while its
+    // A grouped state machine's parent's playback, while its
     // current state is the group.
     Playback* parent_playback(int machine) {
         const int parent = node(machine).parent;
@@ -2033,7 +2035,7 @@ private:
         return out.current == node(machine).name ? &out : nullptr;
     }
 
-    // Godot's _check_group_transition.
+    // Checks a transition of a grouped state machine.
     GroupTransition check_group_transition(int machine, const MachineTransition& transition) {
         GroupTransition out{.transition = &transition, .machine = machine};
         if (node(machine).state_machine_type != StateMachineType::Grouped) {
@@ -2060,7 +2062,7 @@ private:
         return out;
     }
 
-    // Godot's _check_advance_condition: an auto transition whose condition and expression, if
+    // An auto transition whose condition and expression, if
     // it has them, hold. An expression that fails to run doesn't.
     [[nodiscard]] bool check_advance_condition(int machine, const MachineTransition& t) const {
         if (t.advance_mode != AdvanceMode::Auto) {
@@ -2089,7 +2091,7 @@ private:
         }
     }
 
-    // Godot's _find_next: the next state on the travel path, or the auto transition of best
+    // The next state on the travel path, or the auto transition of best
     // priority whose condition holds, the last of equals.
     NextInfo find_next(int machine, const Playback& pb) {
         NextInfo next;
@@ -2140,11 +2142,10 @@ private:
     const TreeContext& context_;
     TreeParameters& parameters_;
     const std::vector<TreeNode>& nodes_;
-    // Each node's track weights, as Godot's NodeState::track_weights.
+    // Each node's track weights.
     std::vector<std::vector<float>> weights_;
-    // Godot's ProcessState::is_testing, set while a node is processed. Godot leaves it set after
-    // a node processed only to test it, so the writes its parent makes next are lost; here the
-    // parent's own setting comes back.
+    // Set while a node is processed. After a node processed only to test it, the parent's own
+    // setting comes back.
     bool testing_ = false;
     // The state machines' playbacks this tick, by node, read from their parameters when first
     // needed and written back after the tick.

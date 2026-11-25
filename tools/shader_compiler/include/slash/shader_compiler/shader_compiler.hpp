@@ -5,18 +5,18 @@
 
 #include <string>
 
-// Compiles a game's own canvas shaders, as Godot compiles its canvas_item shaders. A shader is
-// HLSL with a fragment() function, a vertex() function or both, which read and write Godot's
-// built-ins as globals (COLOR, UV, VERTEX, TIME and the rest; see docs/reference/scene-format.md).
-// The compiler declares the material's params by name and wraps the code in the canvas shader's
-// entry points (engine/render/shaders/canvas.hlsl), then compiles it with glslang to SPIR-V and
-// with SPIRV-Cross to MSL and GLSL ES, plus the modules the CPU runs with render::ShaderVm.
+// Compiles a game's own canvas shaders. A shader is HLSL with a fragment() function, a vertex()
+// function or both, which read and write built-ins as globals (COLOR, UV, VERTEX, TIME and the
+// rest; see docs/reference/scene-format.md). The compiler declares the material's params by name
+// and wraps the code in the canvas shader's entry points (engine/render/shaders/canvas.hlsl), then
+// compiles it with glslang to SPIR-V and with SPIRV-Cross to MSL and GLSL ES, plus the modules the
+// CPU runs with render::ShaderVm.
 //
-// A spatial shader (ShaderType::Spatial), as Godot's, has a fragment() that gives a mesh's surface
-// (ALBEDO, ROUGHNESS, NORMAL_MAP and the rest): its code goes before the mesh shader's
+// A spatial shader (ShaderType::Spatial) has a fragment() that gives a mesh's surface (ALBEDO,
+// ROUGHNESS, NORMAL_MAP and the rest): its code goes before the mesh shader's
 // (engine/render/shaders/mesh.hlsl, with GAME_SHADER defined), whose fragment stages call it
-// through game_surface, and the CPU runs game_surface alone. Its light(), as Godot's, lights the
-// surface once a light in place of the engine's light model, through game_light.
+// through game_surface, and the CPU runs game_surface alone. Its light() lights the surface once a
+// light in place of the engine's light model, through game_light.
 //
 // A compositor shader (ShaderType::Compositor), a compositor effect's (render/compositor.hpp), has
 // a fragment() run at each pixel of the 3D world's screen, which reads it through screen_texture,

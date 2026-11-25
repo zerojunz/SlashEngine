@@ -1,7 +1,8 @@
-// Each pixel's SDFGI light, as Godot 4.6's gi.glsl's sdfgi_process works it out for the GI
-// buffers: one triangle over the screen texture's layers 5 (ambient light and how much it
-// covers) and 6 (reflections and how much), from the prepass's depth and normals and the
-// cascades sdfgi.hlsl keeps. run_sdfgi in src/sdfgi.cpp is its CPU twin; keep them in step.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Each pixel's SDFGI light, for the GI buffers: one triangle over the screen texture's layers 5
+// (ambient light and how much it covers) and 6 (reflections and how much), from the prepass's depth
+// and normals and the cascades sdfgi.hlsl keeps. run_sdfgi in src/sdfgi.cpp is its CPU twin; keep
+// them in step.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -129,7 +130,7 @@ void probe_light(uint index, float3 cascade_pos, float3 normal, float3 reflectio
     specular = specular_accum;
 }
 
-// A cascade's place relative to the camera, as Godot's UBO holds it, and the scale to probes.
+// A cascade's place relative to the camera, and the scale to probes.
 float3 cascade_position(uint i, float3 camera_scaled) {
     return cascade_at(i).offset - camera_scaled;
 }
@@ -254,7 +255,7 @@ Gathered fs_main(float4 position : SV_Position) {
         float4 accum = float4(0.0, 0.0, 0.0, 0.0);
         uint k = 0u;
         bool found = false;
-        // Godot's loop, with a bound on its steps.
+        // The loop, with a bound on its steps.
         [loop] for (int steps = 0;
                     steps < 4096 && length(ray_pos) < max_distance && accum.a <= 0.99; ++steps) {
             if (!found && k >= at && length(ray_pos) < radius[k]) {

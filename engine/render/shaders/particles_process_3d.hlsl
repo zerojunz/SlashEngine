@@ -1,4 +1,5 @@
-// Runs steps on a 3D particle system, a thread a particle: Godot's particles shader and the code
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Runs steps on a 3D particle system, a thread a particle: the particles shader and the code
 // ParticleProcessMaterial generates for 3D. Its CPU twin is process_particles_3d in
 // src/particles3d.cpp, which this follows line for line; a change to one goes in the other. The
 // process material and steps are words laid out as src/particle_layout_3d.hpp says. The noise,
@@ -178,7 +179,7 @@ float3 mix(float3 a, float3 b, float t) {
     return (a * (1.0 - t)) + (b * t);
 }
 
-// Godot's normalize_or_else: v at length 1, or fallback for exactly zero.
+// v at length 1, or fallback for exactly zero.
 float3 unit_or_else(float3 v, float3 fallback) {
     return all(v == float3(0.0, 0.0, 0.0)) ? fallback : unit(v);
 }
@@ -264,7 +265,7 @@ float3 curl_3d(float4 p, float c) {
     return l > 0.0 ? curl / l : float3(0.0, 0.0, 0.0);
 }
 
-// Godot's get_noise_direction.
+// The noise direction.
 float3 noise_direction(Step step, float3 pos) {
     float4 turbulence = word(10u); // strength, frequency and speed_random after .x
     float4 speed = word(11u);
@@ -599,7 +600,7 @@ void start(inout Particle3D particle, Step step, uint number, inout bool active)
     particle.origin = float4(origin, 0.0);
 }
 
-// process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve, as Godot's.
+// process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve.
 float3 orbit_displacement(Dynamics dynamics, float life, float3 origin, Affine emission,
                           float delta) {
     bool curved = has_curve3(kOrbitCurve);
@@ -670,8 +671,7 @@ float scaled(float s) {
     return (s < 0.0 ? -1.0 : 1.0) * max(abs(s), 0.001);
 }
 
-// The generated process().
-// Godot's safe_normalize: zero below a length of 0.001.
+// The generated process(). Zero below a length of 0.001.
 float3 safe_normalize(float3 v) {
     return length_of(v) < 0.001 ? float3(0.0, 0.0, 0.0) : unit(v);
 }
@@ -830,8 +830,8 @@ float3 sign_of(float3 v) {
                   v.z > 0.0 ? 1.0 : (v.z < 0.0 ? -1.0 : 0.0));
 }
 
-// How near a particle comes to a collider before it touches: collision_size, times the average
-// of its axes' lengths with collision_use_scale, as Godot's.
+// How near a particle comes to a collider before it touches: collision_size, times the average of
+// its axes' lengths with collision_use_scale.
 float collision_size(Particle3D particle, Step step) {
     if (!flag(kCollisionUseScale)) {
         return step.collision_size;
@@ -900,7 +900,7 @@ Contact collider_contact(Step step, float3 pos, float size) {
                 }
             }
         } else if (d.w != kColliderBox) {
-            // A height field, whose normal and depth Godot leaves in its space, unturned.
+            // A height field, whose normal and depth stay in its space, unturned.
             const float kDelta = 1.0 / 8192.0;
             float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));
             float3 bottom = float3(local.x, local.y - size, local.z);
@@ -1017,7 +1017,7 @@ void process(inout Particle3D particle, Step step, uint number, float delta, Con
             force += unit(float3(-diff.y, diff.x, 0.0)) * physical.tangent_accel;
         }
     } else {
-        // Godot's normalize of a zero vector makes NaNs, which the length test then skips.
+        // Normalizing a zero vector makes NaNs, which the length test then skips.
         float3 across = cross(unit(diff), unit(gravity));
         if (length_of(across) > 0.0) {
             force += unit(across) * physical.tangent_accel;

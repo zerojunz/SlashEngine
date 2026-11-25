@@ -26,7 +26,7 @@
 #include <string_view>
 #include <vector>
 
-// A game project is a folder with a project.json at its root, like Godot's project.godot:
+// A game project is a folder with a project.json at its root:
 //
 //   {
 //     "format": 1,
@@ -50,9 +50,8 @@ namespace slash::runtime {
 inline constexpr std::string_view kProjectFile = "project.json";
 inline constexpr std::int64_t kProjectFormat = 1;
 
-// How exports ship textures, as Godot's texture import compress/mode: "lossless" as the file is,
-// "vram_compressed" as BC7 or ASTC 4x4 blocks for each platform's GPUs, or "vram_uncompressed" as
-// RGBA8 texels ready for the GPU.
+// How exports ship textures: "lossless" as the file is, "vram_compressed" as BC7 or ASTC 4x4 blocks
+// for each platform's GPUs, or "vram_uncompressed" as RGBA8 texels ready for the GPU.
 struct TextureImport {
     std::string compress_mode = "lossless";
     // Modes for folders ("ui/") and files, the longest that holds a texture winning.
@@ -67,32 +66,30 @@ struct Project {
     std::string id; // empty means com.example.<binary name, lowercased>
     std::string version = "0.1.0";
     std::string main_scene;
-    // A square image every platform's icons are made from, as Godot's application/config/icon;
-    // empty for the engine's own (icon.hpp).
+    // A square image every platform's icons are made from; empty for the engine's own (icon.hpp).
     std::string icon;
     int window_width = 1280;
     int window_height = 720;
-    // "disabled", "enabled", "adaptive" or "mailbox", as in Godot.
+    // "disabled", "enabled", "adaptive" or "mailbox".
     std::string vsync_mode = "enabled";
     // The display server Linux games try first, "x11" or "wayland", falling back to the other.
     std::string linux_display_driver = "x11";
-    // rendering.lightmaps.probe_capture.update_speed, as Godot's: how fast moving meshes' light
-    // from light probes follows them, a share a second.
+    // rendering.lightmaps.probe_capture.update_speed: how fast moving meshes' light from light
+    // probes follows them, a share a second.
     double probe_update_speed = 15.0;
     double tick_hz = 60.0;
     // Frames per second at most; 0 means no cap.
     int max_fps = 0;
-    // rendering.lod.threshold_pixels: how many pixels a coarser LOD may be off by,
-    // as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
+    // rendering.lod.threshold_pixels: how many pixels a coarser LOD may be off by, in pixels.
     float mesh_lod_threshold = 1.0F;
     // rendering.virtual_geometry: how virtualized surfaces' cluster pages stream.
     scene3d::ClusterStreamingSettings cluster_streaming{};
     // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera, as
-    // Godot's rendering/occlusion_culling.
+    // rendering.occlusion_culling.
     render::OcclusionCulling occlusion_culling{};
     // rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
     render::RayTracing3D ray_tracing{};
-    // What the window shows behind everything, as RGBA from 0 to 1: Godot's default gray.
+    // What the window shows behind everything, as RGBA from 0 to 1: a default gray.
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
     // How sprites that inherit their filter are sampled: "linear" or "nearest".
     std::string texture_filter = "linear";
@@ -101,42 +98,38 @@ struct Project {
     std::string rendering_driver = "auto";
     // Draw sprites between fixed ticks, interpolated.
     bool interpolation = true;
-    // Draw with OpenGL where the GPU backend doesn't work, as Godot's
-    // rendering_device/fallback_to_opengl3.
+    // Draw with OpenGL where the GPU backend doesn't work.
     bool fallback_to_opengl = true;
-    // rendering.voxel_lighting.quality "high": VoxelGIs trace six narrower cones
-    // for ambient light in place of four wide ones, as Godot's.
+    // rendering.voxel_lighting.quality "high": VoxelGIs trace six narrower cones for ambient light
+    // in place of four wide ones.
     bool voxel_gi_high_quality = false;
     // rendering.field_lighting: SDFGI's probe rays and how fast it follows changes.
     render::SdfgiSettings sdfgi{};
-    // rendering.anti_aliasing.taa: temporal antialiasing of the 3D world in Forward+,
-    // as Godot's.
+    // rendering.anti_aliasing.taa: temporal antialiasing of the 3D world in the clustered renderer.
     bool use_taa = false;
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3 frame
     // generation (canvas::CanvasOptions::generate).
     bool frame_generation = false;
-    // rendering.textures.decals.filter: how decals' textures are filtered, as Godot's
-    // rendering/textures/decals/filter.
+    // rendering.textures.decals.filter: how decals' textures are filtered.
     render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
-    // The render scale and how the world scales to the screen, as Godot's scaling_3d.
+    // The render scale and how the world scales to the screen.
     render::Scaling scaling;
-    // How 3D meshes are lit, as Godot's rendering/renderer/rendering_method: Forward+'s clustered
-    // lights, or Compatibility's first 64, as the OpenGL devices always draw.
+    // How 3D meshes are lit: the clustered renderer's clustered lights, or the compatibility
+    // renderer's first 64, as the OpenGL devices always draw.
     render::RenderMethod rendering_method = render::RenderMethod::ForwardPlus;
-    // The 3D shadow atlases' sizes and filters, as Godot's rendering/lights_and_shadows.
+    // The 3D shadow atlases' sizes and filters.
     render::ShadowSettings shadows;
-    // Depth of field's blur, as Godot's rendering/camera/depth_of_field.
+    // Depth of field's blur.
     render::DepthOfFieldSettings depth_of_field{};
-    // Screen-space ambient occlusion's quality, as Godot's rendering/environment/ssao.
+    // Screen-space ambient occlusion's quality.
     render::SsaoSettings ssao{};
-    // Screen-space reflections' resolution, as Godot's
-    // rendering/environment/screen_space_reflection.
+    // Screen-space reflections' resolution.
     render::SsrSettings ssr{};
-    // Volumetric fog's froxels, as Godot's rendering/environment/volumetric_fog.
+    // Volumetric fog's froxels.
     render::VolumetricFogSettings volumetric_fog{};
-    // Subsurface scattering, as Godot's rendering/environment/subsurface_scattering.
+    // Subsurface scattering.
     render::SubsurfaceSettings subsurface{};
-    // Reflection probes' cubes, as Godot's rendering/reflections/reflection_atlas.
+    // Reflection probes' cubes.
     render::ReflectionAtlasSettings reflection_atlas{};
     // How exports ship textures.
     TextureImport texture_import;
@@ -148,8 +141,7 @@ struct Project {
     navigation::Settings navigation;
     // The npc clock, which NPC brains' hour and day facts follow.
     npc::Settings npc;
-    // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
-    // empty for none.
+    // A .theme.json file every control uses after its own themes; empty for none.
     std::string gui_theme;
     // Seconds the mouse rests on a control before its tooltip shows.
     double tooltip_delay_sec = 0.5;
@@ -166,7 +158,7 @@ struct Project {
     int incremental_search_max_interval_msec = 2000;
     // Text may use fonts installed on the machine for characters the project's fonts lack.
     bool allow_system_fallback = true;
-    // Input actions and their bindings: Godot's ui_* actions, then the project's.
+    // Input actions and their bindings: the ui_* actions, then the project's.
     input::Map input = input::Map::with_defaults();
     // How touches and the mouse stand in for each other.
     input::Settings input_devices;
@@ -176,20 +168,19 @@ struct Project {
     services::Settings services;
     // Translation files, the fallback and test locales and pseudo-localization.
     l10n::Settings internationalization;
-    xr::Settings xr; // as Godot's xr settings
+    xr::Settings xr; // XR settings
     // Folders and .cpp files of the game's own C++ code (slash/world/game_module.hpp); empty if
     // it has none.
     std::vector<std::string> gameplay_sources;
-    // Plugin files (slash/plugin/plugins.hpp), as Godot lists extensions in
-    // extension_list.cfg: libraries built against slash_plugin.h that add components and systems.
+    // Plugin files (slash/plugin/plugins.hpp): libraries built against slash_plugin.h that add
+    // components and systems.
     std::vector<std::string> plugins;
     // Folders of SDK packages (tools/exporter's slash/exporter/sdk.hpp), which exports link.
     std::vector<std::string> sdks;
-    // The job system's worker threads (slash/core/jobs.hpp), as Godot's
-    // threading/worker_pool/max_threads: -1 for one per CPU core.
+    // The job system's worker threads (slash/core/jobs.hpp): -1 for one per CPU core.
     int max_threads = -1;
-    // rendering.reflections.sky_samples, as Godot's: the samples the sky's
-    // radiance and reflection probes are blurred with.
+    // rendering.reflections.sky_samples: the samples the sky's radiance and reflection probes are
+    // blurred with.
     std::uint32_t ggx_samples = 32;
 
     // The identifier to use: id, or the default derived from the name.

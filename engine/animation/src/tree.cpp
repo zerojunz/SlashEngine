@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/animation/tree.hpp"
 
 #include "internal.hpp"
@@ -35,7 +37,7 @@ constexpr std::array<std::string_view, 3> kSwitchModes = {"immediate", "sync", "
 constexpr std::array<std::string_view, 3> kAdvanceModes = {"disabled", "enabled", "auto"};
 constexpr std::string_view kStart = "Start";
 constexpr std::string_view kEnd = "End";
-// As Godot's AnimationNodeBlendSpace1D and 2D.
+// The most points a blend space holds.
 constexpr std::size_t kMaxBlendPoints = 64;
 
 template <std::size_t N>
@@ -103,7 +105,7 @@ bool is_root_type(std::string_view type) {
     return std::ranges::find(kRootTypes, type) != kRootTypes.end();
 }
 
-// The inputs of a node type with fixed inputs, as Godot names them.
+// The inputs of a node type with fixed inputs.
 std::vector<std::string> fixed_inputs(TreeNodeType type) {
     switch (type) {
     case TreeNodeType::OneShot:
@@ -588,7 +590,7 @@ private:
             }
             return message;
         };
-        // Who each node's result goes to, as Godot's connect_node allows one.
+        // Who each node's result goes to; a node's result may go to only one.
         std::map<std::string, std::string, std::less<>> fed;
         const auto connect = [&](const std::string& from, const std::string& to,
                                  const std::string& to_at) {
@@ -847,7 +849,7 @@ private:
             }
         }
         // A grouped state machine's transitions from its Start and to its End stand for those
-        // into and out of it, one for one, as Godot's.
+        // into and out of it, one for one.
         for (const auto& [name, state] : states) {
             const json::Value* node = state.find("node");
             if (node == nullptr || node->find("type")->as_string() != "StateMachine" ||
@@ -1074,7 +1076,7 @@ private:
         }
     }
 
-    // Its states by name, Start and End among them at Godot's positions, and their nodes.
+    // Its states by name, Start and End among them, and their nodes.
     void add_state_machine(int index, const json::Value& node) {
         const std::string base = out_.nodes[static_cast<std::size_t>(index)].path;
         std::map<std::string, MachineState, std::less<>> states;
@@ -1565,7 +1567,7 @@ std::vector<json::ValidationError> check_trees(const json::Value& as_written,
             }
         }
         // A deterministic tree sets value tracks no animation plays to their RESET values, or to
-        // zero without one, as Godot's does.
+        // zero without one.
         const json::Value* deterministic = component->find("deterministic");
         if (deterministic == nullptr || !deterministic->is_bool() || deterministic->as_bool()) {
             const auto reset = animations.find("RESET");

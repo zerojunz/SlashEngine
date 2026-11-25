@@ -1,5 +1,4 @@
-// The engine's reference pages, written from engine.describe as Godot's --doctool writes its
-// class reference from the running engine.
+// The engine's reference pages, written from engine.describe.
 
 #include "slash/command/reference.hpp"
 

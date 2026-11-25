@@ -108,7 +108,7 @@ public:
 // Builds models with scripts in Blender, run in the background as .blend files are imported
 // (scene3d::run_blender_script): the program given, else the one scene3d::find_blender finds. The
 // script runs in an empty scene with params and seed, and what it builds there is exported as a
-// .glb file with the options Godot imports .blend files with. Its model is "blender <version>".
+// .glb file with the options .blend files are imported with. Its model is "blender <version>".
 [[nodiscard]] std::shared_ptr<Generator> blender_generator(std::string program = {},
                                                            int timeout_seconds = 600);
 

@@ -114,7 +114,7 @@ scene3d::Model blender_model() {
 
 } // namespace
 
-TEST_CASE("humanoid profile: Godot's 56 bones, parents first") {
+TEST_CASE("humanoid profile: 56 bones, parents first") {
     const auto profile = scene3d::humanoid_profile();
     CHECK(profile.size() == 56);
     CHECK(profile[0].name == "Root");

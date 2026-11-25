@@ -1,14 +1,13 @@
-// Music that follows the game, as Godot's AudioStreamInteractive, AudioStreamSynchronized and
-// AudioStreamPlaylist. audio/score.audio.json has three clips: explore and combat loop for eight
-// beats at 120 BPM, and a victory sting goes back to explore at its end. Its transitions say
+// Music that follows the game. audio/score.audio.json has three clips: explore and combat loop for
+// eight beats at 120 BPM, and a victory sting goes back to explore at its end. Its transitions say
 // when each switch happens: on combat's next bar with a crossfade, on the next beat to victory.
-// audio/layers.audio.json plays drums and a melody together; audio/radio.audio.json plays a
-// song, then the news, then starts over.
+// audio/layers.audio.json plays drums and a melody together; audio/radio.audio.json plays a song,
+// then the news, then starts over.
 //
 // This program writes the sound files (square waves, made without libm so they are the same
-// everywhere), then plays the game as an agent does over MCP or JSON-RPC: component.set changes
-// a player's parameters (switch_to_clip, stream_1_volume_db), audio.state shows the clip playing
-// and each bus's peak, and entity.get shows switch_to_clip following the music.
+// everywhere), then plays the game as an agent does over MCP or JSON-RPC: component.set changes a
+// player's parameters (switch_to_clip, stream_1_volume_db), audio.state shows the clip playing and
+// each bus's peak, and entity.get shows switch_to_clip following the music.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"

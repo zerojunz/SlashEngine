@@ -106,7 +106,7 @@ TEST_CASE("xr: the test headset adds its trackers and becomes the primary interf
     CHECK_FALSE(off.test().is_initialized());
     CHECK(xr::primary_interface(*off.world) == nullptr);
     CHECK(xr::trackers(*off.world).empty());
-    // Started later, its trackers arrive as events, as Godot's tracker_added.
+    // Started later, its trackers arrive as events.
     REQUIRE(off.test().initialize(*off.world).ok());
     CHECK(xr::primary_interface(*off.world) == &off.test());
     const auto added = off.take("tracker_added");
@@ -118,7 +118,7 @@ TEST_CASE("xr: the test headset adds its trackers and becomes the primary interf
     CHECK(xr::primary_interface(*off.world) == nullptr);
 }
 
-TEST_CASE("xr: XR nodes follow their trackers' poses under the origin, as Godot's XRNode3D") {
+TEST_CASE("xr: XR nodes follow their trackers' poses under the origin") {
     Rig rig;
     auto& ecs = rig.world->ecs();
     ecs.get<world::Transform3D>(rig.origin).position = {10.0F, 0.0F, 0.0F};
@@ -131,7 +131,7 @@ TEST_CASE("xr: XR nodes follow their trackers' poses under the origin, as Godot'
 
     CHECK(xr::world_scale(*rig.world) == 2.0F);
     check_near(xr::world_origin(*rig.world).origin, {10.0F, 0.0F, 0.0F});
-    // Godot's XRPose::get_adjusted_transform: the origin times the world scale.
+    // The adjusted transform: the origin times the world scale.
     const auto& right = ecs.get<world::Transform3D>(rig.right);
     check_near(right.position, {1.0F, 2.0F, -0.5F});
     check_near(right.rotation, {0.0F, 1.5F, 0.0F});
@@ -169,7 +169,7 @@ TEST_CASE("xr: XR nodes follow their trackers' poses under the origin, as Godot'
     CHECK(rig.take("tracker_removed").size() == 1);
 }
 
-TEST_CASE("xr: controllers send their inputs as Godot's XRController3D signals") {
+TEST_CASE("xr: controllers send their inputs as signals") {
     Rig rig;
     auto& inputs = rig.test().trackers()["right_hand"].inputs;
     inputs["trigger"] = 0.5F;
@@ -181,7 +181,7 @@ TEST_CASE("xr: controllers send their inputs as Godot's XRController3D signals")
     REQUIRE(pressed.size() == 1);
     CHECK(pressed[0].id == "right");
     CHECK(pressed[0].data.find("name")->as_string() == "ax_button");
-    // A new input that is false is a release, as Godot's set_input.
+    // A new input that is false is a release.
     REQUIRE(rig.take("button_released").size() == 1);
     const auto floats = rig.take("input_float_changed");
     REQUIRE(floats.size() == 1);
@@ -190,7 +190,7 @@ TEST_CASE("xr: controllers send their inputs as Godot's XRController3D signals")
     REQUIRE(axes.size() == 1);
     CHECK(axes[0].data.find("value")->as_array()[1].as_double() == 1.0);
 
-    // Godot's conversions between buttons, triggers and thumbsticks.
+    // The conversions between buttons, triggers and thumbsticks.
     CHECK(xr::is_button_pressed(*rig.world, rig.right, "ax_button"));
     CHECK(xr::is_button_pressed(*rig.world, rig.right, "trigger"));
     CHECK_FALSE(xr::is_button_pressed(*rig.world, rig.right, "menu_button"));
@@ -221,7 +221,7 @@ TEST_CASE("xr: controllers send their inputs as Godot's XRController3D signals")
     CHECK(rig.test().pulses()[0].amplitude == 0.8);
 }
 
-TEST_CASE("xr: center_on_hmd makes the head the play space's center, as Godot's") {
+TEST_CASE("xr: center_on_hmd makes the head the play space's center") {
     Rig rig({.enabled = true, .reference_space = "local_floor"});
     CHECK(rig.test().play_area_mode() == xr::PlayArea::Roomscale);
     world::Transform3D head;
@@ -310,7 +310,7 @@ TEST_CASE("xr: problems name XR nodes outside an origin and origins without a ca
     CHECK(problems[2].path == "/components/XRController3D/tracker");
 }
 
-TEST_CASE("xr: settings come from project.json's xr, as Godot's xr/openxr") {
+TEST_CASE("xr: settings come from project.json's xr") {
     const json::Value settings = parse(R"({"openxr": {"enabled": true,
         "reference_space": "local", "environment_blend_mode": "alpha",
         "view_configuration": "mono"}, "shaders": {"enabled": true}})");

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -10,11 +11,11 @@
 #include <string>
 #include <vector>
 
-// Paths, as Godot's Path2D and Spline3D with their Curve2D and Curve3D (scene/resources/curve.cpp)
-// and the SplineFollower2D and SplineFollower3D that move along them. A curve is baked as Godot
-// bakes it: each Bézier segment halved until its pieces are no longer than bake_interval, up to ten
-// times, with the direction the curve goes at each point and, in 3D, the tilt and an up vector
-// carried along it as a parallel transport frame. The same bits on every platform.
+// Splines (Spline2D and Spline3D) with their curves, and the SplineFollower2D and SplineFollower3D
+// that move along them. A curve is baked: each Bézier segment halved until its pieces are no longer
+// than bake_interval, up to ten times, with the direction the curve goes at each point and, in 3D,
+// the tilt and an up vector carried along it as a parallel transport frame. The same bits on every
+// platform.
 namespace slash::world {
 
 class World;
@@ -97,14 +98,13 @@ private:
 [[nodiscard]] std::shared_ptr<const Curve2D> curve_2d(const World& world, entt::entity entity);
 [[nodiscard]] std::shared_ptr<const Curve3D> curve_3d(const World& world, entt::entity entity);
 
-// Progress as Godot's set_progress leaves it on a curve of a length: round and round with loop
-// (the length itself rather than 0 for progress past the start), else kept on the curve.
+// Progress as it is kept on a curve of a length: round and round with loop (the length itself
+// rather than 0 for progress past the start), else kept on the curve.
 [[nodiscard]] float wrap_progress(float progress, float length, bool loop);
 
 // Where a SplineFollower2D or SplineFollower3D goes on a curve at its progress, its offsets
-// applied, as Godot's _update_transform and update_transform: the follower's Transform2D or
-// Transform3D with its position and, as its settings say, its rotation set, the rest kept. The
-// transform as it was on a curve of no length.
+// applied: the follower's Transform2D or Transform3D with its position and, as its settings say,
+// its rotation set, the rest kept. The transform as it was on a curve of no length.
 [[nodiscard]] Transform2D follow(const SplineFollower2D& follower, const Curve2D& curve,
                                  const Transform2D& transform);
 [[nodiscard]] Transform3D follow(const SplineFollower3D& follower, const Curve3D& curve,
@@ -117,7 +117,7 @@ void add_path_systems(World& world);
 
 // Followers that can't follow: a SplineFollower2D whose parent has no Spline2D, a SplineFollower3D
 // whose parent has no Spline3D, an unknown rotation_mode and "oriented" on a curve without up
-// vectors, as Godot's configuration warnings. In the order entities were made.
+// vectors. In the order entities were made.
 struct PathProblem {
     entt::entity entity = entt::null;
     std::string path; // JSON Pointer within the entity, such as "/components/SplineFollower3D"

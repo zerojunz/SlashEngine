@@ -1,8 +1,7 @@
-// WebSocket on one machine, as Godot's WebSocketPeer and WebSocketMultiplayerPeer: a server
-// that speaks the "chat" subprotocol, a plain connection that is given its ID, trades text and
-// bytes and closes with a code, one refused for speaking no protocol the server does, then three
-// worlds whose multiplayer runs over WebSocket and relays a remote call between two clients.
-// IDs and ports change every run, so the output names peers by role.
+// WebSocket on one machine: a server that speaks the "chat" subprotocol, a plain connection that is
+// given its ID, trades text and bytes and closes with a code, one refused for speaking no protocol
+// the server does, then three worlds whose multiplayer runs over WebSocket and relays a remote call
+// between two clients. IDs and ports change every run, so the output names peers by role.
 #include "slash/net/multiplayer.hpp"
 #include "slash/net/websocket.hpp"
 #include "slash/world/component_registry.hpp"

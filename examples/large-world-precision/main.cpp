@@ -1,11 +1,11 @@
-// Godot's precision build option: an engine configured with -DSLASH_PRECISION=double (the
-// "double" preset) keeps positions in doubles (slash::real_t), so places thousands of kilometers
-// from the origin keep their millimeters. This program shows what a build's precision allows:
-// the step between neighboring positions at growing distances, a crate dropped onto a floor ten
-// thousand kilometers out, and the render origin the 3D world is drawn around.
+// The precision build option: an engine configured with -DSLASH_PRECISION=double (the "double"
+// preset) keeps positions in doubles (slash::real_t), so places thousands of kilometers from the
+// origin keep their millimeters. This program shows what a build's precision allows: the step
+// between neighboring positions at growing distances, a crate dropped onto a floor ten thousand
+// kilometers out, and the render origin the 3D world is drawn around.
 //
-// expected.txt holds a single-precision build's output, which CI checks; a double build prints
-// the second set of numbers in README.md.
+// expected.txt holds a single-precision build's output, which CI checks; a double build prints the
+// second set of numbers in README.md.
 
 #include "slash/core/math.hpp"
 #include "slash/physics3d/physics3d.hpp"

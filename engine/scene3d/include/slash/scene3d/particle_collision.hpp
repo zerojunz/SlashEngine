@@ -20,25 +20,25 @@ namespace slash::asset {
 class Assets;
 }
 
-// What GpuEmitter3D's particles collide with besides spheres and boxes, as Godot 4.6's
-// ParticleColliderSdf3D and ParticleColliderHeight3D: a signed distance field baked
+// What GpuEmitter3D's particles collide with besides spheres and boxes, ParticleColliderSdf3D
+// and ParticleColliderHeight3D: a signed distance field baked
 // from the meshes in a box, and the ground under a box drawn from above.
 namespace slash::scene3d {
 
 struct Problem; // scene3d.hpp's
 
 // What a ParticleColliderSdf3D's texture ends in: a 16-bit gray PNG whose samples are half
-// floats' bits, its slices of cells stacked down as Godot's bake image stacks them.
+// floats' bits, its slices of cells stacked down.
 inline constexpr std::string_view kParticleSdfSuffix = ".sdf.png";
 
-// The cells along x, y and z of an SDF of a box of size at resolution, as Godot's
-// get_estimated_cell_size: resolution along the longest side, the others as many whole cells
+// The cells along x, y and z of an SDF of a box of size at resolution: resolution along the
+// longest side, the others as many whole cells
 // as fit, at least 1; zeros for a resolution that isn't "16", "32", "64", "128", "256" or "512".
 [[nodiscard]] std::array<std::uint32_t, 3> particle_sdf_cells(Vec3 size,
                                                               std::string_view resolution);
 
-// The texels across x and z of a height field of a box of size at resolution, as Godot's particles
-// storage sizes its texture: resolution along the longer side, the other in proportion; zeros for
+// The texels across x and z of a height field of a box of size at resolution: resolution along
+// the longer side, the other in proportion; zeros for
 // a resolution that isn't "256", "512" or "1024".
 [[nodiscard]] std::array<std::uint32_t, 2> particle_height_field_size(Vec3 size,
                                                                       std::string_view resolution);
@@ -51,8 +51,8 @@ struct ParticleSdfBake {
     std::vector<Problem> problems;
 };
 
-// Bakes a ParticleColliderSdf3D entity's distances, as Godot's
-// GPUParticlesCollisionSDF3D::bake: the visible MeshInstance3Ds on a layer of bake_mask under its
+// Bakes a ParticleColliderSdf3D entity's distances: the visible MeshInstance3Ds on a layer of
+// bake_mask under its
 // parent (everything for a root), with CSG roots and GridMaps there, whose triangles touch its box
 // of whole cells, read through models; each cell's distance to the nearest triangle, less than 0
 // within thickness cells behind one, through a bounding volume hierarchy, cells on pool's threads
@@ -73,8 +73,8 @@ struct ParticleSdfBake {
 [[nodiscard]] Result<render::ParticleSdf3D>
 particle_sdf(const render::Gray16& texture, int slices_horizontal, int slices_vertical);
 
-// A ParticleColliderHeight3D entity's heights, as Godot draws them
-// (render_particle_collider_heightfield): an orthographic camera half the box's height above its
+// A ParticleColliderHeight3D entity's heights: an orthographic camera half the box's height
+// above its
 // origin looks down its -y with -z up, and each texel takes the highest point at its center of the
 // opaque triangles of what draws on a layer of heightfield_mask (MeshInstance3Ds, CSG roots,
 // GridMaps on layer 1 and HTerrains), clipped to the box, read through models. Empty for an entity

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/command/command.hpp"
@@ -65,9 +66,9 @@ struct NoiseSource {
 [[nodiscard]] std::optional<Reply> read_noise_source(Session& session, const json::Value& value,
                                                      const std::string& at, NoiseSource& out);
 
-// The noise at width by height whole points from (x, y), rows first, from 0 to 1, as Godot's
-// Noise.get_image makes them: normalized over these points when normalize is on, else
-// value / 2 + 1 / 2 kept within 0 and 1, then inverted when invert is on.
+// The noise at width by height whole points from (x, y), rows first, from 0 to 1: normalized over
+// these points when normalize is on, else value / 2 + 1 / 2 kept within 0 and 1, then inverted when
+// invert is on.
 [[nodiscard]] std::vector<float> sample_noise_source(const NoiseSource& source, int x, int y,
                                                      int width, int height);
 

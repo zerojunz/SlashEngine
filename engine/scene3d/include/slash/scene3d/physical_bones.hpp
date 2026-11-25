@@ -10,15 +10,14 @@
 #include <utility>
 #include <vector>
 
-// Ragdolls, as Godot 4.6's BoneSimulation3D and SimulatedBone3D: a simulator is a skeleton
+// Ragdolls, by BoneSimulation3D and SimulatedBone3D: a simulator is a skeleton
 // modifier (ik.hpp runs it in its place among them) whose SimulatedBone3D children are bodies for
 // the model's bones. engine/physics3d builds the bodies and their joints from the links
 // physical_bone_links works out; the skeleton_modifiers system moves the bodies that follow the
 // pose, and the bones that simulate follow their bodies wherever poses are made.
 namespace slash::scene3d {
 
-// A SimulatedBone3D of a simulator, bound to the bone of the model it moves, as Godot's
-// BoneSimulation3D binds them.
+// A SimulatedBone3D of a simulator, bound to the bone of the model it moves.
 struct PhysicalBone {
     entt::entity entity{entt::null};
     // The model's node, or -1 when it has no such bone or an earlier physical bone has it.
@@ -48,11 +47,11 @@ simulators(const world::World& world);
 [[nodiscard]] world::PhysicalBoneLinks physical_bone_links(const world::World& world,
                                                            const ModelLoader& load);
 
-// Puts an entity where global says, as Godot's set_global_transform: its own Transform3D is what
+// Puts an entity where global says: its own Transform3D is what
 // puts it there in its parent's space. Fields that don't change are left alone.
 void set_global_transform(world::World& world, const world::Tree3D& tree, entt::entity entity,
                           const world::Affine3D& global);
-// Makes an entity top_level or not, keeping it where it is, as Godot's set_as_top_level.
+// Makes an entity top_level or not, keeping it where it is.
 void set_top_level(world::World& world, const world::Tree3D& tree, entt::entity entity,
                    bool top_level);
 

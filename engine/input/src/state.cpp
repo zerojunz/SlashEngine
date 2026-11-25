@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/world/world.hpp"
@@ -16,8 +17,7 @@
 #include <utility>
 #include <vector>
 
-// The action map as Godot's InputMap (core/input/input_map.cpp) and the input state as its Input
-// singleton (core/input/input.cpp), kept per world and stepped once per tick.
+// The action map and the input state, kept per world and stepped once per tick.
 namespace slash::input {
 namespace {
 
@@ -104,8 +104,8 @@ bool same_source(const Event& a, const Event& b) {
            (a.type != EventType::JoypadMotion || a.axis == b.axis);
 }
 
-// Merges a motion into the queued one from the same source, as Godot's accumulated input does:
-// the newer position or axis value, with the distances moved added up.
+// Merges a motion into the queued one from the same source: the newer position or axis value, with
+// the distances moved added up.
 bool accumulate(Event& earlier, const Event& next) {
     if (next.type == EventType::JoypadMotion) {
         earlier.axis_value = next.axis_value;
@@ -137,7 +137,7 @@ Event key_binding(Key key, bool shift = false) {
     return event;
 }
 
-// A key with modifiers, as Godot's InputEventKey::create_reference(key | mask).
+// A key with modifiers::create_reference(key | mask).
 Event key_binding(Key key, Modifiers modifiers) {
     Event event = key_binding(key);
     event.modifiers = modifiers;
@@ -183,8 +183,8 @@ void release_action(InputState& state, ActionState& action) {
     action.exact = true;
 }
 
-// Godot's Input::_parse_input_event_impl: updates what is held, emulates mouse from touch and
-// touch from mouse, then each action the event is bound to.
+// Updates what is held, emulates mouse from touch and touch from mouse, then each action the event
+// is bound to.
 void apply(InputState& state, Event event, bool emulated) {
     switch (event.type) {
     case EventType::Key:
@@ -320,7 +320,7 @@ void apply(InputState& state, Event event, bool emulated) {
     state.applied.push_back(std::move(event));
 }
 
-// Godot's Input::release_pressed_events, for when the window loses focus.
+// Releases everything held, for when the window loses focus.
 void release_all(InputState& state) {
     state.keys.clear();
     state.physical_keys.clear();
@@ -391,8 +391,7 @@ Map Map::with_defaults(Keyboard keyboard) {
     add("ui_home", {key_binding(Key::Home)});
     add("ui_end", {key_binding(Key::End)});
 
-    // Text editing, from Godot's InputMap::get_builtins: Command on a Mac where Godot says
-    // CMD_OR_CTRL, Ctrl elsewhere, and the ".macos" overrides on a Mac.
+    // Text editing: Command on a Mac, Ctrl elsewhere, and macOS's own shortcuts on a Mac.
     const bool mac = keyboard == Keyboard::Mac;
     const Modifiers cmd = mac ? Modifiers{.meta = true} : Modifiers{.ctrl = true};
     const Modifiers shift_cmd =

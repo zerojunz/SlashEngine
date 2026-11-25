@@ -2182,11 +2182,12 @@ R"wgsl(                      if (((v_111 >= 0.0f) & (v_110 <= v_111))) {
 }
 )wgsl"};
 
-inline constexpr char kSdfgiVoxelizeHlsl[] = R"hlsl(// SDFGI's voxelization (Godot 4.6's _render_sdfgi, which rasterizes the region's geometry into
-// its cells): a dispatch a draw, a thread for each of its triangles' z slices, summing into each
-// cell the tri overlaps what its surface is at the point nearest the cell's center, in fixed
-// point with atomic adds so the sums are the same in any order. voxelize in src/sdfgi.cpp is its
-// CPU twin; sdfgi.hlsl's resolve pass turns the sums into cells. Keep them in step.
+inline constexpr char kSdfgiVoxelizeHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// SDFGI's voxelization, which rasterizes the region's geometry into its cells: a dispatch a draw, a
+// thread for each of its triangles' z slices, summing into each cell the tri overlaps what its
+// surface is at the point nearest the cell's center, in fixed point with atomic adds so the sums
+// are the same in any order. voxelize in src/sdfgi.cpp is its CPU twin; sdfgi.hlsl's resolve pass
+// turns the sums into cells. Keep them in step.
 
 #ifdef SLASH_MSL
 #define UNIFORMS register(b0)

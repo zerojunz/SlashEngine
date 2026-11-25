@@ -1,10 +1,10 @@
-// Sorts a 3D particle system's slots by view depth, as Godot's particles sort buffer, a thread a
-// slot of the system's amount rounded up to a power of two. Stage 0 makes each slot's key: its
-// particle's depth along sort_direction as bits that order as the floats do, then its index, and
-// keys after the last particle that sort last. The other stages are a bitonic sort's steps over
-// the keys, comparing slots j apart in runs of k, so the keys end in the order the CPU twin's
-// stable sort gives (particle_mesh_vertices_3d in src/particles3d.cpp): farthest first, ties by
-// index. The steps are src/particle_layout_3d.cpp's bitonic_steps.
+// Sorts a 3D particle system's slots by view depth, a thread a slot of the system's amount rounded
+// up to a power of two. Stage 0 makes each slot's key: its particle's depth along sort_direction as
+// bits that order as the floats do, then its index, and keys after the last particle that sort
+// last. The other stages are a bitonic sort's steps over the keys, comparing slots j apart in runs
+// of k, so the keys end in the order the CPU twin's stable sort gives (particle_mesh_vertices_3d in
+// src/particles3d.cpp): farthest first, ties by index. The steps are src/particle_layout_3d.cpp's
+// bitonic_steps.
 
 #include "particles_3d.hlsl"
 

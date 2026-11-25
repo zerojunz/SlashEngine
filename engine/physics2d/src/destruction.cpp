@@ -1,9 +1,8 @@
-// 2D destruction, as physics3d's (Godot has none; Chaos's geometry collections and connection
-// graph are the model): a Destructible2D's outline is cut into cells (world::fracture_sites)
-// with Clipper2, and each piece becomes a RigidBody2D with a PolygonCollider2D and a Polygon2D
-// drawing its part of the body's look (FracturePiece2D). Health, damage states, levels of
-// pieces, linked standing pieces and their stress follow the body's .damage.json profile as in
-// 3D, with y down.
+// 2D destruction, as physics3d's (Chaos's geometry collections and connection graph are the model):
+// a Destructible2D's outline is cut into cells (world::fracture_sites) with Clipper2, and each
+// piece becomes a RigidBody2D with a PolygonCollider2D and a Polygon2D drawing its part of the
+// body's look (FracturePiece2D). Health, damage states, levels of pieces, linked standing pieces
+// and their stress follow the body's .damage.json profile as in 3D, with y down.
 
 #include "space.hpp"
 

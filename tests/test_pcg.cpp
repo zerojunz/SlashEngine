@@ -416,7 +416,7 @@ TEST_CASE("pcg.run follows entities, storyboard places and paths, in 3D and 2D")
     // from both places.
     CHECK(nodes[2].find("points")->as_int() == 3);
     CHECK(nodes[3].find("points")->as_int() == 2);
-    // The road runs along +x, so its right (Godot's: forward is -z) is +z.
+    // The road runs along +x, so its right (forward is -z) is +z.
     const Vec3 sign = world.ecs().get<world::Transform3D>(world.find("town_signs_1")).position;
     CHECK(sign.x == doctest::Approx(5.0F));
     CHECK(sign.z == doctest::Approx(6.0F));

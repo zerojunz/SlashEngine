@@ -1,4 +1,5 @@
-// .bus_layout.json files, as Godot's AudioBusLayout resources.
+// .bus_layout.json files.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/audio/audio.hpp"
 #include "slash/audio/effects.hpp"

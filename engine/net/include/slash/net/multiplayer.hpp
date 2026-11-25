@@ -20,21 +20,20 @@ class World;
 
 namespace slash::net {
 
-// Who may call a remote procedure, as Godot's MultiplayerAPI::RPCMode.
+// Who may call a remote procedure.
 enum class RpcMode : std::uint8_t {
     Disabled,  // no one
     AnyPeer,   // every peer
     Authority, // only the entity's multiplayer authority (the default)
 };
 
-// How a remote procedure is called, as Godot's @rpc annotation.
+// How a remote procedure is called.
 struct RpcConfig {
     RpcMode mode = RpcMode::Authority;
     bool call_local = false; // also runs on the peer that calls it
     TransferMode transfer_mode = TransferMode::Reliable;
     int channel = 0;
-    // The component an entity needs for the call to be one of its own, as a Godot method
-    // belongs to a node's script; "" for every entity.
+    // The component an entity needs for the call to be one of its own; "" for every entity.
     std::string component{}; // NOLINT(readability-redundant-member-init)
 };
 
@@ -50,24 +49,24 @@ using SpawnFunction = std::function<Result<entt::entity>(world::World& world, st
 // Runs on a peer that receives a spawn, once the entity is placed and before its synchronizers
 // start, as a spawned scene's _enter_tree: the place to set its multiplayer authority.
 using EnterFunction = std::function<void(world::World& world, entt::entity entity)>;
-// Whether a synchronizer is visible to a peer, as Godot's visibility filters.
+// Whether a synchronizer is visible to a peer.
 using VisibilityFilter = std::function<bool(int peer)>;
 
-// A raw packet a peer sent with send_bytes, as Godot's peer_packet signal.
+// A raw packet a peer sent with send_bytes.
 struct RawPacket {
     int peer = 0;
     std::vector<std::uint8_t> bytes;
 };
 
-// A world's multiplayer, as Godot's SceneMultiplayer: it runs on a Peer, admits the peers that
+// A world's multiplayer: it runs on a Peer, admits the peers that
 // join (through authentication when there is a callback), tells clients about each other
 // through the server and relays their packets, sends raw packets and calls remote procedures on
-// entities, which are named by ID as Godot names nodes by path. Its events are world events,
+// entities, which are named by ID. Its events are world events,
 // with data {"peer": id}: peer_connected, peer_disconnected, connected_to_server,
 // connection_failed, server_disconnected, peer_authenticating, peer_authentication_failed and
 // peer_packet (data {"peer", "size"}). It starts offline: a server alone.
 //
-// It also replicates, as Godot's SceneReplicationInterface: each NetSpawner's authority
+// It also replicates: each NetSpawner's authority
 // spawns the entities placed under its spawn_path on the peers (spawned and despawned events,
 // with the entity's ID and data {"spawner"}), and each NetSync's authority sends
 // its properties to the peers it is visible to (synchronized and delta_synchronized events, with
@@ -101,7 +100,7 @@ public:
     [[nodiscard]] bool server_relay() const;
     void set_refuse_new_connections(bool refuse);
 
-    // Authentication, as Godot's: with a callback, joining peers wait until both sides call
+    // Authentication: with a callback, joining peers wait until both sides call
     // complete_auth, exchanging send_auth's bytes meanwhile, or are dropped after the timeout
     // (seconds; 0 for none).
     using AuthCallback = std::function<void(int peer, std::span<const std::uint8_t> data)>;
@@ -114,13 +113,13 @@ public:
     // Disconnects a peer without reporting it.
     void disconnect_peer(int peer);
 
-    // Sends bytes to a peer (0: everyone; minus an ID: all but it), as Godot's send_bytes.
+    // Sends bytes to a peer (0: everyone; minus an ID: all but it).
     Result<void> send_bytes(std::span<const std::uint8_t> bytes, int peer = kTargetPeerBroadcast,
                             TransferMode mode = TransferMode::Reliable, int channel = 0);
     // The raw packets that arrived since the last call.
     std::vector<RawPacket> take_packets();
 
-    // The peer an entity answers to (1 unless set), as Godot's multiplayer authority. recursive
+    // The peer an entity answers to (1 unless set), its multiplayer authority. recursive
     // sets the entities placed under it and those its instanced scene brought too.
     void set_authority(std::string_view entity, int peer, bool recursive = true);
     [[nodiscard]] int authority(std::string_view entity) const;
@@ -129,7 +128,7 @@ public:
     // Registers a remote procedure; every peer registers the same ones.
     void add_rpc(std::string name, RpcConfig config, RpcFunction function);
     // Calls a remote procedure on an entity on a peer (0: every peer; minus an ID: all but it),
-    // with one JSON value of arguments (null for none), as Godot's rpc and rpc_id.
+    // with one JSON value of arguments (null for none).
     Result<void> rpc(std::string_view entity, std::string_view method, const json::Value& args = {},
                      int peer = kTargetPeerBroadcast);
 
@@ -140,7 +139,7 @@ public:
     void set_spawn_function(std::string_view spawner, SpawnFunction function);
     void set_enter_function(std::string_view spawner, EnterFunction function);
 
-    // A synchronizer's visibility, as Godot's: public_visibility, else the peers set visible
+    // A synchronizer's visibility: public_visibility, else the peers set visible
     // here, and every filter must agree.
     void set_visibility_for(std::string_view synchronizer, int peer, bool visible);
     [[nodiscard]] bool visibility_for(std::string_view synchronizer, int peer) const;

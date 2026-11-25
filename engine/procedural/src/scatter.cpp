@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/procedural/scatter.hpp"
 
 #include "json_fields.hpp"
@@ -42,7 +43,7 @@ public:
     }
     // From 0 up to 1, in steps of 2^-24.
     float unit() { return static_cast<float>(next() >> 8U) * (1.0F / 16777216.0F); }
-    // As Godot's Math::random(from, to).
+    // A random value between from and to.
     float range(float from, float to) { return (unit() * (to - from)) + from; }
 
 private:
@@ -67,7 +68,7 @@ Vec3 normalized(Vec3 v) {
     return l > 0.0F ? v * (1.0F / l) : Vec3{};
 }
 
-// A rotation basis by rows, as Godot's Basis.
+// A rotation basis by rows.
 struct Basis {
     std::array<Vec3, 3> rows{Vec3{1.0F, 0.0F, 0.0F}, Vec3{0.0F, 1.0F, 0.0F},
                              Vec3{0.0F, 0.0F, 1.0F}};
@@ -91,7 +92,7 @@ struct Basis {
     }
 };
 
-// Godot's Basis(axis, angle), set_axis_angle: a turn of angle radians about a unit axis.
+// A turn of angle radians about a unit axis.
 Basis axis_angle(Vec3 axis, float angle) {
     const Vec3 sq{axis.x * axis.x, axis.y * axis.y, axis.z * axis.z};
     const Vec2 cs = cos_sin(angle);
@@ -127,7 +128,7 @@ Basis standing_on(Vec3 up) {
     return b;
 }
 
-// Godot's Plane(a, b, c).normal, turned to face up.
+// The normal of the plane through three points, turned to face up.
 Vec3 up_normal(const ScatterTriangle& t) {
     Vec3 n = normalized(cross(t.a - t.c, t.a - t.b));
     if (n.y < 0.0F) {
@@ -537,7 +538,7 @@ ScatterResult scatter(const ScatterLayer& layer, std::size_t index, std::uint32_
     const int max_tries = result.wanted * kTriesPerPlace;
     while (std::cmp_less(result.places.size(), result.wanted) && result.tries < max_tries) {
         ++result.tries;
-        // A triangle by area, then a point inside it as Godot's Face3::get_random_point_inside.
+        // A triangle by area, then a point inside it.
         const float at = random.range(0.0F, result.ground_area);
         const auto it = std::ranges::upper_bound(cumulative, at);
         const std::size_t slot =
@@ -578,7 +579,7 @@ ScatterResult scatter(const ScatterLayer& layer, std::size_t index, std::uint32_
         }
         spacing.add(ground_point);
 
-        // Turned and scaled as Godot's MultiMeshEditor::_populate does.
+        // Turned and scaled.
         ScatterPlace place;
         const float heading = -random.range(-layer.rotate_random, layer.rotate_random) * kPi;
         const float tilt_z = -random.range(-layer.tilt_random, layer.tilt_random) * kPi;

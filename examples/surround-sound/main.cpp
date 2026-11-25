@@ -1,12 +1,12 @@
-// 7.1 surround sound, as Godot's speaker modes: project.json's audio.speaker_mode mixes for eight
-// speakers. A bee flies round the listener and Godot's Spcap panning moves its buzz from speaker
-// to speaker; music plays on every speaker (mix_target "surround") and an announcer on the
-// center speaker alone (mix_target "center").
+// 7.1 surround sound: project.json's audio.speaker_mode mixes for eight speakers. A bee flies round
+// the listener and Spcap panning moves its buzz from speaker to speaker; music plays on every
+// speaker (mix_target "surround") and an announcer on the center speaker alone (mix_target
+// "center").
 //
 // This program writes the sound files (square waves, made without libm so they are the same
 // everywhere), then plays the game as an agent does over MCP or JSON-RPC: step runs ticks,
-// audio.state shows each player's gain on each speaker, and audio.capture measures each
-// speaker's level and writes a 7.1 .wav file.
+// audio.state shows each player's gain on each speaker, and audio.capture measures each speaker's
+// level and writes a 7.1 .wav file.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -77,9 +77,9 @@ int main() {
     command::Session session(components, commands, options);
 
     call(session, "scene.open", R"({"path": "main.scene.json"})");
-    // One second in, the bee is 10 meters to the right, at its unit_size: its buzz is on the
-    // right speakers, loudest on the side right one, and nothing comes from the side left one,
-    // which faces away. Its LFE gets all of it, as Godot's does.
+    // One second in, the bee is 10 meters to the right, at its unit_size: its buzz is on the right
+    // speakers, loudest on the side right one, and nothing comes from the side left one, which
+    // faces away. Its LFE gets all of it.
     call(session, "step", R"({"ticks": 60})");
     call(session, "audio.state", R"({"ids": ["bee"]})");
     // Each speaker's level over the last tenth of a second: the music on all of them, the

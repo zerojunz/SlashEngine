@@ -255,7 +255,7 @@ struct Sounds {
 
 } // namespace
 
-TEST_CASE("decibels turn into gains and back as Godot's") {
+TEST_CASE("decibels turn into gains and back") {
     CHECK(audio::db_to_linear(0.0F) == doctest::Approx(1.0F));
     CHECK(audio::db_to_linear(-6.0206F) == doctest::Approx(0.5F).epsilon(0.0001));
     CHECK(audio::linear_to_db(2.0F) == doctest::Approx(6.0206F).epsilon(0.0001));
@@ -454,7 +454,7 @@ TEST_CASE(".audio.json files play music: playlists, synchronized streams and cli
     CHECK(file.transitions[0].fade_beats == 2.0F);
     CHECK(file.transitions[0].filler_clip == 2);
     CHECK(file.transitions[1].hold_previous);
-    // As Godot's, a playlist loops unless told not to.
+    // A playlist loops unless told not to.
     auto playlist = audio::parse_stream_file(parse(R"({"format": 1, "playlist": [
         {"stream": "a.wav"}]})"));
     REQUIRE(playlist.ok());
@@ -487,7 +487,7 @@ TEST_CASE("a playlist plays its streams in turn, each for its beats or its lengt
     CHECK(out[4500].left > 0.25F);
     CHECK(out[4500].left < 0.75F);
     check_frame(out[6000], 0.25F, 0.25F);
-    // It doesn't loop, so it ends after both: a frame past 8820, as Godot counts each stream's
+    // It doesn't loop, so it ends after both: a frame past 8820, counting each stream's
     // time down a frame at a time.
     CHECK(mixed == 8821);
     CHECK_FALSE(playback->is_playing());
@@ -550,7 +550,7 @@ TEST_CASE("a synchronized stream plays its layers together, each at its volume")
     CHECK(playback->mix(rest.data(), 1.0F, kRate) == kRate);
     check_frame(rest[30000], 0.5F, 0.5F);
     check_frame(rest[43000], 0.0F, 0.0F);
-    // As Godot's, the first call that finds no layer playing still returns its frames, silent.
+    // The first call that finds no layer playing still returns its frames, silent.
     CHECK(playback->mix(rest.data(), 1.0F, 128) == 128);
     CHECK_FALSE(playback->is_playing());
     CHECK(playback->mix(rest.data(), 1.0F, 128) == 0);
@@ -638,7 +638,7 @@ TEST_CASE("interactive music switches clips as its transitions say") {
     CHECK(playback->clip() == "b");
     check_frame(out[1000], 0.25F, 0.25F); // frame 5144
     // Asked at frame 2048, it started on the beat: at 4282, since a sound's position counts the
-    // 128 frames it has read ahead, as Godot's.
+    // 128 frames it has read ahead.
     CHECK(changes() == std::vector<std::string>{"a>b #0 2234"});
     // Asking for the clip it plays changes nothing.
     playback->set_parameter("switch_to_clip", json::Value("b"));
@@ -844,7 +844,7 @@ TEST_CASE("a generator plays the frames a game pushes, and counts the mixes that
     audio::GeneratorPlayback* generator = playback->generator();
     REQUIRE(generator != nullptr);
     CHECK(playback->polyphonic() == nullptr);
-    // Half a second at 44100 Hz rounds up to 32768 frames, one of which Godot's ring buffer
+    // Half a second at 44100 Hz rounds up to 32768 frames, one of which the ring buffer
     // always keeps free.
     CHECK(generator->frames_available() == 32767);
     playback->start(0.0);
@@ -876,7 +876,7 @@ TEST_CASE("a generator plays the frames a game pushes, and counts the mixes that
     CHECK(generator->frames_available() == 32767);
     CHECK(playback->position() == doctest::Approx(1024.0 / kRate));
 
-    // The buffer clears only once the generator stopped, as Godot's.
+    // The buffer clears only once the generator stopped.
     CHECK(generator->push_buffer(std::vector<Frame>(10, {0.5F, 0.5F})));
     generator->clear_buffer();
     CHECK(generator->frames_available() == 32757);
@@ -917,7 +917,7 @@ TEST_CASE("a polyphonic stream plays streams a game starts, each at its own volu
     const auto beep = steady_stream(kRate / 100, {0.25F, 0.25F});
     const Id first = polyphonic->play_stream(loud, 0.0, -6.0206F, 1.0F);
     const Id second = polyphonic->play_stream(beep, 0.0, 0.0F, 1.0F);
-    // Godot's IDs: the slot in the high 32 bits and a count in the low ones.
+    // The IDs hold the slot in the high 32 bits and a count in the low ones.
     CHECK(first == 1);
     CHECK(second == ((Id{1} << 32U) | 2));
     CHECK(polyphonic->play_stream(loud, 0.0, 0.0F, 1.0F) == audio::PolyphonicPlayback::kInvalidId);
@@ -935,7 +935,7 @@ TEST_CASE("a polyphonic stream plays streams a game starts, each at its own volu
     CHECK_FALSE(polyphonic->is_stream_playing(second));
     CHECK(polyphonic->streams_playing() == 1);
 
-    // A new volume applies at the next mix, as Godot's.
+    // A new volume applies at the next mix.
     polyphonic->set_stream_volume(first, 0.0F);
     playback->mix(out.data(), 1.0F, 512);
     check_frame(out[0], 0.5F, 0.5F);
@@ -978,7 +978,7 @@ TEST_CASE("a game pushes frames to a generator player and plays streams on a pol
     const entt::entity synth =
         sounds.add("synth", "SoundPlayer",
                    R"({"stream": "audio/synth.audio.json", "autoplay": true, "max_polyphony": 3})");
-    // A gameplay system keeps the generator full, as Godot's AudioStreamGenerator demo does.
+    // A gameplay system keeps the generator full.
     bool pushing = true;
     sounds.world.add_system("synth", [&](world::World& w, double /*seconds*/) {
         audio::Playback* playback = audio::stream_playback(w, synth);
@@ -1160,7 +1160,7 @@ audio::Settings with_input() {
     return settings;
 }
 
-TEST_CASE("the server records input once it is enabled, as Godot's AudioServer input calls") {
+TEST_CASE("the server records input once it is enabled") {
     audio::Server server(kRate);
     CHECK_FALSE(server.set_input_active(true));
     CHECK_FALSE(server.input_active());
@@ -1340,7 +1340,7 @@ TEST_CASE("a bus goes quiet after the project's channel disable time under its t
         mix(server, 2048 + silent_frames);
         return mixing;
     };
-    // Godot's two seconds keep it mixing a quarter of a second on; a tenth of a second doesn't.
+    // The two second default keeps it mixing a quarter of a second on; a tenth of a second doesn't.
     CHECK(mixing_after(-60.0F, 2.0, kRate / 4));
     CHECK_FALSE(mixing_after(-60.0F, 0.1, kRate / 4));
 }
@@ -1358,7 +1358,7 @@ TEST_CASE("a sound plays through Master a lookahead late, then its playback ends
     // A playback reads its first 128 frames ahead, into the buffer it resamples from.
     CHECK(server.position(id) == doctest::Approx(128.0 / kRate));
     const std::vector<Frame> out = mix(server, 1024);
-    // Godot keeps 64 frames of lookahead, so a playback that ends can fade out, and cubic
+    // The mixer keeps 64 frames of lookahead, so a playback that ends can fade out, and cubic
     // interpolation starts two frames of history late.
     check_frame(out[0], 0.0F, 0.0F);
     check_frame(out[65], 0.0F, 0.0F);
@@ -1500,7 +1500,7 @@ TEST_CASE("every effect runs with its defaults") {
     }
 }
 
-TEST_CASE("effects change the sound as Godot's do") {
+TEST_CASE("effects change the sound") {
     TestContext context;
     const std::vector<Frame> steady(2048, Frame{0.5F, 0.25F});
 
@@ -1549,7 +1549,7 @@ float magnitude_at(const audio::SpectrumAnalyzerInstance& analyzer, float hz) {
     return analyzer.magnitude_for_frequency_range(hz - 20.0F, hz + 20.0F).left;
 }
 
-TEST_CASE("a spectrum analyzer measures frequencies as Godot's does") {
+TEST_CASE("a spectrum analyzer measures frequencies") {
     TestContext context;
     auto made = effect(context, "spectrum_analyzer");
     auto& analyzer = static_cast<audio::SpectrumAnalyzerInstance&>(*made);
@@ -1595,7 +1595,7 @@ TEST_CASE("a pitch shift moves a sine's frequency and keeps its level") {
         // About as loud as it went in, once the window's latency has passed.
         CHECK(rms(std::span(shifted).subspan(kRate / 2)) == doctest::Approx(rms(in)).epsilon(0.15));
     }
-    // At a pitch scale of 1 the sound passes through untouched, as Godot skips it.
+    // At a pitch scale of 1 the sound passes through untouched.
     CHECK(run(*effect(context, "pitch_shift"), in) == in);
 }
 
@@ -1619,7 +1619,7 @@ TEST_CASE("a capture holds what passes, one mix step at a time, for game code to
     CHECK(taken[99] == in[99]);
     CHECK(capture.frames_available() == 15 * audio::Server::kMixStep - 100);
     CHECK(capture.get_buffer(0).empty());
-    CHECK(capture.get_buffer(8192).empty()); // past the ring, as Godot refuses
+    CHECK(capture.get_buffer(8192).empty()); // past the ring
     CHECK_FALSE(capture.can_get_buffer(8000));
     CHECK(capture.get_buffer(8000).empty()); // more than it holds takes nothing
     CHECK(capture.get_buffer(1)[0] == in[100]);
@@ -1651,7 +1651,7 @@ TEST_CASE("a record effect keeps what passes while recording, to play back or wr
     CHECK(record.frames().size() == 1536);
     CHECK(record.frames()[0] == Frame{0.3F, -0.6F});
 
-    // As a sound, at 16 bits, as Godot's get_recording makes an AudioStreamWAV.
+    // As a sound, at 16 bits.
     const audio::Sound sound = record.recording();
     CHECK(sound.mix_rate == kRate);
     CHECK(sound.channels == 2);
@@ -1703,8 +1703,8 @@ TEST_CASE("the server gives a slot's running effect by its type, as get_bus_effe
     CHECK(server.effect_instance(0, 0, "spectrum_analyzer") ==
           audio::spectrum_analyzer(server, 0, 0));
 
-    // A capture keeps running while its bus is silent, as Godot's process_silence says; a
-    // turned off record effect doesn't run at all.
+    // A capture keeps running while its bus is silent; a turned off record effect doesn't run at
+    // all.
     audio::record_effect(server, 0, 2)->set_recording_active(true);
     mix(server, 2048);
     CHECK(audio::capture_effect(server, 0, 1)->pushed_frames() == 2048);
@@ -1862,7 +1862,7 @@ TEST_CASE("an SoundPlayer with autoplay plays its sound, then says it finished")
     CHECK(sounds.heard.size() == static_cast<std::size_t>(kRate));
 }
 
-TEST_CASE("playing, stream, play() and stop() work as Godot's AudioStreamPlayer") {
+TEST_CASE("playing, stream, play() and stop() work") {
     Sounds sounds;
     sounds.files.write("loud.wav", steady_wav(kRate, {0.5F, 0.5F}));
     sounds.files.write("quiet.wav", steady_wav(kRate, {0.125F, 0.125F}));
@@ -1951,8 +1951,8 @@ TEST_CASE("an SoundPlayer2D pans and fades with its distance from the listener")
         sounds.add("hum", "SoundPlayer2D", R"({"stream": "hum.wav", "autoplay": true})");
     sounds.world.ecs().emplace<world::Transform2D>(hum).position = {-400.0F, 0.0F};
     sounds.step();
-    // Godot's _update_panning: fades over max_distance and pans by where it is on the screen,
-    // at half the project's panning strength.
+    // It fades over max_distance and pans by where it is on the screen, at half the project's
+    // panning strength.
     const float fade = 1.0F - (400.0F / 2000.0F);
     const float pan = 0.5F + (-400.0F / screen * 0.5F * 0.5F);
     Frame volume = sounds.player("hum")->volume[0];
@@ -2026,7 +2026,7 @@ TEST_CASE("an Zone2D with audio_bus_override sends the 2D sounds inside it to it
     CHECK(bus_at({-500.0F, 0.0F}) == "Sfx");
     sounds.world.ecs().get<world::SoundPlayer2D>(hum).zone_mask = 3;
     CHECK(bus_at({-500.0F, 0.0F}) == "Lake");
-    // area_mask 0 ignores areas, as Godot's.
+    // area_mask 0 ignores areas.
     sounds.world.ecs().get<world::SoundPlayer2D>(hum).zone_mask = 0;
     CHECK(bus_at({480.0F, 0.0F}) == "Sfx");
     // A sound that starts inside starts on the area's bus.
@@ -2071,7 +2071,7 @@ TEST_CASE("without a listener, 2D sounds are heard from the middle of the camera
     sounds.world.ecs().emplace<world::Transform2D>(hum).position = {5100.0F, 3000.0F};
     sounds.step();
     // 100 pixels from the middle of the view, which shows it 200 pixels right of the middle of
-    // the screen, as Godot pans by where a sound is on the screen.
+    // the screen.
     const float fade = 1.0F - (100.0F / 2000.0F);
     const float pan = 0.5F + (200.0F / screen * 0.5F * 0.5F);
     check_frame(sounds.player("hum")->volume[0], (1.0F - pan) * fade, pan * fade);
@@ -2090,7 +2090,7 @@ float ahead() {
     return std::sqrt(0.5F);
 }
 
-// A current Listener3D at the origin, looking down -z as everything in Godot does.
+// A current Listener3D at the origin, looking down -z.
 entt::entity listen_3d(Sounds& sounds) {
     const entt::entity ears = sounds.add("ears", "Listener3D", R"({"current": true})");
     sounds.world.ecs().emplace<world::Transform3D>(ears);
@@ -2113,7 +2113,7 @@ entt::entity hum_3d(Sounds& sounds, slash::Vec3 at, std::string_view fields = ""
 
 } // namespace
 
-TEST_CASE("an SoundPlayer3D fades with distance as Godot's attenuation models say") {
+TEST_CASE("an SoundPlayer3D fades with distance by its attenuation model") {
     Sounds sounds;
     listen_3d(sounds);
     const entt::entity hum = hum_3d(sounds, {});
@@ -2146,7 +2146,7 @@ TEST_CASE("an SoundPlayer3D fades with distance as Godot's attenuation models sa
     check_frame(volume_at(20.0F), 0.5F * ahead(), 0.5F * ahead());
 }
 
-TEST_CASE("an SoundPlayer3D pans by where it is around the listener, as Godot's") {
+TEST_CASE("an SoundPlayer3D pans by where it is around the listener") {
     Sounds sounds;
     const entt::entity ears = listen_3d(sounds);
     const entt::entity hum = hum_3d(sounds, {10.0F, 0.0F, 0.0F});
@@ -2154,7 +2154,7 @@ TEST_CASE("an SoundPlayer3D pans by where it is around the listener, as Godot's"
         sounds.step();
         return sounds.player("hum")->volume[0];
     };
-    // Godot's _calc_output_vol_stereo at the project's panning_strength_3d, a half: each side is
+    // The stereo output volume at the project's panning_strength_3d, a half: each side is
     // sqrt((1 -+ 0.6 cos a) / 2), where a is the angle from the listener's right.
     check_frame(volume(), std::sqrt(0.2F), std::sqrt(0.8F));
     CHECK(sounds.player("hum")->bus == "Master");
@@ -2190,7 +2190,7 @@ TEST_CASE("an SoundPlayer3D dulls as it fades and is silent past max_distance") 
     check_frame(info->volume[0], 0.75F * ahead(), 0.75F * ahead());
     CHECK(info->filter_db == doctest::Approx(-6.0F).epsilon(0.001));
 
-    // Past it, nothing is heard and the filter stays as it was, as Godot's.
+    // Past it, nothing is heard and the filter stays as it was.
     sounds.world.ecs().get<world::Transform3D>(hum).position.z = -50.0F;
     sounds.step(2);
     info = sounds.player("hum");
@@ -2245,7 +2245,7 @@ TEST_CASE("an SoundPlayer3D tracking doppler is higher coming and lower going") 
     constexpr float kSound = 343.0F;
     CHECK(glide(hum, 1.0F, 5) == doctest::Approx(kSound / (kSound - 60.0F)).epsilon(0.001));
     CHECK(glide(hum, -1.0F, 5) == doctest::Approx(kSound / (kSound + 60.0F)).epsilon(0.001));
-    // Godot measures speed over the last fifth of a second.
+    // Speed is measured over the last fifth of a second.
     CHECK(glide(hum, 0.0F, 13) == doctest::Approx(1.0F));
 
     // A listener that tracks doppler counts its own speed.
@@ -2299,7 +2299,7 @@ TEST_CASE("an Zone3D sends the 3D sounds inside it to its bus, its reverb bus or
     CHECK(server.bus_peak_db(server.bus_index("Echo")).left ==
           doctest::Approx(audio::linear_to_db(0.25F * ahead())).epsilon(0.001));
 
-    // A reverb bus without the bus override sends it to the reverb bus alone, as Godot's does.
+    // A reverb bus without the bus override sends it to the reverb bus alone.
     area.bus_override = false;
     info = heard();
     CHECK(info.bus == "Echo");
@@ -2315,7 +2315,7 @@ TEST_CASE("an Zone3D sends the 3D sounds inside it to its bus, its reverb bus or
     area.reverb_bus_uniformity = 0.0F;
     sounds.world.ecs().get<world::Collider3D>(cave).size = {4.0F, 4.0F, 4.0F};
 
-    // A bus the layout doesn't have is Master, as Godot's.
+    // A bus the layout doesn't have is Master.
     area.reverb_bus_name = "Nowhere";
     CHECK(heard().bus == "Master");
     // Areas whose layer isn't in area_mask, and those it isn't in, leave its bus.
@@ -2371,7 +2371,7 @@ TEST_CASE("a playback mixes into several buses at once, through one high shelf")
     server.set_bus_volumes(id, {{"Wet", {Frame{0.5F, 0.5F}}}});
     check_frame(mix(server, 1024).back(), 0.25F, 0.25F);
 
-    // The high shelf leaves what is below its cutoff and cuts what is above. As Godot's filter
+    // The high shelf leaves what is below its cutoff and cuts what is above. The filter
     // takes the gain where the cookbook formula takes its square root, the highs lose twice the
     // gain in decibels: a quarter leaves a sixteenth.
     const auto shelved = [&](double hz) {
@@ -2485,7 +2485,7 @@ Frame pair_of(const std::vector<Frame>& frames, int pairs, int frame, int pair) 
 
 } // namespace
 
-TEST_CASE("speaker modes are named and counted as Godot's, and found from a device's channels") {
+TEST_CASE("speaker modes are named and counted, and found from a device's channels") {
     using audio::SpeakerMode;
     CHECK(audio::channel_count(SpeakerMode::Stereo) == 1);
     CHECK(audio::channel_count(SpeakerMode::Surround31) == 2);
@@ -2512,7 +2512,7 @@ TEST_CASE("speaker modes are named and counted as Godot's, and found from a devi
     CHECK(audio::downmix_stereo(surround, 1) == surround);
 }
 
-TEST_CASE("in 5.1 and 7.1 each bus mixes a buffer per speaker pair, as Godot's bus channels") {
+TEST_CASE("in 5.1 and 7.1 each bus mixes a buffer per speaker pair") {
     audio::Server server(kRate, audio::SpeakerMode::Surround51);
     auto layout = audio::parse_bus_layout(parse(R"({"format": 1, "buses": [
         {"name": "Master"}, {"name": "Music", "volume_db": -6.0206}]})"));
@@ -2542,7 +2542,7 @@ TEST_CASE("in 5.1 and 7.1 each bus mixes a buffer per speaker pair, as Godot's b
     check_frame(pair_of(out, 3, 1000, 2), 0.25F, 0.5F);
     check_frame(pair_of(out, 3, 1000, 0), 0.5F, 0.25F);
 
-    // New speakers start the buses over, as when Godot's output device changes; sounds play on,
+    // New speakers start the buses over, as when the output device changes; sounds play on,
     // silent on the side pair they have no volume for.
     server.set_speaker_mode(audio::SpeakerMode::Surround71);
     CHECK(server.channel_count() == 4);
@@ -2579,7 +2579,7 @@ TEST_CASE("in surround each speaker pair runs its own copy of a bus's effects") 
     check_frame(pair_of(out, 3, 2000, 1), 0.0F, 0.0F);
     check_frame(pair_of(out, 3, 2000, 2), 0.25F, 0.25F);
 
-    // Each pair has its own capture, as Godot's get_bus_effect_instance with a channel.
+    // Each pair has its own capture, read with a channel.
     audio::CaptureInstance* front = audio::capture_effect(server, 0, 1);
     audio::CaptureInstance* rear = audio::capture_effect(server, 0, 1, 2);
     REQUIRE(front != nullptr);
@@ -2610,7 +2610,7 @@ TEST_CASE("in surround each speaker pair runs its own copy of a bus's effects") 
     CHECK(ducking.bus_peak_db(music, 2).left < audio::linear_to_db(0.05F));
 }
 
-TEST_CASE("an SoundPlayer's mix_target picks its speakers in surround, as Godot's") {
+TEST_CASE("an SoundPlayer's mix_target picks its speakers in surround") {
     audio::Settings settings;
     settings.speaker_mode = audio::SpeakerMode::Surround71;
     Sounds sounds(settings);
@@ -2627,7 +2627,7 @@ TEST_CASE("an SoundPlayer's mix_target picks its speakers in surround, as Godot'
     check_frame(sounds.last(1), 0.0F, 0.0F);
     check_frame(sounds.last(3), 0.0F, 0.0F);
 
-    // surround: every speaker, the LFE too. Godot plays the LFE at 1.0 whatever the volume;
+    // surround: every speaker, the LFE too. The LFE plays at 1.0 whatever the volume;
     // here it follows volume_db.
     auto& player = sounds.world.ecs().get<world::SoundPlayer>(hum);
     player.mix_target = "surround";
@@ -2650,7 +2650,7 @@ TEST_CASE("an SoundPlayer's mix_target picks its speakers in surround, as Godot'
     check_frame(sounds.last(0), 0.0F, 0.0F);
     check_frame(sounds.last(1), 0.25F, 0.25F);
 
-    // In stereo the mix target is left alone, as Godot's.
+    // In stereo the mix target is left alone.
     Sounds headphones;
     headphones.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
     headphones.add("hum", "SoundPlayer",
@@ -2686,7 +2686,7 @@ TEST_CASE("the project's speaker_mode wins over the output device's, which auto 
     CHECK(audio::server(stereo.world)->speaker_mode() == audio::SpeakerMode::Stereo);
 }
 
-TEST_CASE("in surround, 2D sounds play on the front speakers alone, as Godot's") {
+TEST_CASE("in surround, 2D sounds play on the front speakers alone") {
     audio::Settings settings;
     settings.speaker_mode = audio::SpeakerMode::Surround51;
     Sounds sounds(settings);
@@ -2706,7 +2706,7 @@ TEST_CASE("in surround, 2D sounds play on the front speakers alone, as Godot's")
     check_frame(sounds.last(2), 0.0F, 0.0F);
 }
 
-TEST_CASE("in 3.1, 5.1 and 7.1 an SoundPlayer3D pans by Godot's Spcap") {
+TEST_CASE("in 3.1, 5.1 and 7.1 an SoundPlayer3D pans by Spcap") {
     const auto heard = [](audio::SpeakerMode speakers, slash::Vec3 at) {
         audio::Settings settings;
         settings.speaker_mode = speakers;
@@ -2776,7 +2776,7 @@ TEST_CASE("in 7.1 an Zone3D's uniform reverb comes from every speaker alike") {
     sounds.world.ecs().emplace<world::Collider3D>(cave).size = {40.0F, 40.0F, 40.0F};
     sounds.step();
     // The listener is inside, so the reverb comes from all round at max_db: each of the eight
-    // speakers gets an eighth of it, the share Godot's center_val gives each of four pairs.
+    // speakers gets an eighth of it, the share the center value gives each of four pairs.
     const audio::PlayerInfo info = *sounds.player("hum");
     CHECK(info.bus == "Echo");
     const float uniform = 0.125F * 0.5F * audio::db_to_linear(3.0F);
@@ -2833,7 +2833,7 @@ TEST_CASE("capture in surround measures each speaker and writes a .wav file nami
     CHECK(u16(38) == 16);     // valid bits
     CHECK(u16(40) == 0x3F);   // front left and right, center, LFE, back left and right
     CHECK(wav.substr(60, 4) == "data");
-    // Decoders mix it down to stereo, as Godot plays it.
+    // Decoders mix it down to stereo.
     auto decoded = audio::decode_sound(wav, "capture.wav");
     REQUIRE(decoded.ok());
     CHECK(decoded.value().frames == static_cast<std::int64_t>(count));

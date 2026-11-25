@@ -1,4 +1,4 @@
-// Godot's precision build option: engines configured with SLASH_PRECISION=double keep positions
+// The precision build option: engines configured with SLASH_PRECISION=double keep positions
 // in doubles (slash::real_t), and draw the 3D world around a render origin near the camera.
 
 #include "slash/asset/assets.hpp"
@@ -78,7 +78,7 @@ struct Scene {
 
 } // namespace
 
-TEST_CASE("positions are real_t: doubles in double-precision builds, as Godot's") {
+TEST_CASE("positions are real_t: doubles in double-precision builds") {
 #if defined(SLASH_REAL_T_IS_DOUBLE)
     CHECK(kDouble);
 #else

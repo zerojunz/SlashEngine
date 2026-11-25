@@ -662,7 +662,7 @@ std::array<float, 2> planar_uv(Vec3 p, Vec3 n) {
     return {static_cast<float>(p.x), static_cast<float>(-p.y)};
 }
 
-// The convex hull of points as a model of one surface in Godot's winding, each corner's normal
+// The convex hull of points as a model of one surface in clockwise winding, each corner's normal
 // pointing away from the nearest point of the shape inside (inner), or with flat each face's.
 std::shared_ptr<const Model> hull_model(const std::vector<Vec3>& points,
                                         const std::function<Vec3(Vec3)>& inner, bool flat) {
@@ -693,7 +693,7 @@ std::shared_ptr<const Model> hull_model(const std::vector<Vec3>& points,
         }
     }
     for (std::size_t t = 0; t + 2 < mesh.triVerts.size(); t += 3) {
-        // Manifold's faces are counter-clockwise from outside; Godot's are clockwise.
+        // Manifold's faces are counter-clockwise from outside; ours are clockwise.
         const std::array<std::uint32_t, 3> corner{mesh.triVerts[t], mesh.triVerts[t + 2],
                                                   mesh.triVerts[t + 1]};
         if (!flat) {

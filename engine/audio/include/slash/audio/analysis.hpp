@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/audio/audio.hpp"
@@ -38,7 +40,7 @@ struct LoopPoints {
     int crossfade = 0;
 };
 
-// Frames a compressed sound's beat loop fades over, as Godot's AudioStreamPlaybackOggVorbis.
+// Frames a compressed sound's beat loop fades over.
 inline constexpr int kLoopCrossfade = 256;
 
 struct Analysis {

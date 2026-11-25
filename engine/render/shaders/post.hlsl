@@ -1,10 +1,10 @@
-// Post-processing for a frame's 3D world, as Godot's Compatibility renderer does it
-// (drivers/gles3/shaders/effects/glow.glsl and post.glsl): the meshes draw untonemapped into a
-// texture, glow's filter pass keeps that texture's bright parts at half its size, four textures
-// each half the size of the last blur them down and up again (dual filtering, after Marius
-// Bjørge's "Bandwidth-Efficient Rendering", SIGGRAPH 2015), and the post pass blends the glow in,
-// tonemaps, adjusts and corrects colors as it draws over the frame's target. Every pass draws one
-// triangle over its whole target. Keep it in step with src/post.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Post-processing for a frame's 3D world in the compatibility renderer: the meshes draw
+// untonemapped into a texture, glow's filter pass keeps that texture's bright parts at half its
+// size, four textures each half the size of the last blur them down and up again (dual filtering,
+// after Marius Bjørge's "Bandwidth-Efficient Rendering", SIGGRAPH 2015), and the post pass blends
+// the glow in, tonemaps, adjusts and corrects colors as it draws over the frame's target. Every
+// pass draws one triangle over its whole target. Keep it in step with src/post.cpp, its CPU twin.
 
 #include "tonemap.hlsl"
 
@@ -28,8 +28,8 @@ static const uint kCorrection1D = 1u;
 static const uint kCorrection3D = 2u;
 
 cbuffer Post : register(b0, space3) {
-    // xy: one over the target's size, which places each pixel's texture coordinate; zw: the
-    // pixel size the pass's taps are spaced by, Godot's pixel_size.
+    // xy: one over the target's size, which places each pixel's texture coordinate; zw: the pixel
+    // size the pass's taps are spaced by.
     float4 pixel;
     float4 glow;    // intensity, bloom, HDR threshold, HDR scale
     float4 grade;   // white, the luminance cap, the 3D LUT's size
@@ -106,7 +106,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
 
     float4 color = tap(source, source_sampler, uv);
     if ((options.z & 1u) != 0u) {
-        // Screen blending, which Godot's Compatibility renderer always uses.
+        // Screen blending, which the compatibility renderer always uses.
         float3 bloom = saturate(eight_taps(glow_texture, glow_sampler, uv, half_pixel).rgb * glow.x);
         color.rgb = max(color.rgb + bloom - color.rgb * bloom, 0.0);
     }

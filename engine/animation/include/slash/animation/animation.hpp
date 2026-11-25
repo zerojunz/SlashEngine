@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/asset/assets.hpp"
@@ -17,7 +19,7 @@
 #include <string_view>
 #include <vector>
 
-// Keyframe animation of any component field, as Godot's AnimationPlayer: .anim.json files hold
+// Keyframe animation of any component field: .anim.json files hold
 // named animations, like an AnimationLibrary of Animation resources, and the Animator
 // component plays one of them on its entity.
 //
@@ -42,10 +44,10 @@
 // field: "Transform2D/position", "Transform2D/position/y", "Sprite2D/modulate/a". Its keys are
 // values that field takes. An event track emits a world event when playback passes each key,
 // with the key's "data". A track with a "target" acts on the entity the Animator's
-// targets map that name to, as a Godot track's node path does, rather than the player's own.
+// targets map that name to, rather than the player's own.
 //
-// An animation can come "from" a model file's, as Godot imports a glTF file's animations into an
-// AnimationLibrary: it moves the nodes of the model the entity's Model3D draws, takes the
+// An animation can come "from" a model file's: the model file's animations are imported into an
+// animation library. It moves the nodes of the model the entity's Model3D draws, takes the
 // model animation's length and loop unless it gives its own, and adds its tracks, here a footstep:
 //
 //   "walk": {"from": {"model": "models/hero.glb", "animation": "Walk"},
@@ -55,19 +57,19 @@
 // they are.
 //
 // A node track moves a node of the model the entity's Model3D draws, by its name, as a
-// Godot position_3d, rotation_3d or scale_3d track moves a bone: its keys' values are positions,
-// rotations (Euler angles in radians, as Transform3D's) or scales, which turn the shorter way
-// round between keys, as Godot's rotation tracks do:
+// position_3d, rotation_3d or scale_3d track moves a bone: its keys' values are positions,
+// rotations (Euler angles in radians) or scales, which turn the shorter way
+// round between keys:
 //
 //   "wave": {"length": 1, "loop": "linear",
 //            "tracks": [{"node": "Elbow", "property": "rotation",
 //                        "keys": [{"time": 0, "value": [0, 0, 0]},
 //                                 {"time": 0.5, "value": [0, 0, 0.8]}]}]}
 //
-// Cinematics are animations too, as in Godot: a bezier track moves one number along a curve
-// whose keys have handles, as Godot's bezier tracks do, an animation track plays the animations
-// of another entity's Animator, as Godot's animation playback tracks do, and a value track
-// that sets a Camera3D's current cuts to it. Markers name times in an animation, as Godot's:
+// Cinematics are animations too: a bezier track moves one number along a curve
+// whose keys have handles, an animation track plays the animations
+// of another entity's Animator, and a value track
+// that sets a Camera3D's current cuts to it. Markers name times in an animation:
 //
 //   "shot": {"length": 6,
 //            "markers": {"close_up": 4},
@@ -82,25 +84,25 @@ namespace slash::animation {
 
 inline constexpr std::string_view kAnimationSuffix = ".anim.json";
 
-// What happens at the end, as Godot's loop modes.
+// What happens at the end.
 enum class LoopMode : std::uint8_t { None, Linear, PingPong };
 
-// How values between keys are found, as Godot's interpolation types. The angle types turn the
+// How values between keys are found. The angle types turn the
 // short way round, for rotations in radians.
 enum class Interpolation : std::uint8_t { Nearest, Linear, Cubic, LinearAngle, CubicAngle };
 
 // Whether a value track changes smoothly or jumps from key to key. Auto, the default, is
 // continuous for float fields and discrete for others: integers, strings, booleans and entity
-// references, as Godot's editor sets keys of those up.
+// references.
 enum class UpdateMode : std::uint8_t { Auto, Continuous, Discrete };
 
-// What a track does, as Godot's track types: a value track sets a field, a bezier track sets a
+// What a track does: a value track sets a field, a bezier track sets a
 // number along a curve, an event track emits world events, a node track moves a model's node, an
 // animation track plays another Animator's animations and an audio track plays sounds on
 // an audio player.
 enum class TrackType : std::uint8_t { Value, Bezier, Event, Node, Animation, Audio };
 
-// An animation track's key that stops its player, as Godot's.
+// An animation track's key that stops its player.
 inline constexpr std::string_view kStopAnimation = "[stop]";
 
 struct Key {
@@ -108,15 +110,14 @@ struct Key {
     // A value or bezier track's value, an event track's data, an animation track's animation
     // name (kStopAnimation stops the player) or an audio track's stream.
     json::Value value;
-    // Godot's easing curve on the way to the next key: 1 is linear, above 1 eases in, between 0
+    // The easing curve on the way to the next key: 1 is linear, above 1 eases in, between 0
     // and 1 eases out, below 0 eases in and out, and 0 holds this key's value until the next.
     double transition = 1.0;
-    // A bezier key's handles, [seconds, value] from the key, as Godot's in_handle and out_handle:
+    // A bezier key's handles, [seconds, value] from the key:
     // the curve leaves toward out and arrives from in.
     std::array<double, 2> in{};
     std::array<double, 2> out{};
-    // An audio key's: seconds of its stream skipped at the start, and cut off at the end, as
-    // Godot's start_offset and end_offset.
+    // An audio key's: seconds of its stream skipped at the start, and cut off at the end.
     double start_offset = 0.0;
     double end_offset = 0.0;
 };
@@ -134,7 +135,7 @@ struct Track {
     // In a looping animation, move from the last key to the first across the loop's end.
     bool loop_wrap = true;
     // An audio track's streams play as loud as the animation counts in an animation tree's
-    // blend, as Godot's use_blend.
+    // blend.
     bool use_blend = true;
     std::vector<Key> keys; // by time, earliest first
 };
@@ -161,7 +162,7 @@ struct Animation {
     LoopMode loop = LoopMode::None;
     std::vector<Track> tracks;
     ModelClip from;
-    // Named times, as Godot's animation markers: shots of a cinematic, say.
+    // Named times: shots of a cinematic, say.
     std::map<std::string, double, std::less<>> markers;
     // Whether length and loop were written, or are to come from the model's animation.
     bool own_length = true;
@@ -243,7 +244,7 @@ struct Target {
                                             const world::ComponentRegistry& components);
 
 // A value or bezier track's value at a time, from 0 to the animation's length. A bezier track's
-// is Godot's bezier_track_interpolate: the curve between the keys either side, which never wraps
+// is the curve between the keys either side, which never wraps
 // round a loop.
 [[nodiscard]] json::Value sample(const Animation& animation, const Track& track, double time,
                                  bool discrete);
@@ -260,12 +261,12 @@ struct Target {
 [[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& as_written,
                                                                const world::FileReader& reader);
 
-// Makes the camera a value track sets current on the current one, as Godot's Camera3D's
-// current does: every other Camera3D's current turns off. apply does this for "Camera3D/current".
+// Makes the camera a value track sets current on the current one:
+// every other Camera3D's current turns off. apply does this for "Camera3D/current".
 void make_current_camera(world::World& world, entt::entity camera);
 
 // Moves an entity's Animator to a time in its animation, or in another it switches to,
-// and sets at once what its tracks set there, as Godot's AnimationPlayer::seek(time, true, true):
+// and sets at once what its tracks set there:
 // value and bezier tracks' values, and the animations its animation tracks play there, each
 // moved to where it would be and set in turn. Event tracks wait for playback. The error names
 // what can't be played: a library that doesn't load, an animation it hasn't, with "did you mean",

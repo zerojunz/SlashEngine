@@ -232,8 +232,8 @@ bool meets_box(const PathNode& node, const Float3& origin, const Float3& inverse
 }
 
 // Möller and Trumbore's ray and triangle test: the distance and the second and third corners'
-// shares, and whether the ray meets the triangle's front, which winds clockwise as seen by the
-// ray, as Godot's front faces wind on the screen.
+// shares, and whether the ray meets the triangle's front, which winds clockwise as seen by the ray,
+// as front faces wind on the screen.
 struct Crossing {
     float distance = 0.0F;
     float u = 0.0F;

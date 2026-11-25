@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/soft_body.hpp"
 
 #include "slash/scene3d/primitive.hpp"
@@ -34,7 +35,7 @@ std::vector<Problem> check_soft_bodies(const world::World& world) {
     for (const entt::entity entity : ecs.view<const world::SoftBody3D>()) {
         const auto* instance = ecs.try_get<const world::Model3D>(entity);
         if (instance == nullptr) {
-            // As Godot's warning: "This body will be ignored until you set a mesh."
+            // The warning: "This body will be ignored until you set a mesh."
             problems.push_back({entity, "/components/SoftBody3D",
                                 "a soft body needs a Model3D drawing its mesh; it is "
                                 "ignored until it has one"});
@@ -60,7 +61,6 @@ std::vector<Problem> check_soft_bodies(const world::World& world) {
             const world::SoftBodyPin& pin = body.pinned_points[i];
             const std::string path = "/components/SoftBody3D/pinned_points/" + std::to_string(i);
             if (pin.point < 0 || static_cast<std::size_t>(pin.point) >= vertices) {
-                // As Godot's pin_vertices error.
                 problems.push_back({entity, path + "/point",
                                     "point " + std::to_string(pin.point) +
                                         " is out of bounds: the mesh has " +

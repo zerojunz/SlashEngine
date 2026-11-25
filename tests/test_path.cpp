@@ -41,7 +41,7 @@ json::Value parse(std::string_view text) {
     return std::move(parsed).value();
 }
 
-// Godot's tests compare with a tolerance of 0.001.
+// The cases compare with a tolerance of 0.001.
 bool near(float a, float b, float tolerance = 0.001F) {
     return std::abs(a - b) < tolerance;
 }
@@ -125,8 +125,8 @@ double volume(const scene3d::CsgMesh& mesh) {
 
 } // namespace
 
-TEST_CASE("Curve2D bakes, samples and finds the nearest point as Godot's") {
-    // The cases of Godot's tests/scene/test_curve_2d.h.
+TEST_CASE("Curve2D bakes, samples and finds the nearest point") {
+    // The cases for 2D curves.
     const world::Curve2D single({point2({})}, 5.0F);
     CHECK(single.length() == 0.0F);
     CHECK(single.points().size() == 1);
@@ -155,7 +155,7 @@ TEST_CASE("Curve2D bakes, samples and finds the nearest point as Godot's") {
         }
     }
 
-    // Handles that point at each other's ends make a line (Godot's issue 88923).
+    // Handles that point at each other's ends make a line.
     const world::Curve2D crossed({point2({}, {-2, 0}, {1, 0}), point2({1, 0}, {-1, 0}, {2, 0})},
                                  0.5F);
     CHECK(crossed.points().size() >= 3);
@@ -173,8 +173,8 @@ TEST_CASE("Curve2D bakes, samples and finds the nearest point as Godot's") {
     CHECK(coarse.points().size() < fine.points().size());
 }
 
-TEST_CASE("Curve3D bakes up vectors and tilts along it as Godot's") {
-    // The cases of Godot's tests/scene/test_curve_3d.h.
+TEST_CASE("Curve3D bakes up vectors and tilts along it") {
+    // The cases for 3D curves.
     const world::Curve3D single({point({})}, false, 0.2F, true);
     CHECK(single.length() == 0.0F);
     CHECK(single.points().size() == 1);
@@ -206,12 +206,12 @@ TEST_CASE("Curve3D bakes up vectors and tilts along it as Godot's") {
     const world::Curve3D flat({point({}), point({0, 50, 0})}, false, 0.2F, false);
     CHECK(near(flat.sample_up_vector(25.0F), {0, 1, 0}));
 
-    // Godot's issue 81879: up vectors on a curve a little off an axis.
+    // Up vectors on a curve a little off an axis.
     const world::Curve3D off_axis({point({}), point({0, 0.1F, 1})}, false, 0.2F, true);
     CHECK(near(off_axis.sample_up_vector(off_axis.closest_offset({0, 0, 0.9F})),
                {0, 0.995037F, -0.099504F}, 0.01F));
 
-    // Godot's issue 88923, in 3D.
+    // Handles that point at each other's ends, in 3D.
     const world::Curve3D crossed(
         {point({}, {-1, 0, 2}, {1, 0, 0}), point({1, 0, 0}, {-1, 0, 0}, {1, 0, 2})}, false, 0.2F,
         true);
@@ -248,8 +248,8 @@ TEST_CASE("Curve3D bakes up vectors and tilts along it as Godot's") {
     CHECK(near(closed.sample(closed.length()), {}));
 }
 
-TEST_CASE("progress wraps round a loop and stops at the ends without one, as Godot's") {
-    // Godot's "Progress out of range" and "Progress ratio out of range" tests.
+TEST_CASE("progress wraps round a loop and stops at the ends without one") {
+    // The "Progress out of range" and "Progress ratio out of range" tests.
     CHECK(world::wrap_progress(-50.0F, 100.0F, true) == doctest::Approx(50.0F));
     CHECK(world::wrap_progress(150.0F, 100.0F, true) == doctest::Approx(50.0F));
     CHECK(world::wrap_progress(-30.0F, 100.0F, true) == doctest::Approx(70.0F));
@@ -263,7 +263,7 @@ TEST_CASE("progress wraps round a loop and stops at the ends without one, as God
 }
 
 TEST_CASE("SplineFollower2D goes along its curve, turned with it, offsets along and across it") {
-    // Godot's tests/scene/test_path_follow_2d.h.
+    // The cases for 2D path followers.
     const world::Curve2D square(
         {point2({0, 0}), point2({100, 0}), point2({100, 100}), point2({0, 100}), point2({0, 0})},
         1.0F);
@@ -302,7 +302,7 @@ TEST_CASE("SplineFollower2D goes along its curve, turned with it, offsets along 
 }
 
 TEST_CASE("SplineFollower3D goes along its curve, its rotation as its rotation_mode says") {
-    // Godot's tests/scene/test_path_follow_3d.h.
+    // The cases for 3D path followers.
     const world::Curve3D zigzag({point({0, 0, 0}), point({100, 0, 0}), point({100, 100, 0}),
                                  point({100, 100, 100}), point({100, 0, 100})},
                                 false, 0.2F, true);
@@ -453,7 +453,7 @@ TEST_CASE("the path_follow system wraps followers' progress and places them on t
     CHECK(world::curve_3d(bare.world, bare.create("none", R"({"Transform3D": {}})")) == nullptr);
 }
 
-TEST_CASE("check_paths reports followers that can't follow, as Godot's warnings") {
+TEST_CASE("check_paths reports followers that can't follow, as warnings") {
     Scene scene;
     scene.create("drifter", R"({"Transform2D": {}, "SplineFollower2D": {}})");
     const entt::entity node = scene.create("node", R"({"Transform3D": {}})");
@@ -479,7 +479,7 @@ TEST_CASE("check_paths reports followers that can't follow, as Godot's warnings"
     CHECK(scene3d::check_meshes(scene.world).size() == 3);
 }
 
-TEST_CASE("SolidExtrusion3D's path mode pushes its polygon along a Spline3D, as Godot's") {
+TEST_CASE("SolidExtrusion3D's path mode pushes its polygon along a Spline3D") {
     Scene scene;
     const entt::entity rail = scene.create("rail", R"({
         "Transform3D": {},

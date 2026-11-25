@@ -115,7 +115,7 @@ scene3d::Bounds cube(Vec3 center, float half) {
 
 } // namespace
 
-TEST_CASE("occluder shapes are made as Godot's Occluder3Ds make them") {
+TEST_CASE("occluder shapes are made from their shapes") {
     auto quad = scene3d::occluder_mesh(occluder(R"({"shape": "quad", "size": [2, 4, 0]})"));
     REQUIRE(quad.ok());
     CHECK(quad.value().vertices ==
@@ -180,7 +180,7 @@ TEST_CASE("occluders block rays from either side") {
     CHECK(scene.cast({0, 0, 0}, {0, 0, -1}, 0.05F, 4.0F) == 4.0F);
 }
 
-TEST_CASE("the occlusion buffer is sized and leveled as Godot's") {
+TEST_CASE("the occlusion buffer is sized and leveled") {
     using Size = std::array<int, 2>;
     // 512 rays for each of 8 threads, kept between one per 32x32 pixels and one per 2x2.
     CHECK(scene3d::OcclusionBuffer::size_for(1280, 720, 512) == Size{85, 48});
@@ -199,7 +199,7 @@ TEST_CASE("the occlusion buffer is sized and leveled as Godot's") {
     CHECK(buffer.empty());
 }
 
-TEST_CASE("boxes behind occluders are hidden, as Godot's HZBuffer finds them") {
+TEST_CASE("boxes behind occluders are hidden") {
     scene3d::OccluderScene scene;
     // A wall 4 across, 5 ahead.
     scene.build({{Vec3{-2, -2, -5}, Vec3{-2, 2, -5}, Vec3{2, 2, -5}},
@@ -268,7 +268,7 @@ TEST_CASE("meshes behind OccluderInstance3Ds aren't drawn, but still cast shadow
     captured = scene.capture();
     CHECK(captured.meshes == 1);
     CHECK(captured.occluded == 1);
-    // ignore_occlusion_culling keeps it, as Godot's.
+    // ignore_occlusion_culling keeps it.
     scene.world.ecs().get<world::Model3D>(hidden).skip_occlusion = true;
     captured = scene.capture();
     CHECK(captured.meshes == 2);
@@ -286,7 +286,7 @@ TEST_CASE("meshes behind OccluderInstance3Ds aren't drawn, but still cast shadow
     CHECK(scene.world.valid(shown));
 }
 
-TEST_CASE("project.json's occlusion_culling is read as Godot's") {
+TEST_CASE("project.json's occlusion_culling is read") {
     const auto read = [](std::string_view rendering) {
         return render::occlusion_culling(json::parse(rendering).value());
     };
@@ -299,7 +299,7 @@ TEST_CASE("project.json's occlusion_culling is read as Godot's") {
     CHECK(read(R"({"occlusion_culling": {"rays_per_thread": 0}})").rays_per_thread == 512);
 }
 
-TEST_CASE("occluders bake from the opaque meshes around them, as Godot's bake_scene") {
+TEST_CASE("occluders bake from the opaque meshes around them") {
     Scene scene;
     const entt::entity baker = scene.create("baker", R"({"Transform3D": {"position": [0, 1, 0]},
                                   "Occluder3D": {"bake_simplification_distance": 0}})");

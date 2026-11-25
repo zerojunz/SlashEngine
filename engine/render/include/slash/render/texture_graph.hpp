@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -47,17 +48,16 @@ inline constexpr std::size_t kMaxGraphRampPoints = 6;
 enum class GraphOp : std::uint8_t {
     // Generators: no inputs.
     Constant = 0, // p0-3: the color
-    // FastNoiseLite as Godot's FastNoiseLite resource sets it up: p0 noise type, p1 seed, p2
-    // frequency, p3 fractal type, p4 octaves, p5 lacunarity, p6 gain, p7 weighted strength, p8
-    // ping-pong strength, p9 cellular distance, p10 cellular return, p11 cellular jitter, p12 1
-    // to warp the domain, p13 warp type, p14 warp amplitude, p15 warp frequency, p16 warp
-    // fractal, p17 warp octaves, p18 warp lacunarity, p19 warp gain (Godot's enum numbers),
-    // p20-22 the offset, p23-24 the noise units across and down (the pixel size at 1x), p25 1 to
-    // make it seamless as Godot's get_seamless_image, p26 its blend skirt. Gray: value * 0.5 +
-    // 0.5.
+    // FastNoiseLite as a FastNoiseLite generator sets it up: p0 noise type, p1 seed, p2 frequency,
+    // p3 fractal type, p4 octaves, p5 lacunarity, p6 gain, p7 weighted strength, p8 ping-pong
+    // strength, p9 cellular distance, p10 cellular return, p11 cellular jitter, p12 1 to warp the
+    // domain, p13 warp type, p14 warp amplitude, p15 warp frequency, p16 warp fractal, p17 warp
+    // octaves, p18 warp lacunarity, p19 warp gain (the generator's enum numbers), p20-22 the
+    // offset, p23-24 the noise units across and down (the pixel size at 1x), p25 1 to make it
+    // seamless, p26 its blend skirt. Gray: value * 0.5 + 0.5.
     Noise = 1,
-    // Godot's GradientTexture2D: p0 fill (0 linear, 1 radial, 2 square), p1-2 fill_from, p3-4
-    // fill_to, p5 repeat (0 none, 1 repeat, 2 mirror), the ramp at kGraphRampAt.
+    // A 2D gradient texture: p0 fill (0 linear, 1 radial, 2 square), p1-2 fill_from, p3-4 fill_to,
+    // p5 repeat (0 none, 1 repeat, 2 mirror), the ramp at kGraphRampAt.
     Gradient = 2,
     // A shape in each of p1 x p2 cells: p0 kind (0 disc, 1 box, 2 polygon, 3 ring), p3 size
     // (share of the cell), p4 the polygon's sides, p5 softness (share of the size its edge

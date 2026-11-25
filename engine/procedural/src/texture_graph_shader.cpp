@@ -457,7 +457,7 @@ Result<std::string> texture_graph_shader(const json::Value& doc, const GraphRead
         used_fractal |= 1U << kind(3);
         if (program.passes[p].params[12] > 0.5F || !settings[p][12].slopes.empty()) {
             used_warp |= 1U << kind(13);
-            // Godot's domain warp fractal types: none, progressive, independent.
+            // The domain warp fractal types: none, progressive, independent.
             constexpr std::array<unsigned, 3> kWarpFractals{0, 4, 5};
             used_fractal |= 1U << kWarpFractals.at(std::min(kind(16), 2U));
         }
@@ -523,7 +523,7 @@ Result<std::string> texture_graph_shader(const json::Value& doc, const GraphRead
     const std::string wrap = program.tiling ? "tg_wrap_int(v, n)" : "clamp(v, 0, n - 1)";
     out += "int tg_wrap(int v, int n) {\n    return " + wrap + ";\n}\n";
     out += "float3 tg_linear(float3 c) {\n"
-           "    // Godot's approximation of sRGB to linear.\n"
+           "    // A polynomial approximation of sRGB to linear.\n"
            "    return c * (c * (c * 0.305306011 + 0.682171111) + 0.012522878);\n}\n";
     for (std::size_t o = 0; o < drawn.size(); ++o) {
         const Drawn& each = drawn[o];

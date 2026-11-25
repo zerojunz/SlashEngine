@@ -8,8 +8,8 @@
 #include <string>
 #include <string_view>
 
-// The game's icon, as Godot's application/config/icon: project.json's "icon", or the engine's
-// own. Exports make each platform's icons from it, and the game's window shows it.
+// The game's icon: project.json's "icon", or the engine's own. Exports make each platform's icons
+// from it, and the game's window shows it.
 namespace slash::runtime {
 
 // Icons are made from an image this big on a side, the size the App Store asks for.

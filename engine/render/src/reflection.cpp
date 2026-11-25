@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "reflection.hpp"
 
 #include "mesh_shading.hpp"
@@ -88,10 +89,9 @@ std::array<float, 16> probe_face_view(const std::array<float, 16>& transform,
 std::array<float, 16> probe_face_projection(const std::array<float, 3>& size,
                                             const std::array<float, 3>& origin_offset,
                                             float max_distance, std::uint32_t face) {
-    // Godot's _render_reflection_probe_step keeps the furthest of max_distance and each side it
-    // has drawn so far, in its order +x, -x, +y, -y, +z, -z. Since our faces are mirrored along z,
-    // face +z is its -z.
-    constexpr std::array<std::uint32_t, 6> kGodotStep{0, 1, 2, 3, 5, 4};
+    // The furthest of max_distance and each side drawn so far is kept, in the order +x, -x, +y, -y,
+    // +z, -z. Since our faces are mirrored along z, face +z is its -z.
+    constexpr std::array<std::uint32_t, 6> kLastSide{0, 1, 2, 3, 5, 4};
     constexpr std::array<Float3, 6> kNormals{{{1.0F, 0.0F, 0.0F},
                                               {-1.0F, 0.0F, 0.0F},
                                               {0.0F, 1.0F, 0.0F},
@@ -100,7 +100,7 @@ std::array<float, 16> probe_face_projection(const std::array<float, 3>& size,
                                               {0.0F, 0.0F, -1.0F}}};
     const Float3 extents{size[0] * 0.5F, size[1] * 0.5F, size[2] * 0.5F};
     float far = max_distance;
-    for (std::uint32_t step = 0; step <= kGodotStep.at(face); ++step) {
+    for (std::uint32_t step = 0; step <= kLastSide.at(face); ++step) {
         const Float3& normal = kNormals.at(step);
         const Float3 edge{normal[0] * extents[0], normal[1] * extents[1], normal[2] * extents[2]};
         far = std::max(far, std::abs(dot(normal, edge) - dot(normal, origin_offset)));
@@ -248,7 +248,7 @@ ProbeLight reflect_probes(std::span<const MeshProbeUniforms> probes,
     ProbeLight out;
     Float4& reflection_accum = out.reflection;
     Float4& ambient_accum = out.ambient;
-    // Godot's ref_vec for probes: the reflection, bent toward the normal by roughness⁴.
+    // The reflection vector for probes: the reflection, bent toward the normal by roughness⁴.
     const float d = dot3(view, normal);
     Float3 ref_vec = normalized({(2.0F * d * normal[0]) - view[0], (2.0F * d * normal[1]) - view[1],
                                  (2.0F * d * normal[2]) - view[2]});
@@ -256,8 +256,8 @@ ProbeLight reflect_probes(std::span<const MeshProbeUniforms> probes,
     for (std::size_t i = 0; i < 3; ++i) {
         ref_vec.at(i) += (normal.at(i) - ref_vec.at(i)) * bend;
     }
-    // Godot walks its cluster's words of probe bits from the first, each from its highest bit:
-    // the frame's probes are largest first, so the smallest of each 32 is taken first.
+    // The cluster's words of probe bits are walked from the first, each from its highest bit: the
+    // frame's probes are largest first, so the smallest of each 32 is taken first.
     const std::size_t count = probes.size();
     for (std::size_t index = 0; index < ((count + 31) / 32) * 32; ++index) {
         const std::size_t at = ((index / 32) * 32) + (31 - (index % 32));
@@ -271,7 +271,6 @@ ProbeLight reflect_probes(std::span<const MeshProbeUniforms> probes,
         if (reflection_accum[3] >= 1.0F && ambient_accum[3] >= 1.0F) {
             break;
         }
-        // Godot's reflection_process.
         const Float3 extents{probe.extents[0], probe.extents[1], probe.extents[2]};
         const Float3 local_pos = local(probe.rows, world, 1.0F);
         if (std::abs(local_pos[0]) > extents[0] || std::abs(local_pos[1]) > extents[1] ||

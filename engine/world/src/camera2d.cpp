@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/world/camera2d.hpp"
 
 #include "slash/world/world.hpp"
@@ -18,7 +19,7 @@ namespace {
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
 
-// Godot's Math::angle_difference and Math::lerp_angle.
+// The shortest signed difference between two angles.
 float angle_difference(float from, float to) {
     const float difference = std::fmod(to - from, kTau);
     return std::fmod(2.0F * difference, kTau) - difference;
@@ -28,13 +29,13 @@ float lerp_angle(float from, float to, float weight) {
     return from + (angle_difference(from, to) * weight);
 }
 
-// Godot's Vector2::rotated.
+// A vector turned by an angle.
 Vec2 rotated(Vec2 v, float angle) {
     const Vec2 cs = cos_sin(angle);
     return {(v.x * cs.x) - (v.y * cs.y), (v.x * cs.y) + (v.y * cs.x)};
 }
 
-// Godot's Vector2::normalize.
+// A vector scaled to length 1; a zero vector stays as it is.
 Vec2 normalized(Vec2 v) {
     const float length_squared = (v.x * v.x) + (v.y * v.y);
     if (length_squared == 0.0F) {
@@ -44,7 +45,7 @@ Vec2 normalized(Vec2 v) {
     return {v.x / length, v.y / length};
 }
 
-// A limit plus another, as Godot adds the two ints, without overflowing.
+// A limit plus another, without overflowing.
 float sum(int a, int b) {
     return static_cast<float>(std::int64_t{a} + std::int64_t{b});
 }
@@ -73,7 +74,7 @@ struct Cameras {
         if (camera == entt::null) {
             return;
         }
-        // Only the current camera moves on, as Godot updates only the current one's scroll.
+        // Only the current camera moves on.
         (void)camera_transform(ecs.get<Camera2D>(camera), states[key_of(world, camera)],
                                tree.global(camera), screen_size(world),
                                static_cast<float>(tick_seconds));
@@ -84,7 +85,7 @@ struct Cameras {
 
 Affine2D camera_transform(const Camera2D& camera, CameraState& state, const Transform2D& global,
                           Vec2 screen_size, float delta) {
-    // Godot's Camera2D::get_camera_transform, line for line.
+    // The camera's transform, step by step.
     const Vec2 zoom_scale{camera.zoom.x != 0.0F ? 1.0F / camera.zoom.x : 1.0F,
                           camera.zoom.y != 0.0F ? 1.0F / camera.zoom.y : 1.0F};
     const bool drag_center = camera.anchor_mode != "fixed_top_left";
@@ -102,7 +103,7 @@ Affine2D camera_transform(const Camera2D& camera, CameraState& state, const Tran
 
     if (!state.first) {
         if (drag_center) {
-            // Godot works out the margins in double.
+            // The margins are worked out in double.
             const double sx = static_cast<double>(screen_size.x) * 0.5;
             const double sy = static_cast<double>(screen_size.y) * 0.5;
             if (camera.drag_horizontal_enabled &&
@@ -184,9 +185,9 @@ Affine2D camera_transform(const Camera2D& camera, CameraState& state, const Tran
 
     Vec2 position{ret_camera_pos.x - screen_offset.x, ret_camera_pos.y - screen_offset.y};
     if (camera.limit_enabled && (!camera.position_smoothing_enabled || !camera.limit_smoothed)) {
-        // The corner opposite the position, rotation included: as far again past the camera
-        // for drag_center, as Godot; Godot's formula takes the camera for the screen's center,
-        // so a fixed_top_left screen's corner is its size away.
+        // The corner opposite the position, rotation included: as far again past the camera for
+        // drag_center; the formula takes the camera for the screen's center, so a fixed_top_left
+        // screen's corner is its size away.
         Vec2 corner = camera.ignore_rotation ? size : rotated(size, state.camera_angle);
         if (drag_center) {
             corner = {2.0F * (ret_camera_pos.x - position.x),
@@ -213,7 +214,7 @@ Affine2D camera_transform(const Camera2D& camera, CameraState& state, const Tran
         position = {position.x + camera.offset.x, position.y + camera.offset.y};
     }
 
-    // Godot's Transform2D: scale_basis(zoom_scale), set_rotation(camera_angle), set_origin.
+    // Scale_basis(zoom_scale), set_rotation(camera_angle), set_origin.
     Affine2D xform{.x = {zoom_scale.x, 0.0F}, .y = {0.0F, zoom_scale.y}, .origin = position};
     if (!camera.ignore_rotation) {
         const float sign = zoom_scale.x * zoom_scale.y < 0.0F ? -1.0F : 1.0F;

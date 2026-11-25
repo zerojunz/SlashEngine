@@ -1,6 +1,6 @@
-// Godot's Expression (core/math/expression.cpp): a tokenizer, a parser that binds operators by
-// Godot's priorities, and a tree of nodes that runs over JSON values as Godot's runs over
-// Variants, with Variant's operator rules for the types JSON has.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Expressions: a tokenizer, a parser that binds operators by priority, and a tree of nodes that
+// runs over JSON values, with the operator rules of the types JSON has.
 
 #include "slash/core/expression.hpp"
 
@@ -104,7 +104,7 @@ constexpr std::array<FunctionInfo, 17> kFunctions{{
     {"bool", Function::Bool, 1, 1},
 }};
 
-constexpr double kCmpEpsilon = 0.00001; // Godot's CMP_EPSILON
+constexpr double kCmpEpsilon = 0.00001; // The epsilon for approximate comparisons.
 
 } // namespace
 
@@ -145,7 +145,7 @@ bool is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
-// Godot's Expression::_get_token, for the tokens expressions over values use.
+// The next token, for the tokens expressions over values use.
 class Tokenizer {
 public:
     explicit Tokenizer(std::string_view text) : text_(text) {}
@@ -251,8 +251,8 @@ private:
         }
     }
 
-    // Godot's numbers: decimal, "0x" hexadecimal and "0b" binary, with "_" between digits; a
-    // "." or an exponent makes a float.
+    // Decimal, "0x" hexadecimal and "0b" binary, with "_" between digits; a "." or an exponent
+    // makes a float.
     Result<Token> number(Token& token) {
         token.kind = TokenKind::Constant;
         const std::size_t begin = pos_;
@@ -277,7 +277,7 @@ private:
             if (digit_of(c)) {
                 digits += c;
             } else if (c == '_' && !digits.empty()) {
-                // A separator, as Godot allows.
+                // A separator.
             } else if (base == 10 && c == '.' && !is_float &&
                        digits.find_first_of("eE") == std::string::npos) {
                 is_float = true;
@@ -318,7 +318,7 @@ private:
              value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))) {
             return error_at(begin, "the integer is too big; write it as a float");
         }
-        token.value = static_cast<std::int64_t>(value); // hexadecimal and binary wrap, as Godot's
+        token.value = static_cast<std::int64_t>(value); // hexadecimal and binary wrap
         return token;
     }
 
@@ -420,7 +420,7 @@ private:
     std::size_t pos_ = 0;
 };
 
-// Builds the node tree, binding operators by Godot's priorities (Expression::_parse_expression).
+// Builds the node tree, binding operators by their priorities.
 class Parser {
 public:
     Parser(std::vector<Token> tokens, std::vector<std::string>& names)
@@ -689,7 +689,7 @@ Error function_error(std::string_view function, const json::Value& value) {
                       std::string(function) + "() doesn't take " + std::string(type_name(value)));
 }
 
-// Integers wrap as Godot's do, without overflowing in C++.
+// Integers wrap, without overflowing in C++.
 std::int64_t wrap(std::uint64_t value) {
     return static_cast<std::int64_t>(value);
 }
@@ -978,7 +978,7 @@ Result<json::Value> call(Function function, const std::vector<json::Value>& args
     case Function::Fmod:
         return json::Value(std::fmod(x.as_double(), args[1].as_double()));
     case Function::IsEqualApprox: {
-        // Godot's Math::is_equal_approx.
+        // Approximate equality.
         const double a = x.as_double();
         const double b = args[1].as_double();
         if (a == b) {

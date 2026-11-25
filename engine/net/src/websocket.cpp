@@ -1,6 +1,7 @@
-// WebSocketPeer and WebSocketMultiplayerPeer, ported from Godot 4.5's modules/websocket (MIT):
-// WSLPeer's handshakes and wslay callbacks over TCP sockets made with ENet's portable socket
-// calls everywhere but the web, and EMWSPeer's use of the browser's WebSocket on the web.
+// WebSocketPeer and WebSocketMultiplayerPeer: handshakes and wslay callbacks over TCP sockets
+// made with ENet's portable socket calls everywhere but the web, and the browser's WebSocket on
+// the web.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/net/websocket.hpp"
 
 #include "slash/core/log.hpp"
@@ -84,7 +85,7 @@ std::string_view strip(std::string_view text) {
     }
 }
 
-// A URL's parts, as Godot's String::parse_url.
+// A URL's parts.
 struct Url {
     std::string scheme; // "ws://" or "wss://"
     std::string host;
@@ -147,7 +148,7 @@ bool initialize_sockets() {
     return initialized;
 }
 
-// A connection a WebSocket talks over, as Godot's StreamPeer: TCP, or TLS over TCP.
+// A connection a WebSocket talks over: TCP, or TLS over TCP.
 class Stream {
 public:
     enum class Status : std::uint8_t { None, Connecting, Connected, Error };
@@ -170,7 +171,7 @@ public:
                                      std::size_t& sent) = 0;
 };
 
-// A TCP connection, as Godot's StreamPeerTCP, over ENet's socket calls.
+// A TCP connection, over ENet's socket calls.
 class TcpStream final : public Stream {
 public:
     TcpStream() = default;
@@ -294,7 +295,7 @@ private:
     Status status_ = Status::None;
 };
 
-// TLS over a TCP connection, as Godot's StreamPeerMbedTLS (and TLSContextMbedTLS): a client
+// TLS over a TCP connection: a client
 // checks the server's certificate against the trusted chain, the system's certificates or, on
 // Apple platforms, the platform's own trust; a server shows its certificate.
 class TlsStream final : public Stream {
@@ -569,7 +570,7 @@ private:
     bool apple_check_ = false;
 };
 
-// A listening TCP socket, as Godot's TCPServer.
+// A listening TCP socket.
 class TcpServer {
 public:
     TcpServer() = default;
@@ -1270,7 +1271,7 @@ struct WebSocketPeer::State {
 
 #elif defined(__EMSCRIPTEN__)
 
-// The browser's WebSocket, as Godot's library_godot_websocket.js: each socket's events wait in
+// The browser's WebSocket: each socket's events wait in
 // a list that poll() takes them from.
 // NOLINTBEGIN
 // clang-format off
@@ -1362,7 +1363,6 @@ EM_JS(void, slash_ws_destroy, (int id), {
 // clang-format on
 // NOLINTEND
 
-// As Godot's EMWSPeer.
 struct WebSocketPeer::State {
     std::vector<std::string> supported_protocols;
     std::vector<std::string> handshake_headers;
@@ -1764,7 +1764,7 @@ void WebSocketPeer::set_heartbeat_interval(double seconds) {
 }
 
 // ----------------------------------------------------------------------------------------------
-// WebSocketMultiplayerPeer, as Godot's.
+// WebSocketMultiplayerPeer.
 
 struct WebSocketMultiplayerPeer::State {
     struct PendingPeer {

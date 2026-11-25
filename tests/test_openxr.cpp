@@ -29,7 +29,7 @@
 
 using namespace slash;
 
-TEST_CASE("openxr: the default action map is Godot's") {
+TEST_CASE("openxr: the default action map") {
     const xr::ActionMap& map = xr::default_action_map();
     CHECK(map.action_set == "game");
     CHECK(map.localized_name == "Game actions");
@@ -40,7 +40,7 @@ TEST_CASE("openxr: the default action map is Godot's") {
     });
     REQUIRE(touch != map.profiles.end());
     CHECK(touch->extension.empty());
-    // x on the left hand, a on the right, as Godot binds them.
+    // x on the left hand, a on the right.
     const auto ax = std::ranges::find_if(touch->bindings, [](const xr::MapBinding& binding) {
         return binding.action == "ax_button";
     });
@@ -146,7 +146,7 @@ frame 9 exit
 
 } // namespace
 
-TEST_CASE("openxr: a runtime's session runs, tracking the head and hands by Godot's action map") {
+TEST_CASE("openxr: a runtime's session runs, tracking the head and hands by the action map") {
     REQUIRE(xr::openxr_available());
     OpenXRRig rig("session", kTouchScript, {.enabled = true});
     const auto started = xr::use_openxr_interface(*rig.world);

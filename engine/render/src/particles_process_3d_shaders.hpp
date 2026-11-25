@@ -31769,7 +31769,8 @@ R"wgsl(                    let v_2722 = v_2712;
 }
 )wgsl"};
 
-inline constexpr char kParticlesProcess3DHlsl[] = R"hlsl(// Runs steps on a 3D particle system, a thread a particle: Godot's particles shader and the code
+inline constexpr char kParticlesProcess3DHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Runs steps on a 3D particle system, a thread a particle: the particles shader and the code
 // ParticleProcessMaterial generates for 3D. Its CPU twin is process_particles_3d in
 // src/particles3d.cpp, which this follows line for line; a change to one goes in the other. The
 // process material and steps are words laid out as src/particle_layout_3d.hpp says. The noise,
@@ -31782,8 +31783,8 @@ inline constexpr char kParticlesProcess3DHlsl[] = R"hlsl(// Runs steps on a 3D p
 // What particles_process.hlsl and particles_draw.hlsl share: the particle, as
 // slash::render::Particle lays it out, and where SDL binds each kind of resource.
 
-// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity
-// its origin [x, y] and velocity [z, w]; custom Godot's CUSTOM and userdata its USERDATA1.
+// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity its
+// origin [x, y] and velocity [z, w]; custom the custom data and userdata its USERDATA1.
 struct Particle {
     float4 basis;
     float4 origin_velocity;
@@ -31812,7 +31813,7 @@ static const uint kParticleCycleShift = 16u;
 #endif
 
 // One particle (128 bytes): its transform's axes, each scaled, and its origin, their w 0; the
-// velocity its forces built up and its flags; its color; Godot's CUSTOM (angle, age, frame,
+// velocity its forces built up and its flags; its color; the custom data (angle, age, frame,
 // lifetime) and spare words.
 struct Particle3D {
     float4 x;
@@ -32038,7 +32039,7 @@ float3 mix(float3 a, float3 b, float t) {
     return (a * (1.0 - t)) + (b * t);
 }
 
-// Godot's normalize_or_else: v at length 1, or fallback for exactly zero.
+// v at length 1, or fallback for exactly zero.
 float3 unit_or_else(float3 v, float3 fallback) {
     return all(v == float3(0.0, 0.0, 0.0)) ? fallback : unit(v);
 }
@@ -32124,7 +32125,7 @@ float3 curl_3d(float4 p, float c) {
     return l > 0.0 ? curl / l : float3(0.0, 0.0, 0.0);
 }
 
-// Godot's get_noise_direction.
+// The noise direction.
 float3 noise_direction(Step step, float3 pos) {
     float4 turbulence = word(10u); // strength, frequency and speed_random after .x
     float4 speed = word(11u);
@@ -32461,7 +32462,7 @@ R"hlsl(    origin = apply(step.emission, origin);
     particle.origin = float4(origin, 0.0);
 }
 
-// process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve, as Godot's.
+// process_orbit_displacement: 2D's with disable_z, and in 3D only with a curve.
 float3 orbit_displacement(Dynamics dynamics, float life, float3 origin, Affine emission,
                           float delta) {
     bool curved = has_curve3(kOrbitCurve);
@@ -32532,8 +32533,7 @@ float scaled(float s) {
     return (s < 0.0 ? -1.0 : 1.0) * max(abs(s), 0.001);
 }
 
-// The generated process().
-// Godot's safe_normalize: zero below a length of 0.001.
+// The generated process(). Zero below a length of 0.001.
 float3 safe_normalize(float3 v) {
     return length_of(v) < 0.001 ? float3(0.0, 0.0, 0.0) : unit(v);
 }
@@ -32692,8 +32692,8 @@ float3 sign_of(float3 v) {
                   v.z > 0.0 ? 1.0 : (v.z < 0.0 ? -1.0 : 0.0));
 }
 
-// How near a particle comes to a collider before it touches: collision_size, times the average
-// of its axes' lengths with collision_use_scale, as Godot's.
+// How near a particle comes to a collider before it touches: collision_size, times the average of
+// its axes' lengths with collision_use_scale.
 float collision_size(Particle3D particle, Step step) {
     if (!flag(kCollisionUseScale)) {
         return step.collision_size;
@@ -32707,10 +32707,10 @@ float collision_size(Particle3D particle, Step step) {
 // attractor_force's.
 Contact collider_contact(Step step, float3 pos, float size) {
     // Particles just touching a collider count as touching it.
-)hlsl"
-R"hlsl(    const float kEpsilon = 0.001;
+    const float kEpsilon = 0.001;
     Contact contact;
-    contact.collided = false;
+)hlsl"
+R"hlsl(    contact.collided = false;
     contact.normal = float3(0.0, 0.0, 0.0);
     contact.depth = 0.0;
     for (uint i = 0u; i < step.collider_count; ++i) {
@@ -32763,7 +32763,7 @@ R"hlsl(    const float kEpsilon = 0.001;
                 }
             }
         } else if (d.w != kColliderBox) {
-            // A height field, whose normal and depth Godot leaves in its space, unturned.
+            // A height field, whose normal and depth stay in its space, unturned.
             const float kDelta = 1.0 / 8192.0;
             float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));
             float3 bottom = float3(local.x, local.y - size, local.z);
@@ -32880,7 +32880,7 @@ void process(inout Particle3D particle, Step step, uint number, float delta, Con
             force += unit(float3(-diff.y, diff.x, 0.0)) * physical.tangent_accel;
         }
     } else {
-        // Godot's normalize of a zero vector makes NaNs, which the length test then skips.
+        // Normalizing a zero vector makes NaNs, which the length test then skips.
         float3 across = cross(unit(diff), unit(gravity));
         if (length_of(across) > 0.0) {
             force += unit(across) * physical.tangent_accel;
@@ -32987,9 +32987,9 @@ void process(inout Particle3D particle, Step step, uint number, float delta, Con
     }
     if (has_curve3(kScaleOverVelocityCurve)) {
         float speed = length_of(final_velocity);
+        float range = word(10u).x; // scale_over_velocity_max - scale_over_velocity_min
 )hlsl"
-R"hlsl(        float range = word(10u).x; // scale_over_velocity_max - scale_over_velocity_min
-        float at = speed > 0.001 ? clamp(speed / range, 0.0, 1.0) : 0.0;
+R"hlsl(        float at = speed > 0.001 ? clamp(speed / range, 0.0, 1.0) : 0.0;
         display.scale = display.scale * sample3(kScaleOverVelocityCurve, at, 0.0);
     }
     particle.x = float4(x * scaled(display.scale.x), 0.0);

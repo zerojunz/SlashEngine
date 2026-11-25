@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/asset/assets.hpp"
@@ -29,9 +30,8 @@ namespace slash::world {
 class World;
 }
 
-// Grid maps, as Godot 4.6's BlockMap3D (modules/gridmap/grid_map.cpp) and MeshLibrary
-// (scene/resources/3d/mesh_library.cpp): items of a .blocks.json file placed in cells, each
-// turned one of Godot's 24 ways. Cells are grouped into octants as Godot groups them; each
+// Grid maps: items of a .blocks.json file placed in cells, each
+// turned one of 24 ways. Cells are grouped into octants; each
 // octant's items draw as one mesh per material, their shapes collide as one static body of the
 // BlockMap3D's in physics3d, and with bake_navigation each cell with a navigation mesh is a
 // navigation region.
@@ -39,12 +39,12 @@ namespace slash::scene3d {
 
 inline constexpr std::string_view kMeshLibrarySuffix = ".blocks.json";
 
-// One item of a mesh library, as Godot's MeshLibrary::Item: what a cell holding it draws,
+// One item of a mesh library: what a cell holding it draws,
 // collides as and walks on, each in the cell's space.
 struct MeshLibraryItem {
     std::string mesh;                   // a model file's meshes, as they are at rest; or ""
     std::optional<Primitive> primitive; // or a primitive mesh
-    // Takes the place of the model's materials, or colors the primitive; Godot's default
+    // Takes the place of the model's materials, or colors the primitive; the default
     // material without one.
     std::optional<world::Surface3D> material;
     world::Affine3D mesh_transform;
@@ -76,14 +76,14 @@ void add_mesh_library_type(asset::Assets& assets);
 
 // ---- Cells
 
-// The ways a cell's item can be turned: Godot's 24 orthogonal bases.
+// The ways a cell's item can be turned: the 24 orthogonal bases.
 inline constexpr int kOrientations = 24;
 
-// Godot's GridMap::get_basis_with_orthogonal_index; no turn for an index out of range. 0 is
+// The basis of an orientation index; no turn for an index out of range. 0 is
 // none, and 16, 10 and 22 turn an item 90, 180 and 270 degrees about y.
 [[nodiscard]] world::Affine3D orientation_basis(int orientation);
 
-// Godot's get_orthogonal_index_from_basis: the orientation whose basis is the given one's
+// The orientation whose basis is the given one's
 // entries rounded to -1, 0 or 1, or 0 when none is.
 [[nodiscard]] int orientation_index(const world::Affine3D& basis);
 
@@ -103,7 +103,7 @@ struct GridCellOrder {
 };
 using GridCells = std::map<Vec3i, GridItem, GridCellOrder>;
 
-// Where cells can be, as in Godot, whose cell keys are 16-bit: from -32768 to 32767 each way.
+// Where cells can be, whose cell keys are 16-bit: from -32768 to 32767 each way.
 inline constexpr int kMinGridCell = -32768;
 inline constexpr int kMaxGridCell = 32767;
 
@@ -127,7 +127,7 @@ inline constexpr int kMaxGridCell = 32767;
 // first, each the first letter of the item's name where that is free.
 void encode_grid_cells(const GridCells& cells, world::BlockMap3D& map);
 
-// Godot's map_to_local: the center of a cell (or its corner along axes not centered) in the
+// map_to_local: the center of a cell (or its corner along axes not centered) in the
 // BlockMap3D's space; and local_to_map, the cell a point is in.
 [[nodiscard]] Vec3 map_to_local(const world::BlockMap3D& map, Vec3i cell);
 [[nodiscard]] Vec3i local_to_map(const world::BlockMap3D& map, Vec3 local);
@@ -137,7 +137,7 @@ void encode_grid_cells(const GridCells& cells, world::BlockMap3D& map);
 [[nodiscard]] world::Affine3D cell_transform(const world::BlockMap3D& map, Vec3i cell,
                                              int orientation);
 
-// The octant a cell is in, as Godot's get_octant_key_from_cell_coords.
+// The octant a cell is in.
 [[nodiscard]] Vec3i octant_of(const world::BlockMap3D& map, Vec3i cell);
 
 // ---- What a BlockMap3D makes
@@ -149,7 +149,7 @@ struct GridSurface {
 };
 
 // One octant's items, placed in the BlockMap3D's space and merged into one surface per material
-// and shadow setting, as Godot draws an octant's MultiMesh of each item.
+// and shadow setting.
 struct GridOctant {
     Vec3i key;
     // A number no other octant made in this process has, for keeping its meshes on a device.
@@ -165,7 +165,7 @@ struct GridShape {
     world::Affine3D local; // in the BlockMap3D's space: the cell's transform times the shape's
 };
 
-// An item's navigation mesh in a cell, as a NavigationCell of Godot's octants.
+// An item's navigation mesh in a cell.
 struct GridRegion {
     Vec3i cell;
     std::string navigation_mesh;
@@ -212,8 +212,8 @@ struct GridBody {
 };
 [[nodiscard]] std::vector<GridBody> grid_bodies(const world::World& world);
 
-// Every BlockMap3D whose cells can't be made, in the order entities were made: a cell_size Godot
-// can't divide by, cells but no library, and grid_mesh's problems.
+// Every BlockMap3D whose cells can't be made, in the order entities were made: a cell_size that
+// can't be divided by, cells but no library, and grid_mesh's problems.
 [[nodiscard]] std::vector<Problem> check_gridmaps(const world::World& world);
 
 } // namespace slash::scene3d

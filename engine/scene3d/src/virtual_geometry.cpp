@@ -30,8 +30,7 @@ ClusterBounds bounds_of(const clodBounds& bounds) {
 }
 
 // Which corners lie on the surface's open edges (edges of one triangle, joining corners by
-// place), locked so the surface's rim stays where it is at every depth, as Godot's importer locks
-// the border when it makes LODs.
+// place), locked so the surface's rim stays where it is at every depth.
 std::vector<unsigned char> open_edge_locks(const ModelSurface& surface,
                                            const std::vector<float>& positions) {
     std::vector<unsigned int> remap(surface.vertices.size());

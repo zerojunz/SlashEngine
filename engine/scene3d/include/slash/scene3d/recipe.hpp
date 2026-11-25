@@ -11,10 +11,10 @@
 #include <vector>
 
 // Model recipes: .model.json files that describe a model as text, as the design's parametric
-// models: named parameters, materials, and parts made of Godot's CSG shapes (box, sphere,
+// models: named parameters, materials, and parts made of CSG shapes (box, sphere,
 // cylinder, torus, polygon pushed, spun or swept along a path, and closed primitive meshes),
 // added to, cut from or intersected with each other in order, with bevels and arrays. Numbers
-// can be expressions ("=width / 2") over the parameters, in Godot's Expression syntax. The engine
+// can be expressions ("=width / 2") over the parameters. The engine
 // builds the model when it loads the file, so a Model3D draws a recipe as it draws a glTF
 // file, and refining a model means changing a number.
 namespace slash::scene3d {
@@ -24,7 +24,7 @@ inline constexpr std::string_view kModelRecipeSuffix = ".model.json";
 // A recipe's named forms: "variants" (a damaged crate, a winter tree), which a path picks with
 // "::" ("props/crate.model.json::damaged"), and "quality" tiers, which an export preset's
 // model_quality picks. Each form sets parameters, changes materials' fields and parts' fields by
-// name, or removes parts (null), as Godot's scene inheritance overrides an instance's nodes.
+// name, or removes parts (null).
 inline constexpr std::string_view kVariants = "variants";
 inline constexpr std::string_view kQuality = "quality";
 
@@ -44,9 +44,9 @@ validate_model_recipe(const json::Value& doc, const ModelPartLoader& load = {},
                       const ModelReader& files = {});
 
 // The model a recipe builds: a node named after each top-level part (and each copy its array
-// makes, numbered from 2 as Godot names nodes) placing a mesh of one surface per material, as a
-// CSG root's, or for a model part, the nodes of the model it names, loaded with load, under it,
-// as Godot instances a scene: their names kept unless taken, then numbered, and the model's
+// makes, numbered from 2) placing a mesh of one surface per material, as a
+// CSG root's, or for a model part, the nodes of the model it names, loaded with load, under it:
+// their names kept unless taken, then numbered, and the model's
 // animations left out. A material that names a material file takes the file's fields, read
 // through files, with its own over them. Fails with the first error when the schema, an
 // expression, a field or a material is wrong, a model part's file doesn't load or there is no

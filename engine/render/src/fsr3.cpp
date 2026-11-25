@@ -1166,7 +1166,7 @@ void run_fsr3(const Fsr3Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr3Histor
     }
     const Plane color{.size = k.render, .channels = 4, .data = inputs.color};
     const Plane depth{.size = k.render, .channels = 1, .data = inputs.depth};
-    // LoadInputMotionVector with Godot's derived motion vectors, as FSR 2's.
+    // LoadInputMotionVector with the derived motion vectors, as FSR 2's.
     std::vector<float> loaded(inputs.motion.begin(), inputs.motion.end());
     for (int y = 0; y < k.render[1]; ++y) {
         for (int x = 0; x < k.render[0]; ++x) {

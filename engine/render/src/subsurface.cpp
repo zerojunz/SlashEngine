@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "subsurface.hpp"
 
 #include "forward_post.hpp"
@@ -52,8 +53,8 @@ struct Tap {
     std::array<float, 3> skin;
 };
 
-// Jimenez's kernels as Godot's subsurface_scattering.glsl holds them: each sample's weight, its
-// offset and its weights for skin, from the center out, for 11, 17 and 25 samples across.
+// Jimenez's kernels as the shader holds them: each sample's weight, its offset and its weights for
+// skin, from the center out, for 11, 17 and 25 samples across.
 constexpr std::array<Tap, 6> kKernel11{{
     {0.560479F, 0.0F, {0.560479F, 0.669086F, 0.784728F}},
     {0.0771802F, 0.08F, {0.0771802F, 0.113491F, 0.0793803F}},
@@ -143,7 +144,7 @@ struct Source {
     }
 };
 
-// Godot's do_filter: the samples one way from the pixel, until one has no strength.
+// The samples one way from the pixel, until one has no strength.
 void filter(const Source& source, std::span<const Tap> kernel, std::array<float, 3>& color,
             std::array<float, 3>& divisor, float u, float v, float step_x, float step_y,
             bool skin) {
@@ -189,7 +190,7 @@ SubsurfaceUniforms subsurface_uniforms(const Scene3D& scene, std::uint32_t width
                                        std::uint32_t height, bool down) {
     const std::array<float, 16>& m = scene.projection;
     const bool orthogonal = m[11] == 0.0F;
-    // Godot's unit_size: the projection of Plane(1, 0, -1, 1), its x over its w.
+    // The unit size: the projection of Plane(1, 0, -1, 1), its x over its w.
     const float x = m[0] - m[8] + m[12];
     const float w = m[3] - m[11] + m[15];
     const float unit_size = w != 0.0F ? x / w : 0.0F;

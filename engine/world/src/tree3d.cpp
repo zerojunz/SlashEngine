@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/world/tree3d.hpp"
 
 #include "slash/world/world.hpp"
@@ -142,9 +143,9 @@ Affine3D rotation_basis(const Quat& q) {
 }
 
 Vec3 euler(const Affine3D& rotation) {
-    // Godot's Basis::get_euler for EulerOrder::YXZ, where rows[r][c] is column c's row r. asin
-    // goes through atan2, which is the same everywhere.
-    constexpr float kEpsilon = 0.00001F; // Godot's CMP_EPSILON
+    // The Euler angles of a basis in YXZ order, where rows[r][c] is column c's row r. asin goes
+    // through atan2, which is the same everywhere.
+    constexpr float kEpsilon = 0.00001F; // The epsilon for approximate comparisons.
     constexpr float kHalfPi = 1.57079632679489661923F;
     const auto asin = [](float v) {
         return slash::atan2(v, std::sqrt(std::max(0.0F, 1.0F - (v * v))));
@@ -293,7 +294,7 @@ Affine3D looking_at(Vec3 target, Vec3 up) {
         return l == 0.0F ? Vec3{} : scaled(v, 1.0F / std::sqrt(l));
     };
     const auto is_zero_approx = [](Vec3 v) {
-        constexpr float kEpsilon = 0.00001F; // Godot's CMP_EPSILON
+        constexpr float kEpsilon = 0.00001F; // The epsilon for approximate comparisons.
         return std::abs(v.x) < kEpsilon && std::abs(v.y) < kEpsilon && std::abs(v.z) < kEpsilon;
     };
     const Vec3 z = scaled(normalized(target), -1.0F);

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "mesh_shading.hpp"
 
 #include "slash/render/image.hpp"
@@ -9,9 +10,8 @@
 #include <cstdint>
 #include <numbers>
 
-// trace_voxel_gis, the CPU twin of trace_voxel_gis in shaders/mesh.hlsl: Godot 4.6's
-// voxel_gi_compute and its cone traces (servers/rendering/renderer_rd/shaders/environment/gi.glsl,
-// MIT), over a VoxelLighting3D's 3D texture laid out as tiles of a 2D atlas (VoxelGIShading).
+// trace_voxel_gis, the CPU twin of trace_voxel_gis in shaders/mesh.hlsl: the cone traces over a
+// VoxelLighting3D's 3D texture laid out as tiles of a 2D atlas (VoxelGIShading).
 namespace slash::render::detail {
 
 namespace {
@@ -165,7 +165,7 @@ constexpr std::array<Float3, 6> kHighQualityCones{{{0.0F, 0.0F, 1.0F},
                                                    {-0.700629F, -0.509037F, 0.5F},
                                                    {0.267617F, -0.823639F, 0.5F}}};
 constexpr std::array<float, 6> kHighQualityWeights{0.25F, 0.15F, 0.15F, 0.15F, 0.15F, 0.15F};
-// NOLINTNEXTLINE(modernize-use-std-numbers): Godot's tan(30 degrees).
+// NOLINTNEXTLINE(modernize-use-std-numbers): tan(30 degrees).
 constexpr float kHighQualityTan = 0.577F;
 constexpr std::array<Float3, 4> kCones{{{0.707107F, 0.0F, 0.707107F},
                                         {0.0F, 0.707107F, 0.707107F},

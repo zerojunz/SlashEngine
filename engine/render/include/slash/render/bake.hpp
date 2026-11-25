@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/render/mesh.hpp"
@@ -7,11 +8,11 @@
 #include <span>
 #include <vector>
 
-// A lightmap's light traced on a device that traces rays (RenderDevice::ray_tracing), as Godot's
-// LightmapperRD traces it on the GPU: scene3d's lightmapper (src/lightmapper.cpp, its CPU twin)
-// rasters the atlas, then hands the device its triangles, lights, environment and texels for
-// lm_compute.glsl's MODE_DIRECT_LIGHT, MODE_BOUNCE_LIGHT and MODE_LIGHT_PROBES, and denoises,
-// dilates and blends seams in what comes back.
+// A lightmap's light traced on a device that traces rays (RenderDevice::ray_tracing), on the GPU:
+// scene3d's lightmapper (src/lightmapper.cpp, its CPU twin) rasters the atlas, then hands the
+// device its triangles, lights, environment and texels for the lightmap light shader's direct
+// light, bounce light and light probes modes, and denoises, dilates and blends seams in what comes
+// back.
 namespace slash::render {
 
 // A corner of a triangle a bake traces: in the world, with its normal and its place in the
@@ -74,9 +75,9 @@ struct LightmapTrace {
     float supersampling = 1.0F;
     float exposure = 1.0F;
     float world_size = 1.0F;
-    // How the work is split, as Godot's rendering/lightmapping/bake_performance: the rays a
-    // bounce pass traces (each pass seeded afresh, so this changes the noise), the texels a
-    // dispatch lights at most (region_size squared) and the rays a probe pass traces.
+    // How the work is split: the rays a bounce pass traces (each pass seeded afresh, so this
+    // changes the noise), the texels a dispatch lights at most (region_size squared) and the rays a
+    // probe pass traces.
     std::uint32_t rays_per_pass = 32;
     std::uint32_t region_texels = 512U * 512U;
     std::uint32_t rays_per_probe_pass = 64;

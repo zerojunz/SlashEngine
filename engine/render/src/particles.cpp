@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/render/particles.hpp"
 
 #include "particle_layout.hpp"
@@ -13,10 +14,9 @@
 #include <optional>
 #include <vector>
 
-// Godot's particles shader (servers/rendering/renderer_rd/shaders/particles.glsl) and the code
-// ParticleProcessMaterial::_update_shader generates for 2D, step for step, on the CPU. The GPU
-// runs the same in shaders/particles_process.hlsl and particles_draw.hlsl; a change to one goes
-// in the other.
+// The particles shader and the code generated for 2D, step for step, on the CPU. The GPU runs the
+// same in shaders/particles_process.hlsl and particles_draw.hlsl; a change to one goes in the
+// other.
 namespace slash::render {
 namespace {
 
@@ -104,7 +104,7 @@ bool graph_active(const ParticleProgram& graph, const Registers& registers) {
            registers.at(kParticleOutRegister + 2)[3] >= 0.5F;
 }
 
-// Godot's get_noise_direction, at a point on the screen.
+// The noise direction at a point on the screen.
 Vec3f noise_direction(const ParticleProcess& p, const ParticleStep& step, Vec2f pos) {
     const float contrast = std::max(p.turbulence_noise_strength - 1.0F, 0.0F) * 70.0F;
     const float frequency = turbulence_frequency(p.turbulence_noise_scale);
@@ -132,7 +132,7 @@ const ParticleCurve& curve(const ParticleProcess& p, ParticleParam param) {
     return p.param_curve[static_cast<std::size_t>(param)];
 }
 
-// Godot's DisplayParameters, DynamicsParameters and PhysicalParameters.
+// The display, dynamics and physical parameters.
 struct Display {
     float scale = 1.0F;
     float hue_rotation = 0.0F;
@@ -275,7 +275,7 @@ Vec2f initial_position(const ParticleProcess& p, const Display& display, std::ui
         }
         break;
     case EmissionShape::Ring: {
-        // Godot's ring about the z axis, one pixel high and its cone square, as 2D leaves it.
+        // A ring about the z axis, one pixel high and its cone square, as 2D leaves it.
         const float radius = std::max(0.001F, p.emission_ring_radius);
         const float inner = p.emission_ring_inner_radius;
         (void)rand_from_seed(seed); // the height on the ring, which 2D drops
@@ -291,8 +291,8 @@ Vec2f initial_position(const ParticleProcess& p, const Display& display, std::ui
             (pos.y * p.emission_shape_scale.y) + p.emission_shape_offset.y};
 }
 
-// What a particle starts in the next system of a chain in a step, as Godot's ParticleEmission:
-// count particles where it is, turned and scaled as it is, and moving as it moves when kept.
+// What a particle starts in the next system of a chain in a step: count particles where it is,
+// turned and scaled as it is, and moving as it moves when kept.
 struct Emitted {
     std::uint32_t count = 0;
     bool keep_velocity = false;
@@ -352,8 +352,8 @@ Intake take_emissions(std::span<const Emitted> emitted, std::vector<std::uint32_
 }
 
 // The generated start(): a particle's place, velocity, color and life at its restart; for a
-// sub-emitter's, where the particle that started it is, as Godot's does without RESTART_POSITION
-// and RESTART_ROT_SCALE, and moving as it moves without RESTART_VELOCITY.
+// sub-emitter's, where the particle that started it is (without the restart position, rotation and
+// scale flags), and moving as it moves (without the restart velocity flag).
 void start(Particle& particle, const ParticleProcess& p, const ParticleStep& step,
            std::uint32_t index, std::uint32_t number, const Emitted* from, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
@@ -389,7 +389,7 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
         velocity = random_direction(p, seed, p.spread) * dynamics.initial_velocity;
         if (p.emission_shape == EmissionShape::DirectedPoints && from_points(p)) {
             const std::size_t point = emission_point(p, display);
-            // As Godot's black default texture, a point with no normal doesn't move.
+            // Like a black default texture, a point with no normal doesn't move.
             const Vec2f normal =
                 point < p.emission_normals.size() ? p.emission_normals[point] : Vec2f{};
             velocity = {(velocity.x * normal.x) + (velocity.y * normal.y),
@@ -470,22 +470,22 @@ Vec2f radial_displacement(const ParticleProcess& p, const Dynamics& dynamics, fl
     return out;
 }
 
-// The seconds between a Constant sub-emitter's emissions, as Godot passes its shader.
+// The seconds between a Constant sub-emitter's emissions.
 float sub_emitter_interval(const ParticleProcess& p) {
     return static_cast<float>(1.0 / static_cast<double>(p.sub_emitter_frequency));
 }
 
-// How many particles a particle starts in the next system of a chain in a step, as the code
-// Godot generates for each sub_emitter_mode, with its age (CUSTOM.y) before the step and after.
+// How many particles a particle starts in the next system of a chain in a step, for each
+// sub_emitter_mode, with its age (CUSTOM.y) before the step and after.
 std::uint32_t emission_count(const ParticleProcess& p, const ParticleStep& step, float delta,
                              float before, const Particle& particle, bool collided) {
     switch (p.sub_emitter_mode) {
     case SubEmitterMode::Disabled:
         break;
     case SubEmitterMode::Constant: {
-        // Godot's CUSTOM.y * LIFETIME - DELTA, its age before the step in seconds, taken from
-        // the age kept when nothing ends the step early: the same in exact arithmetic, and
-        // exactly 0 in a particle's first step, where Godot's rounds either way.
+        // CUSTOM.y * LIFETIME - DELTA, its age before the step in seconds, taken from the age kept
+        // when nothing ends the step early: the same in exact arithmetic, and exactly 0 in a
+        // particle's first step.
         const float interval = sub_emitter_interval(p);
         const float from = step.interp_to_end == 0.0F ? before * step.lifetime
                                                       : (particle.custom.y * step.lifetime) - delta;
@@ -551,7 +551,7 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         if (!p.damping_as_friction) {
             v -= physical.damping * delta;
         } else if (v > 0.001F) {
-            // Godot's friction, for a particle of 0.05 kg.
+            // Friction, for a particle of 0.05 kg.
             v -= v * v * physical.damping * 0.05F * delta;
         }
         built = v < 0.0F ? Vec3f{} : normalize(built) * v;
@@ -682,7 +682,7 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     }
     particle.basis = {x_axis.x * scale, x_axis.y * scale, y_axis.x * scale, y_axis.y * scale};
     if (out != nullptr) {
-        // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
+        // emit_subparticle(TRANSFORM, VELOCITY, ...) with the emission flags.
         out->count = emission_count(p, step, delta, before, particle, collided);
         out->keep_velocity = p.sub_emitter_keep_velocity;
         out->origin = particle.origin;
@@ -694,9 +694,9 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     }
 }
 
-// How near a particle comes to a shape before it touches: collision_size, times the average of
-// its axes' lengths with collision_use_scale, as Godot's. Its z axis is 1 when it has just started
-// and as long as the others after.
+// How near a particle comes to a shape before it touches: collision_size, times the average of its
+// axes' lengths with collision_use_scale. Its z axis is 1 when it has just started and as long as
+// the others after.
 float collision_size(const Particle& particle, const ParticleProcess& p, const ParticleStep& step,
                      bool started) {
     if (!p.collision_use_scale) {
@@ -708,8 +708,8 @@ float collision_size(const Particle& particle, const ParticleProcess& p, const P
     return step.collision_size * ((x + y + z) * 0.33333333333F);
 }
 
-// Godot's 2D collision: the particle and its size taken to the shapes, and the way out and the
-// depth brought back.
+// The 2D collision: the particle and its size taken to the shapes, and the way out and the depth
+// brought back.
 ParticleContact shape_contact(Vec2f origin, float size, const ParticleStep& step,
                               std::span<const ParticleShape> shapes) {
     const std::array<float, 6>& to = step.to_shapes;
@@ -746,7 +746,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     bool restart = false;
     const Emitted* from = nullptr;
     if (intake != nullptr) {
-        // Godot's sub_emitter_mode, which takes the place of emitting; no fractional delta.
+        // The sub_emitter_mode, which takes the place of emitting; no fractional delta.
         from = intake->take(index, total);
         if (from != nullptr) {
             restart = true;
@@ -798,8 +798,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     if (restart && active) {
         start(particle, p, step, index, number, from, active);
     }
-    // Where it is against the step's shapes before it moves, as Godot's particles storage works
-    // out against its signed distance field.
+    // Where it is against the step's shapes before it moves.
     ParticleContact contact;
     if (active && p.collision_mode != ParticleCollision::Disabled && step.shape_count > 0 &&
         static_cast<std::size_t>(step.shape_first) + step.shape_count <= shapes.size()) {
@@ -815,9 +814,9 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     }
 }
 
-// One step of a trail's copy j of trail, after its particle (head) ran steps[at]: Godot's trail
-// pass. When the particle starts, the copy takes its place and waits lag steps, then follows,
-// running each step lag behind with the particle's number; it goes when the particle does.
+// One step of a trail's copy j of trail, after its particle (head) ran steps[at]: the trail pass.
+// When the particle starts, the copy takes its place and waits lag steps, then follows, running
+// each step lag behind with the particle's number; it goes when the particle does.
 void step_copy(Particle& copy, const Particle& head, std::uint32_t j, std::uint32_t trail,
                std::uint32_t index, std::uint32_t total, const ParticleProcess& p,
                std::span<const ParticleStep> steps, std::size_t at,
@@ -835,7 +834,7 @@ void step_copy(Particle& copy, const Particle& head, std::uint32_t j, std::uint3
         copy.spare = {lag, 0, 0};
         copied = true;
     }
-    // A copy waits out its lag, then runs on, after its particle has gone too, as Godot's.
+    // A copy waits out its lag, then runs on, after its particle has gone too.
     if ((copy.flags & kParticleTrailed) != 0) {
         if (!copied && copy.spare[0] > 0) {
             --copy.spare[0];
@@ -872,7 +871,7 @@ std::uint8_t to_byte(float channel) {
 } // namespace
 
 float turbulence_frequency(float noise_scale) {
-    // Godot's slider runs from 0 to 10: a frequency of -4 at 0, 0 at 10.
+    // The slider runs from 0 to 10: a frequency of -4 at 0, 0 at 10.
     constexpr float kAtZero = 4.0F;
     const float rescale = kAtZero / std::sqrt(std::sqrt(10.0F));
     return (std::sqrt(std::sqrt(std::max(noise_scale, 0.0F))) * rescale) - kAtZero;
@@ -971,9 +970,8 @@ void process_particle_chain(std::span<const ParticleChainLink> links) {
 }
 
 ParticleContact particle_contact(Vec2f point, float size, std::span<const ParticleShape> shapes) {
-    // The nearest point on any edge, and whether the point is inside a closed shape by the
-    // even-odd rule. Godot samples a distance field drawn from the shapes; this is the distance
-    // it approximates, worked out exactly so every device gets the same.
+    // The nearest point on any edge, and whether the point is inside a closed shape by the even-odd
+    // rule. The distance is worked out exactly so every device gets the same.
     float nearest_squared = std::numeric_limits<float>::max();
     Vec2f from_nearest; // the way from the nearest point on an edge to the point
     Vec2f along;
@@ -1107,9 +1105,9 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
                        {top_left, top_right, bottom_left, top_right, bottom_right, bottom_left});
             continue;
         }
-        // Godot's trail ribbon: rings of two vertices down the trail, each blending two copies
-        // (bones), the particle itself first. A segment draws while the bones it bends with are
-        // live, so the copies' part goes on after the particle has gone.
+        // The trail ribbon: rings of two vertices down the trail, each blending two copies (bones),
+        // the particle itself first. A segment draws while the bones it bends with are live, so the
+        // copies' part goes on after the particle has gone.
         const std::uint32_t sections = trail - 1;
         const std::uint32_t subdivisions = std::max(draw.trail_subdivisions, 1U);
         const std::uint32_t segments = sections * subdivisions;

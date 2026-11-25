@@ -22663,7 +22663,8 @@ R"wgsl(                        let v_1978 = v_1970.x;
 }
 )wgsl"};
 
-inline constexpr char kParticlesProcessHlsl[] = R"hlsl(// Runs steps on a particle system, a thread a particle: Godot's particles shader and the code
+inline constexpr char kParticlesProcessHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Runs steps on a particle system, a thread a particle: the particles shader and the code
 // ParticleProcessMaterial generates for 2D. Its CPU twin is process_particle_chain in
 // src/particles.cpp, which this follows line for line; a change to one goes in the other. The
 // process material and steps are words laid out as src/particle_layout.hpp says.
@@ -22682,8 +22683,8 @@ inline constexpr char kParticlesProcessHlsl[] = R"hlsl(// Runs steps on a partic
 // What particles_process.hlsl and particles_draw.hlsl share: the particle, as
 // slash::render::Particle lays it out, and where SDL binds each kind of resource.
 
-// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity
-// its origin [x, y] and velocity [z, w]; custom Godot's CUSTOM and userdata its USERDATA1.
+// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity its
+// origin [x, y] and velocity [z, w]; custom the custom data and userdata its USERDATA1.
 struct Particle {
     float4 basis;
     float4 origin_velocity;
@@ -23007,9 +23008,9 @@ float3 safe_normalize(float3 v) {
     return l > 0.0 ? v / l : float3(0.0, 0.0, 0.0);
 }
 
-float2 transform_point(Step step, float2 p) {
 )hlsl"
-R"hlsl(    return float2((step.emission_a.x * p.x) + (step.emission_a.z * p.y) + step.emission_b.x,
+R"hlsl(float2 transform_point(Step step, float2 p) {
+    return float2((step.emission_a.x * p.x) + (step.emission_a.z * p.y) + step.emission_b.x,
                   (step.emission_a.y * p.x) + (step.emission_a.w * p.y) + step.emission_b.y);
 }
 
@@ -23112,7 +23113,7 @@ void run_graph(uint code, uint count) {
 }
 
 // ---- Turbulence: the noise ParticleProcessMaterial generates for it. The CPU twin says how its
-// gradients differ from Godot's.
+// gradients are made.
 
 bool turbulence_enabled() {
     return word_uint(21u, 3u) != 0u;
@@ -23123,7 +23124,7 @@ float unit_of(uint bits) {
     return (float(bits & 0xFFFFu) * (1.0 / 32768.0)) - 1.0;
 }
 
-// Godot's grad, from the lattice point's integer coordinates.
+// The gradient, from the lattice point's integer coordinates.
 float4 grad(int4 cell, uint channel) {
     uint h = hash(uint(cell.x) + (channel * 0x632BE59Bu) + 0x9E3779B9u);
     h = hash(h + uint(cell.y));
@@ -23133,8 +23134,8 @@ float4 grad(int4 cell, uint channel) {
     return float4(unit_of(h), unit_of(h >> 16u), unit_of(g), unit_of(g >> 16u));
 }
 
-// Godot's noise: 4D gradient noise, its domain turned to improve the look of slices. The
-// corners go in a loop, so the hash isn't copied sixteen times over.
+// 4D gradient noise, its domain turned to improve the look of slices. The corners go in a loop, so
+// the hash isn't copied sixteen times over.
 float noise(float4 coord, uint channel) {
     float shift = dot(coord, float4(-0.1666667, -0.1666667, -0.1666667, -0.5));
     coord = float4(coord.xyz + shift, dot(coord, float4(0.5, 0.5, 0.5, 0.5)));
@@ -23152,8 +23153,8 @@ float noise(float4 coord, uint channel) {
     return result;
 }
 
-// Godot's curl_3d: the curl of three noises, from differences epsilon either side, the terms as
-// the CPU twin takes them.
+// The curl of three noises, from differences epsilon either side, the terms as the CPU twin takes
+// them.
 float3 curl_3d(float4 p, float c) {
     float epsilon = 0.001 + c;
     float3 curl = float3(0.0, 0.0, 0.0);
@@ -23172,7 +23173,7 @@ float3 curl_3d(float4 p, float c) {
     return safe_normalize(curl);
 }
 
-// Godot's get_noise_direction, at a point on the screen.
+// The noise direction, at a point on the screen.
 float3 noise_direction(Step step, float2 pos) {
     float4 turbulence = word(21u); // strength, frequency, speed_random
     float4 speed = word(22u);
@@ -23607,7 +23608,7 @@ float collision_size(Particle particle, Step step, bool started) {
 }
 
 // How many particles a particle starts in the next system of a chain in a step, as the code
-// Godot generates for each sub_emitter_mode, with its age before the step and after.
+// generated for each sub_emitter_mode, with its age before the step and after.
 )hlsl"
 R"hlsl(uint emission_count(Step step, float delta, float before, Particle particle, bool collided) {
     uint4 sub = data[material_offset + kSubEmitterAt];
@@ -23988,7 +23989,7 @@ R"hlsl(            // CPU twin's rounding, which moves a particle that starts at
         unit.flags.x |= kParticleActive;
     }
     if (j == 0u && (chain & kChainEmits) != 0u) {
-        // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
+        // emit_subparticle(TRANSFORM, VELOCITY, ...) with the emission flags.
         uint target_at = 1u + (index * kEmissionWords);
         target[target_at] = uint4(emitted, 0u, data[material_offset + kSubEmitterAt].w, 0u);
         target[target_at + 1u] = asuint(unit.origin_velocity);

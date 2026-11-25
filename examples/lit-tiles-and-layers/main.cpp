@@ -1,16 +1,16 @@
-// Lit tiles and canvas layers, as Godot's 2D lights.
+// Lit tiles and canvas layers.
 //
-// A dungeon floor of stone tiles lies in the dark under a torch. The tile set's atlas source has
-// a normal map that bevels each block's edges and a specular map that makes its middle shine, as
-// a Godot CanvasTexture gives an atlas source, so the torch lights the side of a block that faces
-// it and leaves the far side dim. A HUD panel sits in a ScreenLayer of layer 1, with its own
-// AmbientTint2D and a lantern whose layer range is 1 to 1: the lantern lights only the HUD, and
-// the torch, whose range is 0 to 0, only the world, until its range takes layer 1 too.
+// A dungeon floor of stone tiles lies in the dark under a torch. The tile set's atlas source has a
+// normal map that bevels each block's edges and a specular map that makes its middle shine, so the
+// torch lights the side of a block that faces it and leaves the far side dim. A HUD panel sits in a
+// ScreenLayer of layer 1, with its own AmbientTint2D and a lantern whose layer range is 1 to 1: the
+// lantern lights only the HUD, and the torch, whose range is 0 to 0, only the world, until its
+// range takes layer 1 too.
 //
-// This program draws the textures, asks light.sample how lit the panel is, asks frame.capture
-// for the colors of a few pixels, widens the torch's layer range and asks again. Games ship PNG
-// files made in an image editor; this example draws its textures in code, so the repository holds
-// no images.
+// This program draws the textures, asks light.sample how lit the panel is, asks frame.capture for
+// the colors of a few pixels, widens the torch's layer range and asks again. Games ship PNG files
+// made in an image editor; this example draws its textures in code, so the repository holds no
+// images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -56,8 +56,8 @@ void write_png(const std::string& path, std::uint32_t width, std::uint32_t heigh
     }
 }
 
-// A normal map pixel, OpenGL style as Godot reads them: red is x, green is up, blue is toward
-// the viewer, each from -1 (0) to 1 (255).
+// A normal map pixel, OpenGL style: red is x, green is up, blue is toward the viewer, each from -1
+// (0) to 1 (255).
 Rgba normal_pixel(float x, float up, float z) {
     const float length = std::sqrt((x * x) + (up * up) + (z * z));
     const auto channel = [&](float value) {

@@ -1964,15 +1964,14 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> @location(0u) vec4<f32> {
 }
 )wgsl";
 
-inline constexpr char kSubsurfaceHlsl[] = R"hlsl(// Subsurface scattering for a Forward+ frame's opaque meshes, as Godot 4.6's
-// (servers/rendering/renderer_rd/shaders/effects/subsurface_scattering.glsl): the subsurface
-// pass's diffuse light (mesh_subsurface.hlsl) blurred across, then down, by each pixel's strength,
-// over a width that narrows with its depth, through Jimenez's kernels (skin's own profile for a
-// strength below 0), stopping at pixels with none. Godot's compute shader runs as a pass that
-// draws one triangle over its target; it loads texels and filters them in code, keeping every
-// load inside its texture, so every device draws the same values. The pass down gives the change
-// to the pixel's diffuse light, which is added to the frame, as Godot adds the specular light
-// back. Keep it in step with src/subsurface.cpp, its CPU twin.
+inline constexpr char kSubsurfaceHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Subsurface scattering for a clustered frame's opaque meshes: the subsurface pass's diffuse light
+// (mesh_subsurface.hlsl) blurred across, then down, by each pixel's strength, over a width that
+// narrows with its depth, through Jimenez's kernels (skin's own profile for a strength below 0),
+// stopping at pixels with none. The pass draws one triangle over its target; it loads texels and
+// filters them in code, keeping every load inside its texture, so every device draws the same
+// values. The pass down gives the change to the pixel's diffuse light, which is added to the frame,
+// where the specular light is added back. Keep it in step with src/subsurface.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -1991,7 +1990,7 @@ SamplerState diffuse_sampler : register(s2, space2);
 cbuffer Subsurface : register(b0, space3) {
     // The frame's width and height, 1 for the pass down, 1 for an orthogonal camera.
     uint4 size;
-    // Godot's unit_size, the scale, the depth scale, the kernel's samples (6, 9 or 13).
+    // The unit size, the scale, the depth scale, the kernel's samples (6, 9 or 13).
     float4 params;
     // The projection's depth rows, from which a depth is made linear: its m10, m11, m14 and m15.
     float4 projection;
@@ -2046,7 +2045,7 @@ float4 load_source(int2 texel) {
     return source_buffer.Load(int3(clamp(texel, int2(0, 0), int2(size.xy) - int2(1, 1)), 0));
 }
 
-// The source filtered linearly at uv, clamped to its edges, as Godot's linear sampler with repeat
+// The source filtered linearly at uv, clamped to its edges, as a linear sampler with repeat
 // disabled reads it.
 float4 source_linear(float2 uv) {
     float2 position = uv * float2(size.xy) - 0.5;
@@ -2058,7 +2057,7 @@ float4 source_linear(float2 uv) {
     return lerp(top, bottom, f.y);
 }
 
-// Godot's do_filter: the samples one way from the pixel, until one has no strength.
+// The samples one way from the pixel, until one has no strength.
 void filter(inout float3 color, inout float3 divisor, float2 uv, float2 step, bool skin) {
     uint samples = (uint)params.w;
     [loop] for (uint i = 1u; i < samples; ++i) {

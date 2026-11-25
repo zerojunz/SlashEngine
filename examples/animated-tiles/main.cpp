@@ -1,11 +1,10 @@
-// Animated tiles and a tile larger than one cell, as Godot's TileSetAtlasSource.
+// Animated tiles and a tile larger than one cell.
 //
 // pond.tileset.json cuts pond.png into 16x16 cells. Its water tile plays three frames that follow
-// it along the row, 0.4 seconds each. Its torch plays four frames that wrap after two columns,
-// and starts each cell at a random point of its loop, so torches side by side don't flicker
-// together. Its bridge is two cells wide (size_in_atlas [2, 1]); its texture_origin [-8, 0] moves
-// it half a cell right, so it covers its own cell and the one after instead of half of each
-// neighbor.
+// it along the row, 0.4 seconds each. Its torch plays four frames that wrap after two columns, and
+// starts each cell at a random point of its loop, so torches side by side don't flicker together.
+// Its bridge is two cells wide (size_in_atlas [2, 1]); its texture_origin [-8, 0] moves it half a
+// cell right, so it covers its own cell and the one after instead of half of each neighbor.
 //
 // This program draws the atlas from the tile set, fills a pond with water, lays the bridge and
 // torches on a layer above it, and asks frame.capture for the colors at the start, after half a
@@ -62,8 +61,7 @@ void fill(render::Image& image, const std::array<int, 4>& region, Rgba color) {
     }
 }
 
-// Each tile's frames, at the regions the tile set gives them: Godot lays an animated tile's
-// frames out after it.
+// Each tile's frames, at the regions the tile set gives them: an animated tile's frames follow it.
 void write_atlas(const canvas::TileSet& set) {
     const canvas::AtlasSource& source = set.sources.at("pond");
     render::Image image{.width = 80, .height = 48, .pixels = {}};

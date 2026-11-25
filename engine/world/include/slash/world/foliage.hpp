@@ -1,11 +1,10 @@
 #pragma once
 
-// Foliage types, after Unreal's Foliage tool (Godot has none): a .foliage.json file says what one
+// Foliage types, after Unreal's Foliage tool: a .foliage.json file says what one
 // kind of plant or rock is (grass, flowers, shrubs, bushes, trees, moss, rocks, pebbles), how
 // thickly a brush paints it, how it bends in the wind and parts for characters, whether it blocks
 // them, can be climbed or harvested, and how far it is drawn. Foliage3D and Foliage2D components
 // hold the instances painted of each type.
-//
 //   {
 //     "format": 1,
 //     "kind": "grass",

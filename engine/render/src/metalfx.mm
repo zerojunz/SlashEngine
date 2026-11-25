@@ -1,6 +1,5 @@
-// Apple's MetalFX scalers in the GPU device on Metal (metalfx.hpp), after Godot's
-// servers/rendering/renderer_rd/effects/metal_fx.mm and its Metal driver's MetalFX limits.
-// Built with ARC.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Apple's MetalFX scalers in the GPU device on Metal (metalfx.hpp). Built with ARC.
 #include "metalfx.hpp"
 
 #include "native.hpp"
@@ -61,7 +60,7 @@ Result<void> missing(const char* what) {
 }
 
 // Keeps the scaler and its textures alive until the GPU has run what it encoded: SDL's command
-// buffers don't retain what they use, as Godot's comment on its own says.
+// buffers don't retain what they use.
 void retain_until_done(id<MTLCommandBuffer> buffer, id scaler, NSArray* textures) {
     __block id held_scaler = scaler;
     __block NSArray* held_textures = textures;
@@ -82,7 +81,7 @@ MetalFxSupport metalfx_support(SDL_GPUDevice* device) {
     if (@available(macOS 13.0, iOS 16.0, *)) {
         support.spatial = [MTLFXSpatialScalerDescriptor supportsDevice:metal];
         support.temporal = [MTLFXTemporalScalerDescriptor supportsDevice:metal];
-        // The render scale is the inverse of MetalFX's input content scale: Godot's limits.
+        // The render scale is the inverse of MetalFX's input content scale.
         support.min_scale = 0.5F;
         support.max_scale = 1.0F;
         if (@available(macOS 14.0, iOS 17.0, *)) {
@@ -192,7 +191,7 @@ Result<void> encode_metalfx_temporal(SDL_GPUDevice* device, SDL_GPUCommandBuffer
             // The motion vectors are in texture coordinates; MetalFX takes render pixels.
             made.motionVectorScaleX = static_cast<float>(color.width);
             made.motionVectorScaleY = static_cast<float>(color.height);
-            // Depth is reversed, as Godot's.
+            // Depth is reversed.
             made.depthReversed = YES;
             scaler.reset(new MetalFxScaler{.scaler = made,
                                            .temporal = true,

@@ -27,7 +27,7 @@ class World;
 namespace slash::procedural {
 
 // Floats each instance takes in a group's instances: 3D x, y, z, rotation x, y, z (radians,
-// Godot's YXZ) and scale; 2D x, y, rotation and scale, a negative scale mirroring it.
+// in YXZ order) and scale; 2D x, y, rotation and scale, a negative scale mirroring it.
 inline constexpr std::size_t kFoliageFloats3D = 7;
 inline constexpr std::size_t kFoliageFloats2D = 4;
 

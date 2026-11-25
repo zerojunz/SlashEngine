@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/xr/xr.hpp"
@@ -10,7 +12,7 @@
 
 namespace slash::xr::detail {
 
-// A tracker's signal, as Godot's XRPositionalTracker emits them, kept until the xr system sends
+// A tracker's signal, kept until the xr system sends
 // it to the XR nodes following the tracker.
 struct Signal {
     enum class Kind : std::uint8_t {
@@ -28,7 +30,7 @@ struct Signal {
     Input value;
 };
 
-// What an XR node keeps between ticks, as Godot's XRNode3D: the tracker it is bound to (by its
+// What an XR node keeps between ticks: the tracker it is bound to (by its
 // generation, which goes up each time a tracker is added) and whether its pose is tracked.
 struct NodeState {
     std::string tracker;

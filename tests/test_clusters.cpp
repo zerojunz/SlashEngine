@@ -188,13 +188,15 @@ TEST_CASE("clusters hold each light in the tiles and depth slices its range reac
     CHECK(slice_range(clusters, 1, 1, 4) == 0);
     CHECK(slice_range(clusters, 0, 0, 2) == 0);
 
-    // Compatibility puts every light in the uniforms, Forward+ only the directional ones.
+    // Compatibility puts every light in the uniforms, the clustered renderer
+    // only the directional ones.
     CHECK(render::detail::mesh_scene_uniforms(scene).camera[3] == 1.0F);
     scene.method = RenderMethod::Compatibility;
     CHECK(render::detail::mesh_scene_uniforms(scene).camera[3] == 4.0F);
 }
 
-TEST_CASE("Forward+ lights every pixel as Compatibility does when there are 64 lights or fewer") {
+TEST_CASE("the clustered renderer lights every pixel as the compatibility renderer does with 64 "
+          "lights or fewer") {
     render::Scene3D forward = lamp_grid(RenderMethod::ForwardPlus);
     forward.lights.resize(render::kMaxLights3D);
     render::Scene3D compatibility = forward;
@@ -208,7 +210,8 @@ TEST_CASE("Forward+ lights every pixel as Compatibility does when there are 64 l
     CHECK(worst <= 1);
 }
 
-TEST_CASE("Forward+ draws every lamp; Compatibility and the OpenGL devices the first 64") {
+TEST_CASE("the clustered renderer draws every lamp; the compatibility renderer and the OpenGL "
+          "devices the first 64") {
     const render::Scene3D forward = lamp_grid(RenderMethod::ForwardPlus);
     render::Scene3D compatibility = forward;
     compatibility.method = RenderMethod::Compatibility;

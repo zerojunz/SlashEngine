@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "text_edit.hpp"
 
 #include "slash/core/text.hpp"
@@ -13,9 +14,8 @@
 #include <utility>
 #include <vector>
 
-// TextArea's editing, as Godot's scene/gui/text_edit.cpp: gui_input and unhandled_key_input, the
-// caret and selection functions, the text operations and the undo history, for its one caret.
-// Each function names the Godot function it follows. Multiple carets, drag and drop, the context
+// TextArea's editing: key and mouse input, the caret and selection functions, the text operations
+// and the undo history, for its one caret. Multiple carets, drag and drop, the context
 // menu, selection handles, inertial and smooth scrolling and Alt codes aren't here.
 namespace slash::ui {
 namespace {
@@ -30,7 +30,7 @@ constexpr float kTripleClickTolerance = 5.0F;
 constexpr double kClickHeldSeconds = 0.05;
 constexpr double kTimerEpsilon = 1e-9;
 
-// Godot's is_whitespace.
+// Whether c is whitespace.
 bool is_whitespace(char32_t c) {
     return c == U' ' || c == 0x00A0U || c == 0x1680U || (c >= 0x2000U && c <= 0x200AU) ||
            c == 0x202FU || c == 0x205FU || c == 0x3000U || c == 0x2028U || c == 0x2029U ||
@@ -87,8 +87,8 @@ void begin_complex(TextEditState& s) {
     ++s.complex_operation_count;
 }
 
-// end_complex_operation. Godot marks the last step of the history as part of a complex operation
-// that changed nothing, so undoing it undid the operation before as well; this leaves it alone.
+// end_complex_operation. A complex operation that changed nothing leaves the last step of the
+// history alone.
 void end_complex(TextEditState& s) {
     push_current_op(s);
     s.complex_operation_count = std::max(s.complex_operation_count - 1, 0);
@@ -151,7 +151,7 @@ void clear_redo(TextEditState& s) {
 
 // ---- Editing ----
 
-// One TextArea being worked on, as Godot's TextEdit methods work on its members: its lines in
+// One TextArea being worked on: its lines in
 // the EditArea, its caret and history in its TextEditState and its caret, text and scroll in
 // the component, which finish() brings up to date.
 class Editor {
@@ -252,7 +252,7 @@ public:
                     set_caret_column(col, false);
                     adjust_viewport_to_caret();
                 } else {
-                    s_.mouse = mirrored(local); // the mouse Godot emulates is at the finger
+                    s_.mouse = mirrored(local); // the emulated mouse is at the finger
                     s_.selecting_mode = SelectionMode::Word;
                     update_selection_mode_word(true);
                 }
@@ -391,7 +391,7 @@ private:
 
     // ---- Signals ----
 
-    // Godot's call_deferred signals: once each until the tick ends.
+    // Deferred signals: once each until the tick ends.
     void defer(std::string_view kind) {
         if (quiet_) {
             return;
@@ -437,7 +437,7 @@ private:
     void base_remove_text(int from_line, int from_column, int to_line, int to_column) {
         area_.remove(from_line, from_column, to_line, to_column);
         text_changed();
-        // NOLINTNEXTLINE(readability-suspicious-call-argument): Godot's order, last line first.
+        // NOLINTNEXTLINE(readability-suspicious-call-argument): the order is last line first.
         emit("lines_edited_from", to_line, from_line);
     }
 
@@ -1042,9 +1042,9 @@ private:
         }
     }
 
-    // What the gutters show moves with the lines the edits since mark_lines moved, as Godot's
-    // Text::Line keeps it, and goes with a line removed: CodeEditor's lines, with
-    // breakpoint_toggled for each line a breakpoint left or came to (_text_changed, which can
+    // What the gutters show moves with the lines the edits since mark_lines moved, and goes with a
+    // line removed: CodeEditor's lines, with
+    // breakpoint_toggled for each line a breakpoint left or came to (which can
     // miss a line a breakpoint came to when another moved off it), and the TextArea's gutters'
     // entries. Lines past the end, which nothing moves, stay as they are.
     void move_line_marks() {
@@ -1144,7 +1144,7 @@ private:
     }
 
     // A click places the caret (Shift selects to it), a double click selects a word and a
-    // triple click the line. Alt+click adds a caret in Godot; here it places the one caret.
+    // triple click the line. Alt+click places the one caret.
     void left_pressed(const input::Event& event, Vec2 mpos, Vec2 local) {
         reset_caret_blink_timer();
         apply_ime();

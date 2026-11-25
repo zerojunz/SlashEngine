@@ -1,15 +1,14 @@
 #pragma once
 
-// Vehicles in 2D, seen from the side, after Unreal's Chaos Vehicles and Godot's 2D car demos: the
-// "vehicles_2d" system (priority 945, before the physics step) keeps each Vehicle2D's rig as its
-// .vehicle.json recipe's side view says (slash/world/vehicle.hpp's vehicle_side_view): the
-// RigidBody2D's mass and center of mass, a collision box child "<id>_collision", a Polygon2D child
-// "<id>_<piece>" for each piece of its body, and for each wheel a RigidBody2D circle
-// "<id>_wheel_<n>" held under it by a TrackJoint2D ("<id>_wheel_<n>_groove") and sprung by a
-// SpringJoint2D ("<id>_wheel_<n>_spring"). It drives the wheels with the recipe's
-// drivetrain from the controls, floats boats on their water (at y = -water_level pixels), flies
-// aircraft, carries riders (VehicleRider) and hits characters and creatures as Vehicle3D does,
-// pixels_per_meter big.
+// Vehicles in 2D, seen from the side, after Unreal's Chaos Vehicles: the "vehicles_2d" system
+// (priority 945, before the physics step) keeps each Vehicle2D's rig as its .vehicle.json recipe's
+// side view says (slash/world/vehicle.hpp's vehicle_side_view): the RigidBody2D's mass and center
+// of mass, a collision box child "<id>_collision", a Polygon2D child "<id>_<piece>" for each piece
+// of its body, and for each wheel a RigidBody2D circle "<id>_wheel_<n>" held under it by a
+// TrackJoint2D ("<id>_wheel_<n>_groove") and sprung by a SpringJoint2D ("<id>_wheel_<n>_spring").
+// It drives the wheels with the recipe's drivetrain from the controls, floats boats on their water
+// (at y = -water_level pixels), flies aircraft, carries riders (VehicleRider) and hits characters
+// and creatures as Vehicle3D does, pixels_per_meter big.
 
 #include "slash/core/result.hpp"
 #include "slash/world/vehicle.hpp"

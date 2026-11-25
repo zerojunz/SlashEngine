@@ -397,7 +397,7 @@ Result<std::string> make_model(const GenerateRequest& request) {
 
     scene3d::ModelSurface surface;
     surface.material = 0;
-    // Four corners counterclockwise as seen from outside, in Godot's clockwise winding.
+    // Four corners counterclockwise as seen from outside, indexed clockwise.
     const auto quad = [&surface](const std::array<std::array<float, 3>, 4>& corners,
                                  std::array<float, 3> normal, std::array<std::uint8_t, 4> rgba) {
         const auto first = static_cast<std::uint32_t>(surface.vertices.size());

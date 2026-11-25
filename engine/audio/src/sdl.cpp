@@ -1,5 +1,6 @@
 // Sound out of the speakers through SDL's audio streams. The engine mixes each tick's frames and
 // queues them here; SDL's device thread plays what is queued.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/audio/audio.hpp"
 
@@ -32,7 +33,7 @@ Result<std::unique_ptr<SdlOutput>> SdlOutput::open(int mix_rate, float output_la
         return make_error(ErrorCode::PlatformFailure,
                           std::string("SDL can't start audio: ") + SDL_GetError());
     }
-    // As Godot's drivers, the device's channels pick the speakers to mix for.
+    // The device's channels pick the speakers to mix for.
     SDL_AudioSpec device{};
     const SpeakerMode speakers =
         SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &device, nullptr)

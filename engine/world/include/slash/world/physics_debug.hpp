@@ -1,9 +1,9 @@
 #pragma once
 
-// A record of what physics did each step, as Chaos's Visual Debugger records it (Godot has
-// none): the contacts each step solved, how hard each joint pulled and how far it stretched,
-// what fields did to each body and how many bodies were awake. 3D and 2D physics add a step to
-// it while it records; physics.debug reads it for agents.
+// A record of what physics did each step, as Chaos's Visual Debugger records it: the contacts each
+// step solved, how hard each joint pulled and how far it stretched, what fields did to each body
+// and how many bodies were awake. 3D and 2D physics add a step to it while it records;
+// physics.debug reads it for agents.
 
 #include "slash/core/math.hpp"
 

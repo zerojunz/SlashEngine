@@ -39,8 +39,8 @@ class Pool;
 //     "outputs": [{"name": "albedo", "node": "color"}, {"name": "normal", "node": "normal"}]
 //   }
 //
-// A setting is a value, "$name" (a parameter) or "=" and an expression over the parameters in
-// Godot's Expression syntax ("=mortar * 2"). "extends" names another graph file whose document
+// A setting is a value, "$name" (a parameter) or "=" and an expression over the parameters
+// ("=mortar * 2").
 // this one is a JSON merge patch over. Every op and its settings are in texture_graph_schema().
 namespace slash::procedural {
 

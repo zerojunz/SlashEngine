@@ -170,15 +170,15 @@ int at(const Image& image, const std::array<std::uint32_t, 2>& where) {
 
 } // namespace
 
-TEST_CASE("lights with shadows take ray-traced shadow slots in Forward+") {
+TEST_CASE("lights with shadows take ray-traced shadow slots in the clustered renderer") {
     render::Scene3D scene = above(shadowed(LightType::Omni));
     scene.lights.push_back({.type = LightType::Directional});
     scene.lights.push_back(shadowed(LightType::Directional));
     scene.lights.push_back(shadowed(LightType::Spot));
     scene.lights[3].shadow_opacity = 0.0F;
     CHECK(render::detail::ray_shadow_slots(scene) == std::vector<int>{0, -1, 1, -1});
-    // A light's uniforms carry its slot plus 1: in Forward+ the scene's are the directional
-    // lights', the second of which has slot 1.
+    // A light's uniforms carry its slot plus 1: in the clustered renderer the scene's are the
+    // directional lights', the second of which has slot 1.
     const render::detail::MeshSceneUniforms uniforms = render::detail::mesh_scene_uniforms(scene);
     CHECK(uniforms.lights[0].shadow[3] == 0.0F);
     CHECK(uniforms.lights[1].shadow[3] == 2.0F);
@@ -465,7 +465,7 @@ TEST_CASE("occlusion rays spread over the half of the sphere a surface faces") {
 TEST_CASE("ray-traced ambient occlusion darkens the floor beside the cube") {
     auto device = render::create_software_device();
     render::Scene3D scene = occluded();
-    // Only with SSAO on, in Forward+.
+    // Only with SSAO on, in the clustered renderer.
     CHECK(render::detail::ray_occlusion(scene).has_value());
     scene.ssao.enabled = false;
     CHECK_FALSE(render::detail::ray_occlusion(scene).has_value());
@@ -598,7 +598,7 @@ int channel(const Image& image, std::uint32_t x, std::uint32_t y, std::size_t c)
 TEST_CASE("ray-traced reflections show what is off the screen") {
     auto device = render::create_software_device();
     render::Scene3D scene = mirrored();
-    // Only with SSR on, in Forward+.
+    // Only with SSR on, in the clustered renderer.
     CHECK(render::detail::ray_reflection(scene).has_value());
     scene.ssr.enabled = false;
     CHECK_FALSE(render::detail::ray_reflection(scene).has_value());

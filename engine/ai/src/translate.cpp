@@ -1,8 +1,8 @@
 // l10n.translate: a model from providers.json drafts the translations a locale lacks, told the
 // storyboard's glossary, characters and tone so names and voices stay the same. Drafts are
 // checked (their forms, placeholders and the glossary's words to avoid) before they are written,
-// and a .po file marks each one fuzzy, gettext's mark for a translation to review, which Godot
-// and the game leave out until a person or agent clears it.
+// and a .po file marks each one fuzzy, gettext's mark for a translation to review, which the
+// game leaves out until a person or agent clears it.
 #include "commands_internal.hpp"
 
 #include "slash/ai/config.hpp"

@@ -1,6 +1,6 @@
 #pragma once
 
-// Animals that behave, after Unreal's animal AI (Godot has none): the fauna system runs each
+// Animals that behave, after Unreal's animal AI: the fauna system runs each
 // Creature3D and Creature2D as its .creature.json recipe's behavior says
 // (slash/world/creature.hpp). It roams around home, grazes and rests, keeps with its herd, flock or
 // school, flees people as its temperament says and what hunts it, hunts when hungry, attacks or
@@ -8,7 +8,6 @@
 // Transform3D (or sets its CharacterMover3D's velocity), faces where it goes and plays its model's
 // animations on its Animator; in 2D it moves its Transform2D in pixels (ground animals left
 // and right, fliers and swimmers anywhere), mirrors it with flip_h and turns its cut-out's bones.
-//
 // Events, each with the creature's ID: creature_noticed (who), creature_fled (from),
 // creature_attacked (target, damage), creature_caught (prey), creature_fed (by, food),
 // creature_tamed (owner), creature_mounted (rider) and creature_dismounted (rider). A creature

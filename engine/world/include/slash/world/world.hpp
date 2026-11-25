@@ -58,13 +58,13 @@ using System = std::function<void(World& world, double tick_seconds)>;
 struct SystemOptions {
     // What the system does, one sentence. engine.describe returns it.
     std::string doc{}; // NOLINT(readability-redundant-member-init)
-    // Lower priorities run first, as with Godot's process_priority.
+    // Lower priorities run first.
     int priority = 0;
-    // Runs the system at the same time as the threaded systems next to it in the order whose
-    // reads and writes don't clash with its own, each on a thread of the world's pool, as Godot
-    // runs a sub-thread process group. Its events are kept and delivered after the stage in
-    // system order, and it creates and destroys entities, and adds and removes components,
-    // through World::defer, so ticks come out the same with any number of threads.
+    // Runs the system at the same time as the threaded systems next to it in the order whose reads
+    // and writes don't clash with its own, each on a thread of the world's pool. Its events are
+    // kept and delivered after the stage in system order, and it creates and destroys entities, and
+    // adds and removes components, through World::defer, so ticks come out the same with any number
+    // of threads.
     bool threaded = false;
     // What a threaded system reads and writes: component names, whose storages the world makes
     // before it runs, or names for other state systems share (such as "assets"). Two systems
@@ -223,10 +223,10 @@ public:
     void add_reset(std::function<void(World&)> reset);
     void reset_state();
 
-    // What the world holds in memory, the largest part first: "world" (entity IDs, event queues
-    // and cached prefabs), "components" (each type's storage with what its fields hold on the
-    // heap, as items) and a part from each memory source. Modules that keep state outside
-    // components add a source when they install, as Godot's Performance.add_custom_monitor.
+    // What the world holds in memory, the largest part first: "world" (entity IDs, event queues and
+    // cached prefabs), "components" (each type's storage with what its fields hold on the heap, as
+    // items) and a part from each memory source. Modules that keep state outside components add a
+    // source when they install.
     [[nodiscard]] std::vector<MemoryPart> memory() const;
     // Adds a part to memory(), named name, or replaces the source of that name.
     void add_memory_source(std::string name, MemorySource source);
@@ -252,9 +252,9 @@ public:
 
     // The events of the tick before this one, in the order they came: entity.created and
     // entity.destroyed and emitted events, from the start of the last tick to the start of this
-    // one, so those between ticks (a loaded scene's entities) too. Gameplay code reacts to them as
-    // Godot code does to signals: each system sees each event once, at the tick after it came,
-    // whatever order the systems run in. At most kMaxEvents a tick are kept.
+    // one, so those between ticks (a loaded scene's entities) too. Gameplay code reacts to them:
+    // each system sees each event once, at the tick after it came, whatever order the systems run
+    // in. At most kMaxEvents a tick are kept.
     [[nodiscard]] std::span<const Event> events() const noexcept { return events_; }
     static constexpr std::size_t kMaxEvents = 65'536;
     // What events() holds and what the next tick's will. Sessions put them back when they roll

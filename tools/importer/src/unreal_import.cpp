@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "unreal_import.hpp"
 
 #include "common.hpp"
@@ -530,7 +531,7 @@ std::vector<Push> pushes_of(std::string_view key) {
         press(motion_event("trigger_right", 1));
         return out;
     }
-    // A stick pushed one way, as a button; Godot's sticks have y down.
+    // A stick pushed one way, as a button; the engine's sticks have y down.
     for (const std::string_view side : {std::string_view("Left"), std::string_view("Right")}) {
         const std::string prefix = "Gamepad_" + std::string(side) + "Stick_";
         if (!key.starts_with(prefix)) {
@@ -550,7 +551,7 @@ std::vector<Push> pushes_of(std::string_view key) {
         }
         return out;
     }
-    // Sticks as axes: x as Unreal's x, y flipped to Godot's.
+    // Sticks as axes: x as Unreal's x, y flipped (the engine's y is down).
     const auto stick = [&](std::string_view x_axis, std::string_view y_axis, bool two) {
         out.push_back({.value = {1, 0, 0}, .binding = motion_event(x_axis, 1)});
         out.push_back({.value = {-1, 0, 0}, .binding = motion_event(x_axis, -1)});
@@ -1121,8 +1122,8 @@ private:
     }
 
     // The mesh a component draws, with its override materials in place of the mesh's own in a
-    // .glb file of its own beside the mesh's (a MeshInstance3D has no per-surface materials, as
-    // Godot's has no surface overrides in a scene file); the mesh's own file when none applies.
+    // .glb file of its own beside the mesh's (a Model3D has no surface overrides in a scene file);
+    // the mesh's own file when none applies.
     std::string mesh_with_overrides(const std::string& package, const MeshOut& mesh,
                                     const json::Value& comp, const std::string& where) {
         const json::Value* overrides = member(comp, "override_materials");
@@ -1255,7 +1256,7 @@ private:
 
     // --- Transforms ---
 
-    // The turn a camera or light needs: Unreal's look down their +x with +z up, Godot's down
+    // The turn a camera or light needs: Unreal's look down their +x with +z up, the engine's down
     // their -z with +y up.
     [[nodiscard]] M3 facing() const {
         const M3& m = axes_matrix_;
@@ -1858,7 +1859,7 @@ private:
         entity.has_body = true;
     }
 
-    // A skeletal mesh component's animation, as Godot's AnimationPlayer playing it on the entity
+    // A skeletal mesh component's animation, as an Animator playing it on the entity
     // that draws the mesh: a sequence played on its own node (Unreal's "Use Animation Asset")
     // plays from where the component left it, looping through an .anim.json library that takes it
     // from the sequence's file; an Animation Blueprint is left for its task.
@@ -2052,7 +2053,7 @@ private:
             }
             if (found->second.collides && blocks(comp) && !flag(comp, "simulate") &&
                 text(comp, "mobility") == "movable" && !body_above(level, actor_id, id)) {
-                // Godot moves a static body that moves as an animatable one.
+                // A static body that moves becomes a moving body.
                 entity.components["AnimatableBody3D"] = json::Object{};
                 entity.has_body = true;
             }
@@ -2099,8 +2100,8 @@ private:
             const V3 color = vec(*fog, "color", {0.447, 0.638, 1.0});
             const V3 sky = vec(*fog, "sky_contribution", {1.0, 1.0, 1.0});
             if (color[0] + color[1] + color[2] <= 0.0 && sky[0] + sky[1] + sky[2] > 0.0) {
-                // Black fog takes its color from the sky atmosphere, as Godot's fog does from
-                // the sky with all of its aerial perspective.
+                // Black fog takes its color from the sky atmosphere, with all of the sky's
+                // aerial perspective.
                 level.environment["fog_aerial_perspective"] = 1.0;
             } else {
                 level.environment["fog_light_color"] =
@@ -2112,7 +2113,7 @@ private:
                 level.environment["volumetric_fog_enabled"] = true;
             }
             problems_.add("exponential height fog", where,
-                          "Godot's height fog stands for it: as thick, thinning upward by the "
+                          "the engine's height fog stands for it: as thick, thinning upward by the "
                           "same falloff");
             return;
         }
@@ -2316,8 +2317,8 @@ private:
         return triple(out);
     }
 
-    // A Niagara system as Godot's particles: each enabled emitter becomes a CPUParticles3D, or a
-    // GPUParticles3D with a .particles.json file when Unreal simulates it on the GPU, on
+    // A Niagara system as particles: each enabled emitter becomes an Emitter3D, or a
+    // GpuEmitter3D with a .particles.json file when Unreal simulates it on the GPU, on
     // the component's entity, or on an entity of its own under it when there are several.
     void convert_niagara(const json::Value& niagara, Level& level, const std::string& id,
                          const std::string& where) {
@@ -2379,7 +2380,7 @@ private:
     }
 
     // Niagara's modules that need nothing of their own here: they move, age and kill particles
-    // as Godot's particles do anyway.
+    // as particles do anyway.
     static constexpr std::array<std::string_view, 6> kQuietModules{
         "solveforcesandvelocity", "particlestate",          "systemstate",
         "emitterlifecycle",       "emitterspawnshapeburst", "updatemeshorientation"};
@@ -2677,7 +2678,8 @@ private:
             if (turbulence) {
                 settings["turbulence_enabled"] = true;
                 problems_.add("Niagara curl noise force", where,
-                              "Godot's turbulence stands for it, at its own strength and scale");
+                              "the engine's turbulence stands for it, at its own "
+                              "strength and scale");
             }
             if (const json::Value* bounds = member(system, "fixed_bounds")) {
                 V3 low = transform_point(axes_matrix_, vec(*bounds, "min"));
@@ -2707,10 +2709,10 @@ private:
         }
         if (turbulence) {
             problems_.add("Niagara curl noise force on the CPU", where,
-                          "only GPU particles have Godot's turbulence; simulate the emitter on the "
+                          "only GPU particles have turbulence; simulate the emitter on the "
                           "GPU in Unreal first");
         }
-        // CPUParticles3D keeps the process material's settings itself, its scale as
+        // Emitter3D keeps the particle rules' settings itself, its scale as
         // scale_amount.
         for (auto& [key, value] : settings) {
             if (key == "scale_min" || key == "scale_max") {
@@ -2722,7 +2724,7 @@ private:
         entity.components["CPUParticles3D"] = std::move(particles);
     }
 
-    // Where a shape location module starts particles, as Godot's emission shapes.
+    // Where a shape location module starts particles: an emission shape.
     void convert_niagara_shape(const NiagaraEmitter& context, const NiagaraModule& module,
                                const std::string& shape, json::Object& settings) {
         const std::string& where = context.where;
@@ -2764,7 +2766,7 @@ private:
             return;
         }
         problems_.add("Niagara " + shape + " location", where,
-                      "Godot has no such emission shape; particles start at the emitter");
+                      "the engine has no such emission shape; particles start at the emitter");
     }
 
     // An emitter's first renderer: a sprite renderer draws a quad facing the camera, a mesh
@@ -3070,10 +3072,10 @@ private:
         level.roots.push_back(id);
     }
 
-    // Unreal's sky atmosphere scatters sunlight as Godot's physical sky does. Godot's defaults
+    // Unreal's sky atmosphere scatters sunlight as a SkyScattering does. Its defaults
     // are Unreal's air in its color space (Unreal's Rayleigh scattering of 0.175, 0.41 and 1 is
-    // Godot's 0.3, 0.405 and 0.6 made linear, nearly), so only what an atmosphere changes is
-    // written. Godot's sky is far dimmer for a sun: energy_multiplier makes its zenith, with the
+    // the default's 0.3, 0.405 and 0.6 made linear, nearly), so only what an atmosphere changes is
+    // written. The sky is far dimmer for a sun: energy_multiplier makes its zenith, with the
     // sun 45 degrees up, a sixth as bright as a white surface facing the sun, as a clear sky is.
     [[nodiscard]] json::Value physical_sky(const Level& level) const {
         json::Value out = json::Object{};
@@ -3088,7 +3090,7 @@ private:
                 same = std::abs((color[i] / most) - standard[i]) < 0.01;
             }
             if (!same && most > 0.0) {
-                // Linear, as Unreal's, at Godot's default's brightness, then as Godot keeps it.
+                // Linear, as Unreal's, at the default's brightness, then as it is kept.
                 out["rayleigh_color"] =
                     json::Array{tidy(linear_to_srgb(color[0] / most * kSkyBlue)),
                                 tidy(linear_to_srgb(color[1] / most * kSkyBlue)),
@@ -3115,7 +3117,7 @@ private:
         return out;
     }
 
-    // The default sky's blue, Godot's 0.6 made linear.
+    // The default sky's blue, 0.6 made linear.
     static constexpr double kSkyBlue = 0.318547; // NOLINT(modernize-use-std-numbers): not 1/pi
     // A clear sky's zenith over a white surface facing the sun: about 0.055 candelas a square
     // meter a lux of sunlight, times pi.
@@ -3129,10 +3131,9 @@ private:
         return c <= 0.0031308 ? c * 12.92 : (1.055 * std::pow(c, 1.0 / 2.4)) - 0.055;
     }
 
-    // The luminance of Godot's physical sky straight up with the sun 45 degrees above the
-    // horizon, as its Forward+ renderer draws it: PhysicalSkyMaterial's shader
-    // (scene/resources/3d/sky_material.cpp), with its colors made linear and before
-    // energy_multiplier.
+    // The luminance of a SkyScattering sky straight up with the sun 45 degrees above the
+    // horizon, as the clustered renderer draws it: its shader, with its colors made linear and
+    // before energy_multiplier.
     static double physical_sky_zenith(const json::Value& sky, double sun_energy) {
         const auto field = [&](const char* name, double fallback) {
             return number(sky, name, fallback);
@@ -3172,8 +3173,8 @@ private:
         return luminance;
     }
 
-    // Unreal's auto exposure, on by default (r.DefaultFeature.AutoExposure), as Godot's: its
-    // exposure compensation (Bias, 1 by default) scales Godot's default scale, and its range,
+    // Unreal's auto exposure, on by default (r.DefaultFeature.AutoExposure): its
+    // exposure compensation (Bias, 1 by default) scales the default scale, and its range,
     // EV100 from -10 to 20 with the extended luminance range or 0.03 to 8 candelas a square
     // meter without, becomes ISO sensitivities over the import's light units (a sun of 10 lux is
     // energy 1, so a white surface it lights is 1 where Unreal's is 10 / pi). It meters in log
@@ -3193,7 +3194,7 @@ private:
         const double bias =
             parse_double(engine_ini_.value(kSection, "r.DefaultFeature.AutoExposure.Bias"))
                 .value_or(1.0);
-        // From Unreal's luminance in candelas a square meter to Godot's sensitivity in ISO.
+        // From Unreal's luminance in candelas a square meter to the engine's sensitivity in ISO.
         const auto sensitivity = [](double luminance) {
             return luminance * (std::numbers::pi / 10.0) * 100.0 / 0.125;
         };

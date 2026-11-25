@@ -1,10 +1,9 @@
-// A BakedLighting3D's light probes, as Godot 4.6's: where they go (LightmapGI::bake's octree), the
-// Delaunay tetrahedra between them (core/math/delaunay_3d.h), the BSP tree that finds a point's
-// tetrahedron (LightmapGI::_compute_bsp_tree), the light at a point (LightStorage::
-// lightmap_tap_sh_light) and the light a moving mesh takes (RendererSceneCull::
-// _update_instance_lightmap_captures). Godot's code is MIT; its triangle and box test is Tomas
-// Akenine-Möller's and its spherical harmonics rotation John Hable's, and the exact in-sphere test
-// uses Jonathan Shewchuk's expansion arithmetic, all public domain.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// A BakedLighting3D's light probes: where they go (an octree), the Delaunay tetrahedra between
+// them, the BSP tree that finds a point's tetrahedron, the light at a point and the light a moving
+// mesh takes. Its triangle and box test is Tomas Akenine-Möller's and its spherical harmonics
+// rotation John Hable's, and the exact in-sphere test uses Jonathan Shewchuk's expansion
+// arithmetic, all public domain.
 
 #include "geometry.hpp"
 
@@ -39,8 +38,8 @@ Vec3 vec(const Point& p) {
     return {p[0], p[1], p[2]};
 }
 
-// Godot's Vector3i(Vector3): each component truncated toward zero. Values no int holds, which
-// Godot leaves undefined, are clamped first.
+// A Vector3i from a Vector3: each component truncated toward zero. Values no int holds, which
+// are undefined otherwise, are clamped first.
 int truncate(float v) {
     if (!(std::abs(v) < 1.0e9F)) {
         if (std::isnan(v)) {
@@ -296,8 +295,8 @@ int det3_sign(const Row& u, const Row& v, const Row& w) {
 }
 
 // Whether e is inside the sphere through a, b, c and d, never on it: where Shewchuk's insphere
-// and orient3d have the same sign. Godot works it out from the circumsphere in 128-bit fixed point
-// with a tolerance, which lets tetrahedra overlap where points lie in flat layers or on a grid,
+// and orient3d have the same sign. Working it out from the circumsphere in 128-bit fixed point
+// with a tolerance would let tetrahedra overlap where points lie in flat layers or on a grid,
 // as a BakedLighting3D's probes over a floor do; here it is exact.
 bool in_sphere(Vec3 a, Vec3 b, Vec3 c, Vec3 d, Vec3 e) {
     const int orientation = det3_sign(difference(a, d), difference(b, d), difference(c, d));
@@ -360,8 +359,8 @@ struct CellRange {
     Vec3i to;
 };
 
-// The grid cells a simplex's circumsphere touches, as Godot's: Godot works the sphere in 128-bit
-// fixed point; here it is in doubles, grown by their rounding error, and a simplex too flat to
+// The grid cells a simplex's circumsphere touches: the sphere is worked in doubles, grown by
+// their rounding error, and a simplex too flat to
 // bound has every cell.
 CellRange sphere_cells(const std::vector<Vec3>& points, const Simplex& s, Vec3 proportions) {
     constexpr CellRange kEvery{{0, 0, 0}, {kGrid - 1, kGrid - 1, kGrid - 1}};
@@ -450,8 +449,8 @@ struct BspSimplex {
 constexpr std::array<std::array<int, 3>, 4> kFaceOrder{
     {{0, 1, 2}, {0, 2, 3}, {0, 1, 3}, {1, 2, 3}}};
 
-// Finds a plane already kept that equals one on either side, as Godot's linear search for
-// is_equal_approx_any_side, by the normal's cell: every plane is kept under its normal's cell and
+// Finds a plane already kept that equals one on either side, by the normal's cell: every plane
+// is kept under its normal's cell and
 // its flipped normal's, and a normal near a cell's edge looks in the cells beside it too.
 class PlaneIndex {
 public:
@@ -493,7 +492,7 @@ private:
         const auto part = [](int v) { return static_cast<std::uint64_t>(v + 4096) & 0x1FFFFFU; };
         return (part(c.x) << 42U) | (part(c.y) << 21U) | part(c.z);
     }
-    // Each cell a normal equal to n (within Godot's tolerance) may be kept under.
+    // Each cell a normal equal to n (within the tolerance) may be kept under.
     template <typename F>
     static void for_cells(Vec3 n, F&& visit) {
         const Vec3i c = cell_of(n);
@@ -544,7 +543,7 @@ private:
         const BspSimplex& s = simplices_[static_cast<std::size_t>(simplex)];
         for (const std::uint32_t vertex : s.vertices) {
             const Vec3 v = vec(points_[vertex]);
-            // Godot's tolerance, found on scenes up to 1000x1000x100 meters.
+            // The tolerance, tuned on scenes up to 1000x1000x100 meters.
             if (plane.has_point(v, 1.0F / static_cast<float>(1 << 13))) {
                 // Coplanar.
             } else if (plane.is_point_over(v)) {
@@ -605,8 +604,8 @@ private:
         const auto node_index = static_cast<std::int32_t>(nodes_.size());
         nodes_.emplace_back();
 
-        // The simplices' faces not yet tried at this node, in Godot's order; their scores are
-        // worked out together and the first best wins, as Godot's loop picks it.
+        // The simplices' faces not yet tried at this node, in order; their scores are
+        // worked out together and the first best wins.
         std::vector<Plane> candidates;
         for (const std::int32_t idx : indices) {
             const BspSimplex& s = simplices_[static_cast<std::size_t>(idx)];
@@ -688,8 +687,7 @@ private:
 
         if (best_score < 0.0F || over.size() == indices.size() || under.size() == indices.size()) {
             // No face separates them, so the triangulation broke somewhere: split off the simplex
-            // lowest along the longest axis, as Godot does. (Godot keeps only the first center and
-            // puts its position in the list rather than its index; this takes every center.)
+            // lowest along the longest axis, taking every center.
             std::vector<Vec3> centers;
             Box all;
             for (std::size_t i = 0; i < indices.size(); ++i) {
@@ -847,7 +845,7 @@ LightmapProbes place_lightmap_probes(std::span<const std::array<float, 3>> trian
             }
         }
     }
-    // Godot adds the LightmapProbes first and the generated ones after.
+    // The LightmapProbes come first and the generated ones after.
     out.points.assign(user.begin(), user.end());
     out.points.insert(out.points.end(), placed.begin(), placed.end());
     out.bounds_position = {static_cast<float>(bounds.position.x),
@@ -894,7 +892,7 @@ tetrahedralize(std::span<const std::array<float, 3>> points) {
     quantized[point_count + 3] = center + (Vec3{-1.0F, -1.0F, -1.0F} * delta_max);
 
     // The acceleration grid lists each simplex in the cells its circumsphere touches, in the
-    // order they were made, as Godot's lists do. A simplex that goes leaves the cell looked in at
+    // order they were made. A simplex that goes leaves the cell looked in at
     // once and the others as they are next looked in, or all at once when they hold too many.
     std::vector<Simplex> simplices;
     std::vector<std::vector<std::uint32_t>> grid(static_cast<std::size_t>(kGrid * kGrid * kGrid));
@@ -1084,7 +1082,7 @@ LightmapSh tap_lightmap_probes(const LightmapProbes& probes, std::array<float, 3
 
 void rotate_sh(LightmapSh& sh, const world::Affine3D& basis) {
     const world::Affine3D rotation = world::orthonormalized(basis);
-    // Rows of Godot's Basis: row r, column c is axis c's component r.
+    // Rows of the Basis: row r, column c is axis c's component r.
     const float m00 = rotation.x.x;
     const float m01 = rotation.y.x;
     const float m02 = rotation.z.x;
@@ -1108,8 +1106,8 @@ void rotate_sh(LightmapSh& sh, const world::Affine3D& basis) {
 
     for (std::size_t channel = 0; channel < 3; ++channel) {
         // Hable's code takes the coefficients with the Condon-Shortley phase, odd orders negated,
-        // which Godot's lightmapper doesn't use: flipping them around it keeps the light's
-        // directions turning with the rotation (Godot passes them as they are, which turns the
+        // which the lightmapper doesn't use: flipping them around it keeps the light's
+        // directions turning with the rotation (passing them as they are turns the
         // light mirrored in z).
         std::array<float, 9> src{};
         for (std::size_t j = 0; j < 9; ++j) {

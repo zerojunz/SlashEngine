@@ -99,7 +99,7 @@ struct FaceProject {
 
 } // namespace
 
-TEST_CASE("face: names map to face shapes as Godot's XRFaceModifier3D finds them") {
+TEST_CASE("face: names map to face shapes") {
     // Unified Expressions, ARKit, SRanipal and Meta's names, in any case, underscores ignored.
     CHECK(xr::face_shape_name(shape("JawOpen")) == "JawOpen");
     CHECK(shape("jawOpen") == shape("JawOpen"));

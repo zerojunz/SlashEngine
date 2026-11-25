@@ -1,6 +1,6 @@
-// Bus effects, ported from Godot's servers/audio/effects. Each instance's process() follows the
-// Godot effect of the same name, keeping its float and double arithmetic. Settings are fixed for
-// an instance's life: a bus layout change makes new ones, as Godot's set_bus_layout does.
+// Bus effects. Each instance's process() keeps float and double arithmetic. Settings are fixed for
+// an instance's life: a bus layout change makes new ones.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/audio/effects.hpp"
 
@@ -40,7 +40,7 @@ Frame& operator+=(Frame& a, Frame b) {
     return a;
 }
 
-// Godot's undenormalize (servers/audio/audio_frame.h), Tim Blechmann's version.
+// Removes denormal floats, Tim Blechmann's version.
 float undenormalize(float value) {
     std::uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
@@ -63,7 +63,7 @@ std::uint32_t ring_size(double milliseconds, int mix_rate) {
 
 enum class Kind : std::uint8_t { Number, Integer, Boolean };
 
-// A setting, by Godot's property name, with Godot's editor range and default.
+// A setting, by its property name, with its editor range and default.
 struct Setting {
     std::string_view name;
     Kind kind;
@@ -113,7 +113,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Amplify (audio_effect_amplify.cpp)
+// Amplify
 
 constexpr std::array kAmplify{
     number("volume_db", -80, 24, 0, "Gain in dB."),
@@ -134,7 +134,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Filters (audio_effect_filter.cpp)
+// Filters
 
 constexpr std::string_view kCutoffDoc = "Frequency in Hz the filter acts at.";
 constexpr std::string_view kResonanceDoc = "How much frequencies near the cutoff are boosted.";
@@ -197,7 +197,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Equalizers (audio_effect_eq.cpp, eq_filter.cpp)
+// Equalizers
 
 constexpr std::array<double, 6> kBands6{32, 100, 320, 1e3, 3200, 10e3};
 constexpr std::array<double, 10> kBands10{31.25, 62.5, 125, 250, 500, 1e3, 2e3, 4e3, 8e3, 16e3};
@@ -205,12 +205,12 @@ constexpr std::array<double, 21> kBands21{22,   32,  44,   63,  90,   125,  175,
                                           250,  350, 500,  700, 1e3,  1400, 2e3,
                                           2800, 4e3, 5600, 8e3, 11e3, 16e3, 22e3};
 
-// Godot's property name for a band: band_db/<whole Hz>_hz.
+// The property name for a band: band_db/<whole Hz>_hz.
 std::string band_name(double frequency) {
     return std::to_string(static_cast<std::int64_t>(static_cast<float>(frequency))) + "_hz";
 }
 
-// Godot's solve_quadratic: the number of roots.
+// Solves a quadratic: the number of roots.
 int solve_quadratic(double a, double b, double c, double* r1, double* r2) {
     const double base = 2 * a;
     if (base == 0.0) {
@@ -331,7 +331,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Delay (audio_effect_delay.cpp)
+// Delay
 
 constexpr std::array kDelay{
     number("dry", 0, 1, 1, "How much of the sound passes through unchanged."),
@@ -455,7 +455,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Reverb (audio_effect_reverb.cpp, reverb_filter.cpp: Freeverb)
+// Reverb (Freeverb)
 
 constexpr std::array kReverb{
     number("predelay_msec", 20, 500, 150, "Milliseconds before the first reflection."),
@@ -710,7 +710,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Chorus (audio_effect_chorus.cpp)
+// Chorus
 
 constexpr std::array kChorus{
     Setting{"voice_count", Kind::Integer, 1, 4, 2, "How many of the voices play."},
@@ -718,7 +718,7 @@ constexpr std::array kChorus{
     number("wet", 0, 1, 0.5, "How loud the voices are."),
 };
 
-// A voice's settings, as Godot's voice/<n>/...
+// A voice's settings, as voice/<n>/...
 constexpr std::array kChorusVoice{
     number("delay_ms", 0, 50, 12, "Milliseconds the voice lags the sound."),
     number("rate_hz", 0.1, 20, 1, "How fast the voice's lag wavers."),
@@ -738,7 +738,7 @@ public:
         voice_count_ = std::clamp(static_cast<int>(params("voice_count")), 1, 4);
         dry_ = params("dry");
         wet_ = params("wet");
-        // Godot's defaults: two voices set up, two left plain.
+        // Two voices set up, two left plain.
         voices_[0] = {15, 0.8F, 2, 0, 8000, -0.5F};
         voices_[1] = {20, 1.2F, 3, 0, 8000, 0.5F};
         if (const json::Value* list = params.find("voices"); list != nullptr) {
@@ -865,7 +865,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Phaser (audio_effect_phaser.cpp)
+// Phaser
 
 constexpr std::array kPhaser{
     number("range_min_hz", 10, 10000, 440, "The lowest frequency the notches sweep to."),
@@ -941,7 +941,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Distortion (audio_effect_distortion.cpp)
+// Distortion
 
 constexpr std::array<std::string_view, 5> kDistortionModes{"clip", "atan", "lofi", "overdrive",
                                                            "waveshape"};
@@ -1033,7 +1033,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Compressor (audio_effect_compressor.cpp)
+// Compressor
 
 constexpr std::array kCompressor{
     number("threshold", -60, 0, 0, "Level in dB above which the sound is compressed."),
@@ -1096,7 +1096,7 @@ public:
         }
     }
 
-    // The speaker pair it runs on, as Godot's set_current_channel; -1 ignores the sidechain.
+    // The speaker pair it runs on; -1 ignores the sidechain.
     void set_current_channel(int channel) { current_channel_ = channel; }
 
 private:
@@ -1115,7 +1115,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Hard limiter (audio_effect_hard_limiter.cpp)
+// Hard limiter
 
 constexpr std::array kHardLimiter{
     number("pre_gain_db", -24, 24, 0, "Gain in dB before limiting."),
@@ -1210,7 +1210,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Panner (audio_effect_panner.cpp)
+// Panner
 
 constexpr std::array kPanner{
     number("pan", -1, 1, 0, "From -1 (all left) to 1 (all right)."),
@@ -1234,7 +1234,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Stereo enhance (audio_effect_stereo_enhance.cpp)
+// Stereo enhance
 
 constexpr std::array kStereoEnhance{
     number("pan_pullout", 0, 4, 1, "How far apart left and right are pushed; 1 for unchanged."),
@@ -1288,9 +1288,9 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Pitch shift (audio_effect_pitch_shift.cpp)
+// Pitch shift
 //
-// smbFft and the pitch shifter follow smbPitchShift.cpp 1.2, which Godot carries:
+// smbFft and the pitch shifter follow smbPitchShift.cpp 1.2, which Godot Engine carries:
 //
 // COPYRIGHT 1999-2015 Stephan M. Bernsee <s.bernsee [AT] zynaptiq [DOT] com>
 //
@@ -1500,7 +1500,7 @@ constexpr std::array kPitchShift{
     Setting{"fft_size", Kind::Integer, 256, 4096, 2048, kFftSizeDoc},
 };
 
-// Godot's Math::is_equal_approx for floats.
+// Approximate equality for floats.
 bool is_equal_approx(float a, float b) {
     constexpr float kCmpEpsilon = 0.00001F;
     if (a == b) {
@@ -1540,8 +1540,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Spectrum analyzer, capture and record (audio_effect_spectrum_analyzer.cpp,
-// audio_effect_capture.cpp and audio_effect_record.cpp); their instances are in effects.hpp.
+// Spectrum analyzer, capture and record; their instances are in effects.hpp.
 
 constexpr std::array kSpectrumAnalyzer{
     number("buffer_length", 0.1, 4, 2, "Seconds of analyses kept; only the newest is read."),
@@ -1815,7 +1814,7 @@ json::Value effect_schema() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Spectrum analyzer (audio_effect_spectrum_analyzer.cpp)
+// Spectrum analyzer
 
 SpectrumAnalyzerInstance::SpectrumAnalyzerInstance(int fft_size, int mix_rate)
     : fft_size_(fft_size), mix_rate_(static_cast<float>(mix_rate)),
@@ -1888,7 +1887,7 @@ Frame SpectrumAnalyzerInstance::magnitude_for_frequency_range(float from_hz, flo
 }
 
 // ---------------------------------------------------------------------------------------------
-// Capture (audio_effect_capture.cpp), with Godot's RingBuffer
+// Capture, with a ring buffer
 
 CaptureInstance::CaptureInstance(float buffer_length_seconds, int mix_rate) {
     const float target = static_cast<float>(mix_rate) * buffer_length_seconds;
@@ -1957,8 +1956,8 @@ void CaptureInstance::clear_buffer() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Record (audio_effect_record.cpp). Godot copies frames to the recording on a thread; mixing
-// runs on the game's thread here, so they go straight in.
+// Record. Frames are copied to the recording as mixing runs
+// on the game's thread, so they go straight in.
 
 void RecordInstance::process(const Frame* src, Frame* dst, int frames) {
     std::copy_n(src, frames, dst);
@@ -2018,7 +2017,7 @@ Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot, MixC
     const Params params(slot.params, type.settings);
     std::unique_ptr<EffectInstance> made = type.make(params, context);
     if (type.name == "compressor") {
-        // As Godot's add_bus_effect: a compressor reads its sidechain's same speaker pair.
+        // A compressor reads its sidechain's same speaker pair.
         static_cast<Compressor&>(*made).set_current_channel(channel);
     }
     return made;

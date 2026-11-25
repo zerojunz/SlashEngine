@@ -1,12 +1,12 @@
-// UI containers, themes and the controls that draw boxes and textures, as Godot's: main.scene.json
-// is an inventory screen. A CenterBox keeps a PanelBox in the middle of the window;
-// in it a VBoxContainer stacks a title, a ProgressBar, a GridBox of item slots with
-// Picture icons, a FlowBox of tags and a hint. A NineSlice tooltip in the corner
-// holds a MarginBox. ui/game.theme.json, the project's theme, styles all of it.
+// UI containers, themes and the controls that draw boxes and textures: main.scene.json is an
+// inventory screen. A CenterBox keeps a PanelBox in the middle of the window; in it a VBoxContainer
+// stacks a title, a ProgressBar, a GridBox of item slots with Picture icons, a FlowBox of tags and
+// a hint. A NineSlice tooltip in the corner holds a MarginBox. ui/game.theme.json, the project's
+// theme, styles all of it.
 //
-// This program writes the two textures, checks the screen with ui.layout and ui.theme as an
-// agent would, changes the bar and the grid, catches a misspelled style override, then draws the
-// screen into a texture.
+// This program writes the two textures, checks the screen with ui.layout and ui.theme as an agent
+// would, changes the bar and the grid, catches a misspelled style override, then draws the screen
+// into a texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

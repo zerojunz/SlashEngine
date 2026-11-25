@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
 // (light.hpp). The material shader (material.hlsl) includes it, and so does each of a game's own
 // shaders, which the shader tools wrap around the game's fragment() and vertex() functions. Keep
@@ -129,7 +130,7 @@ float shadow_amount(Light light, float2 position) {
     return hidden / float(2 * taps + 1);
 }
 
-// Godot's 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
+// 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
 float3 light_normal(float3 light_vec, float3 normal, float3 base, float3 light_color,
                     float4 shine, bool shine_used) {
     float n_dot_l = max(0.0, dot(normal, light_vec));

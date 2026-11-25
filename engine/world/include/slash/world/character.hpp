@@ -1,9 +1,9 @@
 #pragma once
 
-// Characters as recipes, after Unreal's MetaHuman Creator and Mutable (Godot has none): a
-// .character.json file says a person's body, face, hair, clothing and props, which
-// slash/scene3d/character.hpp builds into a rigged model and character_cutout here into a 2D
-// cut-out of Polygon2D parts. Both dimensions read the same recipe.
+// Characters as recipes, after Unreal's MetaHuman Creator and Mutable: a .character.json file says
+// a person's body, face, hair, clothing and props, which slash/scene3d/character.hpp builds into a
+// rigged model and character_cutout here into a 2D cut-out of Polygon2D parts. Both dimensions read
+// the same recipe.
 
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
@@ -67,7 +67,7 @@ struct CharacterProp {
     std::string model;
     std::string point; // "right_hand", "left_hand", "back", "hip_left", "hip_right" or "head_top"
     Vec3 position;
-    Vec3 rotation; // radians, Godot's YXZ
+    Vec3 rotation; // radians, in YXZ order
     float scale = 1.0F;
 };
 

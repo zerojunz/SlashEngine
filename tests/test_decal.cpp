@@ -188,7 +188,7 @@ std::pair<int, int> differences(const Image& a, const Image& b) {
 
 } // namespace
 
-TEST_CASE("the decal atlas lays textures out as Godot's update_decal_atlas packs them") {
+TEST_CASE("the decal atlas lays textures out in one atlas") {
     // Tallest first, then widest, each at the lowest, leftmost spot of a skyline 16 cells of 32
     // texels across, the power of two past the widest; the atlas's height a power of two too.
     const detail::DecalAtlasLayout mixed =
@@ -309,7 +309,7 @@ TEST_CASE("decals are checked: their numbers, their textures and the atlas they 
           "the decals' textures need an atlas of 89391104 texels, past the 33554432 it holds");
 }
 
-TEST_CASE("decals are placed as Godot's update_decal_buffer places them") {
+TEST_CASE("decals are placed in the decal buffer") {
     const auto texel = image_of(1, 1, [](std::uint32_t, std::uint32_t) { return Rgba{}; });
     render::Scene3D scene;
     scene.camera = render::look_at({0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, -1.0F}, {0.0F, 1.0F, 0.0F});
@@ -368,7 +368,7 @@ TEST_CASE("decals are placed as Godot's update_decal_buffer places them") {
     CHECK(placed.uniforms[0].options[0] == 0xFFFFFU);
     CHECK(placed.uniforms[3].options[0] == 0xFFFFFU);
 
-    // Compatibility draws none, as Godot's.
+    // Compatibility draws none.
     scene.method = RenderMethod::Compatibility;
     CHECK(detail::place_decals(scene, atlas).uniforms.empty());
 }
@@ -458,7 +458,7 @@ TEST_CASE("decals change the albedo, normal, ORM and emission of what they cover
 
         for (auto& device : slash::test::hardware_devices()) {
             CAPTURE(render::backend_name(device->backend()));
-            // The OpenGL devices draw Compatibility, which has no decals, as Godot's.
+            // The OpenGL devices draw Compatibility, which has no decals.
             const bool opengl = device->backend() == render::Backend::OpenGl ||
                                 device->backend() == render::Backend::OpenGlEs;
             const auto [differing, worst] =

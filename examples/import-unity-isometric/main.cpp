@@ -1,18 +1,18 @@
-// Importing Unity's isometric and hexagonal tile maps: project.import keeps each cell where
-// Unity draws it.
+// Importing Unity's isometric and hexagonal tile maps: project.import keeps each cell where Unity
+// draws it.
 //
-// unity/ holds "Hex Garden", a Unity 2D project as Unity saves it: a scene with an isometric
-// tile map of blocks, a garden with a pond, and a hexagonal tile map, a board of grass and sand,
-// with their sprites' import settings and tile assets. Isometric sprites stand on their bottom
-// middle and Unity's isometric tile maps anchor them at each cell's bottom corner; hexagons are
-// centered on their cells.
+// unity/ holds "Hex Garden", a Unity 2D project as Unity saves it: a scene with an isometric tile
+// map of blocks, a garden with a pond, and a hexagonal tile map, a board of grass and sand, with
+// their sprites' import settings and tile assets. Isometric sprites stand on their bottom middle
+// and Unity's isometric tile maps anchor them at each cell's bottom corner; hexagons are centered
+// on their cells.
 //
-// Each Grid becomes a tile set of Godot's shape: Unity's isometric cells are an isometric tile
+// Each Grid becomes a tile set of the matching shape: Unity's isometric cells are an isometric tile
 // set in the diamond_right layout and its hexagons a hexagon tile set in stacked_offset rows,
 // Unity's cell (x, y) being (x, -y - 1). Each layer moves by a fixed offset so its cells' centers
-// are where Unity's are, and each tile's texture_origin puts its sprite's pivot at the tile
-// anchor. Games ship PNG files made in other tools; this example draws its textures in code, so
-// the repository holds no images.
+// are where Unity's are, and each tile's texture_origin puts its sprite's pivot at the tile anchor.
+// Games ship PNG files made in other tools; this example draws its textures in code, so the
+// repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

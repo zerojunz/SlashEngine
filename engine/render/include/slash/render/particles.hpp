@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -9,24 +10,23 @@
 #include <span>
 #include <vector>
 
-// GPU particles' device side, as Godot's particles storage and ParticleProcessMaterial in 2D. A
-// particle system is a buffer of particles that steps run: each step restarts the particles whose
-// turn in the emission cycle has come and moves every live one, by the process material's rules.
-// It draws as one quad per particle, or a ribbon along its trail. The GPU device runs both in
-// compute shaders (shaders/particles_process.hlsl and particles_draw.hlsl); process_particles and
-// particle_vertices are their CPU twins, which the other devices run, the same on every platform.
+// GPU particles' device side, in 2D. A particle system is a buffer of particles that steps run:
+// each step restarts the particles whose turn in the emission cycle has come and moves every live
+// one, by the process material's rules. It draws as one quad per particle, or a ribbon along its
+// trail. The GPU device runs both in compute shaders (shaders/particles_process.hlsl and
+// particles_draw.hlsl); process_particles and particle_vertices are their CPU twins, which the
+// other devices run, the same on every platform.
 //
-// Trails are Godot's: a system made with a trail of n particles (RenderDevice::create_particles)
-// keeps n - 1 copies of each of its amount particles after them, copy j of particle i at
-// amount + i * (n - 1) + j - 1. When a particle starts, each copy takes its place and waits
-// (kParticleTrailed); trail_steps * j / n steps later it follows, running each step that many
-// steps behind, with that step's delta, transform and shapes, so it takes the same path. A copy
-// never restarts and starts nothing in a sub-emitter; it runs on after its particle has gone,
-// until its own lifetime ends or the particle starts again.
+// A system made with a trail of n particles (RenderDevice::create_particles) keeps n - 1 copies of
+// each of its amount particles after them, copy j of particle i at amount + i * (n - 1) + j - 1.
+// When a particle starts, each copy takes its place and waits (kParticleTrailed); trail_steps * j /
+// n steps later it follows, running each step that many steps behind, with that step's delta,
+// transform and shapes, so it takes the same path. A copy never restarts and starts nothing in a
+// sub-emitter; it runs on after its particle has gone, until its own lifetime ends or the particle
+// starts again.
 //
-// A process material can carry particle graphs, as Godot's particle shaders: material programs
-// (material.hpp) that run after its generated start() and in its process() and change what they
-// worked out (ParticleProgram).
+// A process material can carry particle graphs: material programs (material.hpp) that run after its
+// generated start() and in its process() and change what they worked out (ParticleProgram).
 namespace slash::render {
 
 struct Vertex2D; // device.hpp
@@ -35,16 +35,16 @@ struct Vertex2D; // device.hpp
 // NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
 enum class ParticlesId : std::uint32_t { None = 0 };
 
-// The most particles a system holds, as Godot's GPUParticles2D.
+// The most particles a system holds.
 inline constexpr std::uint32_t kMaxParticles = 1000000;
 // The most points a curve or a gradient of a ParticleProcess has.
 inline constexpr std::size_t kMaxParticleCurvePoints = 32;
-// The most particles a trail has: a particle and a copy for each of Godot's 128 trail_sections.
+// The most particles a trail has: a particle and a copy for each of 128 trail sections.
 inline constexpr std::uint32_t kMaxParticleTrail = 129;
 // The most steps a trail spans (ParticleStep::trail_steps).
 inline constexpr std::uint32_t kMaxParticleTrailSteps = 65536;
 
-// Where particles start, as Godot's ParticleProcessMaterial::EmissionShape.
+// Where particles start.
 enum class EmissionShape : std::uint8_t {
     Point,
     Sphere,         // inside a circle of emission_sphere_radius (a sphere seen from the front)
@@ -56,7 +56,7 @@ enum class EmissionShape : std::uint8_t {
 };
 
 // The parameters that take a random value between their min and max when a particle starts and
-// change by their curve over its life, as Godot's ParticleProcessMaterial::Parameter.
+// change by their curve over its life.
 enum class ParticleParam : std::uint8_t {
     InitialVelocity, // pixels per second along the spread direction; no curve
     AngularVelocity, // degrees per second
@@ -77,8 +77,7 @@ enum class ParticleParam : std::uint8_t {
 };
 inline constexpr std::size_t kParticleParams = static_cast<std::size_t>(ParticleParam::Count);
 
-// When a particle starts particles in the next system of a chain (process_particle_chain), as
-// Godot's ParticleProcessMaterial::SubEmitterMode.
+// When a particle starts particles in the next system of a chain (process_particle_chain).
 enum class SubEmitterMode : std::uint8_t {
     Disabled,
     Constant,    // sub_emitter_frequency times a second of its life
@@ -87,7 +86,7 @@ enum class SubEmitterMode : std::uint8_t {
     AtStart,     // sub_emitter_amount_at_start in its first step
 };
 
-// What a particle does when it touches a shape, as Godot's ParticleProcessMaterial::CollisionMode.
+// What a particle does when it touches a shape.
 enum class ParticleCollision : std::uint8_t {
     Disabled,
     Rigid,         // bounces off by collision_bounce and slides with collision_friction
@@ -152,8 +151,7 @@ struct ParticleProgram {
     bool operator==(const ParticleProgram&) const = default;
 };
 
-// How particles start and move: Godot's ParticleProcessMaterial with particle_flag_disable_z, as
-// its generated shader runs it. Angles are in degrees.
+// How particles start and move, as its generated shader runs it. Angles are in degrees.
 struct ParticleProcess {
     EmissionShape emission_shape = EmissionShape::Point;
     Vec2f emission_shape_offset;
@@ -184,36 +182,36 @@ struct ParticleProcess {
     float lifetime_randomness = 0.0F;    // shortens lifetimes by up to this fraction
     bool align_y = false;                // the particle's y axis along its velocity
     bool damping_as_friction = false;    // damping grows with the speed squared
-    // Turbulence, as Godot's: curl noise that turns each particle's velocity by its
-    // TurbulenceInfluence and moves it by its TurbulenceDisplacement at the start. Godot's
-    // noise, with its lattice gradients from an integer hash so every device makes the same.
+    // Turbulence: curl noise that turns each particle's velocity by its TurbulenceInfluence and
+    // moves it by its TurbulenceDisplacement at the start. The noise has its lattice gradients from
+    // an integer hash so every device makes the same.
     bool turbulence_enabled = false;
     float turbulence_noise_strength = 1.0F;     // how sharply the noise turns, 0 to 20
-    float turbulence_noise_scale = 9.0F;        // Godot's slider: higher is larger swirls
+    float turbulence_noise_scale = 9.0F;        // higher is larger swirls
     Vec3f turbulence_noise_speed;               // how the noise moves per second of particle time
     float turbulence_noise_speed_random = 0.2F; // how fast the noise changes as it moves
-    // Collision with the steps' shapes (ParticleShape), as Godot's with Occluder2D nodes.
+    // Collision with the steps' shapes (ParticleShape).
     ParticleCollision collision_mode = ParticleCollision::Disabled;
     float collision_friction = 0.0F;  // of the speed along the surface lost, 0 to 1
     float collision_bounce = 0.0F;    // of the speed into the surface sent back, 0 to 1
     bool collision_use_scale = false; // the particle's scale multiplies its collision size
-    // Sub-emitters, as Godot's: a particle starts particles in the next system of a chain where
-    // it is, turned and scaled as it is, and with sub_emitter_keep_velocity moving as it moves.
+    // Sub-emitters: a particle starts particles in the next system of a chain where it is, turned
+    // and scaled as it is, and with sub_emitter_keep_velocity moving as it moves.
     SubEmitterMode sub_emitter_mode = SubEmitterMode::Disabled;
     float sub_emitter_frequency = 4.0F; // Constant: emissions a second, more than 0
     std::uint32_t sub_emitter_amount_at_end = 1;
     std::uint32_t sub_emitter_amount_at_collision = 1;
     std::uint32_t sub_emitter_amount_at_start = 1;
     bool sub_emitter_keep_velocity = false;
-    // Particle graphs, as Godot's particle shaders' start() and process().
+    // Particle graphs, run in start() and process().
     ParticleProgram start_program;
     ParticleProgram process_program;
 
     bool operator==(const ParticleProcess&) const = default;
 };
 
-// A shape particles collide with, as a Occluder2D's outline in the signed distance field
-// Godot's particles collide with: a closed one is solid, an open one a line.
+// A shape particles collide with, as a Occluder2D's outline in the signed distance field particles
+// collide with: a closed one is solid, an open one a line.
 struct ParticleShape {
     std::vector<Vec2f> points; // pixels
     bool closed = true;
@@ -223,9 +221,9 @@ struct ParticleShape {
 // The most points the shapes one step collides with have between them.
 inline constexpr std::size_t kMaxParticleShapePoints = 1024;
 
-// One step of a system, as Godot's ParticlesFrameParams with the process call's push constants.
-// Steps run in order; each restarts the particles whose turn comes between prev_system_phase and
-// system_phase and moves every live particle on by delta.
+// One step of a system, with the process call's push constants. Steps run in order; each restarts
+// the particles whose turn comes between prev_system_phase and system_phase and moves every live
+// particle on by delta.
 struct ParticleStep {
     // Where new particles start: x' = [0] x + [2] y + [4], y' = [1] x + [3] y + [5]; identity
     // for particles in the emitter's own coordinates.
@@ -239,14 +237,14 @@ struct ParticleStep {
     float randomness = 0.0F;
     float amount_ratio = 1.0F;
     float interp_to_end = 0.0F;
-    // Seconds of particle time since the system started over after the step, back to 0 every
-    // hour, as Godot's TIME rolls over: what turbulence moves with.
+    // Seconds of particle time since the system started over after the step, back to 0 every hour,
+    // as time rolls over: what turbulence moves with.
     float time = 0.0F;
     // The shapes particles collide with during the step: shape_count of the shapes the steps run
-    // with, from shape_first. A particle collides where it comes within collision_size pixels
-    // of one, as Godot's collision_base_size, measured where the shapes are: to_shapes takes
-    // particle coordinates there, as emission does, and from_shapes is the inverse of its first
-    // four, x' = [0] x + [2] y, y' = [1] x + [3] y, which bring the way out back.
+    // with, from shape_first. A particle collides where it comes within collision_size pixels of
+    // one, measured where the shapes are: to_shapes takes particle coordinates there, as emission
+    // does, and from_shapes is the inverse of its first four, x' = [0] x + [2] y, y' = [1] x + [3]
+    // y, which bring the way out back.
     std::uint32_t shape_first = 0;
     std::uint32_t shape_count = 0;
     float collision_size = 1.0F;
@@ -254,7 +252,7 @@ struct ParticleStep {
     std::array<float, 4> from_shapes{1.0F, 0.0F, 0.0F, 1.0F};
     std::uint32_t cycle = 0; // emission cycles before this one
     std::uint32_t seed = 0;
-    // The steps a trail spans, as Godot's trail_lifetime times its fixed rate: copy j of n runs
+    // The steps a trail spans, the trail lifetime times the fixed rate: copy j of n runs
     // trail_steps * j / n steps behind its particle. From 1 to kMaxParticleTrailSteps.
     std::uint32_t trail_steps = 1;
     bool emitting = true;
@@ -264,7 +262,7 @@ struct ParticleStep {
     bool operator==(const ParticleStep&) const = default;
 };
 
-// A particle's flags, as Godot's.
+// A particle's flags.
 inline constexpr std::uint32_t kParticleActive = 1U;
 inline constexpr std::uint32_t kParticleStarted = 2U;
 // A trail's copy that took its particle's place and waits to follow it.
@@ -280,12 +278,12 @@ struct Particle {
     Vec2f origin;                       // pixels
     Vec2f velocity;                     // pixels per second
     Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
-    // Godot's CUSTOM: its angle in radians, its age as a fraction of the system's lifetime, its
-    // sprite sheet frame from 0 to 1, and its own lifetime as a fraction of the system's.
+    // Custom data: its angle in radians, its age as a fraction of the system's lifetime, its sprite
+    // sheet frame from 0 to 1, and its own lifetime as a fraction of the system's.
     Vec4 custom;
-    // Godot's USERDATA1: the velocity its forces built up [x, y, z] (turbulence turns it out of
-    // the screen's plane, where it keeps pulling on its speed), and the angle its angular
-    // velocity built up.
+    // User data: the velocity its forces built up [x, y, z] (turbulence turns it out of the
+    // screen's plane, where it keeps pulling on its speed), and the angle its angular velocity
+    // built up.
     Vec4 userdata;
     std::uint32_t flags = 0;
     std::array<std::uint32_t, 3> spare{};
@@ -294,24 +292,23 @@ struct Particle {
 };
 static_assert(sizeof(Particle) == 96);
 
-// The order particles draw in, as Godot's GPUParticles2D::DrawOrder.
+// The order particles draw in.
 enum class ParticleOrder : std::uint8_t {
     Index,           // by slot
     Lifetime,        // oldest first
     ReverseLifetime, // youngest first
 };
 
-// How a system draws: one quad per particle, size wide and tall around it, turned and scaled by
-// its basis, colored by its color times modulate and showing the sprite sheet frame its custom
-// says, as Godot's GPUParticles2D with a CanvasItemMaterial's particle animation. Each particle
-// takes six vertices in draw order, two triangles; a particle not live has no area.
+// How a system draws: one quad per particle, size wide and tall around it, turned and scaled by its
+// basis, colored by its color times modulate and showing the sprite sheet frame its custom says.
+// Each particle takes six vertices in draw order, two triangles; a particle not live has no area.
 //
-// A system with trails draws each particle as Godot's trail ribbon instead: size.x wide, through
-// the particle and its copies, the newest first, in (n - 1) * trail_subdivisions segments of six
-// vertices. Each section between two copies blends from one to the next, place and color,
-// across along each one's x axis; the texture runs down the ribbon, in the frame the particle's
-// own custom says. A segment through a particle or copy not live has no area, so the ribbon
-// shortens from the front when the particle goes and its copies run on.
+// A system with trails draws each particle as a trail ribbon instead: size.x wide, through the
+// particle and its copies, the newest first, in (n - 1) * trail_subdivisions segments of six
+// vertices. Each section between two copies blends from one to the next, place and color, across
+// along each one's x axis; the texture runs down the ribbon, in the frame the particle's own custom
+// says. A segment through a particle or copy not live has no area, so the ribbon shortens from the
+// front when the particle goes and its copies run on.
 struct ParticleDraw {
     ParticleOrder order = ParticleOrder::Index;
     std::uint32_t lifetime_split = 0; // particle_lifetime_split for the system's phase
@@ -325,9 +322,9 @@ struct ParticleDraw {
     std::array<float, 6> transform{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
     Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F};
     // Trails: segments a section, from 1 to 1024; the steps the trail spans
-    // (ParticleStep::trail_steps), and the seconds a step lasts. As copy j of n is
-    // trail_steps * j / n steps behind, rounded down, each draws back along its velocity by the
-    // part of a step it rounded off, as Godot's.
+    // (ParticleStep::trail_steps), and the seconds a step lasts. As copy j of n is trail_steps * j
+    // / n steps behind, rounded down, each draws back along its velocity by the part of a step it
+    // rounded off.
     std::uint32_t trail_subdivisions = 1;
     std::uint32_t trail_steps = 1;
     float step_delta = 0.0F;
@@ -388,11 +385,11 @@ void particle_vertices(std::span<const Particle> particles, const ParticleDraw& 
 [[nodiscard]] std::uint32_t particle_vertex_count(std::uint32_t trail, const ParticleDraw& draw);
 
 // The slot the oldest particle is in, for drawing in lifetime order, when the emission cycle is at
-// phase, as Godot's particles storage works it out.
+// phase.
 [[nodiscard]] std::uint32_t particle_lifetime_split(std::uint32_t amount, double phase);
 
-// The noise frequency a turbulence_noise_scale gives, as Godot's set_turbulence_noise_scale
-// works it out, with square roots for its fourth roots so every machine gets the same.
+// The noise frequency a turbulence_noise_scale gives, with square roots for its fourth roots so
+// every machine gets the same.
 [[nodiscard]] float turbulence_frequency(float noise_scale);
 
 // The value of a curve at an offset, or fallback when it has no points.

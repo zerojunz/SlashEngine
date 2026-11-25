@@ -28,8 +28,8 @@ using render::Vertex3D;
 
 namespace {
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has no probes yet.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has no probes yet.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -205,7 +205,7 @@ TEST_CASE("a probe's faces look along each axis from its origin, as far as its b
                                   (view[8] * ((view[1] * view[6]) - (view[5] * view[2])));
         CHECK(determinant == doctest::Approx(1.0F));
     }
-    // Each face sees as far as the furthest wall of the box drawn so far, in Godot's order +x, -x,
+    // Each face sees as far as the furthest wall of the box drawn so far, in the order +x, -x,
     // +y, -y, -z, +z, and at least max_distance.
     const std::array<float, 3> size{2.0F, 8.0F, 2.0F};
     const std::array<float, 6> far{1.0F, 1.0F, 4.0F, 4.0F, 4.0F, 4.0F};
@@ -221,7 +221,7 @@ TEST_CASE("a probe's faces look along each axis from its origin, as far as its b
           render::perspective(90.0F, 1.0F, 0.01F, 7.0F));
 }
 
-TEST_CASE("probes reflect as Godot's reflection_process: box projection, order, masks, blend") {
+TEST_CASE("probes reflect: box projection, order, masks, blend") {
     const detail::Float4 red{1, 0, 0, 1};
     const detail::Float4 green{0, 1, 0, 1};
     const detail::Float4 blue{0, 0, 1, 1};
@@ -249,8 +249,8 @@ TEST_CASE("probes reflect as Godot's reflection_process: box projection, order, 
     light = mirror_at({box}, cubes, {0.0F, 0.0F, 1.5F}, along);
     CHECK(light.reflection == detail::Float4{0, 0, 0, 0});
 
-    // Of two probes, largest first in the frame, the smaller is taken first, as Godot walks its
-    // cluster's bits from the highest.
+    // Of two probes, largest first in the frame, the smaller is taken first, as the
+    // cluster's bits are walked from the highest.
     ReflectionProbe3D large{.size = {8.0F, 8.0F, 8.0F},
                             .blend_distance = 0.0F,
                             .ambient_mode = render::ReflectionAmbient::Disabled,
@@ -290,7 +290,7 @@ TEST_CASE("probes reflect as Godot's reflection_process: box projection, order, 
     CHECK(light.ambient == detail::Float4{1, 0, 0, 1});
 }
 
-TEST_CASE("every Forward+ device reflects a room in its floor through a probe") {
+TEST_CASE("every clustered-renderer device reflects a room in its floor through a probe") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image plain = draw_room(*device, {.probe = false});

@@ -1277,6 +1277,6 @@ kernel void main0(constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0
 inline constexpr int kLightmapLightMslIds[][2] = {{0, -1}, {1, -1}, {2, -1}, {3, -1}, {4, -1}, {5, -1}, {6, -1}, {7, -1}, {8, -1}, {9, -1}, {10, -1}, {11, -1}, {12, -1}, {13, -1}, {14, -1}};
 
 // The FNV-1a hash of the GLSL it was made from.
-inline constexpr std::uint64_t kLightmapLightMslFrom = 0x2aa2f31d3c9ce0a4ULL;
+inline constexpr std::uint64_t kLightmapLightMslFrom = 0x61889a866c91718dULL;
 
 } // namespace slash::render::shaders

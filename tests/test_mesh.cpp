@@ -205,7 +205,7 @@ Image draw_everything(RenderDevice& device, std::uint32_t size,
                           .transparency = render::Transparency::AlphaScissor,
                           .cull = render::CullMode::Disabled})
               .ok());
-    // A card facing away from the camera: culled as Godot's default culls it.
+    // A card facing away from the camera: culled by default.
     CHECK(device.draw_mesh(card.value(), placed(180.0F, 0.0F, 1.2F, 0.0F), {}).ok());
     REQUIRE(device.end_frame().ok());
     auto image = device.read_texture(target.value());
@@ -226,7 +226,7 @@ std::array<int, 4> pixel(const Image& image, std::uint32_t x, std::uint32_t y) {
 
 } // namespace
 
-TEST_CASE("perspective and orthogonal projections are Godot's, with reversed depth") {
+TEST_CASE("perspective and orthogonal projections use reversed depth") {
     const Mat4 p = render::perspective(75.0F, 1.5F, 0.05F, 4000.0F);
     const float f = 1.0F / std::tan(37.5F * 3.14159265F / 180.0F);
     CHECK(p[0] == doctest::Approx(f / 1.5F));
@@ -252,7 +252,7 @@ TEST_CASE("perspective and orthogonal projections are Godot's, with reversed dep
     CHECK(depth_at(o, 101.0F) == doctest::Approx(0.0F));
 }
 
-TEST_CASE("frustum is Godot's set_frustum for a view's tangents, as an XR eye's projection") {
+TEST_CASE("frustum is set from a view's tangents, as an XR eye's projection") {
     // Symmetric tangents give the perspective projection.
     const float t = std::tan(37.5F * 3.14159265F / 180.0F);
     const Mat4 symmetric = render::frustum(-t * 1.5F, t * 1.5F, -t, t, 0.05F, 4000.0F);
@@ -379,7 +379,7 @@ TEST_CASE("each mesh draw is a draw of its own, counting its triangles") {
     }
 }
 
-TEST_CASE("every device lights a face by Godot's formulas") {
+TEST_CASE("every device lights a face by its formulas") {
     for (auto& device : slash::test::drawing_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const std::vector<Vertex3D> square = quad({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 2.0F);
@@ -574,7 +574,7 @@ TEST_CASE("GPUs draw meshes as the software device does") {
     }
 }
 
-TEST_CASE("every device draws a mesh's LODs from their own indices, as Godot's LOD arrays") {
+TEST_CASE("every device draws a mesh's LODs from their own indices") {
     std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::drawing_devices();
     devices.push_back(render::create_null_device());
     const std::vector<Vertex3D> square = quad({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 1.0F);
@@ -748,7 +748,7 @@ Image draw_layers(RenderDevice& device, std::uint32_t size, render::RenderMethod
 
 } // namespace
 
-TEST_CASE("every device lights a rim, a clearcoat and anisotropy by Godot's formulas") {
+TEST_CASE("every device lights a rim, a clearcoat and anisotropy by its formulas") {
     for (auto& device : slash::test::drawing_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const std::vector<Vertex3D> square = quad({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 2.0F);
@@ -771,7 +771,7 @@ TEST_CASE("every device lights a rim, a clearcoat and anisotropy by Godot's form
         render::Material3D material{.albedo = {0.5F, 0.5F, 0.5F, 1.0F}};
 
         // A light behind the card lights only its rim, which a light's shadow side doesn't stop:
-        // at roughness 1 the rim is the light's color (times pi, as Godot's lights are), white
+        // at roughness 1 the rim is the light's color (times pi), white
         // toward the albedo by rim_tint, times the albedo as diffuse light is. The albedo is
         // sRGB 0.5, linear 0.214.
         scene.lights = {{.direction = {0.1F, 0.0F, 0.995F}}};
@@ -787,7 +787,7 @@ TEST_CASE("every device lights a rim, a clearcoat and anisotropy by Godot's form
         CHECK(std::abs(rim[0] - srgb_byte(kPi * kAlbedo * kAlbedo)) <= 2);
         material.rim = 0.0F;
 
-        // A light straight on: the clearcoat adds Godot's coat, the light (pi) times its specular
+        // A light straight on: the clearcoat adds its coat, the light (pi) times its specular
         // (0.5, Light3D's light_specular), clearcoat, D_GGX at its roughness's alpha (0.1 at 1),
         // 0.25 for its visibility and Fresnel's 0.04 at its peak.
         scene.lights = {{.direction = {0.0F, 0.0F, -1.0F}}};

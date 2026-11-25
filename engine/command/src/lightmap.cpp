@@ -135,8 +135,8 @@ void add_problems(const world::World& world, const std::vector<scene3d::Problem>
     result["problems"] = std::move(problems);
 }
 
-// Where a BakedLighting3D with no light_data bakes to, as Godot's: beside the scene, named after
-// it, or after the entity when the scene isn't saved.
+// Where a BakedLighting3D with no light_data bakes to: beside the scene, named after it, or after
+// the entity when the scene isn't saved.
 std::string default_path(const Session& session, std::string_view id) {
     std::string_view scene = session.scene_path();
     if (scene.ends_with(".scene.json")) {
@@ -239,8 +239,8 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Where a VoxelLighting3D with no data bakes to, as Godot's editor offers: beside the scene, named
-// after it and the entity, or after the entity when the scene isn't saved.
+// Where a VoxelLighting3D with no data bakes to: beside the scene, named after it and the entity,
+// or after the entity when the scene isn't saved.
 std::string default_voxel_gi_path(const Session& session, std::string_view id) {
     std::string_view scene = session.scene_path();
     if (scene.ends_with(".scene.json")) {
@@ -347,8 +347,8 @@ Reply occluder_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Where a ParticleColliderSdf3D with no texture bakes to, as Godot's editor offers: beside the
-// scene, named after it and the entity, or after the entity when the scene isn't saved.
+// Where a ParticleColliderSdf3D with no texture bakes to: beside the scene, named after it and the
+// entity, or after the entity when the scene isn't saved.
 std::string default_sdf_path(const Session& session, std::string_view id) {
     std::string_view scene = session.scene_path();
     if (scene.ends_with(".scene.json")) {

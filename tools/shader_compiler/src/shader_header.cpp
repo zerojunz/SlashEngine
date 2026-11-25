@@ -1,5 +1,5 @@
 // slash-shader-header: compiles canvas shaders the engine builds in, written as a game's are
-// (fragment() and vertex() over Godot's built-ins), into a C++ header of functions that return
+// (fragment() and vertex() over the built-ins), into a C++ header of functions that return
 // each one's render::CompiledShader. The header is committed, so games draw these shaders with
 // no shader tools; the `shaders` target rewrites it, and a test in tests/test_render.cpp fails
 // when it falls behind its shaders.

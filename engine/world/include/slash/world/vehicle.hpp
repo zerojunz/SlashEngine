@@ -1,13 +1,12 @@
 #pragma once
 
-// Vehicles as recipes, after Unreal's Chaos Vehicles (Godot has only WheeledBody3D): a
-// .vehicle.json file says what a car, bike, truck, tracked vehicle, boat or aircraft looks like
-// (its body, seats, doors and wheels, tracks, hull or wings) and its own physics to tune: mass
-// and center of mass, the engine's torque curve, gears, the differential, steering, brakes,
-// suspension, tires, buoyancy and lift. slash/scene3d/vehicle.hpp builds its 3D model; the
-// vehicles systems of physics3d and physics2d (slash/physics3d/vehicle_tool.hpp,
-// slash/physics2d/vehicle_tool.hpp) keep each Vehicle3D's and Vehicle2D's bodies and wheels and
-// drive them with the drivetrain here.
+// Vehicles as recipes, after Unreal's Chaos Vehicles: a .vehicle.json file says what a car, bike,
+// truck, tracked vehicle, boat or aircraft looks like (its body, seats, doors and wheels, tracks,
+// hull or wings) and its own physics to tune: mass and center of mass, the engine's torque curve,
+// gears, the differential, steering, brakes, suspension, tires, buoyancy and lift.
+// slash/scene3d/vehicle.hpp builds its 3D model; the vehicles systems of physics3d and physics2d
+// (slash/physics3d/vehicle_tool.hpp, slash/physics2d/vehicle_tool.hpp) keep each Vehicle3D's and
+// Vehicle2D's bodies and wheels and drive them with the drivetrain here.
 
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
@@ -47,13 +46,12 @@ struct VehicleBody {
     bool draw = true; // false: only its parts draw, though it collides as its box still
 };
 
-// A part an agent builds a vehicle from, on top of (or, with body.draw off, in place of) the
-// body its kind makes: one of Godot's primitive shapes a meter across (a "box", a "cylinder"
-// standing along y, a "sphere" or a "prism" with its ridge along z and its point up), stretched
-// to size, turned by rotation (radians, Godot's YXZ order) and put at position in the vehicle's
-// space; or a model file placed the same way, which draws in 3D only. Its material is the
-// body's paint, trim or glass, or one of its own color; one that collides adds its turned box to
-// the vehicle's collision.
+// A part an agent builds a vehicle from, on top of (or, with body.draw off, in place of) the body
+// its kind makes: one of the primitive shapes a meter across (a "box", a "cylinder" standing along
+// y, a "sphere" or a "prism" with its ridge along z and its point up), stretched to size, turned by
+// rotation (radians, in YXZ order) and put at position in the vehicle's space; or a model file
+// placed the same way, which draws in 3D only. Its material is the body's paint, trim or glass, or
+// one of its own color; one that collides adds its turned box to the vehicle's collision.
 struct VehiclePart {
     std::string name;
     std::string shape = "box";
@@ -120,7 +118,7 @@ struct VehiclePhysics {
     float steer_at_speed = 0.5F; // how much less they turn at 30 meters a second
     float brake_force = 4000.0F; // newtons each wheel
     float handbrake_force = 6000.0F;
-    float suspension_stiffness = 40.0F; // Godot's VehicleWheel3D units
+    float suspension_stiffness = 40.0F; // Wheel3D's units
     float suspension_damping = 2.5F;
     float suspension_relaxation = 2.8F;
     float suspension_travel = 0.2F;    // meters

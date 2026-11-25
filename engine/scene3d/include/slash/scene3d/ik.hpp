@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/scene3d/model.hpp"
@@ -9,17 +10,15 @@
 #include <string>
 #include <vector>
 
-// Skeleton modifiers: bones of a model turned after its animations and Skeleton3D, as Godot 4.6's
-// SkeletonModifier3D children of a Skeleton3D, by TwoBoneIK3D, FabrikIK3D, CcdIK3D and JacobianIK3D
-// components (Godot's IK modifiers; src/ik.cpp follows their code), BoneCopy3D and
-// BoneLookAt3D (src/bone_constraints.cpp) and BoneSimulation3D (ragdolls,
-// physical_bones.hpp):
+// Skeleton modifiers: bones of a model turned after its animations and Skeleton3D, by TwoBoneIK3D,
+// FabrikIK3D, CcdIK3D and JacobianIK3D components (src/ik.cpp), BoneCopy3D and BoneLookAt3D
+// (src/bone_constraints.cpp) and BoneSimulation3D (ragdolls, physical_bones.hpp):
 //
 //   std::vector<scene3d::NodePose> pose = scene3d::pose_of(model, clips, skeleton, load);
 //   scene3d::apply_modifiers(world, entity, model, place, global, pose);
 //
 // A two-bone solver and a deterministic iterating one solve from the pose each time. Another
-// iterating one carries its chain from tick to tick, as Godot's does from frame to frame: the
+// iterating one carries its chain from tick to tick: the
 // skeleton_modifiers system steps it once a tick, and apply_modifiers shows where it left it.
 // Chains are kept beside the components, by entity ID, so saving, snapshots and undo leave them
 // alone.
@@ -35,7 +34,7 @@ using Placer = std::function<world::Affine3D(entt::entity)>;
 [[nodiscard]] bool has_modifiers(const world::World& world, entt::entity entity);
 
 // Runs the modifiers of an entity, placed at place, on a pose of the model it draws, in the order
-// Godot runs a Skeleton3D's modifier children: those on the entity, then those on each entity in
+// they are listed: those on the entity, then those on each entity in
 // its Transform3D children, in list order; on each, TwoBoneIK3D, FabrikIK3D, CcdIK3D, JacobianIK3D,
 // BoneCopy3D, BoneLookAt3D, then BoneSimulation3D. Targets, poles and the
 // bodies of simulated bones are where global puts them.

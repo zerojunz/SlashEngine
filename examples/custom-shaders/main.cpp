@@ -1,12 +1,12 @@
-// A game's own shaders, as Godot's canvas_item shaders: a .material.json file's "shader" names an
-// .hlsl file with a fragment() function, a vertex() function or both, which read and write
-// Godot's built-ins (COLOR, UV, VERTEX, TIME and the rest) and the material's params by name.
+// A game's own shaders: a .material.json file's "shader" names an .hlsl file with a fragment()
+// function, a vertex() function or both, which read and write the built-ins (COLOR, UV, VERTEX,
+// TIME and the rest) and the material's params by name.
 //
-// main.scene.json has two sprites: the crate burns away with dissolve.material.json, whose
-// shader discards the pixels where its noise is under amount, and the flag sways with
-// wave.material.json, whose vertex() moves the flag's top corners with the time. This program
-// writes their textures, checks colors with material.eval and frame.capture as an agent would,
-// then edits a shader, with a mistake and without, and sees it reload.
+// main.scene.json has two sprites: the crate burns away with dissolve.material.json, whose shader
+// discards the pixels where its noise is under amount, and the flag sways with wave.material.json,
+// whose vertex() moves the flag's top corners with the time. This program writes their textures,
+// checks colors with material.eval and frame.capture as an agent would, then edits a shader, with a
+// mistake and without, and sees it reload.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

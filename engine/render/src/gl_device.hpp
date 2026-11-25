@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -7,10 +8,10 @@
 
 namespace slash::render::detail {
 
-// A device over desktop OpenGL 3.3 or OpenGL ES 3.0, which is WebGL 2 on the web: Godot's
-// compatibility renderer's tier. driver is "opengl" (OpenGL 3.3, then OpenGL ES 3.0 if that
-// doesn't start) or "opengl_es". A window must be made for OpenGL (SDL_WINDOW_OPENGL); with none,
-// the device draws into render targets through a hidden window of its own.
+// A device over desktop OpenGL 3.3 or OpenGL ES 3.0, which is WebGL 2 on the web: the compatibility
+// renderer's tier. driver is "opengl" (OpenGL 3.3, then OpenGL ES 3.0 if that doesn't start) or
+// "opengl_es". A window must be made for OpenGL (SDL_WINDOW_OPENGL); with none, the device draws
+// into render targets through a hidden window of its own.
 [[nodiscard]] Result<std::unique_ptr<RenderDevice>> create_gl_device(const DeviceOptions& options);
 
 // Whether the video driver has OpenGL at all: SDL loads its GL library. A driver with none, such

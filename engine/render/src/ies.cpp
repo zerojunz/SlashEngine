@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/render/ies.hpp"
 
 #include "slash/core/math.hpp"
@@ -43,7 +44,7 @@ Error ies_error(const std::string& message) {
     return make_error(ErrorCode::InvalidArgument, "IES profile: " + message);
 }
 
-// Godot's Color::linear_to_srgb for one channel, through slash::exp and ln.
+// One channel linear to sRGB, through slash::exp and ln.
 float to_srgb(float c) {
     if (c <= 0.0F) {
         return 0.0F;
@@ -230,7 +231,7 @@ Image bake_ies_spot(const IesProfile& profile, float spot_angle, std::uint32_t s
     const float tangent = cone.y / cone.x;
     for (std::uint32_t row = 0; row < size; ++row) {
         for (std::uint32_t column = 0; column < size; ++column) {
-            // Godot flips a spot light's projector rect, so its top row is the light's +Y.
+            // A spot light's projector rect is flipped, so its top row is the light's +Y.
             const float u = ((static_cast<float>(column) + 0.5F) / static_cast<float>(size));
             const float v = 1.0F - ((static_cast<float>(row) + 0.5F) / static_cast<float>(size));
             const float x = ((2.0F * u) - 1.0F) * tangent;
@@ -264,7 +265,7 @@ Image bake_ies_omni(const IesProfile& profile, std::uint32_t size) {
                 const float length = (px * px) + (py * py);
                 std::uint8_t byte = 0;
                 if (length <= 1.0F) {
-                    // Godot's dual paraboloid: p = xy / (1 + |z|) on the unit sphere.
+                    // The dual paraboloid: p = xy / (1 + |z|) on the unit sphere.
                     const float s = (1.0F - length) / (1.0F + length);
                     const float x = px * (1.0F + s);
                     const float y = py * (1.0F + s);

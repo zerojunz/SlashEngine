@@ -292,7 +292,7 @@ TEST_CASE("animation files are checked, with every error at its JSON Pointer") {
           "tracks; give node tracks an animation of their own");
 }
 
-TEST_CASE("node tracks interpolate as Godot's 3D tracks: rotations the shorter way round") {
+TEST_CASE("node tracks interpolate: rotations the shorter way round") {
     auto parsed = animation::parse_animation_library(parse(R"({"format": 1, "animations": {
         "spin": {"length": 1, "loop": "linear", "tracks": [
             {"node": "Elbow", "property": "rotation",
@@ -369,7 +369,7 @@ TEST_CASE("track paths lead to a component's field, or a part of it") {
     CHECK(animation::resolve_target("Sprite2D/visible", components).value().discrete);
 }
 
-TEST_CASE("values between keys follow Godot's interpolation and easing") {
+TEST_CASE("values between keys follow the interpolation and easing") {
     const auto linear = animation_of(library(R"({"path": "Transform2D/rotation",
         "keys": [{"time": 0.25, "value": 0}, {"time": 0.75, "value": 10}]})"));
     CHECK(number_at(linear, 0.5) == doctest::Approx(5.0));
@@ -431,7 +431,7 @@ TEST_CASE("values between keys follow Godot's interpolation and easing") {
     CHECK(animation::sample(scale, scale.tracks[0], 0.5, false) == parse("[5, 10]"));
 }
 
-TEST_CASE("Animator sets fields each tick and stops at the end, as Godot's does") {
+TEST_CASE("Animator sets fields each tick and stops at the end") {
     Scene scene;
     scene.files.write("pop.anim.json", library(R"({"path": "Transform2D/position/x",
         "keys": [{"time": 0, "value": 0}, {"time": 0.5, "value": 30}]})",
@@ -719,7 +719,7 @@ TEST_CASE("an edited animation file plays its new keys from the next tick") {
     CHECK(scene.transform(hero).rotation == doctest::Approx(3.0F));
 }
 
-TEST_CASE("bezier tracks follow their keys' handles, as Godot's bezier_track_interpolate") {
+TEST_CASE("bezier tracks follow their keys' handles") {
     const animation::Animation anim = animation_of(library(R"({"type": "bezier",
         "path": "Camera3D/fov", "keys": [
           {"time": 0, "value": 0, "out": [1, 0]},
@@ -847,7 +847,7 @@ TEST_CASE("an animation track plays and stops another Animator's animations") {
     scene.world.step(0.75);
     CHECK_FALSE(scene.player(door).playing);
     CHECK(scene.transform(door).rotation == doctest::Approx(2.0F));
-    // "[stop]" stops it and moves it back to its start, as Godot's stop().
+    // "[stop]" stops it and moves it back to its start.
     scene.world.step(0.5);
     CHECK_FALSE(scene.player(door).playing);
     CHECK(scene.player(door).time == 0.0);
@@ -859,7 +859,7 @@ TEST_CASE("an animation track plays and stops another Animator's animations") {
     CHECK(scene.transform(door).rotation == doctest::Approx(1.0F));
 }
 
-TEST_CASE("audio tracks start their keys' streams and stop them as Godot's AnimationMixer does") {
+TEST_CASE("audio tracks start their keys' streams and stop them") {
     Scene scene;
     slash::test::FakeSound sound;
     sound.install(scene.world);
@@ -931,7 +931,7 @@ TEST_CASE("audio tracks start their keys' streams and stop them as Godot's Anima
     CHECK(warnings.logged("an audio track's stream: no player"));
 }
 
-TEST_CASE("a track that makes a camera current cuts to it, as Godot's Camera3D.current") {
+TEST_CASE("a track that makes a camera current cuts to it") {
     Scene scene;
     scene.files.write("cut.anim.json", library(R"({"target": "close", "path": "Camera3D/current",
         "keys": [{"time": 0.5, "value": true}]},

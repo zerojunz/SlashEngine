@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/render/light.hpp"
 
 #include <algorithm>
@@ -28,7 +29,7 @@ Float3 normalize3(const Float3& a) {
     return {a[0] / size, a[1] / size, a[2] / size};
 }
 
-// Godot's 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
+// 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
 Float3 light_normal(const Float3& light_vec, const Float3& normal, const Float4& base,
                     const Float4& light_color, const std::optional<Float4>& specular) {
     const float n_dot_l = std::max(0.0F, dot3(normal, light_vec));

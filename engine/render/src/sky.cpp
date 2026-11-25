@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "forward_post.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
@@ -304,7 +305,7 @@ Float4 half_texel(const Float4& color) {
     return {round_half(color[0]), round_half(color[1]), round_half(color[2]), 1.0F};
 }
 
-// Godot's helpers for IBL filtering, in effects/cubemap_filter.cpp.
+// Helpers for IBL filtering.
 float radical_inverse_vdc(std::uint32_t bits) {
     bits = (bits << 16U) | (bits >> 16U);
     bits = ((bits & 0x55555555U) << 1U) | ((bits & 0xAAAAAAAAU) >> 1U);
@@ -359,11 +360,11 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
     out.orientation = multiply3(sky.orientation, inverse3(scene.camera));
     std::array<float, 16> projection = scene.projection;
     if (sky.custom_fov > 0.0F) {
-        // Godot's Projection::get_aspect, then a perspective of the custom field of view; its
-        // near and far planes don't change the entries the sky reads.
+        // The aspect, then a perspective of the custom field of view; its near and far planes don't
+        // change the entries the sky reads.
         projection = perspective(sky.custom_fov, projection[5] / projection[0], 0.05F, 4000.0F);
     }
-    // Godot's correction.add_jitter_offset(taa_jitter).
+    // The TAA jitter offset.
     projection = jittered(projection, jitter);
     out.projection = {projection[8], projection[0], projection[9], projection[5]};
     out.pixel = {1.0F / static_cast<float>(std::max(width, 1U)),
@@ -384,7 +385,7 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
         if (dot3(toward, toward) > 0.0F) {
             toward = normalize3(toward);
         }
-        // The angular distance in radians, which the sky takes as the disk's radius, as Godot's.
+        // The angular distance in radians, which the sky takes as the disk's radius.
         const float size = light.angular_distance * kDegrees;
         const float disk = size * sky.physical.sun_disk_scale;
         SkyLightUniforms& packed = out.lights.at(i);
@@ -442,8 +443,8 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
         break;
     }
     if (scene.method == RenderMethod::ForwardPlus) {
-        // Forward+ hands its sky the material's source_color uniforms and the lights' colors
-        // linear (Godot's MaterialStorage with p_use_linear_color, and SkyRD's light colors).
+        // The clustered renderer hands its sky the material's source_color uniforms and the lights'
+        // colors linear.
         flags |= kSkyLinear;
         const auto make_linear = [](Float4& c) {
             for (std::size_t i = 0; i < 3; ++i) {

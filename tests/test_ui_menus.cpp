@@ -22,10 +22,8 @@
 #include <utility>
 #include <vector>
 
-// Option buttons, menu buttons and popup menus, as Godot's OptionButton, MenuButton and
-// PopupList (scene/gui/option_button.cpp, menu_button.cpp and popup_menu.cpp) in a viewport
-// that embeds its popups (scene/main/viewport.cpp and popup.cpp). The sizes expected here follow
-// those files and Godot's default theme.
+// Option buttons, menu buttons and popup menus in a viewport that embeds its popups. The sizes
+// expected here follow the default theme.
 
 namespace asset = slash::asset;
 namespace command = slash::command;

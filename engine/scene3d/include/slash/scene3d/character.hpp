@@ -1,7 +1,7 @@
 #pragma once
 
 // A .character.json recipe (slash/world/character.hpp) built into a rigged model, after Unreal's
-// MetaHuman Creator: a skeleton with Godot's humanoid bone names, so animations retarget onto it,
+// MetaHuman Creator: a skeleton with the humanoid bone names, so animations retarget onto it,
 // the body, face and hair made of primitive meshes placed by the recipe's measures, clothing over
 // them layer by layer, and props at its points. Models load .character.json files through it, so
 // a Model3D draws one as any model.

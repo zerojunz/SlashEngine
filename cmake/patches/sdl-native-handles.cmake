@@ -1,5 +1,5 @@
-# Hands SlashEngine the native objects behind SDL3's GPU API, which doesn't show them, as Godot's
-# RenderingDevice::get_driver_resource hands over its own: the device's (VkInstance,
+# Hands SlashEngine the native objects behind SDL3's GPU API, which doesn't show them:
+# the device's (VkInstance,
 # VkPhysicalDevice, VkDevice, VkQueue and its family on Vulkan; ID3D12Device and
 # ID3D12CommandQueue on Direct3D 12; MTLDevice and MTLCommandQueue on Metal), the image an SDL
 # texture draws into now (with its full VkImageView and VkFormat on Vulkan, DXGI_FORMAT on

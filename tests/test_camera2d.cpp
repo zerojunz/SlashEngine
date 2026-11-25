@@ -186,7 +186,7 @@ struct Project {
 
 } // namespace
 
-TEST_CASE("camera_transform shows the world as Godot's Camera2D does") {
+TEST_CASE("camera_transform shows the world") {
     world::Camera2D camera;
     world::CameraState state;
     // The middle of the screen is at the camera, from its first update.
@@ -243,7 +243,7 @@ TEST_CASE("limits keep the view inside them, and center it between limits narrow
     check_near(shown(camera, state, at({995, 195}), {1000, 200}), {160, 90});
     camera.anchor_mode = "drag_center";
 
-    // Limits narrower than the screen center it between them, as Godot 4.5 does.
+    // Limits narrower than the screen center it between them.
     camera.limit_right = 100;
     check_near(shown(camera, state, at({500, 100}), {50, 100}), {80, 45});
 
@@ -257,7 +257,7 @@ TEST_CASE("position smoothing closes a share of the gap each tick") {
     camera.position_smoothing_enabled = true;
     world::CameraState state;
     check_near(shown(camera, state, at({500, 300}), {500, 300}), {80, 45});
-    // Godot's smoothing: speed times the tick's seconds of the way, 5 / 60 of 120 pixels.
+    // Smoothing: speed times the tick's seconds of the way, 5 / 60 of 120 pixels.
     check_near(shown(camera, state, at({620, 300}), {510, 300}), {80, 45});
     // No time leaves it where it is.
     check_near(shown(camera, state, at({620, 300}), {510, 300}, 0.0F), {80, 45});
@@ -301,7 +301,7 @@ TEST_CASE("rotation smoothing turns the view a share of the way each tick") {
     world::CameraState state;
     (void)world::camera_transform(camera, state, at({0, 0}, 1.0F), kScreen, kTick);
     CHECK(state.camera_angle == doctest::Approx(5.0F / 60.0F));
-    // Godot's lerp_angle turns the short way round.
+    // The angle lerp turns the short way round.
     state.camera_angle = 3.0F;
     (void)world::camera_transform(camera, state, at({0, 0}, -3.0F), kScreen, 0.1F);
     CHECK(state.camera_angle == doctest::Approx(3.0F + (((2.0F * kPi) - 6.0F) * 0.5F)));

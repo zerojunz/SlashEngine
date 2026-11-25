@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/lightmap.hpp"
 
 #include "slash/asset/assets.hpp"
@@ -32,7 +33,7 @@ static_assert(std::endian::native == std::endian::little,
               "lightmap files and hashes hold the machine's bytes, little-endian");
 
 constexpr float kPi = std::numbers::pi_v<float>;
-// The panorama Godot bakes a scene's environment into for a lightmap.
+// The panorama a scene's environment is baked into for a lightmap.
 constexpr std::uint32_t kEnvironmentWidth = 128;
 constexpr std::uint32_t kEnvironmentHeight = 64;
 
@@ -454,7 +455,7 @@ struct MaterialImages {
 };
 
 // A Surface3D as a bake sees it: what Surface3D's shader gives as albedo and
-// emission at a point, Godot's bake_render_uv2, with metals' albedo taken out (they reflect
+// emission at a point, with metals' albedo taken out (they reflect
 // rather than scatter light). With physical light units (units), emission shines by its nits.
 void set_material(LightmapMesh::Surface& surface, const world::Surface3D& standard,
                   const MaterialImages& images, bool units = false) {
@@ -514,7 +515,7 @@ void set_material(LightmapMesh::Surface& surface, const world::Surface3D& standa
     };
 }
 
-// Godot's default material: white, lit, back faces culled.
+// The default material: white, lit, back faces culled.
 void set_default_material(LightmapMesh::Surface& surface) {
     set_material(surface, world::Surface3D{}, {});
 }
@@ -809,7 +810,7 @@ render::HdrImage environment_of(const world::World& world, const world::Tree3D& 
     out.width = kEnvironmentWidth;
     out.height = kEnvironmentHeight;
     if (gi.environment_mode == "custom_color") {
-        // As Godot's: the color times its energy, as it is.
+        // The color times its energy, as it is.
         const Vec4& c = gi.environment_custom_color;
         const float energy = gi.environment_custom_energy;
         out.rgb.reserve(std::size_t{out.width} * out.height * 3);
@@ -820,8 +821,8 @@ render::HdrImage environment_of(const world::World& world, const world::Tree3D& 
         }
         return out;
     }
-    // "scene": the ambient light the Environment3D gives lit surfaces, as Godot's
-    // environment_bake_panorama, before any camera's exposure.
+    // "scene": the ambient light the Environment3D gives lit surfaces, before any camera's
+    // exposure.
     const Environment env = world_environment(world, {});
     render::Scene3D scene;
     scene.ambient = env.ambient;
@@ -874,7 +875,6 @@ Result<LightmapUnwrap> unwrap_lightmap(std::span<const render::Vertex3D> vertice
     const std::scoped_lock lock(mutex);
     xatlas::SetPrint(nullptr, false);
     xatlas::Atlas* atlas = xatlas::Create();
-    // As Godot's xatlas_mesh_lightmap_unwrap_callback.
     xatlas::MeshDecl input;
     input.indexData = indices.data();
     input.indexCount = static_cast<std::uint32_t>(indices.size());
@@ -1074,7 +1074,7 @@ void add_lightmap_types(asset::Assets& assets) {
 
 namespace {
 
-// Godot's LightmapGI quality's index among low, medium, high and ultra; medium for anything else.
+// A quality's index among low, medium, high and ultra; medium for anything else.
 std::size_t quality_index(std::string_view quality) {
     if (quality == "low") {
         return 0;

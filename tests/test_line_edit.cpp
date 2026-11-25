@@ -24,9 +24,9 @@
 #include <utility>
 #include <vector>
 
-// TextField, as Godot's (scene/gui/line_edit.cpp): the events, carets, selections and undo
-// steps expected here follow it. Text is drawn in a box font, every character 12 pixels wide at
-// 20 pixels and a space 5, so where clicks land is easy to work out.
+// TextField: the events, carets, selections and undo steps expected here follow it. Text is
+// drawn in a box font, every character 12 pixels wide at 20 pixels and a space 5, so where
+// clicks land is easy to work out.
 
 namespace asset = slash::asset;
 namespace command = slash::command;

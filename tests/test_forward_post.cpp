@@ -32,8 +32,8 @@ using render::Vertex3D;
 
 namespace {
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -141,7 +141,7 @@ TEST_CASE("glow's levels halve from half the frame's size, as far as their weigh
     CHECK(plan.sizes[3].height == 3);
     CHECK(plan.sizes[6].width == 1);
     CHECK(plan.sizes[6].height == 1);
-    // Godot's default levels end at the fourth.
+    // The default levels end at the fourth.
     CHECK(plan.count == 4);
     // A 64-pixel frame has six halvings, so glow draws at most five levels.
     post.glow_levels[6] = 1.0F;
@@ -154,7 +154,7 @@ TEST_CASE("glow's levels halve from half the frame's size, as far as their weigh
     CHECK(detail::forward_glow_plan(post, 1024, 512).count == 7);
 }
 
-TEST_CASE("Forward+ tonemaps with Godot 4.6's whites") {
+TEST_CASE("the clustered renderer tonemaps with its own whites") {
     const auto white = [](const PostProcess& post) {
         return detail::forward_post_uniforms(post, detail::ForwardPass::Tonemap, 8, 8, 8, 8)
             .tonemap[1];
@@ -174,7 +174,7 @@ TEST_CASE("Forward+ tonemaps with Godot 4.6's whites") {
               .levels_high[3] == 0.25F);
 }
 
-TEST_CASE("a Forward+ frame clears linear and comes back the color it cleared to") {
+TEST_CASE("a clustered-renderer frame clears linear and comes back the color it cleared to") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const render::Color clear{0.2F, 0.4F, 0.6F, 1.0F};
@@ -186,7 +186,7 @@ TEST_CASE("a Forward+ frame clears linear and comes back the color it cleared to
     }
 }
 
-TEST_CASE("Forward+ blends alpha in linear colors, Compatibility in sRGB") {
+TEST_CASE("the clustered renderer blends alpha in linear colors, Compatibility in sRGB") {
     const Material3D half{.albedo = {1.0F, 1.0F, 1.0F, 0.5F},
                           .unshaded = true,
                           .transparency = render::Transparency::Alpha};
@@ -200,7 +200,7 @@ TEST_CASE("Forward+ blends alpha in linear colors, Compatibility in sRGB") {
     }
 }
 
-TEST_CASE("Forward+ glows from colors brighter than white") {
+TEST_CASE("the clustered renderer glows from colors brighter than white") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         // The square is four times white: clamped to 255, and with no glow nothing is beside it.
@@ -233,7 +233,7 @@ TEST_CASE("Forward+ glows from colors brighter than white") {
     }
 }
 
-TEST_CASE("Forward+ blends glow in by its blend mode") {
+TEST_CASE("the clustered renderer blends glow in by its blend mode") {
     const render::Color gray{0.5F, 0.5F, 0.5F, 1.0F};
     // Only the sharpest level, so glow stays right by the square of a 64-pixel frame.
     PostProcess post{.glow = true,
@@ -272,7 +272,7 @@ TEST_CASE("Forward+ blends glow in by its blend mode") {
     }
 }
 
-TEST_CASE("GPUs post-process Forward+ as the software device does") {
+TEST_CASE("GPUs post-process the clustered renderer's frames as the software device does") {
     const std::array<PostProcess, 3> posts{
         PostProcess{.tonemapper = Tonemapper::Filmic,
                     .exposure = 1.5F,
@@ -312,7 +312,7 @@ TEST_CASE("GPUs post-process Forward+ as the software device does") {
     }
 }
 
-TEST_CASE("auto exposure measures a frame in blocks of 8, as Godot's luminance_reduce") {
+TEST_CASE("auto exposure measures a frame in blocks of 8") {
     using detail::PostSize;
     const auto sizes = [](std::uint32_t width, std::uint32_t height) {
         std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
@@ -435,7 +435,7 @@ TEST_CASE("log-average auto exposure measures a frame's geometric mean, as Unrea
     }
 }
 
-TEST_CASE("Forward+ auto exposure brightens a dark frame and darkens a bright one") {
+TEST_CASE("clustered-renderer auto exposure brightens a dark frame and darkens a bright one") {
     // The 32-pixel frame's square covers a quarter of it, so the frame's brightness is a quarter
     // of the square's, and a scale of 0.1 shows the square at 0.4 whatever its brightness.
     const auto exposed = [](std::uint64_t version, float adjust = 1.0F) {
@@ -582,7 +582,7 @@ std::size_t differing(const Image& a, const Image& b, int by) {
 
 } // namespace
 
-TEST_CASE("depth of field plans Godot's passes for each bokeh shape and quality") {
+TEST_CASE("depth of field plans its passes for each bokeh shape and quality") {
     using detail::DofTexture;
     using detail::ForwardPass;
     PostProcess post{.dof_far = true};
@@ -598,7 +598,7 @@ TEST_CASE("depth of field plans Godot's passes for each bokeh shape and quality"
     };
     using Steps = std::vector<
         std::tuple<ForwardPass, DofTexture, DofTexture, std::uint32_t, std::uint32_t, bool>>;
-    // Hexagon at low quality, Godot's defaults: two passes at half size, then the composite.
+    // Hexagon at low quality, the defaults: two passes at half size, then the composite.
     CHECK(steps(101, 50) ==
           Steps{{ForwardPass::DofSize, DofTexture::World, DofTexture::Sized, 101, 50, false},
                 {ForwardPass::DofHexagon, DofTexture::Sized, DofTexture::Half0, 50, 25, false},
@@ -628,7 +628,7 @@ TEST_CASE("depth of field plans Godot's passes for each bokeh shape and quality"
     CHECK(detail::uses_dof(post));
 }
 
-TEST_CASE("depth of field's uniforms are Godot's push constants") {
+TEST_CASE("depth of field's uniforms are its push constants") {
     using detail::DofStep;
     using detail::DofTexture;
     using detail::ForwardPass;
@@ -696,7 +696,7 @@ TEST_CASE("depth of field's uniforms are Godot's push constants") {
     CHECK(size.dof_blur == render::detail::Float4{32.0F, 16.0F, 16.0F, 0.5F});
 }
 
-TEST_CASE("depth of field sizes each pixel's blur by its distance, as Godot's get_blur_size") {
+TEST_CASE("depth of field sizes each pixel's blur by its distance") {
     // Four pixels at 1, 4, 11 and 30 meters from a camera, their depths as a perspective
     // projection with reversed depth puts them.
     const std::array<float, 16> projection = render::perspective(60.0F, 1.0F, 0.5F, 50.0F);
@@ -748,10 +748,10 @@ TEST_CASE("depth of field sizes each pixel's blur by its distance, as Godot's ge
     CHECK(read[3] == doctest::Approx((20.0F / 30.0F) * 32.0F).epsilon(0.002));
 }
 
-TEST_CASE("Forward+ depth of field blurs what is past or nearer than its distances") {
+TEST_CASE("clustered-renderer depth of field blurs what is past or nearer than its distances") {
     // The 32-pixel frame's square is 5 meters from the camera, the background at the far plane,
     // 10 meters away. Far blur from 7 meters blurs the background but leaves the square sharp; as
-    // in Godot, the blurred background next to it takes a little of its light, from the samples
+    //, the blurred background next to it takes a little of its light, from the samples
     // less than half a pixel away. From 3 meters the square blurs into the pixel beside it.
     const auto beside = [](const Image& image) { return pixel(image, kBeside, kInside)[0]; };
     const auto inside = [](const Image& image) { return pixel(image, kInside, kInside)[0]; };
@@ -779,7 +779,7 @@ TEST_CASE("Forward+ depth of field blurs what is past or nearer than its distanc
         post = {.dof_near = true, .dof_near_distance = 7.0F, .dof_near_transition = 1.0F};
         CHECK(beside(draw(*device, post, kBright)) > 0);
         // Every shape and quality blurs it, by as much as dof_amount says. (At very low quality a
-        // circle's spiral starts 8 pixels out, so as in Godot it blurs nothing under that.)
+        // circle's spiral starts 8 pixels out, so it blurs nothing under that.)
         for (const render::BokehShape shape :
              {render::BokehShape::Box, render::BokehShape::Hexagon, render::BokehShape::Circle}) {
             for (const render::BokehQuality quality :
@@ -852,7 +852,8 @@ TEST_CASE("GPUs draw depth of field as the software device does") {
     }
 }
 
-TEST_CASE("the GPU device runs Forward+'s post passes as a frame graph, sharing their textures") {
+TEST_CASE("the GPU device runs the clustered renderer's post passes as a frame graph, sharing "
+          "their textures") {
     auto gpu = slash::test::gpu_device();
     if (gpu == nullptr) {
         MESSAGE("no GPU device");

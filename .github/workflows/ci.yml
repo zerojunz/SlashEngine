@@ -180,8 +180,8 @@ jobs:
           build/tracy/examples/example-job-system | diff examples/job-system/expected.txt -
           build/tracy/examples/example-profiling | diff examples/profiling/expected.txt -
 
-  # Godot's double-precision build (the double preset, SLASH_PRECISION=double) must build with
-  # warnings as errors and pass the unit tests, the GPU ones on Mesa's software drivers included.
+  # The double-precision build (the double preset, SLASH_PRECISION=double) must build with warnings
+  # as errors and pass the unit tests, the GPU ones on Mesa's software drivers included.
   double:
     name: Build and test in double precision
     runs-on: ubuntu-24.04

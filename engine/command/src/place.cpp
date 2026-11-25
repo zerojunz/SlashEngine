@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/command/place.hpp"
 
 #include "slash/command/session.hpp"
@@ -21,18 +22,17 @@
 #include <vector>
 
 // Scene assembly: entity.place puts entities where an agent asks, then drops each onto what is
-// below it as Godot's editor snaps a node to the floor (node_3d_editor_plugin.cpp's
-// _snap_selected_nodes_to_floor: a ray from a meter above the bottom of its bounds, down at most
-// 500 meters) and moves it aside to the nearest spot where its bounds overlap nothing. What is
-// below and what is in the way are the meshes and static bodies navigation bakes from
-// (navigation::world_geometry), so a floor needs no collision shape to be stood on.
+// below it (a ray from a meter above the bottom of its bounds, down at most 500 meters) and moves
+// it aside to the nearest spot where its bounds overlap nothing. What is below and what is in the
+// way are the meshes and static bodies navigation bakes from (navigation::world_geometry), so a
+// floor needs no collision shape to be stood on.
 namespace slash::command {
 namespace {
 
 using world::Affine3D;
 
-constexpr float kSnapHeight = 500.0F; // Godot's max_snap_height
-constexpr float kSnapMargin = 1.0F;   // Godot casts from this far above the bottom
+constexpr float kSnapHeight = 500.0F; // how far down the snap ray goes
+constexpr float kSnapMargin = 1.0F;   // the ray starts this far above the bottom
 constexpr float kTouch = 1.0e-3F;     // boxes sharing less than this don't overlap
 constexpr int kRings = 16;            // rings of spots tried around one that is taken
 constexpr float kMinStep = 0.05F;

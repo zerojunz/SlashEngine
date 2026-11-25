@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/canvas.hpp"
 
 #include "slash/canvas/material.hpp"
@@ -127,8 +128,8 @@ struct AnimationState {
         std::erase_if(cache, [](const auto& entry) { return !entry.second.used; });
     }
 
-    // Moves the animation on by one tick, as Godot does: frames change each 1 / (fps *
-    // speed_scale) seconds, and an animation that doesn't loop stops on its last frame.
+    // Moves the animation on by one tick: frames change each 1 / (fps * speed_scale) seconds, and
+    // an animation that doesn't loop stops on its last frame.
     static void advance(world::World& world, std::string_view id, world::Flipbook2D& player,
                         const Animation& animation, double tick_seconds) {
         const auto count = static_cast<std::int64_t>(animation.frames.size());

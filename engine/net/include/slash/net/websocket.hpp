@@ -17,14 +17,14 @@ namespace slash::net {
 // only connect to them.
 bool websocket_server_supported();
 
-// A WebSocket connection's state, as Godot's WebSocketPeer::State.
+// A WebSocket connection's state.
 enum class WebSocketState : std::uint8_t { Connecting, Open, Closing, Closed };
 
 // How a message is sent: as UTF-8 text or as bytes.
 enum class WriteMode : std::uint8_t { Text, Binary };
 
-// One WebSocket connection, as Godot's WebSocketPeer: ws:// and wss:// URLs over TCP, wss:// with
-// TLS by mbedTLS (as Godot's StreamPeerMbedTLS), and wslay's framing everywhere but the web, where
+// One WebSocket connection: ws:// and wss:// URLs over TCP, wss:// with
+// TLS by mbedTLS, and wslay's framing everywhere but the web, where
 // the browser's WebSocket connects.
 // poll() sends and receives; messages wait in order until get_packet() takes them. IPv4 only.
 class WebSocketPeer {
@@ -65,7 +65,7 @@ public:
     // The subprotocol the two sides agreed on, or "".
     [[nodiscard]] const std::string& selected_protocol() const;
 
-    // Settings, as Godot's, taken when a connection starts: the subprotocols this side speaks,
+    // Settings, taken when a connection starts: the subprotocols this side speaks,
     // extra handshake header lines ("Name: value"; not on the web), the largest message taken
     // in (65535 bytes) and the bytes and messages that may wait (65535 and 4096), and seconds
     // between pings that close the connection when unanswered (0: none; not on the web).
@@ -88,7 +88,7 @@ private:
     std::unique_ptr<State> state_;
 };
 
-// A Peer over WebSocket, as Godot's WebSocketMultiplayerPeer: a server listens on a TCP port
+// A Peer over WebSocket: a server listens on a TCP port
 // and gives each client its ID in the first message, then every packet travels reliably and in
 // order; clients reach each other through the server's relay. Web games connect as clients.
 class WebSocketMultiplayerPeer final : public Peer {
@@ -103,7 +103,7 @@ public:
     // Connects to a server's ws:// or wss:// URL; connected once poll() reports peer 1.
     Result<void> create_client(std::string_view url, const TlsOptions& tls = {});
     [[nodiscard]] int local_port() const;
-    // A connected peer's WebSocket (on a client, peer 1's), or null, as Godot's get_peer.
+    // A connected peer's WebSocket (on a client, peer 1's), or null.
     [[nodiscard]] WebSocketPeer* peer(int id) const;
 
     // Seconds a joining peer may take to finish the handshake (3).

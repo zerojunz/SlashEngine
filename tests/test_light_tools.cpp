@@ -1,4 +1,4 @@
-// Light tools: Godot's light temperature and physical light units, 2D light temperature, and
+// Light tools: light temperature and physical light units, 2D light temperature, and
 // light.tune and lighting.check over 3D and 2D worlds.
 
 #include "slash/canvas/canvas.hpp"
@@ -123,7 +123,7 @@ json::Value sampled(Project& project) {
 
 } // namespace
 
-TEST_CASE("color temperatures run from warm to cool, and light units are Godot's") {
+TEST_CASE("color temperatures run from warm to cool, and light units are physical") {
     const std::array<float, 3> candle = render::color_temperature(1900.0F);
     const std::array<float, 3> noon = render::color_temperature(6500.0F);
     const std::array<float, 3> sky = render::color_temperature(12000.0F);
@@ -152,7 +152,7 @@ TEST_CASE("color temperatures run from warm to cool, and light units are Godot's
 }
 
 TEST_CASE("physical light units brighten lights by their lumens and tint them by temperature") {
-    // Without physical light units, temperature and lumens change nothing, as in Godot.
+    // Without physical light units, temperature and lumens change nothing.
     Project plain("light_units_off_project", "");
     plain.ok("batch", kRoom);
     const double base = plain.mean();

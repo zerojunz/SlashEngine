@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -18,8 +19,8 @@
 #include <string_view>
 #include <vector>
 
-// Tile maps, as Godot's TileSet and TileLayer2D. A .tileset.json file cuts atlas textures into
-// tiles and names the terrains autotiling connects:
+// Tile maps: tile sets and TileLayer2D. A .tileset.json file cuts atlas textures into tiles and
+// names the terrains autotiling connects:
 //
 //   {
 //     "format": 1,
@@ -40,38 +41,36 @@
 //     }
 //   }
 //
-// A tile's "peering" says which terrain each neighbor must have for it to fit, as Godot's
-// terrain peering bits; a neighbor left out must have the tile's own terrain, and null means no
-// terrain. A TileLayer2D holds its cells as text, rows of legend keys (see decode_cells), and
-// paint_terrain picks the tiles that connect, as Godot's terrain painting does.
+// A tile's "peering" says which terrain each neighbor must have for it to fit; a neighbor left out
+// must have the tile's own terrain, and null means no terrain. A TileLayer2D holds its cells as
+// text, rows of legend keys (see decode_cells), and paint_terrain picks the tiles that connect.
 //
-// Cells are squares unless the tile set's "tile_shape" says otherwise, as Godot's TileSet: an
-// "isometric" diamond, a "half_offset_square" or a "hexagon", laid out by "tile_layout" and
-// "tile_offset_axis" (map_to_local places a cell).
+// Cells are squares unless the tile set's "tile_shape" says otherwise: an "isometric" diamond, a
+// "half_offset_square" or a "hexagon", laid out by "tile_layout" and "tile_offset_axis"
+// (map_to_local places a cell).
 //
-// As in Godot, a tile set's "physics_layers" give tiles collision: each tile's "collision"
-// polygons, in pixels from the tile's center, make a layer's cells solid through 2D physics. A
-// tile's "alternatives" are its other versions, flipped, transposed or tinted, by number from 1;
-// and any cell can flip or transpose its tile, as Godot's runtime tile transforms do. A source's
-// "normal_texture" and "specular_texture" give its tiles bumps and highlights under 2D lights, as
-// a CanvasTexture does for a Godot atlas source. Its "navigation_layers" and each tile's
-// "navigation" outlines make each cell a region of the 2D navigation map, and tiles' outlines and
-// collision polygons are what 2D navigation bakes work from, as Godot's tile navigation.
+// A tile set's "physics_layers" give tiles collision: each tile's "collision" polygons, in pixels
+// from the tile's center, make a layer's cells solid through 2D physics. A tile's "alternatives"
+// are its other versions, flipped, transposed or tinted, by number from 1; and any cell can flip or
+// transpose its tile. A source's "normal_texture" and "specular_texture" give its tiles bumps and
+// highlights under 2D lights. Its "navigation_layers" and each tile's "navigation" outlines make
+// each cell a region of the 2D navigation map, and tiles' outlines and collision polygons are what
+// 2D navigation bakes work from.
 namespace slash::canvas {
 
 inline constexpr std::string_view kTileSetSuffix = ".tileset.json";
 
-// How terrain tiles connect, as Godot's terrain modes: by all eight cells around them, by the
-// four at their corners, or by the four at their sides.
+// How terrain tiles connect: by all eight cells around them, by the four at their corners, or by
+// the four at their sides.
 enum class TerrainMode : std::uint8_t { CornersAndSides, Corners, Sides };
 
-// A tile set's cell shape, as Godot's TileShape: squares, diamonds, squares in rows offset by
-// half a cell (which connect as hexagons do), or hexagons.
+// A tile set's cell shape: squares, diamonds, squares in rows offset by half a cell (which connect
+// as hexagons do), or hexagons.
 enum class TileShape : std::uint8_t { Square, Isometric, HalfOffsetSquare, Hexagon };
 inline constexpr std::array<std::string_view, 4> kTileShapeNames = {
     "square", "isometric", "half_offset_square", "hexagon"};
 
-// How a shape other than squares lays out its columns and rows, as Godot's TileLayout.
+// How a shape other than squares lays out its columns and rows.
 enum class TileLayout : std::uint8_t {
     Stacked,
     StackedOffset,
@@ -84,13 +83,13 @@ inline constexpr std::array<std::string_view, 6> kTileLayoutNames = {
     "stacked", "stacked_offset", "stairs_right", "stairs_down", "diamond_right", "diamond_down"};
 
 // Whether a shape other than squares offsets its rows (horizontal) or its columns (vertical), as
-// Godot's TileOffsetAxis.
+// The axis a shape's cells are offset along.
 enum class TileOffsetAxis : std::uint8_t { Horizontal, Vertical };
 inline constexpr std::array<std::string_view, 2> kTileOffsetAxisNames = {"horizontal", "vertical"};
 
-// A cell's sides and corners, as Godot's CellNeighbor, by the compass direction they face, north
-// up (-y) and clockwise. Squares and diamonds use the eight main points; a hexagon's corners
-// between two sides use the points between them, as ene between e and ne.
+// A cell's sides and corners, by the compass direction they face, north up (-y) and clockwise.
+// Squares and diamonds use the eight main points; a hexagon's corners between two sides use the
+// points between them, as ene between e and ne.
 enum class Neighbor : std::uint8_t {
     N,
     NNE,
@@ -120,9 +119,8 @@ struct CellOrder {
     }
 };
 
-// A tile: its atlas source, its column and row there and its alternative (0 for the tile
-// itself), and how the cell turns it, as Godot's TRANSFORM_FLIP_H, TRANSFORM_FLIP_V and
-// TRANSFORM_TRANSPOSE: transposed (x and y swapped) first, then flipped.
+// A tile: its atlas source, its column and row there and its alternative (0 for the tile itself),
+// and how the cell turns it: transposed (x and y swapped) first, then flipped.
 struct TileRef {
     std::string source;
     Vec2i atlas;
@@ -134,8 +132,7 @@ struct TileRef {
     friend bool operator==(const TileRef&, const TileRef&) = default;
 };
 
-// A polygon that makes a tile solid in one of its tile set's physics layers, as Godot's
-// TileData collision polygons.
+// A polygon that makes a tile solid in one of its tile set's physics layers.
 struct TilePolygon {
     int layer = 0;            // into TileSet::physics_layers
     std::vector<Vec2> points; // in pixels from the tile's center
@@ -145,14 +142,13 @@ struct TilePolygon {
     friend bool operator==(const TilePolygon&, const TilePolygon&) = default;
 };
 
-// Which way an occluder's edges must wind, seen from a light, to cast a shadow, as Godot's
-// OccluderPolygon2D::CullMode.
+// Which way an occluder's edges must wind, seen from a light, to cast a shadow.
 enum class TileCull : std::uint8_t { Disabled, Clockwise, CounterClockwise };
 inline constexpr std::array<std::string_view, 3> kTileCullNames = {"disabled", "clockwise",
                                                                    "counter_clockwise"};
 
-// A polygon that casts shadows from 2D lights in one of its tile set's occlusion layers, as
-// Godot's TileData occluder polygons (an OccluderPolygon2D each).
+// A polygon that casts shadows from 2D lights in one of its tile set's occlusion layers, as A
+// tile's occluder polygons.
 struct TileOccluder {
     int layer = 0;            // into TileSet::occlusion_layers
     std::vector<Vec2> points; // in pixels from the tile's center
@@ -163,9 +159,9 @@ struct TileOccluder {
 };
 
 // An outline of where agents can go in one of its tile set's navigation layers, as one of the
-// outlines of a Godot tile's navigation polygon. Each layer's outlines are baked into the tile's
-// polygons as Godot's tile set editor bakes them, with no agent radius, and each cell of a
-// TileLayer2D with navigation_enabled is a region of them on the 2D map.
+// outlines of a tile's navigation polygon. Each layer's outlines are baked into the tile's polygons
+// with no agent radius, and each cell of a TileLayer2D with navigation_enabled is a region of them
+// on the 2D map.
 struct TileNavigation {
     int layer = 0;            // into TileSet::navigation_layers
     std::vector<Vec2> points; // in pixels from the tile's center
@@ -173,26 +169,25 @@ struct TileNavigation {
     friend bool operator==(const TileNavigation&, const TileNavigation&) = default;
 };
 
-// The kinds of value a custom data layer holds, as the Godot Variant types its tiles' custom
-// data take; each is written as JSON (vectors as [x, y], colors as [r, g, b, a]).
+// The kinds of value a custom data layer holds; each is written as JSON (vectors as [x, y], colors
+// as [r, g, b, a]).
 enum class CustomDataType : std::uint8_t { Bool, Int, Float, String, Vector2, Vector2i, Color };
 inline constexpr std::array<std::string_view, 7> kCustomDataTypeNames = {
     "bool", "int", "float", "string", "vector2", "vector2i", "color"};
 
-// A value every tile of a tile set has, as Godot's custom data layers: games read it by name.
+// A value every tile of a tile set has, in a custom data layer: games read it by name.
 struct CustomDataLayer {
     std::string name;
     CustomDataType type = CustomDataType::Int;
 };
 
-// What a tile with no value of its own has in a custom data layer of this type, as Godot's
-// default Variant of it: false, 0, "", [0, 0] or [0, 0, 0, 1].
+// What a tile with no value of its own has in a custom data layer of this type: false, 0, "", [0,
+// 0] or [0, 0, 0, 1].
 [[nodiscard]] json::Value custom_data_default(CustomDataType type);
 
-// Another version of a tile, as Godot's alternative tiles: its own look, collision polygons,
-// occluders, navigation outlines and custom data (none, or the layers' defaults, unless it gives
-// some). Its flips
-// change only how it draws, as in Godot; a cell's turns flip the polygons too.
+// Another version of a tile: its own look, collision polygons, occluders, navigation outlines and
+// custom data (none, or the layers' defaults, unless it gives some). Its flips change only how it
+// draws; a cell's turns flip the polygons too.
 struct AlternativeTile {
     bool flip_h = false;
     bool flip_v = false;
@@ -205,8 +200,8 @@ struct AlternativeTile {
     std::map<int, json::Value> custom_data; // by custom data layer
 };
 
-// How an animated tile's cells start, as Godot's TileSetAtlasSource::TileAnimationMode: all on
-// the first frame together, or each at a random point in the animation, the same every run.
+// How an animated tile's cells start: all on the first frame together, or each at a random point in
+// the animation, the same every run.
 enum class TileAnimationMode : std::uint8_t { Default, RandomStartTimes };
 
 struct TileData {
@@ -217,9 +212,8 @@ struct TileData {
     std::array<int, 16> peering{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     // How often autotiling picks this tile over others that fit as well.
     double probability = 1.0;
-    // Where the cell's center is in the texture, in pixels from its middle, as Godot's
-    // TileData::texture_origin: the texture draws that much up and to the left. Collision
-    // polygons stay put.
+    // Where the cell's center is in the texture, in pixels from its middle: the texture draws that
+    // much up and to the left. Collision polygons stay put.
     Vec2i texture_origin;
     std::vector<TilePolygon> collision;
     std::vector<TileOccluder> occlusion;
@@ -227,12 +221,12 @@ struct TileData {
     // Values in the tile set's custom data layers, by layer; others have their type's default.
     std::map<int, json::Value> custom_data;
     std::map<int, AlternativeTile> alternatives; // by number, from 1
-    // The texture's cells the tile covers from its own, as Godot's size_in_atlas: its region is
-    // that many cells and the separations between them, drawn centered on one map cell.
+    // The texture's cells the tile covers from its own: its region is that many cells and the
+    // separations between them, drawn centered on one map cell.
     Vec2i size_in_atlas{1, 1};
-    // Its animation, as Godot's: each frame's duration in seconds, at animation_speed times
-    // speed. Frames follow the tile in the texture, animation_separation cells apart, wrapping
-    // after animation_columns of them (0: all in one row).
+    // Its animation: each frame's duration in seconds, at animation_speed times speed. Frames
+    // follow the tile in the texture, animation_separation cells apart, wrapping after
+    // animation_columns of them (0: all in one row).
     std::vector<double> animation_frames{1.0};
     int animation_columns = 0;
     Vec2i animation_separation;
@@ -240,7 +234,7 @@ struct TileData {
     TileAnimationMode animation_mode = TileAnimationMode::Default;
 };
 
-// A tile set's physics layer, as Godot's: what its tiles' polygons collide as, and with.
+// A tile set's physics layer: what its tiles' polygons collide as, and with.
 struct PhysicsLayer {
     std::uint32_t collision_layer = 1;
     std::uint32_t collision_mask = 1;
@@ -248,16 +242,16 @@ struct PhysicsLayer {
     float bounce = 0.0F;
 };
 
-// A tile set's occlusion layer, as Godot's: the lights its tiles' occluders cast shadows from
-// are those whose shadow_item_cull_mask shares a bit with light_mask, and GPU particles collide
-// with them with sdf_collision.
+// A tile set's occlusion layer: the lights its tiles' occluders cast shadows from are those whose
+// shadow_layers shares a bit with light_layers, and GPU particles collide with them with
+// sdf_collision.
 struct OcclusionLayer {
     std::uint32_t light_mask = 1;
     bool sdf_collision = false;
 };
 
-// A tile set's navigation layer, as Godot's: the navigation layers its tiles' regions are in, as
-// bits, which agents' and queries' navigation_layers pick.
+// A tile set's navigation layer: the navigation layers its tiles' regions are in, as bits, which
+// agents' and queries' navigation_layers pick.
 struct NavigationLayer {
     std::uint32_t layers = 1;
 };
@@ -268,8 +262,8 @@ struct AtlasSource {
     Vec2i margins;     // pixels before the first column and row
     Vec2i separation;  // pixels between columns and rows
     std::map<Vec2i, TileData, CellOrder> tiles;
-    // For 2D lights, as a Godot CanvasTexture's: a normal map and a specular map laid out as the
-    // texture ("" for none), and what the specular map's color and shininess are multiplied by.
+    // For 2D lights: a normal map and a specular map laid out as the texture ("" for none), and
+    // what the specular map's color and shininess are multiplied by.
     std::string normal_texture;
     std::string specular_texture;
     Vec4 specular_color{1.0F, 1.0F, 1.0F, 1.0F};
@@ -308,9 +302,8 @@ struct TileSet {
     [[nodiscard]] int terrain(std::string_view name) const;
     // A custom data layer's index, or -1.
     [[nodiscard]] int custom_data_layer(std::string_view name) const;
-    // A tile's value in a custom data layer, as Godot's TileData::get_custom_data: its own (or
-    // its alternative's), else the layer type's default; nullopt if the set has no such tile or
-    // layer.
+    // A tile's value in a custom data layer: its own (or its alternative's), else the layer type's
+    // default; nullopt if the set has no such tile or layer.
     [[nodiscard]] std::optional<json::Value> custom_data(const TileRef& tile,
                                                          std::string_view layer) const;
 };
@@ -318,25 +311,23 @@ struct TileSet {
 [[nodiscard]] std::string_view terrain_mode_name(TerrainMode mode);
 
 // What a direction is to a cell of a tile set's shape: one of its sides, one of its corners, or
-// neither, as Godot's is_valid_terrain_peering_bit.
+// neither.
 enum class PeeringKind : std::uint8_t { None, Side, Corner };
 [[nodiscard]] PeeringKind peering_kind(const TileSet& set, Neighbor direction);
 
-// The cell across a side, or across a corner where one cell is (squares and diamonds), as
-// Godot's TileSet::get_neighbor_cell; nullopt where there is none.
+// The cell across a side, or across a corner where one cell is (squares and diamonds), as The
+// neighbor cell in a direction; nullopt where there is none.
 [[nodiscard]] std::optional<Vec2i> neighbor_cell(const TileSet& set, Vec2i cell,
                                                  Neighbor direction);
 
-// Godot's CellNeighbor number (0 right side, 1 right corner, ... 15 top right corner) as a
-// direction of a cell of this shape and offset axis, or nullopt where the shape has no such side
-// or corner.
+// A neighbor number (0 right side, 1 right corner, ... 15 top right corner) as a direction of a
+// cell of this shape and offset axis, or nullopt where the shape has no such side or corner.
 [[nodiscard]] std::optional<Neighbor> godot_neighbor(TileShape shape, TileOffsetAxis axis, int bit);
 
-// Where a cell's center is, in pixels from the layer's origin, as Godot's
-// TileSet::map_to_local.
+// Where a cell's center is, in pixels from the layer's origin.
 [[nodiscard]] Vec2 map_to_local(const TileSet& set, Vec2i cell);
 
-// The cell a point is in, in pixels from the layer's origin, as Godot's TileSet::local_to_map.
+// The cell a point is in, in pixels from the layer's origin.
 [[nodiscard]] Vec2i local_to_map(const TileSet& set, Vec2 point);
 
 // JSON Schema for .tileset.json files.
@@ -358,9 +349,8 @@ enum class PeeringKind : std::uint8_t { None, Side, Corner };
 // then its alternative if not 0 and its turns if any.
 [[nodiscard]] std::string tile_text(const TileSet& set, const TileRef& tile);
 
-// How a tile draws in a cell, as Godot's TileMapLayer::compute_transformed_tile_dest_rect: its
-// alternative's flips with the cell's, its alternative's modulate, and the rect it takes, from
-// the cell's center, moved by its texture_origin and turned with the cell.
+// How a tile draws in a cell: its alternative's flips with the cell's, its alternative's tint, and
+// the rect it takes, from the cell's center, moved by its texture_origin and turned with the cell.
 struct TileLook {
     bool flip_h = false;
     bool flip_v = false;
@@ -371,44 +361,39 @@ struct TileLook {
 };
 [[nodiscard]] TileLook tile_look(const TileSet& set, const TileRef& tile);
 
-// A tile's collision polygons as a cell places them, in pixels from the cell's center: the
-// tile's or its alternative's, transposed then flipped as the cell turns it (Godot's
-// TileData::get_transformed_vertices).
+// A tile's collision polygons as a cell places them, in pixels from the cell's center: the tile's
+// or its alternative's, transposed then flipped as the cell turns it.
 [[nodiscard]] std::vector<TilePolygon> tile_collision(const TileSet& set, const TileRef& tile);
 
 // A tile's occluders as a cell places them, in pixels from the cell's center: the tile's or its
-// alternative's, turned as tile_collision turns polygons (Godot's
-// TileData::get_occluder_polygon). A turn that mirrors them reverses how their points wind, so
-// it swaps clockwise and counter_clockwise and the same sides cast shadows; Godot's turned copies
-// drop the cull mode and close open ones instead.
+// alternative's, turned as tile_collision turns polygons. A turn that mirrors them reverses how
+// their points wind, so it swaps clockwise and counter_clockwise and the same sides cast shadows.
 [[nodiscard]] std::vector<TileOccluder> tile_occluders(const TileSet& set, const TileRef& tile);
 
-// A tile's navigation outlines as a cell places them, in pixels from the cell's center: the
-// tile's or its alternative's, turned as tile_collision turns polygons, with the points of those a
-// turn mirrors reversed so they wind as written (Godot's TileData::get_navigation_polygon).
+// A tile's navigation outlines as a cell places them, in pixels from the cell's center: the tile's
+// or its alternative's, turned as tile_collision turns polygons, with the points of those a turn
+// mirrors reversed so they wind as written.
 [[nodiscard]] std::vector<TileNavigation> tile_navigation(const TileSet& set, const TileRef& tile);
 
-// The pixels a tile's frame takes in its atlas texture, as [x, y, width, height], as Godot's
-// TileSetAtlasSource::get_tile_texture_region.
+// The pixels a tile's frame takes in its atlas texture, as [x, y, width, height].
 [[nodiscard]] std::array<int, 4> tile_region(const AtlasSource& source, Vec2i atlas, int frame = 0);
 
-// The frame a tile shows time seconds into the game, as Godot's draw_tile picks it: offset, from
-// 0 to 1, is how far into its animation the cell starts.
+// The frame a tile shows time seconds into the game: offset, from 0 to 1, is how far into its
+// animation the cell starts.
 [[nodiscard]] int tile_frame(const TileData& tile, double time, double offset = 0.0);
 
-// Where in its animation a layer's cell starts when its tile's animation_mode is
-// RandomStartTimes, from 0 up to 1: a hash of the layer's ID and the cell, as Godot hashes the
-// cell's position and the layer's instance.
+// Where in its animation a layer's cell starts when its tile's animation_mode is RandomStartTimes,
+// from 0 up to 1: a hash of the layer's ID and the cell.
 [[nodiscard]] double tile_animation_offset(std::string_view layer, Vec2i cell);
 
 using Cells = std::map<Vec2i, TileRef, CellOrder>;
 
 // A layer's cells in the order they draw: by their centers' y, then x, so a tile taller than its
-// cell overlaps the cells behind it, as Godot draws a layer with y-sort enabled.
+// cell overlaps the cells behind it, as a layer with y-sort enabled draws them.
 [[nodiscard]] std::vector<const Cells::value_type*> draw_order(const TileSet& set,
                                                                const Cells& cells);
 
-// Where cells can be, as in Godot: columns and rows from -32768 to 32767.
+// Where cells can be: columns and rows from -32768 to 32767.
 inline constexpr int kMinCell = -32768;
 inline constexpr int kMaxCell = 32767;
 
@@ -432,12 +417,11 @@ inline constexpr std::string_view kKeyCharacters = world::kLegendKeyCharacters;
 // then three.
 void encode_cells(const Cells& cells, const TileSet& set, world::TileLayer2D& layer);
 
-// Paints a terrain on cells, then picks tiles for them and their neighbors so that edges
-// connect, as Godot's terrain painting does. Each cell gets the tile of its terrain whose
-// peering fits its neighbors best: first where its own terrain stops, then which terrain lies
-// beyond, with empty cells and terrains of other sets counting as none. Among equal fits the
-// cell's position picks, weighted by probability, so the same paint always gives the same
-// tiles. -1 erases the cells. Returns how many cells changed.
+// Paints a terrain on cells, then picks tiles for them and their neighbors so that edges connect.
+// Each cell gets the tile of its terrain whose peering fits its neighbors best: first where its own
+// terrain stops, then which terrain lies beyond, with empty cells and terrains of other sets
+// counting as none. Among equal fits the cell's position picks, weighted by probability, so the
+// same paint always gives the same tiles. -1 erases the cells. Returns how many cells changed.
 [[nodiscard]] Result<std::size_t> paint_terrain(Cells& cells, const TileSet& set,
                                                 std::span<const Vec2i> painted, int terrain);
 

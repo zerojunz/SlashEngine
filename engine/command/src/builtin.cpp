@@ -136,7 +136,7 @@ constexpr std::int64_t kDefaultLogLines = 50;
 constexpr double kDefaultTickSeconds = 1.0 / 60.0;
 constexpr std::string_view kDefaultSnapshot = "default";
 constexpr std::int64_t kDefaultEventLimit = 100;
-// Light masks have 20 bits, and z indexes run from -4096 to 4096, as Godot's.
+// Light masks have 20 bits, and z indexes run from -4096 to 4096.
 constexpr std::int64_t kMaxLightMask = (std::int64_t{1} << 20) - 1;
 constexpr std::int64_t kMinZIndex = -4096;
 constexpr std::int64_t kMaxZIndex = 4096;
@@ -767,8 +767,8 @@ Reply entity_destroy(Session& session, const json::Value& params) {
         return unknown_entity(world, id, "/id");
     }
     auto& ecs = world.ecs();
-    // As Godot frees a node's children with it: the entities in its Transform2D, Widget and
-    // ScreenLayer children go too, and theirs, and those its instanced scene brought.
+    // An entity's children go with it: the entities in its Transform2D, Widget and ScreenLayer
+    // children go too, and theirs, and those its instanced scene brought.
     std::vector<entt::entity> doomed{entity};
     std::unordered_set<entt::entity> seen{entity};
     const std::vector<std::string_view> ids = world.ids();
@@ -1194,8 +1194,8 @@ Reply animation_eval(Session& session, const json::Value& params) {
         }
         times.push_back(time);
     }
-    // A track's name in the result: its path, after its target's name and ':' if it has one,
-    // as a Godot track's "Node:property".
+    // A track's name in the result: its path, after its target's name and ':' if it has one, as in
+    // "Entity:property".
     const auto track_name = [](const animation::Track& track) {
         return track.target.empty() ? track.path : track.target + ":" + track.path;
     };
@@ -1813,8 +1813,7 @@ Reply tilemap_get(Session& session, const json::Value& params) {
             return param_error(code::kInvalidParams, "/rect",
                                "give cells, for their tiles and custom data, or rect, for rows");
         }
-        // Each cell's tile and its value in every custom data layer, as Godot's
-        // get_cell_tile_data(cell).get_custom_data(name).
+        // Each cell's tile and its value in every custom data layer.
         const canvas::TileSet& set = *target.set;
         json::Array out;
         for (const json::Value& cell : asked->as_array()) {
@@ -1898,8 +1897,8 @@ Reply tilemap_get(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// Cells to the points at their centers, or points to the cells they are in, as Godot's
-// TileLayer2D map_to_local and local_to_map, through the layer's transform.
+// Cells to the points at their centers, or points to the cells they are in, through the layer's
+// transform.
 Reply tilemap_convert(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     LayerTarget target;
@@ -2208,7 +2207,7 @@ Reply physics_contacts(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// physics.soft_body: where a soft body's mesh is, as Godot's SoftBody3D::get_point_transform.
+// physics.soft_body: where a soft body's mesh is.
 Reply streaming_state(Session& session, const json::Value& /*params*/) {
     const world::World& world = session.world();
     json::Array cells;
@@ -3514,8 +3513,7 @@ Reply skeleton_get(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// What a CSG root makes, as Godot's root shape's mesh: its size, its surfaces by material and
-// what couldn't be made.
+// What a solid root shape makes: its size, its surfaces by material and what couldn't be made.
 Reply solid_get(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -3562,8 +3560,8 @@ Reply solid_get(Session& session, const json::Value& params) {
                   6.0;
     }
     result["volume"] = rounded(json::Value(volume));
-    // Each surface's material: the Surface3D fields that differ from the defaults, a
-    // SolidMesh3D model's material, or none for Godot's default material.
+    // Each surface's material: the Surface3D fields that differ from the defaults, a SolidMesh3D
+    // model's material, or none for the default material.
     const json::Value defaults = world::to_json(world, world::Surface3D{});
     result["surfaces"] = json::Array{};
     for (const scene3d::MeshSurface& surface : mesh->surfaces) {
@@ -3599,8 +3597,8 @@ Reply solid_get(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
-// A Spline2D's or Spline3D's curve, baked as Godot bakes it: its length, the points at offsets
-// along it with the way it goes there, and the point of it nearest to another.
+// A Spline2D's or Spline3D's curve, baked: its length, the points at offsets along it with the way
+// it goes there, and the point of it nearest to another.
 Reply path_get(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -3779,7 +3777,7 @@ std::optional<Reply> target_grid_cells(const json::Value& params, std::vector<Ve
     return std::nullopt;
 }
 
-// Sets cells to one item, as Godot's GridMap::set_cell_item, or erases them.
+// Sets cells to one item, or erases them.
 Reply blockmap_set(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     GridTarget target;
@@ -3833,8 +3831,7 @@ Reply blockmap_set(Session& session, const json::Value& params) {
 }
 
 // A BlockMap3D's cells as its legend and floors, with its library's items and the problems making
-// them; or given cells' items and centers, as Godot's get_cell_item and map_to_local; or the
-// cells points are in, as local_to_map.
+// them; or given cells' items and centers; or the cells points are in.
 Reply blockmap_get(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
     GridTarget target;
@@ -4559,8 +4556,8 @@ json::Value decibels(double db) {
     return short_number(std::round(db * 10.0) / 10.0);
 }
 
-// A level in dB, or null for silence: Godot's floor of -200 dB, give or take the tiny offset
-// it adds to a peak.
+// A level in dB, or null for silence: a floor of -200 dB, give or take the tiny offset added to a
+// peak.
 json::Value level(float db) {
     constexpr float kSilent = -199.0F;
     return db > kSilent ? decibels(db) : json::Value(nullptr);
@@ -5665,8 +5662,8 @@ Reply frame_capture(Session& session, const json::Value& params) {
 
 // ---- Canvases ----
 
-// Points turned from the screen into a canvas's pixels or back, as Godot's
-// get_canvas_transform: the world's through the current camera, or the canvas an entity draws in.
+// Points turned from the screen into a canvas's pixels or back: the world's through the current
+// camera, or the canvas an entity draws in.
 Reply canvas_convert(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     entt::entity in = entt::null;

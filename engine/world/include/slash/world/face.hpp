@@ -1,10 +1,10 @@
 #pragma once
 
-// Faces as recipes, after Unreal's MetaHuman Creator (Godot has none): a .face.json file, or a
-// character recipe's "face", says a face by named sculpt controls (each -1 to 1, 0 for an
-// average adult's), carves at its landmarks, blends of other faces and a style, and sculpt_head
-// shapes a head from it that 3D models (slash/scene3d/character.hpp) and 2D cut-outs
-// (character_cutout's side-on profile, face_profile) both draw.
+// Faces as recipes, after Unreal's MetaHuman Creator: a .face.json file, or a character recipe's
+// "face", says a face by named sculpt controls (each -1 to 1, 0 for an average adult's), carves at
+// its landmarks, blends of other faces and a style, and sculpt_head shapes a head from it that 3D
+// models (slash/scene3d/character.hpp) and 2D cut-outs (character_cutout's side-on profile,
+// face_profile) both draw.
 
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"

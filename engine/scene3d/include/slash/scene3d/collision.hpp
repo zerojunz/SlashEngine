@@ -15,33 +15,33 @@
 #include <string_view>
 #include <vector>
 
-// The shapes a model collides as (Model::collision), as Godot's importer makes them: from its
+// The shapes a model collides as (Model::collision): from its
 // nodes' collision hints (apply_import_hints), or generated as its "Generate > Physics" options
 // do, with V-HACD for convex decomposition. A Model3D whose model has them is a static
-// body, as the StaticBody3D Godot's importer adds, or adds them to the body it is on.
+// body, or adds them to the body it is on.
 namespace slash::scene3d {
 
 // The convex hull of points, with at most max_points corners (0 for any number), as V-HACD's
-// QuickHull makes it, its faces in Godot's winding; no points for points that span no volume.
+// QuickHull makes it; no points for points that span no volume.
 [[nodiscard]] ModelCollision convex_hull(std::span<const Vec3> points, std::size_t max_points = 0);
 
-// How convex_decompose splits a mesh, Godot's MeshConvexDecompositionSettings as V-HACD 4 takes
+// How convex_decompose splits a mesh, as V-HACD 4 takes
 // them: at most max_hulls hulls of at most max_points corners each, the mesh voxelized into about
-// resolution voxels (Godot's default).
+// resolution voxels.
 struct DecomposeOptions {
     std::size_t max_hulls = 16;
     std::size_t max_points = 32;
     std::uint32_t resolution = 10000;
 };
 
-// A mesh (indices three corners each over points) split into convex hulls, as Godot's
-// Mesh::convex_decompose does with V-HACD; the same hulls on every platform. None for a mesh
+// A mesh (indices three corners each over points) split into convex hulls
+// with V-HACD; the same hulls on every platform. None for a mesh
 // with no volume.
 [[nodiscard]] std::vector<ModelCollision> convex_decompose(std::span<const Vec3> points,
                                                            std::span<const std::uint32_t> indices,
                                                            const DecomposeOptions& options = {});
 
-// The shapes a model's whole mesh makes, as Godot's mesh import "Generate > Physics" shape
+// The shapes a model's whole mesh makes, by the mesh import "Generate > Physics" shape
 // types: "trimesh" its triangles, "convex" their convex hull (of at most options.max_points
 // corners) and "decompose" convex_decompose's hulls. They replace the model's collision.
 [[nodiscard]] Result<std::size_t> generate_collision(Model& model, std::string_view kind,

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "model_internal.hpp"
 
 #include "slash/core/text.hpp"
@@ -17,9 +18,7 @@
 #include <utility>
 #include <vector>
 
-// FBX models, binary and ASCII, read with ufbx as Godot's FBX importer reads them
-// (modules/fbx/fbx_document.cpp: _parse, _parse_nodes, _parse_skins, _parse_meshes,
-// _parse_images, _parse_materials, _parse_animations and _import_animation): in meters with y up,
+// FBX models, binary and ASCII, read with ufbx: in meters with y up,
 // the file's tree as the model's nodes, each node with a mesh a part where the tree puts it, each
 // of a mesh's materials a surface, skin deformers as skins and animation stacks as animations.
 // Blend shapes, cameras and lights are left out, as they are of glTF models.
@@ -36,16 +35,16 @@ struct BakedDeleter {
 };
 using BakedPtr = std::unique_ptr<ufbx_baked_anim, BakedDeleter>;
 
-// The rate Godot's importer bakes FBX animations at, its default animation/fps.
+// The rate FBX animations are baked at: the default animation/fps.
 constexpr double kBakeRate = 30.0;
 
-// The folders Godot's _get_texture_path looks in for a texture, in each folder from the model's
+// The folders a texture is looked for in, in each folder from the model's
 // up to the project's.
 constexpr std::array<std::string_view, 11> kTextureFolders{
     "",           "textures/", "Textures/", "images/", "Images/", "materials/",
     "Materials/", "maps/",     "Maps/",     "tex/",    "Tex/"};
 
-// How many warnings of one kind are reported, as Godot prints them.
+// How many warnings of one kind are reported.
 constexpr int kWarningsPerKind = 10;
 
 std::string text_of(ufbx_string s) {
@@ -60,8 +59,8 @@ Vec4 srgb(Vec4 c) {
     return {linear_to_srgb(c.x), linear_to_srgb(c.y), linear_to_srgb(c.z), c.w};
 }
 
-// Godot's _material_color: a map's value as a color. A four-part value takes its alpha from its
-// third part, as Godot's does.
+// A map's value as a color. A four-part value takes its alpha from its
+// third part.
 Vec4 material_color(const ufbx_material_map& map) {
     if (map.value_components == 1) {
         const auto r = static_cast<float>(map.value_real);
@@ -85,7 +84,7 @@ Vec4 material_color(const ufbx_material_map& map, const ufbx_material_map& facto
     return color;
 }
 
-// Godot's _get_file_texture: the first file a texture samples, or null.
+// The first file a texture samples, or null.
 const ufbx_texture* file_texture(const ufbx_texture* texture) {
     if (texture == nullptr) {
         return nullptr;
@@ -98,7 +97,7 @@ const ufbx_texture* file_texture(const ufbx_texture* texture) {
     return nullptr;
 }
 
-// Godot's Image::detect_alpha, on an image's pixels.
+// Alpha detection on an image's pixels.
 enum class AlphaMode : std::uint8_t { None, Bit, Blend };
 
 AlphaMode detect_alpha(const render::Image& image) {
@@ -124,7 +123,7 @@ world::Affine3D affine_of(const ufbx_matrix& m) {
             .origin = vec3_of(m.cols[3])};
 }
 
-// Godot's _parse_meshes: a vertex's first weights in its skin, the largest as ufbx sorts them,
+// A vertex's first weights in its skin, the largest as ufbx sorts them,
 // scaled to add up to one.
 VertexWeights weights_of(const ufbx_skin_deformer& skin, std::uint32_t vertex,
                          std::uint32_t places) {
@@ -154,14 +153,14 @@ std::array<float, 4> value_of(ufbx_vec3 v) {
 }
 
 std::array<float, 4> value_of(ufbx_quat q) {
-    // Normalized, as Godot's importer compares them.
+    // Normalized for comparison.
     const double length = std::sqrt((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w));
     const double scale = length > 0.0 ? 1.0 / length : 0.0;
     return {static_cast<float>(q.x * scale), static_cast<float>(q.y * scale),
             static_cast<float>(q.z * scale), static_cast<float>(q.w * scale)};
 }
 
-// Godot's Math::is_equal_approx, for each part.
+// Approximate equality, for each part.
 bool equal_approx(const std::array<float, 4>& a, const std::array<float, 4>& b) {
     for (std::size_t i = 0; i < 4; ++i) {
         const float tolerance = std::max(0.00001F * std::abs(a.at(i)), 0.00001F);
@@ -210,7 +209,7 @@ private:
 };
 
 Result<Model> FbxReader::run(std::string_view bytes) {
-    // Godot's _parse, with its importer's default of no helper nodes. Formats are not guessed
+    // Parses with the default of no helper nodes. Formats are not guessed
     // from the bytes, so a file named .fbx reads as FBX or not at all.
     ufbx_load_opts options{};
     options.target_axes = ufbx_axes_right_handed_y_up;
@@ -239,7 +238,7 @@ Result<Model> FbxReader::run(std::string_view bytes) {
     for (std::size_t i = 0; i < scene_->materials.count; ++i) {
         model_.materials.push_back(material(*scene_->materials.data[i], i));
     }
-    // Godot's scene starts at the root's children, whose transforms carry the axis conversion.
+    // The scene starts at the root's children, whose transforms carry the axis conversion.
     nodes_.assign(scene_->nodes.count, -1);
     for (const ufbx_node* child : scene_->root_node->children) {
         add_nodes(*child, -1, child->node_to_parent);
@@ -286,8 +285,8 @@ void FbxReader::warnings() {
     }
 }
 
-// Godot's _parse_images: each texture file the model names, decoded if the model carries it,
-// else found as _get_texture_path finds it. One that can't be drawn is left out of the
+// Each texture file the model names, decoded if the model carries it,
+// else found by its file name. One that can't be drawn is left out of the
 // materials that sample it.
 void FbxReader::images() {
     for (const ufbx_texture_file& file : scene_->texture_files) {
@@ -297,7 +296,7 @@ void FbxReader::images() {
             named = text_of(file.absolute_filename);
         }
         std::ranges::replace(named, '\\', '/');
-        // Godot keeps only the name of an absolute path, which another machine won't have.
+        // Only the name of an absolute path is kept, as another machine won't have the path.
         if (named.starts_with('/') || named.find(":/") != std::string::npos) {
             named = named.substr(named.rfind('/') + 1);
         }
@@ -339,7 +338,7 @@ void FbxReader::images() {
     }
 }
 
-// Godot's _get_texture_path: the file as named, relative to the model, or else one of its name
+// The file as named, relative to the model, or else one of its name
 // in the model's folder or a texture folder in it, then in each folder above it up to the
 // project's; "" if there's none.
 std::string FbxReader::find_texture(const std::string& named) {
@@ -390,7 +389,7 @@ AlphaMode FbxReader::alpha_of(int image) {
     return mode;
 }
 
-// Godot's _parse_materials. A separate transparency texture, which Godot multiplies into the
+// A separate transparency texture, which would multiply into the
 // albedo texture's alpha, and ambient occlusion are left out.
 ModelMaterial FbxReader::material(const ufbx_material& in, std::size_t index) {
     ModelMaterial out;
@@ -415,8 +414,8 @@ ModelMaterial FbxReader::material(const ufbx_material& in, std::size_t index) {
                 standard.transparency = "alpha_scissor";
             }
         }
-        // The texture's own colors, times the base factor, as Godot finds combined colors and
-        // textures unreliable in FBX files; the factor scales alpha too.
+        // The texture's own colors, times the base factor, as combined colors and
+        // textures are unreliable in FBX files; the factor scales alpha too.
         const float factor =
             pbr.base_factor.has_value ? static_cast<float>(pbr.base_factor.value_real) : 1.0F;
         standard.albedo_color = srgb({factor, factor, factor, factor});
@@ -459,7 +458,7 @@ ModelMaterial FbxReader::material(const ufbx_material& in, std::size_t index) {
     return out;
 }
 
-// Godot's _parse_meshes: each of a mesh's materials a surface of its triangles; points and lines
+// Each of a mesh's materials a surface of its triangles; points and lines
 // are left out, as they don't draw.
 Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
     ModelMesh out;
@@ -471,7 +470,7 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
     if (out.name.empty()) {
         out.name = "mesh";
     }
-    // Godot's importer skins a mesh with the first of its skin deformers it keeps, with four
+    // A mesh is skinned with the first of its skin deformers it keeps, with four
     // weights a vertex, or eight when a vertex of the skin has more than four.
     const ufbx_skin_deformer* skin = nullptr;
     for (const ufbx_skin_deformer* deformer : in.skin_deformers) {
@@ -515,7 +514,7 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
                 if (in.vertex_tangent.exists) {
                     const Vec3 t = vec3_of(in.vertex_tangent[corner]);
                     float sign = 1.0F;
-                    // Godot's bitangent sign: whether the file's bitangent faces the normal
+                    // The bitangent sign: whether the file's bitangent faces the normal
                     // crossed with the tangent.
                     if (in.vertex_bitangent.exists) {
                         const Vec3 b = vec3_of(in.vertex_bitangent[corner]);
@@ -546,8 +545,8 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
                 }
             }
         }
-        // Equal corners merged, as Godot's SurfaceTool::index, with MikkTSpace's tangents where
-        // the file has none, or with no texture coordinates either Godot's stand-in ones.
+        // Equal corners merged, with MikkTSpace's tangents where
+        // the file has none, or with no texture coordinates either, stand-in ones.
         if (in.vertex_tangent.exists) {
             reindex(triangles);
         } else if (in.vertex_uv.exists) {
@@ -563,7 +562,7 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
                                   " vertices; at most " + std::to_string(render::kMaxMeshVertices) +
                                   " draw");
         }
-        // Godot's importer reverses each triangle, for its clockwise front faces.
+        // Each triangle is reversed, for clockwise front faces.
         for (std::size_t i = 0; i + 2 < triangles.indices.size(); i += 3) {
             std::swap(triangles.indices[i + 1], triangles.indices[i + 2]);
         }
@@ -574,7 +573,7 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
         if (part.index < in.materials.count && in.materials.data[part.index] != nullptr) {
             surface.material = static_cast<int>(in.materials.data[part.index]->typed_id);
         } else if (in.vertex_color.exists) {
-            // Godot gives a surface with corner colors and no material one that shows them.
+            // A surface with corner colors and no material gets one that shows them.
             if (!colored_default_) {
                 ModelMaterial colored;
                 colored.name = "vertex_colors";
@@ -589,8 +588,8 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
     return out;
 }
 
-// A node and those under it, in tree order, as Godot's _parse_nodes and _assign_node_names make
-// them, and the parts among them, each where the nodes above it put it.
+// A node and those under it, in tree order, and the parts among them, each where the nodes
+// above it put it.
 void FbxReader::add_nodes(const ufbx_node& node, int parent, const ufbx_matrix& to_model) {
     const auto index = static_cast<int>(model_.nodes.size());
     std::string name = text_of(node.name);
@@ -622,7 +621,7 @@ void FbxReader::add_nodes(const ufbx_node& node, int parent, const ufbx_matrix& 
     }
 }
 
-// Godot's _parse_skins: each skin deformer with bones and weights a skin, its clusters' bones its
+// Each skin deformer with bones and weights a skin, its clusters' bones its
 // joints and their geometry-to-bone matrices its inverse binds.
 void FbxReader::skins() {
     skins_.assign(scene_->skin_deformers.count, -1);
@@ -655,7 +654,7 @@ void FbxReader::skins() {
     }
 }
 
-// Godot's _parse_animations and _import_animation: each animation stack baked into linear keys
+// Each animation stack baked into linear keys
 // at 30 a second, a track for each part of a node it moves, as long as the stack. Tracks that
 // only hold the node where it is, and tracks on a skinned mesh's own node, which doesn't move it,
 // are left out.
@@ -723,7 +722,7 @@ void FbxReader::animations() {
                 {static_cast<float>(node.scale.x), static_cast<float>(node.scale.y),
                  static_cast<float>(node.scale.z), 0.0F});
         }
-        // Godot's shortest animation length.
+        // The shortest animation length.
         out.length = std::max(stack->time_end, 0.001);
         model_.animations.push_back(std::move(out));
     }

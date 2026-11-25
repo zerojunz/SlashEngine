@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "space.hpp"
 
 #include <Jolt/Physics/Body/BodyInterface.h>
@@ -19,9 +20,8 @@
 #include <utility>
 #include <vector>
 
-// 3D joints as Godot's Joint3D nodes make them and its Jolt module builds them
-// (modules/jolt_physics/joints): each joint component becomes a Jolt constraint between the
-// bodies it names, in frames taken from the entity's transform when it is made.
+// 3D joints: each joint component becomes a Jolt constraint between the bodies it names, in
+// frames taken from the entity's transform when it is made.
 namespace slash::physics3d::detail {
 
 namespace {
@@ -57,7 +57,7 @@ bool excludes(const JointKey& key) {
     return std::visit([](const auto& joint) { return joint.exclude_nodes_from_collision; }, key);
 }
 
-// A joint's frames for Jolt, as Godot's JoltJoint3D::_shift_reference_frames gives them: each
+// A joint's frames for Jolt: each
 // in its body's unscaled space from its center of mass (in the world's for no body), the first
 // moved back along its axes by linear_shift and turned about its z axis by z_turn.
 struct Frames {
@@ -92,7 +92,7 @@ JPH::Ref<JPH::Constraint> create(const Settings& settings, JPH::Body& a, JPH::Bo
     return settings.Create(a, b != nullptr ? *b : JPH::Body::sFixedToWorld);
 }
 
-// Godot's JoltHingeJoint3D::_build_fixed and the sliders': the two frames held together.
+// The hinge's and the sliders' fixed joint: the two frames held together.
 JPH::Ref<JPH::Constraint> build_fixed(const Frames& frames, JPH::Body& a, JPH::Body* b) {
     JPH::FixedConstraintSettings settings;
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
@@ -106,7 +106,6 @@ JPH::Ref<JPH::Constraint> build_fixed(const Frames& frames, JPH::Body& a, JPH::B
     return create(settings, a, b);
 }
 
-// Godot's JoltPinJoint3D::rebuild.
 JPH::Ref<JPH::Constraint> build_pin(const Frames& frames, JPH::Body& a, JPH::Body* b) {
     JPH::PointConstraintSettings settings;
     settings.mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
@@ -115,7 +114,7 @@ JPH::Ref<JPH::Constraint> build_pin(const Frames& frames, JPH::Body& a, JPH::Bod
     return create(settings, a, b);
 }
 
-// Godot's JoltHingeJoint3D::rebuild: limits centered on their midpoint, by turning the first
+// Limits centered on their midpoint, by turning the first
 // frame there, and a fixed joint for limits that meet.
 JPH::Ref<JPH::Constraint> build_hinge(const Joint& joint, const HingeJoint3D& hinge, Vec3 scale_a,
                                       Vec3 scale_b, JPH::Body& a, JPH::Body* b) {
@@ -146,12 +145,12 @@ JPH::Ref<JPH::Constraint> build_hinge(const Joint& joint, const HingeJoint3D& hi
     auto* constraint = static_cast<JPH::HingeConstraint*>(made.GetPtr());
     constraint->SetMotorState(hinge.motor_enabled ? JPH::EMotorState::Velocity
                                                   : JPH::EMotorState::Off);
-    // Jolt turns counterclockwise where Godot turns clockwise.
+    // Jolt turns counterclockwise where SlashEngine turns clockwise.
     constraint->SetTargetAngularVelocity(-hinge.motor_target_velocity);
     return made;
 }
 
-// Godot's JoltSliderJoint3D::rebuild: limits centered as a hinge's, by moving the first frame.
+// Limits centered as a hinge's, by moving the first frame.
 JPH::Ref<JPH::Constraint> build_slider(const Joint& joint, const SlideJoint3D& slider, Vec3 scale_a,
                                        Vec3 scale_b, JPH::Body& a, JPH::Body* b) {
     float ref_shift = 0.0F;
@@ -179,7 +178,7 @@ JPH::Ref<JPH::Constraint> build_slider(const Joint& joint, const SlideJoint3D& s
     return create(settings, a, b);
 }
 
-// Godot's JoltConeTwistJoint3D::_build_swing_twist: spans out of range leave the joint free.
+// Spans out of range leave the joint free.
 JPH::Ref<JPH::Constraint> build_cone_twist(const Frames& frames, const ConeJoint3D& cone,
                                            JPH::Body& a, JPH::Body* b) {
     JPH::SwingTwistConstraintSettings settings;
@@ -207,7 +206,7 @@ JPH::Ref<JPH::Constraint> build_cone_twist(const Frames& frames, const ConeJoint
     return create(settings, a, b);
 }
 
-// Godot's JoltGeneric6DOFJoint3D::rebuild with its motors and springs.
+// The six degrees of freedom joint, with its motors and springs.
 JPH::Ref<JPH::Constraint> build_6dof(const Frames& frames, const SixAxisJoint3D& joint,
                                      JPH::Body& a, JPH::Body* b) {
     using Axis = JPH::SixDOFConstraintSettings::EAxis;
@@ -228,7 +227,7 @@ JPH::Ref<JPH::Constraint> build_6dof(const Frames& frames, const SixAxisJoint3D&
     for (int i = 0; i < 3; ++i) {
         const auto axis = static_cast<Axis>(Axis::RotationX + i);
         const Joint3DAngularAxis& about = *angular.at(static_cast<std::size_t>(i));
-        // Jolt turns counterclockwise where Godot turns clockwise.
+        // Jolt turns counterclockwise where SlashEngine turns clockwise.
         const float lower = -about.limit_upper;
         const float upper = -about.limit_lower;
         if (!about.limit_enabled || lower > upper) {
@@ -287,7 +286,7 @@ JPH::Ref<JPH::Constraint> build_6dof(const Frames& frames, const SixAxisJoint3D&
     constraint->SetTargetPositionCS(JPH::Vec3(joint.linear_x.spring_equilibrium_point,
                                               joint.linear_y.spring_equilibrium_point,
                                               joint.linear_z.spring_equilibrium_point));
-    // Godot's Basis::from_euler in ZYX order, of the negated angles.
+    // The basis from Euler angles in ZYX order, of the negated angles.
     constraint->SetTargetOrientationCS(
         JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), -joint.angular_z.spring_equilibrium_point) *
         JPH::Quat::sRotation(JPH::Vec3::sAxisY(), -joint.angular_y.spring_equilibrium_point) *
@@ -314,8 +313,8 @@ JPH::Ref<JPH::Constraint> build(const Joint& joint, Vec3 scale_a, Vec3 scale_b, 
     return build_pin(frames, a, b);
 }
 
-// A physical bone's joint as the joint component that builds the same constraint, as Godot's
-// PhysicalBone3D::_reload_joint passes its parameters to the physics server; nothing for "none".
+// A physical bone's joint as the joint component that builds the same constraint; nothing for
+// "none".
 std::optional<JointKey> joint_key_of(const SimulatedBone3D& bone) {
     if (bone.joint_type == "pin") {
         return PinJoint3D{.exclude_nodes_from_collision = false};
@@ -441,7 +440,7 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
         const Transform3D own = own_transform != nullptr ? *own_transform : Transform3D{};
         const entt::entity node_a = node_a_of(key);
         const entt::entity node_b = node_b_of(key);
-        // Godot's Joint3D::_update_joint: both named nodes must be bodies, at least one named,
+        // Both named nodes must be bodies, at least one named,
         // and not the same; with only node_b, it is the first body and the world the second.
         const Body* a = body_for(node_a);
         const Body* b = body_for(node_b);
@@ -470,9 +469,9 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
             existing = &joints_.emplace(entity, Joint{});
         }
         Joint& joint = *existing;
-        // Godot's Joint3D subclasses' _configure_joint: the joint's frame in each body's space
+        // The joint's frame in each body's space
         // when it is made, or when it moves or names other bodies. Other changes rebuild it in
-        // the frames it was made in, as Godot's rebuild.
+        // the frames it was made in.
         const bool remake =
             !same_place(joint.own, own) || joint.node_a != node_a || joint.node_b != node_b ||
             joint.body_a != a->entity || joint.body_b != (b != nullptr ? b->entity : entt::null) ||
@@ -512,7 +511,6 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
             build(joint, a->shape_key.scale,
                   b != nullptr ? b->shape_key.scale : Vec3{1.0F, 1.0F, 1.0F}, *jolt_a, jolt_b);
         system_->AddConstraint(joint.constraint);
-        // Godot's _wake_up_bodies.
         interface.ActivateBody(a->id);
         if (b != nullptr) {
             interface.ActivateBody(b->id);
@@ -547,7 +545,7 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
 
     sync_bone_joints(world, tree);
 
-    // Godot's joint_disable_collisions_between_bodies, as collision exceptions, and the bodies
+    // Joints disable collisions between bodies, as collision exceptions, and the bodies
     // physical bones' simulators keep them from. Bodies whose exceptions change forget their
     // cached contacts, so the change holds from the next step.
     std::set<std::pair<entt::entity, entt::entity>> exceptions;
@@ -557,7 +555,7 @@ void Space::sync_joints(world::World& world, const world::Tree3D& tree) {
         }
     }
     // A Ragdoll3D's bone doesn't collide with the body its joint holds it to, as Unreal's
-    // physics assets' constraints disable collision; Godot's PhysicalBone3D joints don't.
+    // physics assets' constraints disable collision.
     for (const auto& [entity, bone] : bone_joints_) {
         if (bone.joint.constraint != nullptr && bone.joint.body_a != entt::null &&
             tree.parent(entity) != entt::null &&
@@ -636,8 +634,8 @@ void Space::sync_bone_joints(world::World& world, const world::Tree3D& tree) {
         const bool remake = joint.id_a.IsInvalid() || !same_frames(existing->made, component) ||
                             joint.body_a != a->entity || joint.id_a != a->id || joint.id_b != b->id;
         if (remake) {
-            // Godot's _reload_joint: the joint at the bone's origin in the body, turned by
-            // joint_rotation (the joint offset, whose origin _fix_joint_offset puts there), and
+            // The joint at the bone's origin in the body, turned by
+            // joint_rotation (the joint offset, whose origin is put there), and
             // the same place in the parent bone's body.
             world::Transform3D offset;
             offset.position = component.body_offset_position;
@@ -679,8 +677,8 @@ void Space::sync_bone_joints(world::World& world, const world::Tree3D& tree) {
 }
 
 void Space::pre_step_joints(float seconds) {
-    // Godot gives a hinge motor's push as an impulse per tick; Jolt takes a torque, so it is
-    // the impulse over the tick's length, as Godot's JoltHingeJoint3D estimates it.
+    // A hinge motor's push is an impulse per tick; Jolt takes a torque, so it is
+    // the impulse over the tick's length.
     for (auto& [entity, joint] : joints_) {
         const auto* hinge = std::get_if<HingeJoint3D>(&joint.key);
         if (hinge == nullptr || joint.constraint == nullptr ||

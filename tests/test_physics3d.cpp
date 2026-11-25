@@ -107,8 +107,8 @@ struct Physics {
         return entity;
     }
 
-    // A capsule character 1.8 meters tall whose velocity gains gravity off the floor, as
-    // Godot's template script does.
+    // A capsule character 1.8 meters tall whose velocity gains gravity off the floor, as a
+    // template script does.
     entt::entity hero(std::string_view id, Vec3 position) {
         const entt::entity entity = add(id, position);
         world.ecs().emplace<world::CharacterMover3D>(entity);
@@ -179,7 +179,7 @@ TEST_CASE("a rigid body falls and comes to rest on a static floor") {
 }
 
 TEST_CASE("bodies ten thousand kilometers out move as near the origin, in double builds") {
-    // Godot's double-precision builds keep Jolt's positions in doubles too (JPH_DOUBLE_PRECISION),
+    // Double-precision builds keep Jolt's positions in doubles too (JPH_DOUBLE_PRECISION),
     // so a crate lands on a floor far out as it does at home. In single builds there are no
     // places that far worth having, so far is the origin.
     constexpr bool kDouble = std::is_same_v<slash::real_t, double>;
@@ -235,7 +235,7 @@ TEST_CASE("physics settings set gravity and damping") {
     CHECK(parsed.areas_detect_static_bodies);
 }
 
-TEST_CASE("physics_3d takes every one of Godot's Jolt settings") {
+TEST_CASE("physics_3d takes every one of the Jolt settings") {
     const json::Value every = json::parse(R"({
         "velocity_steps": 20, "position_steps": 4, "baumgarte_stabilization_factor": 0.3,
         "speculative_contact_distance": 0.05, "penetration_slop": 0.01,
@@ -347,7 +347,7 @@ TEST_CASE("an area reports bodies and areas entering and leaving") {
     physics.step();
     CHECK(physics.event_list() == Ids{R"(area_exited zone {"area":"sensor"})"});
 
-    // Static bodies are left out, as Godot's Jolt module leaves them out by default.
+    // Static bodies are left out by default.
     physics.events.clear();
     physics.block("wall", {-0.2F, -3.2F, -0.2F}, {0.2F, -2.8F, 0.2F});
     physics.step();
@@ -461,14 +461,14 @@ TEST_CASE("a character rides a moving platform and keeps its velocity when it le
     CHECK(physics.position("hero").x == doctest::Approx(start.x + 1.5F).epsilon(0.02));
     CHECK(hero.platform_velocity.x == doctest::Approx(3.0F).epsilon(0.01));
 
-    // Jumping off keeps the lift's velocity, as Godot's platform_on_leave add_velocity.
+    // Jumping off keeps the lift's velocity.
     physics.get<world::CharacterMover3D>("hero").velocity = {0.0F, 5.0F, 0.0F};
     physics.step(1, [&] { physics.get<world::Transform3D>("lift").position.x += 0.05F; });
     CHECK_FALSE(hero.on_floor);
     CHECK(hero.velocity.x == doctest::Approx(3.0F).epsilon(0.01));
 }
 
-TEST_CASE("a character stops at a rigid body, as Godot's, until an impulse pushes it") {
+TEST_CASE("a character stops at a rigid body, until an impulse pushes it") {
     Physics physics;
     physics.floor();
     physics.crate("crate", {1.5F, 0.5F, 0.0F});
@@ -483,7 +483,7 @@ TEST_CASE("a character stops at a rigid body, as Godot's, until an impulse pushe
     CHECK(physics.ids(physics3d::contacts(physics.world, physics.world.find("hero")).bodies) ==
           Ids{"crate", "floor"});
 
-    // Gameplay code pushes what the character walks into, as Godot's scripts do.
+    // Gameplay code pushes what the character walks into.
     physics3d::apply_impulse(physics.world, physics.world.find("crate"), {3.0F, 0.0F, 0.0F});
     physics.step(30, walk);
     CHECK(physics.position("crate").x > 1.8F);
@@ -687,7 +687,7 @@ TEST_CASE("the same scene simulates the same every time") {
     CHECK(run() == run());
 }
 
-TEST_CASE("a body takes the shapes of child entities with no body of their own, as Godot's") {
+TEST_CASE("a body takes the shapes of child entities with no body of their own") {
     Physics physics;
     physics.floor();
     // A dumbbell: a body with two sphere children a meter either side.
@@ -1002,7 +1002,7 @@ TEST_CASE("a joint is made again when its transform or bodies change, and goes w
 
 namespace {
 
-// A car on a floor 400 meters across: a 40 kilogram body, as Godot's VehicleBody3D, with four
+// A car on a floor 400 meters across: a 40 kilogram body, with four
 // wheels, the rear ones driven and the front ones steering.
 struct Car {
     Physics physics;
@@ -1035,7 +1035,7 @@ struct Car {
 
 } // namespace
 
-TEST_CASE("a vehicle settles on its suspension, drives, steers and brakes, as Godot's") {
+TEST_CASE("a vehicle settles on its suspension, drives, steers and brakes") {
     Car car;
     car.physics.step(120);
     // It rests on its springs, which hold its weight.
@@ -1126,7 +1126,7 @@ TEST_CASE("a wheel moved by hand is mounted where it was put") {
 }
 
 TEST_CASE("a model's collision makes a static body, or is the shape of the body that draws it") {
-    // A floor that only collides, as Godot's "-colonly" hint makes it, and a crate that collides
+    // A floor that only collides, as the "-colonly" hint makes it, and a crate that collides
     // as its convex hull and draws nothing else.
     const std::map<std::string, std::string, std::less<>> files{{"floor.obj", R"(o Floor-colonly
 v -2 0 -2
@@ -1263,7 +1263,7 @@ TEST_CASE("a cloth falls, drapes over a box and comes to rest") {
     CHECK(bounds.low.y > -0.05F);
     CHECK(bounds.high.x - bounds.low.x < 1.9F); // drawn in by its fall
     CHECK(rest.sleeping);
-    // Its entity stays where it was, as Godot's SoftBody3D node does.
+    // Its entity stays where it was.
     CHECK(physics.position("cloth") == Vec3{0.0F, 2.0F, 0.0F});
 }
 

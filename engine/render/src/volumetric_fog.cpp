@@ -1,8 +1,8 @@
-// Volumetric fog, as Godot 4.6's Forward+ renderer makes it: the froxels' size and uniforms as
-// Fog::volumetric_fog_update sets them, and the CPU twins of volumetric_fog_process.glsl's density,
-// filter and fog passes, which shaders/volumetric_fog.hlsl follows line for line; a change to one
-// goes in the other. pow is exp(y * ln(x)) through core/math, so the software device's fog is the
-// same on every machine. Float math, built with -ffp-contract=off.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Volumetric fog in the clustered renderer: the froxels' size and uniforms, and the CPU twins of
+// the density, filter and fog passes, which shaders/volumetric_fog.hlsl follows line for line; a
+// change to one goes in the other. pow is exp(y * ln(x)) through core/math, so the software
+// device's fog is the same on every machine. Float math, built with -ffp-contract=off.
 
 #include "volumetric_fog.hpp"
 
@@ -54,7 +54,7 @@ namespace slash::render::detail {
 
 namespace {
 
-// Godot's halton_map: each frame's point in its froxels, when the fog reprojects.
+// Each frame's Halton point in its froxels, when the fog reprojects.
 constexpr std::array<Float3, kFogTemporalFrames> kHalton{{{0.5F, 0.33333333F, 0.2F},
                                                           {0.25F, 0.66666667F, 0.4F},
                                                           {0.75F, 0.11111111F, 0.6F},
@@ -72,9 +72,9 @@ constexpr std::array<Float3, kFogTemporalFrames> kHalton{{{0.5F, 0.33333333F, 0.
                                                           {0.9375F, 0.25925926F, 0.12F},
                                                           {0.03125F, 0.59259259F, 0.32F}}};
 
-// Godot's INV_FOG_FADE: how soon light in the fog fades where a shadow occludes it.
+// How soon light in the fog fades where a shadow occludes it.
 constexpr float kInvFogFade = 10.0F;
-// Godot's gauss weights for the blur.
+// The Gaussian weights for the blur.
 constexpr std::array<float, 7> kGauss{0.071303F, 0.131514F, 0.189879F, 0.214607F,
                                       0.189879F, 0.131514F, 0.071303F};
 
@@ -187,8 +187,8 @@ Float4 sample_volume(std::span<const Float4> volume, const std::array<std::uint3
     return lerp4(lerp4(a, b, t[1]), lerp4(c, d, t[1]), t[2]);
 }
 
-// A shadow atlas's depth at a texture coordinate, filtered linearly from its four texels, as
-// Godot's fog reads its atlases with a linear sampler.
+// A shadow atlas's depth at a texture coordinate, filtered linearly from its four texels, as a
+// linear sampler reads it.
 float atlas_depth(const ShadowAtlas& atlas, float u, float v) {
     if (atlas.size == 0) {
         return 0.0F;
@@ -212,7 +212,7 @@ float atlas_depth(const ShadowAtlas& atlas, float u, float v) {
     return lerp(top, bottom, fy);
 }
 
-// Godot's get_omni_attenuation.
+// An omni light's attenuation.
 float omni_attenuation(float distance, float inv_range, float decay) {
     float nd = distance * inv_range;
     nd *= nd;
@@ -222,15 +222,14 @@ float omni_attenuation(float distance, float inv_range, float decay) {
     return nd * power(std::max(distance, 0.0001F), -decay);
 }
 
-// Godot's henyey_greenstein, its power of 1.5 as a root.
+// The Henyey-Greenstein phase function, its power of 1.5 as a root.
 float henyey_greenstein(float cos_theta, float g) {
     const float k = 0.0795774715459F; // 1 / (4 * pi)
     const float base = 1.0F + (g * g) - (2.0F * g * cos_theta);
     return k * (1.0F - (g * g)) / (base * std::sqrt(base));
 }
 
-// The place in the camera's space of a point of the fog's unit volume (its depth spread), as
-// Godot's density pass places it.
+// The place in the camera's space of a point of the fog's unit volume (its depth spread).
 Float3 view_place(const FogUniforms& u, const Float3& unit) {
     const float t = unit[2];
     Float3 view{((unit[0] * 2.0F) - 1.0F) * lerp(u.frustum[0], u.frustum[2], t),
@@ -239,7 +238,7 @@ Float3 view_place(const FogUniforms& u, const Float3& unit) {
     return view;
 }
 
-// Godot's directional shadow in the fog: its cascade's atlas, faded softly behind what it
+// A directional light's shadow in the fog: its cascade's atlas, faded softly behind what it
 // occludes, then faded out with distance and by its opacity.
 float directional_fog_shadow(const MeshDirectionalShadowUniforms& shadow, const ShadowAtlas& atlas,
                              const Float3& world, float view_z) {
@@ -263,7 +262,7 @@ float directional_fog_shadow(const MeshDirectionalShadowUniforms& shadow, const 
 
 // An omni or spot light's shadow in the fog: its face's atlas tile, the depths there and the
 // point's made distances from the light (its projection's near plane is 0.025 or its range), so
-// that the fog fades behind what it occludes over meters, as Godot's.
+// that the fog fades behind what it occludes over meters.
 float positional_fog_shadow(const MeshPositionalShadowUniforms& shadow, const ShadowAtlas& atlas,
                             const Float3& world) {
     std::size_t face = 0;
@@ -323,9 +322,8 @@ void set_volumetric_fog(MeshSceneUniforms& lights, const Scene3D& scene,
 
 namespace {
 
-// The camera's frustum as Godot's volumetric_fog_update takes it: Projection's near plane and its
-// get_viewport_half_extents and get_far_plane_half_extents, then the fog's own half extents at
-// the near plane and at length, as it lerps them.
+// The camera's frustum: the projection's near plane and its half extents at the near and far
+// planes, then the fog's own half extents at the near plane and at length, lerped.
 struct FogFrustum {
     float near = 0.0F;
     float far = 0.0F;
@@ -352,8 +350,7 @@ FogFrustum fog_frustum(const Scene3D& scene) {
     return out;
 }
 
-// Godot's Fog::_point_get_position_in_froxel_volume: the froxel a point of the world is in, held
-// to the volume (and in front of the camera).
+// The froxel a point of the world is in, held to the volume (and in front of the camera).
 std::array<std::int32_t, 3> froxel_of(const Scene3D& scene, const FogFrustum& frustum,
                                       const std::array<std::uint32_t, 3>& size, const Float3& at) {
     const VolumetricFog3D& fog = scene.volumetric_fog;
@@ -396,7 +393,7 @@ volume_froxels(const Scene3D& scene, const FogFrustum& frustum, const FogVolume3
     Float3 corner_min{};
     Float3 corner_max{};
     for (std::size_t j = 0; j < 8; ++j) {
-        // Godot's order: x, then y, then z flips.
+        // The order: x, then y, then z flips.
         const Float3 local{(j & 1U) != 0 ? -half[0] : half[0], (j & 2U) != 0 ? -half[1] : half[1],
                            (j & 4U) != 0 ? -half[2] : half[2]};
         const Float3 corner = xyz(transform(m, {local[0], local[1], local[2], 1.0F}));
@@ -453,7 +450,7 @@ std::vector<FogVolumeUniforms> volume_uniforms(const Scene3D& scene, const FogFr
                            : to_float(inverse_matrix(volume.transform));
         v.position = {volume.transform[12], volume.transform[13], volume.transform[14],
                       static_cast<float>(volume.shape)};
-        // Godot hands a world volume the fog's froxels as its extents.
+        // A world volume gets the fog's froxels as its extents.
         v.size =
             world ? Float4{2.0F * static_cast<float>(size[0]), 2.0F * static_cast<float>(size[1]),
                            2.0F * static_cast<float>(size[2]), 0.0F}
@@ -471,8 +468,8 @@ std::vector<FogVolumeUniforms> volume_uniforms(const Scene3D& scene, const FogFr
     return out;
 }
 
-// How many VoxelGIs' light the fog takes in: the first kMaxFogVoxelGIs, and none at a gi_inject
-// of 0.001 or less, as Godot's.
+// How many VoxelGIs' light the fog takes in: the first kMaxFogVoxelGIs, and none at a gi_inject of
+// 0.001 or less.
 std::size_t voxel_gi_count(const VolumetricFog3D& fog) {
     const bool takes = fog.gi_inject > 0.001F && fog.voxel_gi_atlas != TextureId::None;
     return takes ? std::min(fog.voxel_gis.size(), kMaxFogVoxelGIs) : 0;
@@ -565,7 +562,7 @@ FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniform
 namespace {
 
 // What the fog volumes add to a froxel at (x, y, z), whose point is world, as the shader's
-// fog_volumes: the density in 1024ths, then the scattering and emission in Godot's channel units.
+// fog_volumes: the density in 1024ths, then the scattering and emission in channel units.
 struct VolumeSums {
     std::int32_t density = 0;
     std::array<std::uint32_t, 3> scattering{};
@@ -633,7 +630,7 @@ VolumeSums fog_volumes(const FogUniforms& u, std::span<const Float4> items, std:
         const auto shape = static_cast<std::uint32_t>(v.position[3]);
         const bool material = v.size[3] != 0.0F;
         const float sdf = volume_sdf(v, local);
-        // Godot's default material doesn't read the distance, so its cells outside are culled.
+        // The default material doesn't read the distance, so its cells outside are culled.
         float cull_mask = 1.0F;
         if (shape <= 3 && !material) {
             cull_mask = 1.0F - smooth(-0.1F, 0.0F, sdf);
@@ -830,7 +827,7 @@ Float4 fog_density(const FogUniforms& u, const FogMaps& maps, std::span<const Fl
             }
         }
 
-        // The VoxelGIs' light, as Godot's gi_inject takes it in.
+        // The VoxelGIs' light, as gi_inject takes it in.
         if (maps.voxel_gi != nullptr) {
             const std::size_t first = std::size_t{u.items[0]} * kFogVolumeItems;
             for (std::size_t i = 0;

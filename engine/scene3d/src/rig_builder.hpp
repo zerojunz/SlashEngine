@@ -1,7 +1,7 @@
 #pragma once
 
 // What character and creature models share (src/character.cpp, src/creature.cpp): placing
-// Godot's primitive meshes by transforms that turn and stretch them, and a builder that gathers
+// primitive meshes by transforms that turn and stretch them, and a builder that gathers
 // them into one skinned mesh with a surface per material, each corner moved by one joint or by
 // several, blended.
 
@@ -80,7 +80,7 @@ inline Affine3D moved(Vec3 at) {
 inline MeshData unit_sphere(bool hemisphere = false) {
     world::SphereGeometry sphere;
     sphere.radius = 1.0F;
-    // Godot's hemisphere is height tall, its sphere height across.
+    // A hemisphere is height tall, a sphere height across.
     sphere.height = hemisphere ? 1.0F : 2.0F;
     sphere.radial_segments = 16;
     sphere.rings = 8;
@@ -121,7 +121,7 @@ inline MeshData disc_cylinder(float bottom = 1.0F) {
     return cylinder_mesh(cylinder);
 }
 
-// A bone of the skeleton: Godot's humanoid profile's name, its parent (before it), where its
+// A bone of the skeleton: the humanoid profile's name, its parent (before it), where its
 // head is in the model's space at rest, how it is turned there (its global rest's basis;
 // creatures' bones aren't turned) and where it points (its head, for one that points nowhere).
 struct Bone {

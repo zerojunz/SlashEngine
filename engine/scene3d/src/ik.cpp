@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/ik.hpp"
 
 #include "bone_constraints.hpp"
@@ -23,18 +24,16 @@
 #include <string_view>
 #include <utility>
 
-// Godot 4.6's skeleton modifiers (scene/3d/skeleton_modifier_3d.cpp, ik_modifier_3d.cpp,
-// two_bone_ik_3d.cpp, chain_ik_3d.cpp, iterate_ik_3d.cpp, fabr_ik_3d.cpp, ccd_ik_3d.cpp,
-// jacobian_ik_3d.cpp and scene/resources/3d/joint_limitation_cone_3d.cpp), line for line where
-// it can. Godot keeps some values in float and some in double; so does this. Angles go through
+// The skeleton modifiers: two bone, FABRIK, CCD and Jacobian IK, and joint limitation cones, line
+// for line where it can. Some values are kept in float and some in double. Angles go through
 // slash::atan2 and slash::cos_sin, not libm, so poses are the same on every platform.
 namespace slash::scene3d {
 namespace {
 
-constexpr float kCmpEpsilon = 0.00001F; // Godot's CMP_EPSILON
+constexpr float kCmpEpsilon = 0.00001F; // the epsilon for approximate comparisons
 constexpr double kPi = std::numbers::pi;
 
-// ---- Godot's Vector3 ----
+// ---- Vector3 ----
 
 float dot(Vec3 a, Vec3 b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
@@ -100,20 +99,20 @@ Vec3 any_perpendicular(Vec3 v) {
     return normalized(cross(v, x_least ? Vec3{1.0F, 0.0F, 0.0F} : Vec3{0.0F, 1.0F, 0.0F}));
 }
 
-// Godot's Math::acos, which clamps.
+// acos, which clamps.
 float acos_of(float x) {
     const float c = std::clamp(x, -1.0F, 1.0F);
     return slash::atan2(std::sqrt((1.0F - c) * (1.0F + c)), c);
 }
 
-// ---- Godot's Quaternion ----
+// ---- Quaternion ----
 
 float length_squared(const Quat& q) {
     return (q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w);
 }
 
 bool is_normalized(const Quat& q) {
-    return std::abs(length_squared(q) - 1.0F) < 0.001F; // Godot's UNIT_EPSILON
+    return std::abs(length_squared(q) - 1.0F) < 0.001F; // the epsilon for unit length
 }
 
 Quat operator*(const Quat& a, const Quat& b) {
@@ -385,7 +384,7 @@ struct SolverInfo {
     Vec3 current_vector; // in the model's space
     Vec3 forward_vector; // in the bone's
     float length = 0.0F;
-    bool made = false; // false where Godot's is null, for a bone with no length
+    bool made = false; // false for a bone with no length
 };
 
 // ---- TwoBoneIK3D ----
@@ -517,8 +516,8 @@ world::Affine3D two_bone_global_rest(Bones& bones, int bone, int root, bool muta
     return tr;
 }
 
-// TwoBoneIK3D::_update_bone_axis: each bone's length and the way it points at rest. False when
-// a bone has no length, as Godot clears the joints.
+// Each bone's length and the way it points at rest. False when
+// a bone has no length, which clears the joints.
 bool update_bone_axis(TwoBone& tb, Bones& bones, bool mutable_bone_axes) {
     const world::TwoBoneIKSetting& s = *tb.setting;
     tb.root_info = {};
@@ -619,8 +618,7 @@ bool descends(const Bones& bones, int bone, int ancestor) {
 
 enum class Solver : std::uint8_t { Fabrik, Ccd, Jacobian };
 
-// One chain of an iterating solver and what it keeps from tick to tick: Godot's
-// IterateIK3DSetting.
+// One chain of an iterating solver and what it keeps from tick to tick.
 struct Chain {
     world::ChainIKSetting setting; // as it was when made; a change makes it again
     bool mutable_bone_axes = true;
@@ -1365,7 +1363,7 @@ void run_simulator(const Run& run, const Modifier& m, Bones& bones) {
         return count;
     };
     std::ranges::stable_sort(physical, {}, depth);
-    // Where the pose as it stands puts each body, orthonormalized, as Godot's: before any
+    // Where the pose as it stands puts each body, orthonormalized: before any
     // simulated bone replaces it.
     const auto posed = [&](const PhysicalBone& b, const world::Affine3D& offset) {
         const world::Affine3D follow = run.place * bones.global_pose(b.bone) * offset;

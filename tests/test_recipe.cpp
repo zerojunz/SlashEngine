@@ -158,7 +158,7 @@ TEST_CASE("recipes push, spin and sweep polygons, and round boxes' and cylinders
     const scene3d::Bounds drum_box = scene3d::bounds(drum);
     CHECK(near(drum_box.max.y, 0.5F));
     CHECK(drum_box.max.x > 0.99F);
-    // Capsules and prisms come from Godot's primitive meshes.
+    // Capsules and prisms come from the primitive meshes.
     const scene3d::Model pill = build(R"({"format": 1, "parts": [
         {"shape": "capsule", "radius": 0.25, "height": 1, "radial_segments": 16, "rings": 4}]})");
     CHECK(near(scene3d::bounds(pill).max.y, 0.5F));
@@ -303,7 +303,7 @@ TEST_CASE("a recipe's model parts place other model files' nodes under their own
         parents.push_back(node.parent);
     }
     // Each copy's nodes under its own, renamed where they would clash; the OBJ model's mesh
-    // given a node named as Godot names it; then the points.
+    // given a node named for it; then the points.
     CHECK(names == std::vector<std::string>{"body", "door", "board", "knob", "door2", "board2",
                                             "knob2", "sign", "Mesh", "top"});
     CHECK(parents == std::vector<int>{-1, -1, 1, 2, -1, 4, 5, -1, 7, 4});

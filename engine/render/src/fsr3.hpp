@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "fsr2.hpp"
@@ -7,15 +8,15 @@
 #include <span>
 #include <vector>
 
-// What every device shares to upscale a Forward+ frame's 3D with AMD's FidelityFX Super Resolution
+// What every device shares to upscale a clustered frame's 3D with AMD's FidelityFX Super Resolution
 // 3.1's upscaler (FidelityFX SDK 1.1.4), the scaling_3d mode "fsr3": the passes' uniforms, the
 // sizes of their textures and the CPU twin of shaders/fsr3_*.hlsl, which the software device uses.
 // It takes what FSR 2 takes, from the same prepass at the same render size with the same jittered
-// camera, with the settings Godot gives FSR 2, and its last pass is FSR 2's sharpening pass, which
-// FSR 3's matches. In place of FSR 2's depth clip and locks it measures how much each pixel's
-// shading changed since the frame before (a pyramid of luma differences at half the render size),
-// counts the frames each render pixel has gathered, and keeps four frames of luma to tell a
-// flicker from a change.
+// camera, with the settings FSR 2 takes, and its last pass is FSR 2's sharpening pass, which FSR
+// 3's matches. In place of FSR 2's depth clip and locks it measures how much each pixel's shading
+// changed since the frame before (a pyramid of luma differences at half the render size), counts
+// the frames each render pixel has gathered, and keeps four frames of luma to tell a flicker from a
+// change.
 namespace slash::render::detail {
 
 // Whether a scene's frame upscales its 3D with FSR 3 rather than FSR 2.

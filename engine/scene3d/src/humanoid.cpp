@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/humanoid.hpp"
 
 #include "slash/scene3d/skeleton.hpp"
@@ -15,15 +16,15 @@
 #include <utility>
 #include <vector>
 
-// Godot's SkeletonProfileHumanoid and BoneMapper::auto_mapping_process. Godot matches bone
-// names with PCRE2 regular expressions; the few constructs its patterns use (alternatives,
+// The humanoid profile and bone mapper. Bone names are matched with PCRE2-style regular
+// expressions; the few constructs the patterns use (alternatives,
 // groups, ".*", character classes and negative lookarounds) are matched here by a small
-// backtracking matcher, so the patterns read as Godot's.
+// backtracking matcher, so the patterns can be written as regular expressions.
 namespace slash::scene3d {
 namespace {
 
 // SkeletonProfileHumanoid's bones, as its constructor sets them.
-// NOLINTBEGIN(modernize-use-std-numbers): Godot's numbers, such as 0.577, as it writes them.
+// NOLINTBEGIN(modernize-use-std-numbers): the profile's numbers, such as 0.577, as written.
 constexpr std::array<ProfileBone, 56> kHumanoid{{
     {"Root",
      "",
@@ -476,7 +477,7 @@ constexpr std::array<ProfileBone, 56> kHumanoid{{
 }};
 // NOLINTEND(modernize-use-std-numbers)
 
-// ---- Godot's RegEx, for the patterns auto mapping uses ----
+// ---- A regular expression matcher, for the patterns auto mapping uses ----
 
 class Pattern {
 public:
@@ -610,7 +611,7 @@ private:
         case Kind::NotAhead:
             return !match_any(atom.alternatives, s, i, [](std::size_t) { return true; }) && rest(i);
         case Kind::NotBehind: {
-            // Godot's patterns look one character behind.
+            // The patterns look one character behind.
             const bool behind =
                 i > 0 && std::ranges::any_of(atom.alternatives, [&](const Sequence& alternative) {
                     return alternative.size() == 1 && single(alternative[0], s[i - 1]);
@@ -635,7 +636,7 @@ std::string to_lower(std::string_view text) {
     return out;
 }
 
-// Godot's String::to_snake_case (_separate_compound_words, then spaces as underscores), for ASCII.
+// Snake case (compound words separated, then spaces as underscores), for ASCII.
 std::string to_snake_case(std::string_view text) {
     if (text.empty()) {
         return {};
@@ -675,7 +676,7 @@ std::string to_snake_case(std::string_view text) {
     return to_lower(words);
 }
 
-// A skeleton as BoneMapper sees it: its bones in Godot's order, by name, with their parents,
+// A skeleton as the mapper sees it: its bones in order, by name, with their parents,
 // children and rests in the skeleton's space.
 class Skeleton {
 public:
@@ -697,7 +698,7 @@ public:
             }
         }
         const std::vector<NodePose> rest = rest_pose(model_);
-        // Parents before children: Godot's bones may come after their children only across
+        // Parents before children: bones may come after their children only across
         // skeleton roots, which have no parent here.
         std::vector<bool> done(nodes_.size(), false);
         const std::function<void(std::size_t)> place = [&](std::size_t i) {
@@ -854,7 +855,7 @@ int search_bone_by_name(const Skeleton& skeleton, const std::vector<std::string_
 }
 
 bool is_zero_approx(Vec3 v) {
-    constexpr float kEpsilon = 0.00001F; // Godot's CMP_EPSILON
+    constexpr float kEpsilon = 0.00001F; // the epsilon for approximate comparisons
     return std::abs(v.x) < kEpsilon && std::abs(v.y) < kEpsilon && std::abs(v.z) < kEpsilon;
 }
 

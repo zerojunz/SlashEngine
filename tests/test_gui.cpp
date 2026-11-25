@@ -25,9 +25,8 @@
 #include <utility>
 #include <vector>
 
-// Buttons, focus and hover. The gui system sends input events to controls as Godot's Viewport
-// does (scene/main/viewport.cpp), and buttons answer them as Godot's BaseButton
-// (scene/gui/base_button.cpp); the events expected here follow those.
+// Buttons, focus and hover. The gui system sends input events to controls, and buttons answer
+// them; the events expected here follow that.
 
 namespace asset = slash::asset;
 namespace command = slash::command;
@@ -449,7 +448,7 @@ TEST_CASE("toggle buttons switch, and at most one button of a group is on") {
           "button_down mute, toggled mute on, pressed mute, button_up mute");
     CHECK(gui.send({click(250, 40, true), click(250, 40, false)}) ==
           "button_down mute, toggled mute off, pressed mute, button_up mute");
-    // Held down, a button that is on draws as off, as Godot's.
+    // Held down, a button that is on draws as off.
     gui.send(click(50, 100, true));
     CHECK(gui.mode("hard") == "normal");
     gui.send(click(50, 100, false));
@@ -507,7 +506,7 @@ TEST_CASE("disabled buttons aren't pressed, and a held button lets go when disab
 
     gui.set("ok", R"({"Button": {"disabled": false}})");
     CHECK(gui.send(click(50, 40, true)) == "button_down ok");
-    // Losing focus lets go of it, as Godot's, then the pointer leaves.
+    // Losing focus lets go of it, then the pointer leaves.
     gui.set("ok", R"({"Widget": {"visible": false}})");
     CHECK(gui.step() == "focus_exited ok, button_up ok, mouse_exited ok");
     CHECK(gui.focus().empty());
@@ -568,7 +567,7 @@ TEST_CASE("a top-level control takes clicks over its parent's tree and outside i
           "mouse_entered cover, focus_entered cover, button_down cover, pressed cover, "
           "button_up cover");
 
-    // A top-level control comes after the rest of its tree, as Godot's top_level.
+    // A top-level control comes after the rest of its tree.
     gui.set("pop", R"({"Widget": {"top_level": true}})");
     CHECK(gui.send({click(200, 120, true), click(200, 120, false)}) ==
           "mouse_exited cover, mouse_entered pop, focus_exited cover, focus_entered pop, "
@@ -625,7 +624,7 @@ TEST_CASE("a button is as big as its text and style margins, and aligns its text
     ui::Layout layout = gui.layout();
     const Vec2 text = layout.find(gui.world.find("label"))->minimum_size;
     const ui::Placed* play = layout.find(gui.world.find("play"));
-    // Godot's default button styles keep 4 pixels on each side.
+    // The default button styles keep 4 pixels on each side.
     CHECK(play->minimum_size == Vec2{text.x + 8.0F, text.y + 8.0F});
     CHECK(play->size == play->minimum_size);
     CHECK(layout.buttons.at(gui.world.find("play")).mode == ui::DrawMode::Normal);

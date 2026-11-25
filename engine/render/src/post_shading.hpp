@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "checks.hpp"
@@ -21,7 +22,7 @@ namespace slash::render::detail {
 using Float4 = std::array<float, 4>;
 using Float3 = std::array<float, 3>;
 
-// Glow's textures, each half the size of the last, as Godot's Compatibility renderer has them.
+// Glow's textures, each half the size of the last, as the compatibility renderer has them.
 inline constexpr std::size_t kGlowLevels = 4;
 
 // post.hlsl's passes: glow's filter into its first texture, downsampling into each next one,
@@ -47,16 +48,16 @@ static_assert(sizeof(PostUniforms) == 80);
 [[nodiscard]] bool post_processes(const PostProcess& post);
 
 // How a scene's sky and meshes finish their colors, the w of their tonemap uniforms: 1 exposed,
-// tonemapped and as sRGB; 0 as sRGB for post.hlsl to tonemap; 2 linear for forward_post.hlsl,
-// which draws every Forward+ frame.
+// tonemapped and as sRGB; 0 as sRGB for post.hlsl to tonemap; 2 linear for forward_post.hlsl, which
+// draws every clustered frame.
 [[nodiscard]] float color_stage(const Scene3D& scene);
 
 struct PostSize {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
 };
-// Glow's textures for a target of width x height: half its size, then half again for each next
-// one, at least 4 x 4, as Godot's RenderSceneBuffersGLES3::check_glow_buffers sizes them.
+// Glow's textures for a target of width x height: half its size, then half again for each next one,
+// at least 4 x 4.
 [[nodiscard]] std::array<PostSize, kGlowLevels> glow_sizes(std::uint32_t width,
                                                            std::uint32_t height);
 

@@ -23,9 +23,8 @@
 #include <utility>
 #include <vector>
 
-// Check boxes, check buttons and sliders, as Godot's CheckBox, ToggleSwitch and Slider
-// (scene/gui/check_box.cpp, check_button.cpp, slider.cpp and range.cpp), and the theme icons
-// they draw. The sizes and events expected here follow those files and Godot's default theme.
+// Check boxes, check buttons and sliders, and the theme icons they draw. The sizes and events
+// expected here follow the default theme.
 
 namespace asset = slash::asset;
 namespace command = slash::command;
@@ -281,7 +280,7 @@ TEST_CASE("CheckBox and ToggleSwitch are toggle buttons with Button's fields") {
     for (const std::string_view name : {"CheckBox", "ToggleSwitch"}) {
         const world::ComponentType* type = components.find(name);
         REQUIRE(type != nullptr);
-        // Godot's CheckBox and ToggleSwitch set toggle_mode and align their text left.
+        // A CheckBox and a ToggleSwitch set toggle_mode and align their text left.
         CHECK(compact(*type->defaults().find("toggles")) == "true");
         CHECK(compact(*type->defaults().find("alignment")) == "\"left\"");
         CHECK(type->defaults().size() == components.find("Button")->defaults().size());
@@ -480,7 +479,7 @@ TEST_CASE("a slider places its grabber by its value, with ticks under it") {
     CHECK(state.ratio == 0.25);
 }
 
-TEST_CASE("a slider's value snaps to its step and stays in range, as Godot's Range") {
+TEST_CASE("a slider's value snaps to its step and stays in range") {
     Gui gui;
     gui.create("s", R"({"Slider": {"min_value": 10, "max_value": 20, "step": 0.5}})");
     const auto set = [&](std::string_view fields) {

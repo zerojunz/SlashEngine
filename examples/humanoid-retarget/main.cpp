@@ -1,7 +1,7 @@
-// Two rigged humanoids from different tools, retargeted to Godot's humanoid skeleton so one's
-// animation plays on the other: a Mixamo-style hero a meter to the hips, standing in a T-pose with
-// a wave, and a Blender-style knight 80 centimeters to the hips, built in centimeters under an
-// armature scaled by 0.01, in an A-pose, its bones pointing along themselves as Blender's do.
+// Two rigged humanoids from different tools, retargeted to the humanoid skeleton so one's animation
+// plays on the other: a Mixamo-style hero a meter to the hips, standing in a T-pose with a wave,
+// and a Blender-style knight 80 centimeters to the hips, built in centimeters under an armature
+// scaled by 0.01, in an A-pose, its bones pointing along themselves as Blender's do.
 //
 // The models are made in code and written as .glb files, so none is committed.
 
@@ -167,7 +167,7 @@ std::vector<Bone> limbs(std::vector<Bone> bones, const std::string& chest, float
 } // namespace
 
 int main() {
-    // The hero: Mixamo's names (Godot reads "mixamorig:Hips" as "mixamorig_Hips"), in meters.
+    // The hero: Mixamo's names (import reads "mixamorig:Hips" as "mixamorig_Hips"), in meters.
     const auto m = [](const char* name) { return std::string("mixamorig_") + name; };
     std::vector<Bone> hero_bones = {
         {m("Hips"), "", {0.0F, 1.0F, 0.0F}, m("Spine")},
@@ -203,8 +203,8 @@ int main() {
           {{0.0F, 1.0F, 0.0F, 0.0F}, {0.0F, 1.1F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F, 0.0F}});
     hero.animations.push_back(wave);
 
-    // The knight: Blender's names (Godot reads "thigh.L" as "thigh_L"), in centimeters, the
-    // arms hanging 45 degrees down.
+    // The knight: Blender's names (import reads "thigh.L" as "thigh_L"), in centimeters, the arms
+    // hanging 45 degrees down.
     std::vector<Bone> knight_bones = {
         {"hips", "", {0.0F, 80.0F, 0.0F}, "spine"},
         {"spine", "hips", {0.0F, 88.0F, 0.0F}, "chest"},

@@ -275,7 +275,7 @@ TEST_CASE("emitters step on the job system's threads the same as on one") {
     CHECK(std::ranges::count(alone, std::string("finished burst0")) == 1);
 }
 
-TEST_CASE("gravity, damping and the emitter's transform move particles as Godot's") {
+TEST_CASE("gravity, damping and the emitter's transform move particles") {
     Particles scene;
     const entt::entity falling =
         scene.add("falling", {0.0F, 0.0F}, R"({"amount": 1, "lifetime": 10, "gravity": [0, 100]})");
@@ -401,7 +401,7 @@ TEST_CASE("curves and gradients change particles over their lives") {
     emitter.hue_variation_max = 1.0F;
     scene.step();
     const Vec4 color = scene.live(entity).at(0).color;
-    // Godot's hue matrix is rounded to three places, so it comes back to within 0.002.
+    // The hue matrix is rounded to three places, so it comes back to within 0.002.
     CHECK(std::abs(color.x - 0.8F) <= 0.002F);
     CHECK(std::abs(color.y - 0.4F) <= 0.002F);
     CHECK(std::abs(color.z - 0.2F) <= 0.002F);

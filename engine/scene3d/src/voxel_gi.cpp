@@ -1,7 +1,7 @@
-// VoxelLighting3D, as Godot 4.6's: the voxelizer (scene/3d/voxelizer.cpp), its distance field, the
-// light injection Godot's voxel_gi.glsl runs on the GPU (here on the CPU, on the job pool) and
-// baking a VoxelLighting3D entity (scene/3d/voxel_gi.cpp). Godot's code is MIT; its triangle and
-// box test is Tomas Akenine-Möller's, its distance transform Pedro Felzenszwalb and Daniel
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// VoxelLighting3D: the voxelizer, its distance field, the light injection (on the CPU, on the
+// job pool) and baking a VoxelLighting3D entity. Its triangle and box test is Tomas
+// Akenine-Möller's, its distance transform Pedro Felzenszwalb and Daniel
 // Huttenlocher's (after Philip Rideout's code), and its RGBE9995 packing Microsoft's MiniEngine
 // (MIT).
 
@@ -45,9 +45,9 @@ static_assert(std::endian::native == std::endian::little,
               ".voxellight.json files hold the machine's bytes, little-endian");
 static_assert(sizeof(VoxelGICell) == 16, "cells are kept as their bytes");
 
-// The deepest octree a file may hold: Godot's "512".
+// The deepest octree a file may hold, for "512".
 constexpr std::size_t kMaxLevels = 10;
-// Godot's Voxelizer::color_scan_cell_width.
+// The width of the scan of a cell for its color.
 constexpr int kScan = 4;
 constexpr int kMaterialSize = static_cast<int>(kVoxelGIMaterialSize);
 
@@ -259,7 +259,7 @@ std::size_t voxel_gi_bytes(const VoxelGIData& data) {
 
 // ---- Materials
 
-// sRGB to linear, as Godot's Color::srgb_to_linear, its pow the same on every platform.
+// sRGB to linear, its pow the same on every platform.
 float srgb_to_linear(float c) {
     if (c < 0.04045F) {
         return c * (1.0F / 12.92F);
@@ -366,7 +366,7 @@ struct Cell {
     std::uint16_t level = 0;
 };
 
-// Godot's get_uv_and_normal: a point's texture coordinate and normal from its triangle's.
+// A point's texture coordinate and normal from its triangle's.
 void uv_and_normal(Vec3 pos, const std::array<Vec3, 3>& vtx, const std::array<Vec2, 3>& uv,
                    const std::array<Vec3, 3>& normal, Vec2& r_uv, Vec3& r_normal) {
     for (std::size_t i = 0; i < 3; ++i) {
@@ -411,7 +411,7 @@ int texel_of(float coordinate) {
                       kMaterialSize - 1);
 }
 
-// The material of surfaces without one: Godot's default, white.
+// The material of surfaces without one: the default, white.
 const VoxelGIMaterial& default_material() {
     static const VoxelGIMaterial material{
         .albedo = std::vector<std::array<float, 3>>(
@@ -435,7 +435,7 @@ public:
             }
             int cells = 1 << subdiv;
             float axis_size = component(po2_bounds_.size, longest);
-            // Shrink until it fits; stopped at one cell where Godot would run on (a size of 0).
+            // Shrink until it fits; stopped at one cell, where it would run on (a size of 0).
             while (cells > 1 && static_cast<double>(axis_size) / 2.0 >=
                                     static_cast<double>(component(po2_bounds_.size, i))) {
                 axis_size /= 2.0F;
@@ -491,7 +491,7 @@ public:
         }
     }
 
-    // Voxelizer::end_bake, then the data Godot hands the rendering server.
+    // The end of the bake, then the data handed to the renderer.
     VoxelGIData finish(float exposure) {
         sort();
         fixup(0, 0);
@@ -641,9 +641,9 @@ private:
             }
         }
         if (alpha == 0.0F) {
-            // No texture information at all: the point nearest the cell's middle. As Godot's, its
-            // normal is the triangle's there (Godot's code writes it over the plane's normal and
-            // then takes that).
+            // No texture information at all: the point nearest the cell's middle. Its
+            // normal is the triangle's there (written over the plane's normal and
+            // then taken).
             const Vec3 inters = closest_point_on_triangle(face, aabb.center());
             Vec2 uv;
             uv_and_normal(inters, vtx, uvs, normals, uv, normal);
@@ -793,7 +793,7 @@ private:
 constexpr float kBig = 1e20F;
 
 // edt: the distance transform of n squared distances along a row, Pedro Felzenszwalb and Daniel
-// Huttenlocher's, in floats as Godot's.
+// Huttenlocher's, in floats.
 void edt(float* f, std::size_t stride, int n, std::vector<float>& d, std::vector<int>& v,
          std::vector<float>& z) {
     d.resize(static_cast<std::size_t>(n));
@@ -1024,7 +1024,7 @@ private:
         return 1.0F / dot(normal, axis);
     }
 
-    // clip_segment. As Godot's, it never clips: the segment always runs away from the face's
+    // clip_segment. It never clips: the segment always runs away from the face's
     // plane, so its den is never positive.
     static void clip_segment(Vec3 plane_normal, float plane_d, Vec3 begin, Vec3& end) {
         const Vec3 segment = begin - end;
@@ -1223,7 +1223,7 @@ private:
                                                            Vec3{0.267617F, -0.823639F, 0.5F}};
             static constexpr std::array<float, 6> kConeWeights{0.25F, 0.15F, 0.15F,
                                                                0.15F, 0.15F, 0.15F};
-            // NOLINTNEXTLINE(modernize-use-std-numbers): Godot's tan(30 degrees).
+            // NOLINTNEXTLINE(modernize-use-std-numbers): tan(30 degrees).
             constexpr float kTanHalfAngle = 0.577F;
             const float max_distance = length(field_.limits());
             const Vec3 cell_size = divide(Vec3{1.0F, 1.0F, 1.0F}, field_.limits());
@@ -1467,7 +1467,7 @@ private:
             return {model, &found.image}; // kept alive with the model
         };
         for (const ModelPart& part : model->parts) {
-            // A skinned part is taken at rest, as Godot plots a mesh's own vertices.
+            // A skinned part is taken at rest, like a mesh's own vertices.
             const ModelMesh& from = model->meshes[part.mesh];
             VoxelGIMesh mesh;
             mesh.transform = part.transform;
@@ -1509,12 +1509,12 @@ private:
 
 // ---- Moving meshes: VoxelGIInstance::update's dynamic objects and voxel_gi.glsl's MODE_DYNAMIC
 
-// The finest dynamic map is 2^4 times finer than the cells, as Godot's oversample.
+// The finest dynamic map is 2^4 times finer than the cells.
 constexpr int kOversample = 4;
 constexpr int kMultiplier = 1 << kOversample;
 
 // A side a mesh is drawn from, as set_look_at from a face of its box toward its middle with
-// Godot's render_z and render_up: the cells' axes across and up the map, the axis it looks along,
+// render_z and render_up: the cells' axes across and up the map, the axis it looks along,
 // whether it looks down that axis from the far face, and the way it looks.
 struct Side {
     int x_axis = 0;
@@ -1643,7 +1643,7 @@ private:
                 const float z = z_base + (m.depth * z_sign);
                 out.z = z;
                 if (m.alpha == 0.0F) {
-                    continue; // nothing lit, as Godot's cleared albedo and emission
+                    continue; // nothing lit, as the cleared albedo and emission
                 }
                 Vec3 pos;
                 set_component(pos, side.x_axis, static_cast<float>(rect_pos[0] + px));
@@ -1742,8 +1742,8 @@ private:
         }
     }
 
-    // The mesh drawn from the side into the map, nearest surface first, as Godot's material pass
-    // draws it orthographically from the box's face: faces its material culls are left out, and
+    // The mesh drawn from the side into the map, nearest surface first, drawn
+    // orthographically from the box's face: faces its material culls are left out, and
     // where it culls none, a face seen from behind has its normal turned round.
     void draw_material(const VoxelGIMesh& mesh, const world::Affine3D& place, const Side& side,
                        const std::array<int, 2>& rect_pos, const std::array<int, 2>& rect_size,
@@ -1753,7 +1753,7 @@ private:
         const auto normal_xform = [&inv](Vec3 n) {
             return Vec3{dot(inv.x, n), dot(inv.y, n), dot(inv.z, n)};
         };
-        // A mirrored mesh's faces turn the other way, as Godot's mirrored instances.
+        // A mirrored mesh's faces turn the other way.
         const bool mirrored = dot(place.x, cross(place.y, place.z)) < 0.0F;
         for (std::size_t s = 0; s < mesh.surfaces.size(); ++s) {
             const VoxelGIMesh::Surface& surface = mesh.surfaces[s];
@@ -1780,7 +1780,7 @@ private:
                 if (!valid) {
                     continue;
                 }
-                // Clockwise as the side sees it, Godot's front, is a normal by the right hand
+                // Clockwise as the side sees it, the front, is a normal by the right hand
                 // pointing the way it looks.
                 const bool front =
                     (dot(cross(p[1] - p[0], p[2] - p[0]), side.dir) > 0.0F) != mirrored;
@@ -1939,7 +1939,7 @@ private:
             }
             const float sa = 1.0F - blit[3];
             const float alpha = (color[3] * sa) + blit[3];
-            // Where nothing shows, Godot leaves the texel's color as it was.
+            // Where nothing shows, the texel's color is left as it was.
             if (alpha != 0.0F) {
                 for (std::size_t c = 0; c < 3; ++c) {
                     color.at(c) = ((color.at(c) * color[3] * sa) + (blit.at(c) * blit[3])) / alpha;
@@ -2155,14 +2155,14 @@ VoxelGIOctree voxel_gi_octree(const VoxelGIData& data, jobs::Pool* pool) {
             edt(&work[start(row)], stride, static_cast<int>(n), s.d, s.v, s.z);
         });
     };
-    // xy -> z, xz -> y, yz -> x, as Godot's.
+    // xy -> z, xz -> y, yz -> x.
     pass(sx * sy, [&](std::size_t r) { return (r / sy) + ((r % sy) * y_mult); }, z_mult, sz);
     pass(sx * sz, [&](std::size_t r) { return (r / sz) + ((r % sz) * z_mult); }, y_mult, sy);
     pass(sy * sz, [&](std::size_t r) { return ((r / sz) * y_mult) + ((r % sz) * z_mult); }, 1, sx);
     out.distance_field.resize(work.size());
     for (std::size_t i = 0; i < work.size(); ++i) {
         const float root = std::sqrt(work[i]);
-        // Godot's uint32_t(sqrt): no place is farther than 255 that matters.
+        // uint32_t(sqrt): no place is farther than 255 that matters.
         const std::uint32_t d = root >= 255.0F ? 255U : static_cast<std::uint32_t>(root);
         out.distance_field[i] = d == 0 ? 0 : static_cast<std::uint8_t>(std::min(d, 254U) + 1);
     }

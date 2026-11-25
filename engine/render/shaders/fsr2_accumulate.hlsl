@@ -466,7 +466,7 @@ AccumulationPassCommonParams InitParams(int2 iPxHrPos) {
     params.fHrUv = fHrUv;
     float2 fLrUvJittered = fHrUv + Jitter() / float2(RenderSize());
     params.fLrUv_HwSampler = ClampUv(fLrUvJittered, RenderSize(), RenderSize());
-    // Low resolution motion vectors, as Godot gives FSR 2.
+    // Low resolution motion vectors.
     params.fMotionVector = LoadDilatedMotionVector(int2(fHrUv * float2(RenderSize())));
     params.fHrVelocity = length(params.fMotionVector * float2(DisplaySize()));
     params.fReprojectedHrUv = params.fHrUv + params.fMotionVector;

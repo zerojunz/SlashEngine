@@ -15,7 +15,7 @@
 #include <vector>
 
 // Scatter rules: .scatter.json files that say what to place over terrains, meshes, tile maps and
-// areas, and how thickly, as Unreal's PCG graphs and Godot's MultiMesh "Populate Surface" do.
+// areas, and how thickly, as Unreal's PCG graphs do.
 // scatter.run places what they ask for as entities or as one ModelInstances3D a layer:
 //
 //   {
@@ -68,7 +68,7 @@ struct ScatterLayer {
     // Only where this noise, sampled at (x, z) in 3D or (x, y) in 2D, is within noise_range.
     std::optional<NoiseSettings> noise;
     Vec2 noise_range{0.0F, 1.0F};
-    // As Godot's Populate Surface: 3D places stand along the ground's normal when
+    // 3D places stand along the ground's normal when
     // align_to_normal is on, else upright; each turns about its up axis by up to rotate_random
     // and tilts by up to tilt_random half turns either way, and is scaled by scale plus up to
     // scale_random either way. offset moves it along its up axis (a negative one sinks it).
@@ -107,7 +107,7 @@ struct ScatterTriangle {
     Vec3 c;
 };
 
-// A place picked: where, the Euler angles (radians, Godot's YXZ) or the 2D rotation in
+// A place picked: where, the Euler angles (radians, YXZ order) or the 2D rotation in
 // rotation.z, the uniform scale and the ground's normal there (up in 2D: +z).
 struct ScatterPlace {
     Vec3 position;
@@ -130,11 +130,10 @@ struct ScatterResult {
     float ground_area = 0.0F; // of the triangles scattered over
 };
 
-// Scatters a layer over the ground: picks a triangle by area, a point in it as Godot's
-// Face3::get_random_point_inside does, keeps it if the layer's rules allow and turns and scales
-// it as Godot's MultiMesh populate does, up to 30 tries a place wanted. avoid holds places of
-// earlier layers to keep spacing from. seed is the rules' seed; each layer has its own stream
-// by its index.
+// Scatters a layer over the ground: picks a triangle by area, a point in it, keeps it if the
+// layer's rules allow and turns and scales it, up to 30 tries a place wanted. avoid holds
+// places of earlier layers to keep spacing from. seed is the rules' seed; each layer has its own
+// stream by its index.
 [[nodiscard]] ScatterResult scatter(const ScatterLayer& layer, std::size_t index,
                                     std::uint32_t seed, bool flat,
                                     std::span<const ScatterTriangle> ground,

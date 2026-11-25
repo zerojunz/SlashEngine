@@ -127,7 +127,7 @@ Scene still_scene() {
 
 } // namespace
 
-TEST_CASE("physics materials: files read as Godot's PhysicsMaterial with Chaos's additions") {
+TEST_CASE("physics materials: files read with Chaos's additions") {
     const auto defaults = world::parse_physics_material(parse(R"({"format": 1})"));
     REQUIRE(defaults.ok());
     CHECK(defaults.value() == world::PhysicsMaterial{});
@@ -140,7 +140,7 @@ TEST_CASE("physics materials: files read as Godot's PhysicsMaterial with Chaos's
     CHECK(wood.value().density == doctest::Approx(700.0));
     CHECK(wood.value().strength == doctest::Approx(30.0));
     CHECK(wood.value().surface == "wood");
-    // Rough and absorbent materials hand physics negative values, as Godot's.
+    // Rough and absorbent materials hand physics negative values.
     CHECK(world::computed_friction(wood.value()) == doctest::Approx(-0.6));
     CHECK(world::computed_bounce(wood.value()) == doctest::Approx(-0.25));
 
@@ -318,7 +318,7 @@ TEST_CASE("physics fields: 2D bodies are pushed, held and removed, and weigh the
     CHECK(scene.get<world::Transform2D>("held").position.y > 100.0F);
 }
 
-TEST_CASE("physics materials: a rough material's friction wins in 2D, as Godot's") {
+TEST_CASE("physics materials: a rough material's friction wins in 2D") {
     physics2d::Settings settings;
     settings.gravity = 980.0F;
     Scene scene(physics3d::Settings{}, settings);

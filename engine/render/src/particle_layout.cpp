@@ -90,8 +90,8 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
     out.push_back({static_cast<std::uint32_t>(process.collision_mode),
                    bits(process.collision_friction), bits(process.collision_bounce),
                    process.collision_use_scale ? 1U : 0U});
-    // The mode, the seconds between Constant emissions as Godot passes them, the mode's amount and
-    // whether particles started keep the velocity.
+    // The mode, the seconds between Constant emissions, the mode's amount and whether particles
+    // started keep the velocity.
     std::uint32_t amount = 1;
     if (process.sub_emitter_mode == SubEmitterMode::AtEnd) {
         amount = process.sub_emitter_amount_at_end;

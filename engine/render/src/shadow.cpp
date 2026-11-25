@@ -1,10 +1,8 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // Shadow maps: which lights cast shadows, the passes that draw their maps and the matrices the
-// forward pass samples them through, as Godot's Compatibility renderer works them out
-// (RendererSceneCull::_light_instance_setup_directional_shadow and _light_instance_update_shadow,
-// LightStorage::_get_directional_shadow_rect and RasterizerSceneGLES3::_setup_lights and
-// render_shadow), and the CPU twins of shaders/shadow.hlsl and of sampling a shadow atlas. Float
-// math throughout, built with -ffp-contract=off, so the software device's shadows are the same
-// pixels on every machine.
+// forward pass samples them through, as the compatibility renderer works them out, and the CPU
+// twins of shaders/shadow.hlsl and of sampling a shadow atlas. Float math throughout, built with
+// -ffp-contract=off, so the software device's shadows are the same pixels on every machine.
 
 #include "mesh_shading.hpp"
 
@@ -167,8 +165,8 @@ Mat4 view_of(const Basis& basis, const Float3& origin) {
     return m;
 }
 
-// Godot's Projection::set_orthogonal(left, right, bottom, top, 0, far) for a camera centered on
-// the box, with reversed depth.
+// An orthogonal projection (left, right, bottom, top, 0, far) for a camera centered on the box,
+// with reversed depth.
 Mat4 ortho_box(float half_x, float half_y, float far) {
     Mat4 m{};
     m[0] = 1.0F / half_x;
@@ -382,7 +380,7 @@ void plan_directional(const Scene3D& scene, const CameraFrustum& camera, std::si
     }
     out.params = {-out.splits[3] * std::min(light.shadow_fade_start, 0.999F), -out.splits[3],
                   light.shadow_opacity, static_cast<float>(splits)};
-    // Then the transmittance's bias, a hundredth of each cascade's depth per unit, as Godot's.
+    // Then the transmittance's bias, a hundredth of each cascade's depth per unit.
     out.options = {splits > 1 && light.shadow_blend_splits ? 1.0F : 0.0F,
                    1.0F / static_cast<float>(size), light.shadow_transmittance_bias / 100.0F, 0.0F};
 }
@@ -402,7 +400,7 @@ void plan_positional(const Scene3D& scene, std::size_t index, int slot, std::uin
     const bool omni = light.type == LightType::Omni;
     const auto s = static_cast<float>(size);
 
-    // The cube's faces, as Godot's view_normals and view_up, each turned with the light.
+    // The cube's faces, each turned with the light.
     static constexpr std::array<Float3, 6> kNormals{{{1.0F, 0.0F, 0.0F},
                                                      {-1.0F, 0.0F, 0.0F},
                                                      {0.0F, -1.0F, 0.0F},
@@ -605,7 +603,7 @@ Float4 shadow_clip(const MeshShadowPassUniforms& pass, const Float4& world) {
         // An omni light's: away from the light by the bias, as its linear depth would be.
         v = add(v, scale(v, bias / std::max(length(v), 1e-6F)));
     } else {
-        // Godot's normalize(v) * bias / length(v).
+        // normalize(v) * bias / length(v).
         v = add(v, scale(v, bias / std::max(dot3(v, v), 1e-12F)));
     }
     Float4 clip = transform(pass.projection, {v[0], v[1], v[2], 1.0F});

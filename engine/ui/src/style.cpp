@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/core/text.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/render/image.hpp"
@@ -14,8 +15,7 @@
 #include <utility>
 #include <vector>
 
-// Style boxes, ported from Godot's StyleBoxFlat, StyleBoxTexture, StyleBoxLine and StyleBoxEmpty
-// (scene/resources/style_box*.cpp, MIT), read from JSON.
+// Style boxes (flat, texture, line and empty), read from JSON.
 namespace slash::ui {
 namespace {
 

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "ssao.hpp"
 
 #include "forward_post.hpp"
@@ -149,8 +150,8 @@ float mirrored(const SsaoImage& image, int x, int y, std::uint32_t channel = 0) 
                  mirror(y, static_cast<int>(image.height)), channel);
 }
 
-// A linearly filtered sample at a texture coordinate, with clamped edges, as Godot's default
-// sampler takes it.
+// A linearly filtered sample at a texture coordinate, with clamped edges, as a default sampler
+// takes it.
 float bilinear(const SsaoImage& image, Float2 uv, std::uint32_t channel = 0) {
     const float px = (uv[0] * static_cast<float>(image.width)) - 0.5F;
     const float py = (uv[1] * static_cast<float>(image.height)) - 0.5F;
@@ -689,7 +690,7 @@ SsaoPlan ssao_plan(const SsaoSettings& settings, std::uint32_t width, std::uint3
     const SsaoQuality quality = settings.quality;
     const bool very_low = quality == SsaoQuality::VeryLow;
     const bool ultra = quality == SsaoQuality::Ultra;
-    // Godot's use_mips: the gather reads depth mipmaps from high quality on.
+    // The gather reads depth mipmaps from high quality on.
     plan.levels = quality > SsaoQuality::Medium ? kSsaoDepthLevels : 1;
     const PostSize base = depth_base(settings, width, height);
     const PostSize buffer = buffer_size(settings, width, height);
@@ -840,8 +841,8 @@ SsaoUniforms ssao_uniforms(const Ssao3D& ssao, const SsaoStep& step,
     const auto row = static_cast<float>(step.slice >> 1U);
     out.pass_offset = {column, row, column / w, row / h};
 
-    // Godot's downsample_depth: a perspective projection's depth made linear from its [3][2]
-    // and [2][2] entries, an orthogonal one's from its near and far planes.
+    // A perspective projection's depth made linear from its [3][2] and [2][2] entries, an
+    // orthogonal one's from its near and far planes.
     const bool orthogonal = projection[15] == 1.0F;
     if (orthogonal) {
         const float z_near = (projection[14] - 1.0F) / projection[10];
