@@ -71,7 +71,10 @@ then node origins, filled by `paint.cpp`'s `prepare`). `paint_variant` draws a v
 parameters with splitmix64 over a hash of the name, the variants' seed and its number, so a
 variant is the same everywhere. Text stamps come in through `GraphReader::text_image`, which the
 commands set to draw with the UI's fonts (`draw_text_stamp` in `procedural.cpp`);
-`examples/weathering` ages a market stall.
+`examples/weathering` ages a market stall. A stack's `damage` block bakes a look per damage
+state and writes them into the `.damage.json` profile's states (`bake_damage` in
+`engine/command/src/paint.cpp`). `paint.draft` (`engine/ai/src/paint_draft.cpp`, in
+`slash_ai_commands`) has a model write a stack and checks each draft by calling `paint.edit`.
 
 Gameplay code makes textures and meshes while a game runs: `asset::Assets::put` keeps a value at a
 `made:<name>` path (`asset::is_made_path`) until `drop`, bumping its version when put again so

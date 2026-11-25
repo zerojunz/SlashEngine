@@ -1437,7 +1437,9 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               seeds and seeded `variants`
         - [x] Wear from damage: a stack's `damage` block bakes a look per damage state into the
               profile, so `Destructible3D` and `Destructible2D` bodies wear as they are hit
-        - [ ] Drafts from a prompt and Blender shader node import
+        - [x] Drafts from a prompt: `paint.draft` has a model write or revise a stack, checked
+              as `paint.edit` checks one and sent back with its problems
+        - [ ] Blender shader node import
 24. [x] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
         whichever vendor's agent it is:
         - [x] A work journal every session writes (`.slash/work/`), sessions that serve themselves

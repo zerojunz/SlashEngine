@@ -3017,7 +3017,8 @@ space, a graph, and strokes along points. A stack compiles to a texture graph wh
 the mesh maps and the masks worked out on the CPU, so it bakes as graphs do: in compute on the GPU
 devices and with the CPU twin elsewhere. [`paint.bake`](commands.md#paintbake) writes its
 textures and a material, [`paint.edit`](commands.md#paintedit) changes it by layer name and
-[`paint.preview`](commands.md#paintpreview) draws it.
+[`paint.preview`](commands.md#paintpreview) draws it, and [`paint.draft`](commands.md#paintdraft)
+has a model write one from a brief.
 
 ```json
 {

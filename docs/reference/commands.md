@@ -62,7 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
-| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck), [`paint.edit`](#paintedit), [`paint.bake`](#paintbake), [`paint.preview`](#paintpreview) |
+| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck), [`paint.edit`](#paintedit), [`paint.bake`](#paintbake), [`paint.preview`](#paintpreview), [`paint.draft`](#paintdraft) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
 | Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest), [`foliage.sway`](#foliagesway) |
@@ -770,6 +770,37 @@ Needs: `edit` and `filesystem`. From [examples/layer-stacks](../../examples/laye
 
 ```json
 {"masks":{"dirt":0.039,"dust":0.167,"grain":0.356,"iron":0.364,"worn":0.194},"material":"props/crate.standard_material.json","outputs":{"albedo":{"a":1,"b":0.294,"contrast":0.147,"g":0.356,"high":0.621,"low":0.166,"r":0.436,"value":0.368},...},"path":"props/crate.paint.json","size":[256,256],"texel_density":136.533,"textures":{"albedo":"props/crate_albedo.png","normal":"props/crate_normal.png","orm":"props/crate_orm.png"}}
+```
+
+### paint.draft
+
+Has a model from `providers.json` write a [layer stack](scene-format.md#layer-stacks) from a
+`brief`, or revise the stack at `path` when it exists. The model is told the brief, what the stack
+paints (a model's part and material names and bounds, as [`model.inspect`](#modelinspect) gives
+them, or that it paints a sprite), the smart materials it may `extends`, the storyboard entries in
+`story` whole, the stack it revises and the stack's schema. Each draft is checked as
+[`paint.edit`](#paintedit) checks a stack, against the schema and then compiled against what it
+paints (part names, named points, the maps it reads); the problems go back to the model, which
+tries again, up to `attempts` drafts. Only a draft with no problems is written, by `paint.edit`, as
+one undo step, and the reply is `paint.edit`'s (its layers and measures) with the `attempts`, the
+`model` and its `usage`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.paint.json` file to write; one that exists is revised |
+| `brief` | string | | The look: what it is, its materials, its age and wear |
+| `model` | string | the stack's | The model it paints |
+| `sprite` | string | the stack's | The sprite it paints instead |
+| `story` | array | `[]` | Storyboard entry IDs about it (at most 16), sent whole |
+| `attempts` | integer | `2` | Drafts the model may make (1 to 4) |
+| `role` | string | the `default` role, or the only provider | A role or provider from `providers.json` |
+| `max_tokens` | integer | | The most tokens the model may reply with |
+
+Needs: `read`, `edit`, `filesystem` and `network` (a session without `network` answers only from
+a replay file).
+
+```json
+{"path": "props/stall.paint.json", "brief": "A fish stall's counter, sea-blue paint flaking off weathered pine, salt stains low down.", "model": "props/stall.obj", "story": ["place/harbor"]}
 ```
 
 ### paint.preview
