@@ -413,7 +413,7 @@ rendering on top.
         C++, and a report keeps what the port needs: the values each node gave its exported
         variables, signal connections, groups, autoloads and the entity of every node path
   - [x] Godot scenes that instance other scenes stay instances, holding only their overrides
-  - [x] Godot's `TileSet` resources, `TileLayer2D` nodes and the old `TileMap`'s layers,
+  - [x] Godot's `TileSet` resources, `TileMapLayer` nodes and the old `TileMap`'s layers,
         themes, `LabelSettings` resources and audio bus layouts, with the project's theme and
         buses
   - [x] Godot's tile physics layers, collision polygons, alternative tiles and flipped or

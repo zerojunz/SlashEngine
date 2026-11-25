@@ -1,6 +1,6 @@
 # Paths
 
-A cart lapping a rail over a hill, built from Godot's `Path3D` and `SplineFollower3D` and a
+A cart lapping a rail over a hill, built from `Spline3D` and `SplineFollower3D` and a
 `SolidExtrusion3D` in path mode, with a guard walking a `Spline2D`. [main.scene.json](main.scene.json)
 has the track: a closed curve of four points whose handles round it into an oval, the far
 point raised.

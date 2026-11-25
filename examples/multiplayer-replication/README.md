@@ -1,7 +1,7 @@
 # Multiplayer replication
 
-Three worlds in one program share an arena over ENet, replicated as Godot's
-`NetSpawner` and `NetSync` replicate a scene tree
+Three worlds in one program share an arena over ENet, replicated by
+`NetSpawner` and `NetSync`
 ([docs/reference/networking.md](../../docs/reference/networking.md#replication)). Every world
 loads the same arena: an `arena` entity things are placed under, and a `spawner` whose
 `NetSpawner` spawns bullets and treasures placed there, and custom spawns.

@@ -1,12 +1,11 @@
 # XR tracking
 
-A player in virtual reality, as Godot's XR nodes place one. [main.scene.json](main.scene.json)
-is an `XROrigin3D` (the play space) with an `XRCamera3D` head and two `XRController3D` hands,
-the right one holding a sword. [project.json](project.json) enables XR on a `local_floor`
-reference space, so a session starts the test headset: a head and two hand controllers that
-agents move and press with `xr.set`. [calls.jsonl](calls.jsonl) plays it over JSON-RPC (MCP
-tools `xr_state`, `xr_set`, `events_read`, `step`), and [results.jsonl](results.jsonl) holds the
-replies.
+A player in virtual reality. [main.scene.json](main.scene.json) is an `XROrigin3D` (the play
+space) with an `XRCamera3D` head and two `XRController3D` hands, the right one holding a sword.
+[project.json](project.json) enables XR on a `local_floor` reference space, so a session starts
+the test headset: a head and two hand controllers that agents move and press with `xr.set`.
+[calls.jsonl](calls.jsonl) plays it over JSON-RPC (MCP tools `xr_state`, `xr_set`,
+`events_read`, `step`), and [results.jsonl](results.jsonl) holds the replies.
 
 ```text
 xr.set {"trackers": {"right_hand": {"position": [0.3, 1.9, -0.4], "rotation": [1.2, 0, 0],

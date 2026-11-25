@@ -4,7 +4,9 @@ CPU and GPU particles.
 
 Status: current · Updated: 2026-11-20
 
-`Emitter2D` is Godot's, with Godot's field names and angles in degrees. The
+Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
+
+`Emitter2D` takes angles in degrees. The
 `cpu_particles_2d` system (priority 1100, after physics; `engine/canvas/src/particles.cpp`)
 emits, moves and ages each emitter's particles on the CPU and emits `finished` when a one-shot's
 last particle dies; `CanvasRenderer` draws them (`particles_drawn()`). Each `_min`/`_max` pair
@@ -16,97 +18,87 @@ snapshots and undo leave them alone. `particles.eval` returns live particles, or
 settings for a time with `canvas::simulate`; `examples/particles` has a fountain, sparks, smoke
 and a portal.
 
-`GpuEmitter2D` is Godot's too, its particles moved on the device as a `.particles.json`
-file (Godot's `ParticleProcessMaterial`; `$cli schema particles`) says. The
-`gpu_particles_2d` system (priority 1110; `engine/canvas/src/gpu_particles.cpp`) ports Godot's
-node and particles storage: each tick it works out each emitter's `render::ParticleStep`s
-(`fixed_fps`, preprocess, the emission cycle, one-shot timing) and keeps those that can still
-have made a live particle (`canvas::particle_steps`). `CanvasRenderer` runs the steps its device
-hasn't with `RenderDevice::process_particles` and draws with `draw_particles`, so a late
-renderer catches up from the steps kept. `engine/render/shaders/particles_process.hlsl` is the
-compute shader and `render::process_particles` (`engine/render/src/particles.cpp`) its CPU twin,
-which the software and OpenGL ES devices run; a test holds them to the same particles, so a
-change to the particle math goes in both. Turbulence is Godot's curl noise, with lattice
-gradients from an integer hash so both make the same noise. Collision follows Godot's 2D
-collision with its signed distance field, measured exactly instead: the system gathers the
-outlines of `Occluder2D`s and tile occluders with `sdf_collision` into each step's
-`render::ParticleShape`s, in the world canvas's coordinates, and `render::particle_contact` (and
-its twin in the shader) finds the way out and the depth. A `sub_emitter` chains emitters (up
-to `render::kMaxParticleChain`), which step together through
+`GpuEmitter2D` moves its particles on the device as a `.particles.json` file says. The
+`gpu_particles_2d` system (priority 1110; `engine/canvas/src/gpu_particles.cpp`) works out each tick
+each emitter's `render::ParticleStep`s (`fixed_rate`, preprocess, the emission cycle, one-shot
+timing) and keeps those that can still have made a live particle (`canvas::particle_steps`).
+`CanvasRenderer` runs the steps its device hasn't with `RenderDevice::process_particles` and draws
+with `draw_particles`, so a late renderer catches up from the steps kept.
+`engine/render/shaders/particles_process.hlsl` is the compute shader and `render::process_particles`
+(`engine/render/src/particles.cpp`) its CPU twin, which the software and OpenGL ES devices run; a
+test holds them to the same particles, so a change to the particle math goes in both. Turbulence is
+curl noise, with lattice gradients from an integer hash so both make the same noise. Collision
+measures distance exactly: the system gathers the outlines of `Occluder2D`s and tile occluders with
+`sdf_collision` into each step's `render::ParticleShape`s, in the world canvas's coordinates, and
+`render::particle_contact` (and its twin in the shader) finds the way out and the depth. A
+`sub_emitter` chains emitters (up to `render::kMaxParticleChain`), which step together through
 `RenderDevice::process_particle_chain`: each link's step writes the particles it starts to an
 emission buffer, `particles_emit.hlsl` numbers what the next link takes (its twin is
-`take_emissions`), and that link's step starts them. `canvas::check_sub_emitters` reports the
-links left out, for `scene validate` and exports. Trails are Godot's: a system made with a
-trail (`create_particles(amount, trail)`) keeps `trail - 1` copies of each particle after them,
-which wait when it starts and then run the steps `trail_steps * j / trail` behind it, so a run
-starts with `history` steps it ran before (`ParticleRun::history`) for them to read;
-`particles_draw.hlsl` and `particle_vertices` draw each as Godot's ribbon. The steps kept and the
-emitter's idle time cover the copies running on after their particles. Particle graphs are
-Godot's particle shaders as node graphs: a process material's `start` and `process` compile with
-the canvas material compiler (`canvas::detail::compile_particle_graphs` in
+`take_emissions`), and that link's step starts them. `canvas::check_sub_emitters` reports the links
+left out, for `scene validate` and exports. A system made with a trail (`create_particles(amount,
+trail)`) keeps `trail - 1` copies of each particle after them, which wait when it starts and then
+run the steps `trail_steps * j / trail` behind it, so a run starts with `history` steps it ran
+before (`ParticleRun::history`) for them to read; `particles_draw.hlsl` and `particle_vertices` draw
+each. The steps kept and the emitter's idle time cover the copies running on after their particles.
+Particle graphs are particle shaders as node graphs: a process material's `start` and `process`
+compile with the canvas material compiler (`canvas::detail::compile_particle_graphs` in
 `engine/canvas/src/material.cpp`) into `render::ParticleProgram`s, material programs over the
-registers `render/particles.hpp` lays out, which the compute shader runs through
-`material_ops.hlsl` (shared with the material shader) and the CPU twin through
-`run_instructions` with `portable` set (`slash::exp`, `slash::ln`, `cos_sin` and `atan2`, the
-same bits everywhere). `particles.eval` runs the steps kept on the CPU
-(`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow, smoke, rain,
-fireworks, comets with trails and fireflies that graphs move.
+registers `render/particles.hpp` lays out, which the compute shader runs through `material_ops.hlsl`
+(shared with the material shader) and the CPU twin through `run_instructions` with `portable` set
+(`slash::exp`, `slash::ln`, `cos_sin` and `atan2`, the same bits everywhere). `particles.eval` runs
+the steps kept on the CPU (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks,
+snow, smoke, rain, fireworks, comets with trails and fireflies that graphs move.
 
-`Emitter3D` is Godot 4.6's, in `engine/scene3d/src/particles.cpp`
+`Emitter3D` lives in `engine/scene3d/src/particles.cpp`
 (`slash/scene3d/particles.hpp`): the `cpu_particles_3d` system (priority 1100, added by
-`canvas::install`) runs each emitter as `Emitter2D`'s are run, with the same timing and
-hashed random values, and Godot's 3D emission shapes, cone spread, basis flags and scale.
+`canvas::install`) runs each emitter as `Emitter2D`'s are run, with the same timing and hashed
+random values, and 3D emission shapes, cone spread, basis flags and scale.
 `scene3d::Renderer::add_particles` draws each emitter's mesh (its `mesh` file or primitive mesh
 component) as one CPU mesh per surface, refilled each frame with `update_mesh`: a copy of the
-mesh at each live particle, turned by `billboard` where its `Surface3D` has a
-`billboard` (as Godot's `BaseMaterial3D` vertex code, which `face_camera` also applies to
-`Model3D`s) and colored by the particle. `particles.eval` lists them in 3D, and
-`examples/particles-3d` has a fountain, a fire and snow.
+mesh at each live particle, turned by `billboard` where its `Surface3D` has a `billboard` and
+colored by the particle. `particles.eval` lists them in 3D, and `examples/particles-3d` has a
+fountain, a fire and snow.
 
-`GpuEmitter3D` is Godot 4.6's: `.particles.json` files read in 3D too
-(`canvas::ProcessMaterial` holds both forms; `parse_process_material_3d` takes Godot's 3D fields
-and per-axis curves, a 2D file's two numbers keeping the 3D default's z) into a
-`render::ParticleProcess3D`. The `gpu_particles_3d` system (`engine/scene3d/src/gpu_particles.cpp`,
-priority 1110) steps each emitter as `gpu_particles_2d` does and keeps its
-`render::ParticleStep3D`s; `scene3d::Renderer::add_gpu_particles` runs the steps its device
-hasn't (`RenderDevice::process_particles_3d`) and has `fill_particle_mesh` write each draw pass's
-mesh at every live particle into a mesh of world-space corners, culled by the visibility box.
-The GPU and WebGPU devices run them in compute shaders: `particles_process_3d.hlsl` steps the
+`GpuEmitter3D` reads `.particles.json` files in 3D too (`canvas::ProcessMaterial` holds both forms;
+`parse_process_material_3d` takes the 3D fields and per-axis curves, a 2D file's two numbers keeping
+the 3D default's z) into a `render::ParticleProcess3D`. The `gpu_particles_3d` system
+(`engine/scene3d/src/gpu_particles.cpp`, priority 1110) steps each emitter as `gpu_particles_2d`
+does and keeps its `render::ParticleStep3D`s; `scene3d::Renderer::add_gpu_particles` runs the steps
+its device hasn't (`RenderDevice::process_particles_3d`) and has `fill_particle_mesh` write each
+draw pass's mesh at every live particle into a mesh of world-space corners, culled by the visibility
+box. The GPU and WebGPU devices run them in compute shaders: `particles_process_3d.hlsl` steps the
 particles a thread each, `particles_sort_3d.hlsl` sorts a view depth pass's slots with a bitonic
-sort (keys of depth bits and index, so ties keep slot order) and `particles_mesh_3d.hlsl` writes
-the mesh's vertex buffer a thread a vertex, its box `ParticleMeshDraw3D::box_low` and `box_high`
-(the visibility box, which every device gives the mesh through `set_mesh_bounds`, so blended
-draws order alike); `src/particle_layout_3d.cpp` lays out the words they read. On Direct3D 12
-the meshes are placed on the CPU for now, since SDL's device is lost running the mesh pass on
-WARP.
+sort (keys of depth bits and index, so ties keep slot order) and `particles_mesh_3d.hlsl` writes the
+mesh's vertex buffer a thread a vertex, its box `ParticleMeshDraw3D::box_low` and `box_high` (the
+visibility box, which every device gives the mesh through `set_mesh_bounds`, so blended draws order
+alike); `src/particle_layout_3d.cpp` lays out the words they read. On Direct3D 12 the meshes are
+placed on the CPU for now, since SDL's device is lost running the mesh pass on WARP.
 `render::process_particles_3d` and `particle_mesh_vertices_3d` (`engine/render/src/particles3d.cpp`,
-built with `-ffp-contract=off`) are their CPU twin, which the software and OpenGL devices run,
-and `tests/test_particle_compute_3d.cpp` holds every device to it; a change to one goes in both,
-and `check_particle_process_3d` checks what every device takes. `particles.eval` runs the steps
-kept on the CPU; `examples/gpu-particles-3d` has sparks, leaves and streaks. Attractors are Godot's
-`ParticleAttractorSphere3D`, `Box3D` and `VectorField3D`: the system pairs each emitter
-with those visible whose bounds touch its visibility box and whose `layer_filter` meets its
-`layers` (Godot's scene cull), and puts them in its steps in the particles' space
-(`render::ParticleAttractor3D`, `for_particles` in `src/gpu_particles.cpp`); a vector field's
-texture is cut into slices by `particle_field` and read through the `ImageLoader`
-`canvas::install` gives it, and packed after the steps for the shaders
-(`src/particle_layout_3d.cpp`). `examples/particle-attractors-3d` gathers dust in a well.
-Colliders are Godot's `GPUParticlesCollisionSphere3D` and `Box3D`, paired as attractors are and
-placed by `collider_for_particles` (`render::ParticleCollider3D`); `collider_contact` in
-`engine/render/src/particles3d.cpp` and its twin in the shader find the way out and the depth
-as `particles.glsl`'s collider loop, and the process material's `collision_mode` bounces or
-hides the particle. `examples/particle-collision-3d` bounces sparks off a floor.
-`ParticleColliderSdf3D` and `HeightField3D` are Godot's too
-(`slash/scene3d/particle_collision.hpp`, `src/particle_collision.cpp`): `bake_particle_sdf`
-ports `GPUParticlesCollisionSDF3D::bake` (its bounding volume hierarchy and distance code, cells
-on the job pool), `particles.bake_sdf` (`engine/command/src/lightmap.cpp`) writes the `.sdf.png`
-file of half floats it makes, and `particle_height_field` draws the ground under a box on the
-CPU as Godot's height field camera does, which the system draws again when the box moves and
-steps after the camera with `follow_camera_enabled`. Both go to the devices in the step's words
-(`src/particle_layout_3d.cpp`; an SDF's distances as halves, read with filtering in code).
-`examples/particle-sdf-collision-3d` settles snow on a yard and sparks on a statue.
+built with `-ffp-contract=off`) are their CPU twin, which the software and OpenGL devices run, and
+`tests/test_particle_compute_3d.cpp` holds every device to it; a change to one goes in both, and
+`check_particle_process_3d` checks what every device takes. `particles.eval` runs the steps kept on
+the CPU; `examples/gpu-particles-3d` has sparks, leaves and streaks. Attractors are
+`ParticleAttractorSphere3D`, `ParticleAttractorBox3D` and `ParticleFlowField3D`: the system pairs
+each emitter with those visible whose bounds touch its visibility box and whose `layer_filter` meets
+its `layers`, and puts them in its steps in the particles' space (`render::ParticleAttractor3D`,
+`for_particles` in `src/gpu_particles.cpp`); a vector field's texture is cut into slices by
+`particle_field` and read through the `ImageLoader` `canvas::install` gives it, and packed after the
+steps for the shaders (`src/particle_layout_3d.cpp`). `examples/particle-attractors-3d` gathers dust
+in a well. Colliders are `ParticleColliderSphere3D` and `ParticleColliderBox3D`, paired as
+attractors are and placed by `collider_for_particles` (`render::ParticleCollider3D`);
+`collider_contact` in `engine/render/src/particles3d.cpp` and its twin in the shader find the way
+out and the depth, and the process material's `collision_mode` bounces or hides the particle.
+`examples/particle-collision-3d` bounces sparks off a floor. `ParticleColliderSdf3D` and
+`ParticleColliderHeight3D` (`slash/scene3d/particle_collision.hpp`, `src/particle_collision.cpp`):
+`bake_particle_sdf` bakes the signed distance field (with a bounding volume hierarchy and distance
+code, cells on the job pool), `particles.bake_sdf` (`engine/command/src/lightmap.cpp`) writes the
+`.sdf.png` file of half floats it makes, and `particle_height_field` draws the ground under a box on
+the CPU, which the system draws again when the box moves and steps after the camera with
+`follow_camera_enabled`. Both go to the devices in the step's words (`src/particle_layout_3d.cpp`;
+an SDF's distances as halves, read with filtering in code). `examples/particle-sdf-collision-3d`
+settles snow on a yard and sparks on a statue.
 
-Visual effects are `.vfx.json` recipes, after Unreal's Niagara systems (Godot has none):
+Visual effects are `.vfx.json` recipes, after Unreal's Niagara systems:
 `slash/world/vfx.hpp` (`engine/world/src/vfx.cpp`, built with `-ffp-contract=off`;
 `$cli schema vfx`) lays layers of components (particles, decals, lights, sounds, screen flashes,
 `CameraShake`s, anything a scene holds) on one timeline, with `curves` that move their fields
@@ -146,7 +138,7 @@ recipes' `vfx` name an effect per world event; `play_hooks` in `engine/world/src
 them (`play_vfx`) and keeps vehicles' `running` effects, and the foliage system emits
 `foliage_parted`. `examples/vfx-tool-effects` feeds a dog, runs a van and parts grass.
 
-Fluids and smoke are SlashEngine's own, after Niagara Fluids but with no grid (Godot has none):
+Fluids and smoke are SlashEngine's own, after Niagara Fluids but with no grid:
 a `.fluid.json` recipe (`slash/world/fluid.hpp`, `engine/world/src/fluid.cpp`, built with
 `-ffp-contract=off`; `$cli schema fluid`) is a liquid or a gas in 3D or 2D, and a `Fluid3D` or
 `Fluid2D` steps one with `FluidEmitter3D`/`2D`s pouring in and `FluidSink3D`/`2D`s draining it.

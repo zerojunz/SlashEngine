@@ -1,18 +1,17 @@
 # Lightmaps 3D
 
-Light baked into a lightmap by a `BakedLighting3D`, as Godot 4.6's: sunlight bouncing off a red wall
-onto the floor and into a crate's shadow, worked out once by `lightmap.bake` rather than every
-frame. [main.scene.json](main.scene.json) is a floor, a wall, a crate and a ball seen through a
-`Camera3D` in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light. The
-floor's, wall's and crate's `lighting_mode` is `"static"`, Godot's default, so the `lightmap` entity
-bakes them. The ball's is `"dynamic"`, as for anything that moves: it isn't baked, and takes its
-ambient light from the light probes the bake places over the others instead. It bakes at
-`"low"` quality (32 rays a texel) with two bounces, which is enough for a scene this small and
-takes well under a second.
+Light baked into a lightmap by a `BakedLighting3D`: sunlight bouncing off a red wall onto the
+floor and into a crate's shadow, worked out once by `lightmap.bake` rather than every frame.
+[main.scene.json](main.scene.json) is a floor, a wall, a crate and a ball seen through a `Camera3D`
+in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light. The floor's, wall's and
+crate's `lighting_mode` is `"static"`, the default, so the `lightmap` entity bakes them. The
+ball's is `"dynamic"`, as for anything that moves: it isn't baked, and takes its ambient light from
+the light probes the bake places over the others instead. It bakes at `"low"` quality (32 rays a
+texel) with two bounces, which is enough for a scene this small and takes well under a second.
 
-The sun keeps its default `light_bake_mode`, `"dynamic"`, as in Godot: the bake takes only the
-light it bounces, and the sun itself is still drawn every frame, so its shadows stay sharp. A
-`"static"` light's direct light would go into the lightmap too.
+The sun keeps its default `light_bake_mode`, `"dynamic"`: the bake takes only the light it
+bounces, and the sun itself is still drawn every frame, so its shadows stay sharp. A `"static"`
+light's direct light would go into the lightmap too.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -39,15 +38,14 @@ lightmap.bake {"id":"lightmap"}
   0.71, 0.71) with the light off the floor; moved, it would take the probes' light where it
   goes.
 - `component.set` paints the wall blue. The lightmap still holds the red light until it is baked
-  again, as in Godot, and the next `lightmap.bake` turns the floor by the wall from warm to
-  cool grey.
+  again, and the next `lightmap.bake` turns the floor by the wall from warm to cool grey.
 - A bake of a scene that hasn't changed since reports `"unchanged": true` and records no undo
   step.
 
 With `"device": "gpu"`, `lightmap.bake` traces the light and the probes on a GPU that traces
-rays (Vulkan with ray queries, as Godot's LightmapperRD bakes on the GPU) and returns
-`"device": "gpu"`; elsewhere the CPU traces it and it returns `"cpu"`. The light comes out the
-same but for rounding, so this example bakes on the CPU, whose bake is the same everywhere.
+rays (Vulkan with ray queries) and returns `"device": "gpu"`; elsewhere the CPU traces it and it
+returns `"cpu"`. The light comes out the same but for rounding, so this example bakes on the
+CPU, whose bake is the same everywhere.
 
 `lightmap.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
 Undo removes the files it made, or puts back the ones it replaced. `slash-cli scene validate`

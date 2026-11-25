@@ -1,9 +1,9 @@
 # Animated tiles
 
-Tiles that play frames, and a tile two cells wide, as Godot's TileSetAtlasSource.
-[pond.tileset.json](pond.tileset.json) cuts `pond.png` into 16x16 cells: water that plays three
-frames, a torch that plays four from a random point of its loop in each cell, a bridge two cells
-wide and a stone. [main.scene.json](main.scene.json) has a layer for the pond and one above it.
+Tiles that play frames, and a tile two cells wide. [pond.tileset.json](pond.tileset.json) cuts
+`pond.png` into 16x16 cells: water that plays three frames, a torch that plays four from a
+random point of its loop in each cell, a bridge two cells wide and a stone.
+[main.scene.json](main.scene.json) has a layer for the pond and one above it.
 [main.cpp](main.cpp) draws the atlas, then makes the calls an agent would make over MCP or
 JSON-RPC; [expected.txt](expected.txt) holds the replies.
 
@@ -13,9 +13,9 @@ frame.capture {"points":[[8,8]],"time":1.0}
 ```
 
 - `animation_frames` lists each frame's duration in seconds, and its length is the number of
-  frames. The frames are the cells after the tile in its texture, as in Godot: the water's are
-  the two to its right. `animation_columns` wraps them after that many columns, so the torch's
-  four frames are a 2x2 block, and `animation_separation` skips cells between them.
+  frames. The frames are the cells after the tile in its texture: the water's are the two to its
+  right. `animation_columns` wraps them after that many columns, so the torch's four frames are
+  a 2x2 block, and `animation_separation` skips cells between them.
 - `animation_speed` multiplies the speed, and `animation_mode` `random_start_times` starts each
   cell at its own point of the loop, picked from the layer's ID and the cell, so the three torches
   show three different flames and stay out of step.

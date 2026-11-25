@@ -1,8 +1,8 @@
 # App icons
 
-Exports make every platform's icons from one square image, as Godot's do from
-`application/config/icon`. [main.cpp](main.cpp) makes a project in code whose `project.json`
-names its icon, a gold coin on a clear background:
+Exports make every platform's icons from one square image from `application/config/icon`.
+[main.cpp](main.cpp) makes a project in code whose `project.json` names its icon, a gold coin on
+a clear background:
 
 ```json
 {"format": 1, "name": "Coins", "main_scene": "main.scene.json", "icon": "art/coin.png"}
@@ -18,10 +18,10 @@ night-blue background:
 
 Then it prints the icon files each platform's export ships:
 
-1. **macOS**: `AppIcon.icns` in the app bundle, with the icon at every size macOS asks for, as
-   Godot writes it: PNG images from 1024 to 32 pixels, then 32 and 16 pixel ones run-length
-   encoded with masks. An opaque icon would be drawn into Apple's rounded square; the coin has
-   its own shape, so it stays as it is.
+1. **macOS**: `AppIcon.icns` in the app bundle, with the icon at every size macOS asks for: PNG
+   images from 1024 to 32 pixels, then 32 and 16 pixel ones run-length encoded with masks. An opaque
+   icon would be drawn into Apple's rounded square; the coin has its own shape, so it stays as it
+   is.
 2. **Windows**: `icon.ico`, PNG images from 16 to 256 pixels, compiled into the executable as
    its icon. Explorer shows it, and the window too.
 3. **Linux**: no files; the game's window shows the icon.

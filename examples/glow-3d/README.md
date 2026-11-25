@@ -1,13 +1,13 @@
 # Glow 3D
 
-Glow from colors brighter than white, as Godot 4.6's Forward+ renderer makes it, which is the
-default `rendering.renderer`. [main.scene.json](main.scene.json) is a wall on a street at
-night with two neon signs, seen through a `Camera3D` in a 320x180 window. The pink sign's
+Glow from colors brighter than white, as the clustered renderer makes it, which is the
+default `rendering.renderer`. [main.scene.json](main.scene.json) is a wall on a street at night
+with two neon signs, seen through a `Camera3D` in a 320x180 window. The pink sign's
 `emission_energy_multiplier` is 6 and the cyan one's 4, so they shine six and four times white.
 
-Forward+ draws the world linear into a texture of half floats, so those colors stay above 1
-until the tonemap. The `environment` entity's `Environment3D` sets `tonemap_mode` `"agx"` and
-`glow_enabled` with `glow_intensity` 0.8; everything else is Godot's default:
+The clustered renderer draws the world linear into a texture of half floats, so those colors
+stay above 1 until the tonemap. The `environment` entity's `Environment3D` sets `tonemap_mode`
+`"agx"` and `glow_enabled` with `glow_intensity` 0.8; everything else is the default:
 
 - `glow_hdr_threshold` 1: only what is brighter than white glows, and nothing else on the street
   is, so the wall and ground stay dark.
@@ -36,6 +36,6 @@ frame.capture {"points":[[130,60],[130,45],[200,70],[215,70],[20,160]]}
 - A `glow_hdr_threshold` of 8 is above both signs, so nothing glows: the wall above the pink
   sign keeps only the light of the lamp beside it.
 
-The same settings in Godot's Compatibility renderer (`"renderer": "compatibility"`,
-and always with the OpenGL drivers) glow nowhere: its colors stop at 1, so it needs a threshold
-below 1. [post-processing-3d](../post-processing-3d/) shows that renderer.
+The same settings in the compatibility renderer (`"renderer": "compatibility"`, and always with
+the OpenGL drivers) glow nowhere: its colors stop at 1, so it needs a threshold below 1.
+[post-processing-3d](../post-processing-3d/) shows that renderer.

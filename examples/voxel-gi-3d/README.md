@@ -1,15 +1,15 @@
 # VoxelLighting3D 3D
 
-Light bouncing around a room through a `VoxelLighting3D`, as Godot 4.6's: the floor's sunlight lights a
-crate's shadowed side and the ball's underside, and the red wall tints the floor beside it.
+Light bouncing around a room through a `VoxelLighting3D`: the floor's sunlight lights a crate's
+shadowed side and the ball's underside, and the red wall tints the floor beside it.
 [main.scene.json](main.scene.json) is a floor, a red wall, a back wall, a crate and a ball seen
 through a `Camera3D` in a 160x90 window, lit by a sun with shadows and a blue-grey ambient light.
 The `gi` entity's box covers the room at 64 cells along its longest side. `voxel_lighting.bake`
-voxelizes the meshes whose `lighting_mode` is `"static"`, Godot's default, once; the renderer injects
-the sun into the cells and traces cones through them every frame, so the bounce follows the
+voxelizes the meshes whose `lighting_mode` is `"static"`, the default, once; the renderer
+injects the sun into the cells and traces cones through them every frame, so the bounce follows the
 lights as the game runs. The ball's `lighting_mode` is `"dynamic"`, as for anything that moves: it
-isn't voxelized, but the renderer plots it into the cells' light each frame it moves or
-changes, so it lights the room too.
+isn't voxelized, but the renderer plots it into the cells' light each frame it moves or changes, so
+it lights the room too.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -40,7 +40,7 @@ voxel_lighting.bake {"id":"gi"}
   (0.84, 0.51, 0.35), and the floor by the crate to (0.81, 0.72, 0.35).
 
 `voxel_lighting.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
-Undo removes the file it made, or puts back the one it replaced. `slash-cli scene validate`
-checks a VoxelLighting3D's `data`, and exports ship the file. VoxelGIs draw only in Forward+, the default
-`rendering.renderer`; `rendering.voxel_lighting.quality` in `project.json`
-picks Godot's four cones or six narrower ones.
+Undo removes the file it made, or puts back the one it replaced. `slash-cli scene validate` checks a
+VoxelLighting3D's `data`, and exports ship the file. `VoxelLighting3D`s draw only in the clustered
+renderer, the default `rendering.renderer`; `rendering.voxel_lighting.quality` in `project.json`
+picks four cones or six narrower ones.

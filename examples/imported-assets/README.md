@@ -4,7 +4,7 @@ Models made in other tools, bought from asset stores or drawn by a team's own ar
 asset library as generated ones do. `asset.add` takes a `.gltf`, `.obj`, `.fbx` or `.blend` file
 and keeps it as a self-contained `.glb` file, cleaned up with [`model.cleanup`](../model-cleanup/)'s
 options, described, reviewed if asked, and recorded with its license, its author and the file it
-came from. As Godot's `.import` files do, the library keeps the source file's hash and its
+came from. The library keeps the source file's hash and its
 cleanup settings, so an edit to the file is noticed and imported again the same way.
 
 [game/props/crate.obj](game/props/crate.obj) is a crate an artist exported from a CAD tool: a

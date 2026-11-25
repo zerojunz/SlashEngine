@@ -1,8 +1,9 @@
 # Subsurface scattering
 
-Godot's `StandardMaterial3D` subsurface scattering and transmittance, as its Forward+ renderer
-draws them for skin, wax and leaves. [main.scene.json](main.scene.json) has two meshes in a
-160x90 window, with the project's blur set to high quality ([project.json](project.json)):
+`Surface3D`'s subsurface scattering and transmittance, as the clustered
+renderer draws them for skin, wax and leaves. [main.scene.json](main.scene.json) has
+two meshes in a 160x90 window, with the project's blur set to high quality
+([project.json](project.json)):
 
 - `wax` is a pale ball lit from the right (`subsurface_enabled`,
   `subsurface_strength`). Its diffuse light is blurred across and down the screen after it
@@ -29,6 +30,6 @@ frame.capture {"points":[[47,45],[53,45],[60,45],[105,45]]}
   stays the same, and the ear go black, since nothing lights its front.
 
 The blur's quality, width and narrowing with distance are project.json's
-`rendering.subsurface`. Compatibility draws neither effect, and the
-textures Godot also takes for them (`subsurf_scatter_texture`,
+`rendering.subsurface`. The compatibility renderer draws neither effect, and the
+textures that could also drive them (`subsurf_scatter_texture`,
 `subsurf_scatter_transmittance_texture`) aren't read yet.

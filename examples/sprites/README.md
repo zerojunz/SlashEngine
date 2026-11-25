@@ -1,9 +1,9 @@
 # Sprites
 
-Sprites and flipbook animation, as in Godot. [main.scene.json](main.scene.json) has three
-sprites and [hero.frames.json](hero.frames.json) two animations of one sprite sheet.
-[main.cpp](main.cpp) writes the sheet, plays the hero's animations with the commands an agent
-sends, then draws the scene into a texture.
+Sprites and flipbook animation. [main.scene.json](main.scene.json) has three sprites and
+[hero.frames.json](hero.frames.json) two animations of one sprite sheet. [main.cpp](main.cpp)
+writes the sheet, plays the hero's animations with the commands an agent sends, then draws the
+scene into a texture.
 
 - `Sprite2D` draws a texture, or frame `frame` of a sheet split into `hframes` by `vframes`, or
   the part `region` picks. It is centered on the entity unless `centered` is false. `flip_h` and

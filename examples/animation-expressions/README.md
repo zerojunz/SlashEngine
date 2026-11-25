@@ -1,8 +1,8 @@
 # Animation expressions
 
 A hero whose `AnimationGraph` state machine moves between idle, run and jump on its own, by
-expressions of values the game sets, as Godot's `advance_expression`. A jump trigger waits until
-the hero is on the ground, then the transition uses it up, as Unity's Animator triggers do.
+expressions of values the game sets. A jump trigger waits until the hero is on the ground, then
+the transition uses it up, as Unity's Animator triggers do.
 
 [hero.animtree.json](hero.animtree.json) declares the values its expressions read, with their
 defaults, and the triggers among them:
@@ -12,7 +12,7 @@ defaults, and the triggers among them:
 "triggers": ["jump"]
 ```
 
-Its auto transitions take them in Godot's expression syntax:
+Its auto transitions take them as expressions:
 
 ```json
 {"from": "idle", "to": "run", "advance_mode": "auto", "advance_expression": "speed > 0.5"},

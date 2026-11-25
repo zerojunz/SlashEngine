@@ -1,12 +1,12 @@
 # Code editor
 
 A `TextArea` that colors code, numbers its lines, marks breakpoints and what it is told to look
-for, as Godot's `CodeEdit`, `SyntaxColors` and `TextArea` search do.
-[main.scene.json](main.scene.json) is a script of two C++ functions in a `TextArea` with a
-`SyntaxColors` and a `CodeEditor` beside it, a breakpoint on line 3 and `search_text`
-`"velocity"`. [calls.jsonl](calls.jsonl) searches it, clicks its gutters, adds a line above the
-breakpoints and works its scroll bar the way an agent does over MCP (tools `ui_search`,
-`input_inject`, `ui_layout`) or JSON-RPC; [results.jsonl](results.jsonl) holds the replies.
+for, `SyntaxColors` and `TextArea` search do. [main.scene.json](main.scene.json) is a script of
+two C++ functions in a `TextArea` with a `SyntaxColors` and a `CodeEditor` beside it, a
+breakpoint on line 3 and `search_text` `"velocity"`. [calls.jsonl](calls.jsonl) searches it,
+clicks its gutters, adds a line above the breakpoints and works its scroll bar the way an agent
+does over MCP (tools `ui_search`, `input_inject`, `ui_layout`) or JSON-RPC;
+[results.jsonl](results.jsonl) holds the replies.
 
 ```text
 ui.search {"id":"script","text":"Player","all":true,"flags":["match_case","whole_words"]}

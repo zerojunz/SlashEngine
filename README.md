@@ -10,7 +10,7 @@ opencode, Antigravity, Hermes Agent, OpenClaw or any other MCP client.
 **Status:** milestones 1 to 8 are done, and so is every feature planned for the launch release,
 including the [agent-built worlds](docs/roadmap.md#agent-built-worlds-and-smart-npcs) tool set;
 the published release is what remains (see the [roadmap](docs/roadmap.md)). The engine covers
-Godot's 2D and 3D feature sets (Forward+ and Compatibility renderers, ray tracing, physics on
+full 2D and 3D feature sets (clustered and compatibility renderers, ray tracing, physics on
 Box2D and Jolt, navigation, animation, UI, audio, video, localization, accessibility, networking
 and XR) and tools for agents to build whole worlds: procedural graphs, foliage, wind, characters
 with faces and anatomy, animals, vehicles, NPCs with plans and stories, destruction, visual

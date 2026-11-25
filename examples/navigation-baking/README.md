@@ -1,10 +1,9 @@
 # Navigation baking
 
-Navigation meshes baked from a scene, as Godot 4.6's `NavArea3D.bake_navigation_mesh`
-and `NavArea2D.bake_navigation_polygon` bake them. [main.scene.json](main.scene.json)
-has a courtyard on the 3D map: a 12 by 12 meter ground, a wall, a well, and a platform a meter
-up with a ramp to it. They are under the `courtyard` region in its `Transform3D` children, as
-Godot bakes the nodes under a region:
+Navigation meshes baked from a scene by `NavArea3D` and `NavArea2D`.
+[main.scene.json](main.scene.json) has a courtyard on the 3D map: a 12 by 12 meter ground, a
+wall, a well, and a platform a meter up with a ramp to it. They are under the `courtyard` region
+in its `Transform3D` children, and the bake reads them:
 
 ```json
 "courtyard": {"components": {
@@ -14,7 +13,7 @@ Godot bakes the nodes under a region:
 ```
 
 [nav/courtyard.navmesh.json](nav/courtyard.navmesh.json) holds only the bake's settings at
-first, with Godot's names and defaults (`cell_size`, `agent_radius`, `agent_max_slope` and the
+first, with its names and defaults (`cell_size`, `agent_radius`, `agent_max_slope` and the
 rest; here a taller `agent_height`). The ground, wall, platform and ramp are static bodies,
 whose shapes bake; the well is a `Model3D`, whose mesh bakes. Recast marks the triangles
 flat enough to walk, voxelizes them, keeps agents `agent_radius` from every edge and gives back

@@ -1,7 +1,7 @@
 # Tileable materials
 
 Walls, floors and roads are drawn with materials that repeat across them, and repeated textures
-show their seams. `asset.generate` with `"type": "material"` makes a Godot `Surface3D`
+show their seams. `asset.generate` with `"type": "material"` makes a `Surface3D`
 that tiles: it generates an image asking for a seamless texture (or takes a library image as
 `image`), measures how plainly its edges show where it wraps (`seam_ratio`), blends four copies
 of it moved by half when they do, then works out a normal map and a roughness map from its
@@ -9,10 +9,9 @@ brightness, wrapping round the edges so they tile with it. The image, the three 
 `.standard_material.json` file naming them are kept in the asset library, and `path` copies them
 into the project.
 
-A `.standard_material.json` file is one `Surface3D` in a file of its own, as Godot
-saves one as a `.tres` resource. Model recipes name it as a material, as it is or with fields
-changed through `extends`, so every model drawn with the same stone shares one material and its
-textures.
+A `.standard_material.json` file is one `Surface3D` in a file of its own. Model recipes name it as a
+material, as it is or with fields changed through `extends`, so every model drawn with the same
+stone shares one material and its textures.
 
 [main.cpp](main.cpp) uses the built-in `test` generator, whose textures are rows of stones of
 random shades. [expected.txt](expected.txt) holds the output:

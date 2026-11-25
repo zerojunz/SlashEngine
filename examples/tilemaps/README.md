@@ -1,13 +1,12 @@
 # Tile maps
 
-Grids of tiles with terrain autotiling, as Godot's TileSet and TileLayer2D.
-[ground.tileset.json](ground.tileset.json) cuts `ground.png` into 16x16 tiles: water, grass for
-the middle of an area, its four edges, four outer corners and four inner corners, a flowery
-grass and a rock. The grass tiles' `peering` says which sides and corners touch water, as
-Godot's terrain peering bits. The `ground` entity in [main.scene.json](main.scene.json) has an
-empty `TileLayer2D`. [main.cpp](main.cpp) draws the atlas from the tile set's own peering,
-paints an island with a pond, reads the cells back and draws them into a texture.
-[expected.txt](expected.txt) holds its output.
+Grids of tiles with terrain autotiling. [ground.tileset.json](ground.tileset.json) cuts
+`ground.png` into 16x16 tiles: water, grass for the middle of an area, its four edges, four
+outer corners and four inner corners, a flowery grass and a rock. The grass tiles' `peering`
+says which sides and corners touch water. The `ground` entity in
+[main.scene.json](main.scene.json) has an empty `TileLayer2D`. [main.cpp](main.cpp) draws the
+atlas from the tile set's own peering, paints an island with a pond, reads the cells back and
+draws them into a texture. [expected.txt](expected.txt) holds its output.
 
 ```text
   wwwwwwwwwwww

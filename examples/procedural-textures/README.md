@@ -4,8 +4,8 @@ Textures made from settings rather than painted: noise and gradients. The projec
 textures are `.texture.json` files in [textures/](textures/), made into pixels as they load, the
 same on every machine.
 
-- [water.texture.json](textures/water.texture.json) is cellular noise (Godot's `FastNoiseLite`)
-  colored by a gradient from deep to shallow blue, made `seamless` so it tiles.
+- [water.texture.json](textures/water.texture.json) is cellular noise colored by a gradient from
+  deep to shallow blue, made `seamless` so it tiles.
 - [glow.texture.json](textures/glow.texture.json) is a radial gradient from warm yellow to
   clear orange.
 - [dusk.texture.json](textures/dusk.texture.json) is a gradient one pixel high from night to

@@ -192,8 +192,8 @@ slash-cli sdk lock --project my-game               # fetch and pin Google's libr
 
 | Package | Platforms | Store | Backend name |
 | --- | --- | --- | --- |
-| `storekit` | iOS, macOS | Apple's StoreKit (`SKProductsRequest`, `SKPaymentQueue`), as Godot's iOS in-app store plugin; links the StoreKit framework | `storekit` |
-| `play-billing` | Android | Google Play Billing Library 8, as Godot's Google Play Billing plugin | `google_play` |
+| `storekit` | iOS, macOS | Apple's StoreKit (`SKProductsRequest`, `SKPaymentQueue`); links the StoreKit framework | `storekit` |
+| `play-billing` | Android | Google Play Billing Library 8 | `google_play` |
 
 Both follow the purchases rules above. StoreKit reports each transaction by its identifier, and
 its `receipt` is the app's App Store receipt (base64) for the game's server to check with Apple;

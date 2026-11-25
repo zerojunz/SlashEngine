@@ -1,11 +1,10 @@
 # Damage that deforms
 
-Damage short of breaking leaves marks, as Chaos Destruction's deformation does (Godot has no
-destruction). A profile's `deform` settings say how far each kind of hit dents, holes and carves
-its material, per point of damage dealt: blunt and impact hits dent, pierce holes, explosions
-carve a round bite or dig a crater in an `Terrain3D`, and cuts, pierces and explosions tear cloth.
-Every material has defaults, so [profiles/steel.damage.json](profiles/steel.damage.json) only
-names its material:
+Damage short of breaking leaves marks, as Chaos Destruction's deformation does. A profile's `deform`
+settings say how far each kind of hit dents, holes and carves its material, per point of damage
+dealt: blunt and impact hits dent, pierce holes, explosions carve a round bite or dig a crater in an
+`Terrain3D`, and cuts, pierces and explosions tear cloth. Every material has defaults, so
+[profiles/steel.damage.json](profiles/steel.damage.json) only names its material:
 
 ```json
 {

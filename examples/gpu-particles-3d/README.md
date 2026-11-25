@@ -1,11 +1,10 @@
 # GPU particles in 3D
 
-Particles in 3D, as Godot 4.6's `GpuEmitter3D` with its `ParticleProcessMaterial`. In
-[main.scene.json](main.scene.json), sparks of additive quads rise from a sphere, cool from
-yellow to a fading red and drift in turbulence; leaves made of thin boxes circle a ring about y
-in the emitter's own space, spinning as they go; and blue streaks thrown up from a box stretch
-along their velocity as they fly and fall. Each emitter's
-[`.particles.json`](sparks.particles.json) says how its particles move.
+Particles in 3D with its `ParticleProcessMaterial`. In [main.scene.json](main.scene.json),
+sparks of additive quads rise from a sphere, cool from yellow to a fading red and drift in
+turbulence; leaves made of thin boxes circle a ring about y in the emitter's own space, spinning
+as they go; and blue streaks thrown up from a box stretch along their velocity as they fly and
+fall. Each emitter's [`.particles.json`](sparks.particles.json) says how its particles move.
 [calls.jsonl](calls.jsonl) checks them with `particles.eval`, draws the scene with
 `frame.capture`, turns the sparks off and adds an emitter with nothing to draw;
 [results.jsonl](results.jsonl) holds the replies.
@@ -17,17 +16,17 @@ particles.eval {"id":"streaks","time":2,"list":true,"max_results":1}
    "scale":[1,1.9798,1],"velocity":[-0.0819,-1.9348,0.2996]}]}
 ```
 
-- Process materials are the same files `GpuEmitter2D` reads, with Godot's 3D fields: vectors
-  of three numbers (a 2D one's two keep the 3D default's z), the `ring` shape with
+- Process materials are the same files `GpuEmitter2D` reads, with 3D fields: vectors of
+  three numbers (a 2D one's two keep the 3D default's z), the `ring` shape with
   `emission_ring_axis`, `emission_ring_height` and `emission_ring_cone_angle`, `flatness`,
   `particle_flag_rotate_y` and `particle_flag_disable_z`, directional velocity and scale over
   velocity. `scale_curve`, `scale_over_velocity_curve`, `orbit_velocity_curve` and
-  `directional_velocity_curve` take one curve or one per axis (`{"x": ..., "y": ..., "z": ...}`),
-  as Godot's `CurveXYZTexture`: the leaves orbit about y only and the streaks stretch in y only.
-- Emission is stepped as Godot's node and particles storage step it: `amount` slots,
-  `lifetime`, `explosiveness`, `randomness`, `preprocess`, `fixed_fps` with `interpolate`,
-  `speed_scale`, `amount_ratio` and `one_shot`, which emits `finished`. Renderers run the steps
-  the device hasn't and draw each draw pass's mesh at every live particle.
+  `directional_velocity_curve` take one curve or one per axis (`{"x": ..., "y": ..., "z": ...}`):
+  the leaves orbit about y only and the streaks stretch in y only.
+- Emission is stepped: `amount` slots, `lifetime`, `explosiveness`, `randomness`, `preprocess`,
+  `fixed_fps` with `interpolate`, `speed_scale`, `amount_ratio` and `one_shot`, which emits
+  `finished`. Renderers run the steps the device hasn't and draw each draw pass's mesh at every
+  live particle.
 - `mesh_1` to `mesh_4` name model files to draw, with `mesh_count` saying how many;
   with none, the entity's primitive mesh component and `Surface3D` draw, as the three
   emitters here do. The sparks' material has `billboard` `"particles"`, so each quad faces
@@ -37,7 +36,7 @@ particles.eval {"id":"streaks","time":2,"list":true,"max_results":1}
 - `transform_align` `"y_to_velocity"` points each streak's y along its velocity;
   `"z_billboard"` and `"z_billboard_y_to_velocity"` face the camera too.
 - Particles are culled by `visibility_aabb_position` and `visibility_aabb_size`, a box in the
-  emitter's space, as Godot's `visibility_aabb`: an emitter whose box is out of view isn't drawn.
+  emitter's space: an emitter whose box is out of view isn't drawn.
 - Random values come from the entity's ID and `seed` (or `seed` alone with `use_fixed_seed`),
   so the same scene makes the same particles on every platform. `particles.eval` runs the steps
   kept on the CPU, and with a `time` runs an emitter's settings from the start apart from the

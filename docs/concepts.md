@@ -21,8 +21,7 @@ do through them counts as a bug:
 
 There is no GUI editor. People use a text editor, their agent and the debug overlay that F3
 shows in `slash-cli run`.
-Gameplay code is plain C++; there is no scripting language. Where a design choice is open, the
-engine follows Godot's approach.
+Gameplay code is plain C++; there is no scripting language.
 
 ## The layers
 
@@ -51,24 +50,24 @@ The code follows the same split, one CMake library per module under `engine/`:
 | --- | --- |
 | `core` | `Result<T>`, JSON logging, JSON parsing and schemas, reflection, math, expressions, the fixed-step clock, the job system and profiler zones |
 | `platform` | The SDL3 window, the run loop, file access and child processes |
-| `procedural` | Godot's noise and procedural textures, scatter rules, `.pcg.json` procedural graphs and foliage painting |
+| `procedural` | Noise and procedural textures, scatter rules, `.pcg.json` procedural graphs and foliage painting |
 | `render` | The render device: SDL3's GPU API (Vulkan, Metal, Direct3D 12), OpenGL 3.3 and OpenGL ES 3.0 (WebGL 2 on the web), WebGPU, the software device that draws on the CPU, or the null device for headless runs |
 | `asset` | Asset handles, loaders and hot reload |
 | `world` | The EnTT world, components, the component registry, scenes and prefabs, 2D and 3D trees, and what 2D and 3D share: wind, physics materials and fields, damage, ragdoll, hair, character, face, creature, vehicle, effect, fluid and water recipes |
-| `input` | Input, as Godot's: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
-| `l10n` | Translation files, locales, plural rules and lookups, as Godot's TranslationServer |
+| `input` | Input: key, mouse, touch and gamepad events from SDL, rebindable actions and the state gameplay code reads |
+| `l10n` | Translation files, locales, plural rules and lookups |
 | `audio` | Sound files and streams, the mixer, buses and effects, players and interactive music |
 | `video` | AV1 video in IVF, WebM and Matroska files, decoded with dav1d |
 | `services` | Ads, analytics, purchases, achievements and leaderboards behind one API |
-| `canvas` | 2D drawing, as Godot's canvas: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, 2D lights, CPU and GPU particles, and the renderer that draws them |
+| `canvas` | 2D drawing: sprites, `.frames.json` animations, `.material.json` materials, `.tileset.json` tile sets and tile map layers, 2D lights, CPU and GPU particles, and the renderer that draws them |
 | `text` | Fonts and text layout: FreeType, HarfBuzz, bidirectional text, distance field fonts and glyph atlases |
-| `ui` | UI, as Godot's Control nodes: layout, containers, themes, buttons, menus, text fields and their draw calls |
+| `ui` | UI: layout, containers, themes, buttons, menus, text fields and their draw calls |
 | `accessibility` | Screen readers through AccessKit, and the web's and phones' own |
-| `animation` | Keyframe animation and animation trees, as Godot's AnimationPlayer and AnimationGraph |
-| `scene3d` | 3D nodes, as Godot's: meshes, models, CSG, grid maps, terrain, materials, cameras, lights, skeletons and IK, and characters, creatures and vehicles built into models |
-| `physics2d` | 2D physics on Box2D, as Godot's: bodies, areas, shapes, joints, queries, and vehicles, ragdolls, cloth, hair and destruction |
-| `physics3d` | 3D physics on Jolt, as Godot's Jolt module: bodies, areas, characters, joints, queries, and vehicles, soft bodies, cloth, hair and destruction |
-| `navigation` | Navigation meshes, maps, paths, agents and avoidance, as Godot's navigation servers |
+| `animation` | Keyframe animation and animation trees |
+| `scene3d` | 3D nodes: meshes, models, CSG, grid maps, terrain, materials, cameras, lights, skeletons and IK, and characters, creatures and vehicles built into models |
+| `physics2d` | 2D physics on Box2D: bodies, areas, shapes, joints, queries, and vehicles, ragdolls, cloth, hair and destruction |
+| `physics3d` | 3D physics on Jolt: bodies, areas, characters, joints, queries, and vehicles, soft bodies, cloth, hair and destruction |
+| `navigation` | Navigation meshes, maps, paths, agents and avoidance |
 | `npc` | NPC brains that plan, quests, dialogue and animals |
 | `net` | Multiplayer over ENet and WebSocket, with replication and RPCs |
 | `xr` | The XR server, trackers and XR nodes, and OpenXR |
@@ -81,7 +80,7 @@ The code follows the same split, one CMake library per module under `engine/`:
 | `debug` | The debug overlay over a running game |
 | `autopilot` | Playtests by Autopilot's agent or the engine's own |
 | `gameplay` | Loading a game's own C++ code into a world, and swapping it when it is rebuilt |
-| `plugin` | Plugins over a stable C interface, as Godot's GDExtension |
+| `plugin` | Plugins over a stable C interface |
 | `runtime` | Project files and the game executable every export is built from |
 
 The tools in `tools/` are thin front ends over these: `slash-cli` (run, validate, call, serve,
@@ -108,7 +107,7 @@ maps, play animations and link entities to the storyboard:
 | `Transform2D` | `position` [x, y], `rotation`, `scale` [x, y], `skew`, `children` | Pixels; y points down; rotation in radians, clockwise |
 | `Transform3D` | `position` [x, y, z], `rotation` quaternion [x, y, z, w], `scale` [x, y, z] | Meters; y points up |
 
-Units and axes follow Godot. As with Godot's Node2D, the entities in a `Transform2D`'s `children`
+The entities in a `Transform2D`'s `children`
 are placed in its space: they move, turn, scale and draw with it, and a parent's `z_index`,
 visibility and tint pass down ([parent transforms](reference/scene-format.md#parent-transforms)).
 Components are **reflected**: one `SLASH_COMPONENT(Type, fields...)`
@@ -120,26 +119,24 @@ a reference to another entity, a `std::vector` of these, a `std::map` of them by
 nested struct declared with `SLASH_REFLECT`.
 
 A **system** is code that updates components every tick, added with `World::add_system` and an
-optional doc string and priority. Systems run in order of priority, lowest first as with Godot's
-`process_priority`, and in the order they were added when priorities are equal. `engine.describe`
-lists them in that order. The built-in systems apply input, play animations, step physics,
-move the camera, run particles and play sound: `input` applies the input events queued since
-the last tick, first, `gui` sends them to controls, `animation_player` runs `Animator`
-components, `physics2d` moves bodies and reports contacts, `animated_sprite_2d` runs
-`Flipbook2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag margins and
-smoothing on, `parallax_2d` scrolls each `Parallax2D` with it, `cpu_particles_2d` emits and moves
-`Emitter2D` particles, `gpu_particles_2d` works out the steps the renderer runs on each
+optional doc string and priority. Systems run in order of priority, lowest first, and in the order
+they were added when priorities are equal. `engine.describe` lists them in that order. The built-in
+systems apply input, play animations, step physics, move the camera, run particles and play sound:
+`input` applies the input events queued since the last tick, first, `gui` sends them to controls,
+`animation_player` runs `Animator` components, `physics2d` moves bodies and reports contacts,
+`animated_sprite_2d` runs `Flipbook2D` flipbooks, `camera_2d` moves the current `Camera2D`'s drag
+margins and smoothing on, `parallax_2d` scrolls each `Parallax2D` with it, `cpu_particles_2d` emits
+and moves `Emitter2D` particles, `gpu_particles_2d` works out the steps the renderer runs on each
 `GpuEmitter2D`'s particles, then `audio` mixes the tick's sound.
 
-**Threaded systems** run on the job system, as Godot's `WorkerThreadPool` and its sub-thread
-process groups. A system added with `.threaded = true` names what it `reads` and `writes`:
-component names, or names for other shared state. Threaded systems next to each other in the
-order run at the same time, each on a thread of the world's pool, as long as none writes what
-another reads or writes; `engine.describe` with `"full": true` gives each system's `stage`, and
-systems in the same stage run together. A threaded system's events are delivered after its stage,
-in system order, and it creates and destroys entities (and adds and removes components) through
-`World::defer`, so a tick comes out the same on any number of threads. Other state it shares goes
-under a name too: physics queries bring Box2D up to date first, so a threaded system that makes
+**Threaded systems** run on the job system. A system added with `.threaded = true` names what it
+`reads` and `writes`: component names, or names for other shared state. Threaded systems next to
+each other in the order run at the same time, each on a thread of the world's pool, as long as none
+writes what another reads or writes; `engine.describe` with `"full": true` gives each system's
+`stage`, and systems in the same stage run together. A threaded system's events are delivered after
+its stage, in system order, and it creates and destroys entities (and adds and removes components)
+through `World::defer`, so a tick comes out the same on any number of threads. Other state it shares
+goes under a name too: physics queries bring Box2D up to date first, so a threaded system that makes
 them writes `"physics2d"`. Any system can also share its own work out with
 `world.pool().parallel_for`, as `cpu_particles_2d` does with its emitters; `cpu_particles_2d` and
 `gpu_particles_2d` are threaded and share a stage, and Box2D steps physics on the same threads.
@@ -148,7 +145,7 @@ them writes `"physics2d"`. Any system can also share its own work out with
 The world times each tick and each system, and `perf.stats` reports the averages and slowest
 times over the last 120 ticks, the slowest systems first, in any session: the first place to look
 when a game runs slowly. Built with the `tracy` CMake preset, the engine also reports to the
-[Tracy](https://github.com/wolfpld/tracy) profiler, as Godot's `profiler=tracy` builds do, which
+[Tracy](https://github.com/wolfpld/tracy) profiler, which
 draws every thread's systems, commands, physics steps and drawing on one timeline. With
 `"memory": true`, `perf.stats` also says what each part of the engine holds in memory (the
 world, each component type, assets, physics, audio, particles and glyph atlases) and what the
@@ -157,8 +154,8 @@ process uses, so a part that keeps growing shows where memory leaks.
 ## Scenes
 
 A **scene** is a world saved as a `.scene.json` file: entities keyed by ID, each with its
-components, plus a `format` version. Fields equal to their defaults are left out, as in Godot, so
-a scene holds only what differs.
+components, plus a `format` version. Fields equal to their defaults are left out, so a scene
+holds only what differs.
 
 Every scene has one **canonical form**: keys sorted, two-space indent, numbers normalized,
 defaults removed. `slash-cli scene format` and `scene.save` both write it, so the same world
@@ -169,36 +166,34 @@ matches the build. Validation reports every error at once, each with the JSON Po
 value and, for a misspelled name, the closest valid one. See
 [reference/scene-format.md](reference/scene-format.md).
 
-A **prefab** is one entity's components in a `.prefab.json` file, like a Godot scene that other
-scenes instance. An entity that `"extends"` a prefab starts with its components and overrides
-fields; a `null` component removes one. The entity stays linked to the prefab, so saving writes
-only what differs and editing the prefab changes every instance. Prefabs can extend other
-prefabs. Undo and snapshots keep the prefab each entity was made from, so they restore it exactly
-even after the file changes.
+A **prefab** is one entity's components in a `.prefab.json` file. An entity that `"extends"` a
+prefab starts with its components and overrides fields; a `null` component removes one. The
+entity stays linked to the prefab, so saving writes only what differs and editing the prefab
+changes every instance. Prefabs can extend other prefabs. Undo and snapshots keep the prefab each
+entity was made from, so they restore it exactly even after the file changes.
 
-An **instanced scene** is a whole scene used as a prefab, as Godot instances a PackedScene. An
+An **instanced scene** is a whole scene used as a prefab. An
 entity that `"extends"` a `.scene.json` file with a `"root"` becomes that root, and the scene's
 other entities come with it under the instance's ID (`hero/sprite`, `hero/gun/muzzle`). The
 instance holds only its overrides, per entity, and editing the scene changes every instance.
 
 ## Assets
 
-An **asset** is a file a game loads by project path, like a Godot resource: a JSON table, a CSV
-file, a texture and, once audio arrives, sounds. Loading one returns a **handle**; every handle to
-the same path shares one copy, which stays loaded while any handle exists. `.json`, `.txt`,
-`.csv`, `.png`, `.bmp`, `.frames.json`, `.material.json`, `.particles.json`, `.anim.json`,
-`.tileset.json`, `.ttf`,
-`.otf` and `.font.json` files load out of the box, and a game can add its own types.
+An **asset** is a file a game loads by project path: a JSON table, a CSV file, a texture and, once
+audio arrives, sounds. Loading one returns a **handle**; every handle to the same path shares one
+copy, which stays loaded while any handle exists. `.json`, `.txt`, `.csv`, `.png`, `.bmp`,
+`.frames.json`, `.material.json`, `.particles.json`, `.anim.json`, `.tileset.json`, `.ttf`, `.otf`
+and `.font.json` files load out of the box, and a game can add its own types.
 
 **Hot reload** keeps an agent's edit-and-check loop short. Before every command, and between
 ticks in `slash-cli run` and `slash-cli serve`, the session checks the files it has loaded. A
 changed asset reloads in place, so its handles see the new version. A changed prefab updates its
-instances at once, keeping each instance's overrides, as Godot does for instanced scenes. A file
-that no longer loads keeps its last good version, and the error is reported. A changed
-`project.json` applies its window, rendering, physics, input and audio settings again, so what
-`project.import` or an edit writes there takes effect at the next command. `asset.list` shows
-what is loaded, and `events.subscribe` delivers an `asset.reloaded` event per changed file plus a
-`command` event named `asset.reload` with the changes to the world. A reload is not an undo step.
+instances at once, keeping each instance's overrides for instanced scenes. A file that no longer
+loads keeps its last good version, and the error is reported. A changed `project.json` applies
+its window, rendering, physics, input and audio settings again, so what `project.import` or an
+edit writes there takes effect at the next command. `asset.list` shows what is loaded, and
+`events.subscribe` delivers an `asset.reloaded` event per changed file plus a `command` event
+named `asset.reload` with the changes to the world. A reload is not an undo step.
 
 ## Storyboard
 
@@ -236,17 +231,16 @@ It covers macOS, Windows, Linux, the web, Android and iOS; building every platfo
 is next on the [roadmap](roadmap.md).
 
 A game's **gameplay code** is C++ in the folders `project.json`'s `gameplay.sources` names: its
-own components and systems, registered in one `SLASH_GAME_MODULE` function, as Godot's scripts
-add a game's own behavior. Exports compile it in. The tools build it into a library with
-`slash-cli build` or `gameplay.build` and load it, and when it is rebuilt they swap the new code
-into the running world, which keeps its entities and each field the code still has.
-`build.check` compiles only the files that changed, with nothing linked, and returns errors and
-warnings as data with the compiler's suggested fixes. See
+own components and systems, registered in one `SLASH_GAME_MODULE` function. Exports compile it
+in. The tools build it into a library with `slash-cli build` or `gameplay.build` and load it,
+and when it is rebuilt they swap the new code into the running world, which keeps its entities
+and each field the code still has. `build.check` compiles only the files that changed, with
+nothing linked, and returns errors and warnings as data with the compiler's suggested fixes. See
 [reference/project-format.md](reference/project-format.md#gameplay-code).
 
-An **export preset** is a named way to export, kept in the project's `export_presets.json` like
-Godot's `export_presets.cfg`: a platform, an output folder, a debug flag and how to sign. Signing
-secrets never go in the file; they come from environment variables. See
+An **export preset** is a named way to export, kept in the project's `export_presets.json`: a
+platform, an output folder, a debug flag and how to sign. Signing secrets never go in the file;
+they come from environment variables. See
 [reference/project-format.md](reference/project-format.md#export-presets).
 
 ## Ticks and the run loop
@@ -285,12 +279,12 @@ logs or screenshots, and games run their tests in CI.
 
 ## Input
 
-Input follows Godot. Keys, mouse buttons and motion, touches and gamepads arrive as **input
+Keys, mouse buttons and motion, touches and gamepads arrive as **input
 events**, which wait in a queue and apply at the start of the next tick, so a run with the same
 events at the same ticks plays out the same way. Gameplay code reads **actions** rather than
 keys: `project.json`'s `input` names what the game does, such as `jump` or `move_left`, and the
 **bindings** that do it (keys by label or by where they sit on the keyboard, mouse buttons,
-gamepad buttons and stick directions), on top of Godot's built-in `ui_*` actions for moving
+gamepad buttons and stick directions), on top of the built-in `ui_*` actions for moving
 through and pressing UI. An action is pressed while any binding holds it, and "just pressed" or
 "just released" for the one tick it changed, so a tap shorter than a tick still counts. A stick
 presses an action past its **deadzone**, with a strength from 0 to 1, and `get_vector` turns
@@ -304,19 +298,18 @@ player with WASD, a stick and taps.
 
 ## Sound
 
-Sound follows Godot's AudioServer. **Sounds** are `.wav`, `.ogg` and `.mp3` files; a
-`.audio.json` file loops one, or picks one of several at random each time it plays, as footsteps
-want. **Players** are components: an `SoundPlayer` plays everywhere at once, as music
-does, and an `SoundPlayer2D` fades with distance from the `Listener2D` and pans left
-or right by where it is. An `SoundPlayer3D` does the same in 3D from the `Listener3D`
-or camera, muffled with distance and pitched by the Doppler effect, on two speakers or up to
-7.1. Each player mixes into a **bus**, and each bus runs its **effects**
-(filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
-down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
-buses, so music and sound effects get their own volumes, as in an options menu. An `Zone2D` or
-`Zone3D` can send the sounds inside it to a bus of its own, so a cave echoes. Music can be a playlist, layers
-that play together, or **interactive music**: clips such as explore and combat that switch on
-the next beat or bar when the game sets the player's `switch_to_clip`, as Godot's.
+**Sounds** are `.wav`, `.ogg` and `.mp3` files; a `.audio.json`
+file loops one, or picks one of several at random each time it plays, as footsteps want. **Players**
+are components: an `SoundPlayer` plays everywhere at once, as music does, and an `SoundPlayer2D`
+fades with distance from the `Listener2D` and pans left or right by where it is. An `SoundPlayer3D`
+does the same in 3D from the `Listener3D` or camera, muffled with distance and pitched by the
+Doppler effect, on two speakers or up to 7.1. Each player mixes into a **bus**, and each bus runs
+its **effects** (filters, EQs, delay, reverb, compression and more) and sends to
+another bus, down to Master, which plays on the speakers. The project's `.bus_layout.json` file
+lists the buses, so music and sound effects get their own volumes, as in an options menu. An
+`Zone2D` or `Zone3D` can send the sounds inside it to a bus of its own, so a cave echoes. Music can
+be a playlist, layers that play together, or **interactive music**: clips such as explore and combat
+that switch on the next beat or bar when the game sets the player's `switch_to_clip`.
 
 Sound is mixed by the fixed ticks, a tick's worth at a time, not by the sound card, so the same
 run makes the same sound, and a headless run makes it too. Agents can't listen, so they measure:
@@ -329,16 +322,15 @@ asked, and `audio.play`, `audio.stop` and `audio.set_bus` change what plays. The
 
 ## Rendering
 
-Everything draws through a **render device**, about a dozen calls: make and update textures,
-begin a frame, draw triangles, end it, and read a texture's pixels back. On a GPU it is SDL3's GPU
-API, which uses Metal, Direct3D 12 or Vulkan, whichever the machine has. On the web, where SDL3's
-GPU API has no backend, it is OpenGL ES 3.0, which browsers call WebGL 2. Elsewhere the `opengl`
-driver draws with OpenGL 3.3, as Godot's compatibility renderer, and games fall back to it where
-no Metal, Direct3D 12 or Vulkan starts (`rendering.fallback_to_opengl`). Headless runs, and
-machines where no backend starts, use the **null device**: it keeps textures and checks every
-call exactly as the GPU device does, but draws nothing. So code tested headless fails the same
-way on a GPU, and `slash-cli run` and `slash-game` report which device drew in their summary's
-`renderer`.
+Everything draws through a **render device**, about a dozen calls: make and update textures, begin
+a frame, draw triangles, end it, and read a texture's pixels back. On a GPU it is SDL3's GPU API,
+which uses Metal, Direct3D 12 or Vulkan, whichever the machine has. On the web, where SDL3's GPU
+API has no backend, it is OpenGL ES 3.0, which browsers call WebGL 2. Elsewhere the `opengl`
+driver draws with OpenGL 3.3, and games fall back to it where no Metal, Direct3D 12 or Vulkan
+starts (`rendering.fallback_to_opengl`). Headless runs, and machines where no backend starts, use
+the **null device**: it keeps textures and checks every call exactly as the GPU device does, but
+draws nothing. So code tested headless fails the same way on a GPU, and `slash-cli run` and
+`slash-game` report which device drew in their summary's `renderer`.
 
 The **software device** draws on the CPU, into textures only, with the same shading code as the
 GPU device's shaders, so it gives the same pixels on every machine. `frame.capture` draws the
@@ -358,15 +350,15 @@ compiles the HLSL at startup with the compiler that comes with Windows. The
 [draw-offscreen example](../examples/draw-offscreen/) draws into a texture and reads it back,
 which is how tests check what a game draws.
 
-2D drawing follows Godot's canvas. A **sprite** (`Sprite2D`) draws a texture, or one frame of a
+A **sprite** (`Sprite2D`) draws a texture, or one frame of a
 sprite sheet, at its entity's `Transform2D`: positions are pixels with y down, and sprites draw in
-`z_index` order, then in the order their entities were made. An `Flipbook2D` plays a
-**flipbook** from a `.frames.json` file (Godot's SpriteFrames) on the sprite, frame by frame at
-the animation's frames per second, and emits `animation_finished` when one that doesn't loop
-ends. Textures are `.png` or `.bmp` files loaded as assets, so an edited image shows up at once.
-The [sprites example](../examples/sprites/) plays and draws a scene's sprites.
+`z_index` order, then in the order their entities were made. An `Flipbook2D` plays a **flipbook**
+from a `.frames.json` file on the sprite, frame by frame at the animation's frames per second, and
+emits `animation_finished` when one that doesn't loop ends. Textures are `.png` or `.bmp` files
+loaded as assets, so an edited image shows up at once. The [sprites example](../examples/sprites/)
+plays and draws a scene's sprites.
 
-A **material** colors a sprite's pixels, like a Godot `canvas_item` shader, but written as a node
+A **material** colors a sprite's pixels, written as a node
 graph in a `.material.json` file: ops such as `mul`, `mix` and `texture` over inputs (`uv`,
 `color`, `time`, the sprite's texture) and **params** each sprite sets in `material_params`, plus
 a **blend mode** (`mix`, `add`, `sub`, `mul`, `premul_alpha`). The graph compiles when the file
@@ -375,53 +367,52 @@ so a game needs no shader compiler and a material reloads at once. The same prog
 CPU for `material.eval`, which returns the colors a material draws: an agent checks its work
 without a screenshot. The [materials example](../examples/materials/) has three.
 
-**Keyframe animation** follows Godot's AnimationPlayer. A `.anim.json` file holds animations by
+**Keyframe animation**: a `.anim.json` file holds animations by
 name, each a length, a loop mode and **tracks**. A value track sets one component field, or one
 part of it such as `Sprite2D/modulate/a`, from **keys** at times, eased between them (linear,
-cubic, with Godot's easing curves); an event track emits an event as playback passes each key.
+cubic, and easing curves); an event track emits an event as playback passes each key.
 An entity's `Animator` plays one animation on its own components, so the same file
 animates any field of any component, a game's own included. `animation.eval` returns the values
 an animation sets at any times, so an agent checks it without stepping the game. The
 [keyframe animation example](../examples/keyframe-animation/) plays a walk cycle and a hit.
 
-**Animation trees** follow Godot's AnimationTree. A `.animtree.json` file is a tree of **nodes**:
+**Animation trees**: a `.animtree.json` file is a tree of **nodes**:
 animations, blends, one-shots that fade in and out, transitions, blend spaces and **state
-machines**, which play one state at a time and move between states through transitions, on
-their own or along the cheapest way to a state a game asks for. An entity's
-`AnimationGraph` plays it with the animations of its libraries, mixing them by weight into the
-entity's components and its model's skeleton as Godot's `AnimationMixer` does, and games steer
-it by its **parameters** (`"shot/request": "fire"`, `"move/travel": "run"`, a blend position).
-`animation.tree` lists the
-parameters and what plays, and `animation.set_parameters` sets them, checked against their
-nodes. The [animation tree example](../examples/animation-tree/) points a waving arm.
+machines**, which play one state at a time and move between states through transitions, on their
+own or along the cheapest way to a state a game asks for. An entity's `AnimationGraph` plays it
+with the animations of its libraries, mixing them by weight into the entity's components and its
+model's skeleton, and games steer it by its **parameters** (`"shot/request": "fire"`,
+`"move/travel": "run"`, a blend position). `animation.tree` lists the parameters and what plays,
+and `animation.set_parameters` sets them, checked against their nodes. The [animation tree
+example](../examples/animation-tree/) points a waving arm.
 
-**IK** (inverse kinematics) follows Godot 4.6's IK modifiers: instead of saying how each bone
+**IK** (inverse kinematics): instead of saying how each bone
 turns, a game says where a hand or foot should be, and a `TwoBoneIK3D` bends an arm or leg to
 reach a **target** entity with its elbow or knee toward a **pole**, while a `FabrikIK3D`,
 `CcdIK3D` or `JacobianIK3D` turns a whole chain of bones, a tail or a spine, toward one. They
 turn the bones after the animations, so a character can walk and reach at once, and joints can
 be limited to an axis or a **cone**. The [IK example](../examples/ik/) reaches with an arm.
 
-**Ragdolls** follow Godot 4.6's `BoneSimulation3D`: each `SimulatedBone3D` is a physics
+**Ragdolls**: each `SimulatedBone3D` is a physics
 body for one bone of a model, held by a **joint** to the body of the bone above. While the
 simulator doesn't simulate, the bodies follow the animated bones, so they push things and things
 land on them; once it **simulates**, physics moves the bodies and the bones follow them, the
 whole skeleton or only the bones under one (`simulated_bones`), so a character goes limp when
 hit or an arm dangles. The [ragdoll example](../examples/ragdoll/) lets a waving arm go limp.
 
-**Bone attachments** follow Godot's `BoneAttachment3D`: an entity that goes where a bone of a
+**Bone attachments**: a `BoneSocket3D` is an entity that goes where a bone of a
 model is posed each tick, after its animations and IK, so a sword hangs in a hand or a hit box
 rides on a head. The [bone attachment example](../examples/bone-attachment/) puts a sword in a
 waving hand.
 
-**CSG shapes** build level geometry the way Godot 4.6's CSG nodes do: boxes, spheres,
+**CSG shapes** build level geometry from boxes, spheres,
 cylinders, tori and polygons, each adding to, cutting from or **intersecting** the shape above
 it in the tree. The shape at the top, the **root**, makes one mesh of everything under it, which
 draws, collides when `use_collision` is on and bakes into navigation meshes, so an agent can
 block out a level, cut doors in it and walk it without a modeling tool. The
 [CSG example](../examples/csg-shapes/) builds a hamlet.
 
-**Paths** are Godot's `Path2D` and `Spline3D`: a curve through points with Bézier handles,
+**Paths** are `Spline2D` and `Spline3D`: a curve through points with Bézier handles,
 baked into points about `bake_interval` apart. An entity with a `SplineFollower2D` or
 `SplineFollower3D` among a path's children sits `progress` along its curve, turned to face the way
 it goes, so moving something along a route is a matter of changing one number, by gameplay code
@@ -429,7 +420,7 @@ or an animation track. A `SolidExtrusion3D` in **path mode** pushes its polygon 
 which makes rails, pipes, roads and walls from a curve. The [paths example](../examples/paths/)
 laps a cart round a rail over a hill.
 
-**Grid maps** are Godot's `GridMap`: a level built from blocks placed in a 3D grid of cells.
+**Grid maps** (`BlockMap3D`): a level built from blocks placed in a 3D grid of cells.
 A **mesh library** (a `.blocks.json` file) holds the blocks by name, each a mesh with the
 shapes it collides as and the navigation mesh it is walked on, and the BlockMap3D writes which
 block is in each cell, and which of 24 ways it is turned, as rows of short keys, floor by
@@ -438,7 +429,7 @@ each cell's navigation mesh joins its neighbors', so laying out a level is writi
 of text, and changing it is `blockmap.set`. The [BlockMap3D example](../examples/gridmap/) lays out
 a room with a ramp up to a platform.
 
-**Terrains** follow the Terrain3D plugin for Godot, as Godot has none of its own: an `Terrain3D`
+**Terrains**: a `Terrain3D`
 is a grid of heights read from a 16-bit `.height.png` heightmap, with a **splat map** weighing
 up to four ground textures and a **color map** tinting them and cutting holes. It draws in
 chunks that get coarser with distance, collides as a height field and is walked on by navigation
@@ -447,7 +438,7 @@ from noise, `terrain.brush` raises, smooths, flattens, paints and cuts holes alo
 points, and `terrain.get` reads the height, slope and textures at points. The
 [terrain example](../examples/terrain/) makes an island and paints its slopes.
 
-**Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
+**Navigation**: each world has a 2D and a 3D **map**,
 made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navmesh2d.json`
 files) that join where their edges meet, and **links** between places the regions don't join,
 such as a jump or a hatch. Paths are the cheapest way over the polygons on a path's **layers**,
@@ -456,7 +447,7 @@ to its target and follows the entity's progress along it, emitting events at eac
 moves nothing: gameplay code moves it toward its next path position. `navigation.path`,
 `navigation.closest` and `navigation.random` ask where the maps go, and `navigation.agent` how an
 agent is doing. The [navigation example](../examples/navigation/) sends a guard through a hatch.
-**Baking** makes a region's polygons from the scene, as Godot bakes them: `navigation.bake`
+**Baking** makes a region's polygons from the scene: `navigation.bake`
 takes the meshes and static bodies under the region (in 2D, the outlines in its file less the
 static bodies in the way), keeps agents their radius from walls and writes the walkable area
 into the region's file. The [baking example](../examples/navigation-baking/) bakes a courtyard
@@ -465,7 +456,7 @@ and a garden. With **avoidance**, agents steer round each other and round **obst
 and moves it at the safe velocity avoidance gives back. The
 [avoidance example](../examples/navigation-avoidance/) has walkers weaving through a plaza.
 
-**Tile maps** follow Godot's TileSet and TileLayer2D. A `.tileset.json` file cuts atlas
+**Tile maps**: a `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
 tile's **peering** says which terrain its sides and corners must touch. A `TileLayer2D` keeps
 its cells as text, rows of one-letter **legend** keys, so an agent reads a whole map in one call.
@@ -473,12 +464,12 @@ its cells as text, rows of one-letter **legend** keys, so an agent reads a whole
 peering fits its neighbors, so shores and corners draw themselves (**autotiling**);
 `tilemap.set` places single tiles and `tilemap.get` reads the rows back. A layer draws in runs of
 one texture, so a layer from one atlas is one GPU draw. Cells are squares, isometric
-**diamonds** or **hexagons**, numbered by Godot's **layouts**; `tilemap.convert` says where a
+**diamonds** or **hexagons**, numbered by **layouts**; `tilemap.convert` says where a
 cell is and which cell a point is in. The [tile maps example](../examples/tilemaps/) paints an
 island with a pond, and the [isometric and hex example](../examples/isometric-and-hex-tiles/)
 paints one on diamonds.
 
-**2D lights** follow Godot's. Once a scene has a light or a `AmbientTint2D`, sprites and tile
+**2D lights**: once a scene has a light or a `AmbientTint2D`, sprites and tile
 layers are lit: the `AmbientTint2D` color is the **ambient** light, a `PointLight2D` shines from
 its entity through a texture (a soft round one by default), and a `SunLight2D` lights
 everything from one direction, like the sun. Each light adds, subtracts or mixes its color into
@@ -493,46 +484,46 @@ falls. `light.sample` returns how lit points are and which lights reach them, co
 shades them, so an agent checks lighting without a screenshot. The
 [2D lights example](../examples/lights-2d/) has a torch, the moon and a shadowed crate.
 
-**UI** follows Godot's Control nodes. A `Control` places a rect in its parent's by **anchors**
+**UI**: a `Widget` places a rect in its parent's by **anchors**
 (where each edge sits in the parent, from 0 to 1) and offsets in pixels, so a panel can stay
-centered or a score stay in a corner on any window, and grows to fit its content. `Label` draws
-text in the rect, wrapped, aligned and cut with an ellipsis as Godot's does, and `ColorFill`
-fills it. **Containers** place their children instead of anchors: a box container stacks them
-in a row or column, a grid puts them in columns, a flow container wraps them onto lines, and
-others keep a margin round them, center them or draw a panel behind them. Each child's **size
-flags** say whether it fills, expands into spare room or sits at the start, center or end. A
-control's font, size, colors, outline, spacing and **style boxes** (the rounded, bordered or
-nine-patch panels drawn behind controls) are **theme items**, which its `theme_override_*`
-fields set one by one and a `.theme.json` **theme** sets for every control of a type at once:
-on a control and everything in it, or on the whole game. Text is shaped with HarfBuzz, so every script's letters join and
-place as they should, and drawn from glyph images FreeType makes, or from **distance fields**
-that stay sharp at any size, for fonts a `.font.json` file sets up so. Controls draw above the
-world. `ui.layout` returns every control's rect, the lines each label shows and mistakes such as
-a misspelled theme override, `ui.theme` says where each of a control's theme items comes from,
-and `text.measure` sizes text, so an agent checks a screen without a screenshot. The
-[UI and text example](../examples/ui-and-text/) is a pause screen, and the
-[UI containers example](../examples/ui-containers/) an inventory laid out by containers.
+centered or a score stay in a corner on any window, and grows to fit its content. `Label` draws text
+in the rect, wrapped, aligned and cut with an ellipsis, and `ColorFill` fills it. **Containers**
+place their children instead of anchors: a box container stacks them in a row or column, a grid puts
+them in columns, a flow container wraps them onto lines, and others keep a margin round them, center
+them or draw a panel behind them. Each child's **size flags** say whether it fills, expands into
+spare room or sits at the start, center or end. A control's font, size, colors, outline, spacing and
+**style boxes** (the rounded, bordered or nine-patch panels drawn behind controls) are **theme
+items**, which its `theme_override_*` fields set one by one and a `.theme.json` **theme** sets for
+every control of a type at once: on a control and everything in it, or on the whole game. Text is
+shaped with HarfBuzz, so every script's letters join and place as they should, and drawn from glyph
+images FreeType makes, or from **distance fields** that stay sharp at any size, for fonts a
+`.font.json` file sets up so. Controls draw above the world. `ui.layout` returns every control's
+rect, the lines each label shows and mistakes such as a misspelled theme override, `ui.theme` says
+where each of a control's theme items comes from, and `text.measure` sizes text, so an agent checks
+a screen without a screenshot. The [UI and text example](../examples/ui-and-text/) is a pause
+screen, and the [UI containers example](../examples/ui-containers/) an inventory laid out by
+containers.
 
-**Buttons** follow Godot's too. The `gui` system hands each tick's input events to controls as
-Godot's viewport does: the pointer goes to the control drawn on top under it, and on to its
-parents as each one's **mouse filter** says (stop, pass or ignore). A `Button` or
-`ImageButton` is pressed by a click or tap that ends over it, by `ui_accept` while it has
-**focus**, or by its **shortcut**; toggle buttons switch on and off, and a **button group** keeps
-at most one of them on. One control has focus: a click gives it quietly, and the arrow keys,
-Tab and a gamepad move it to the closest button that way and show it. Controls report what
-happened as **UI events** (`pressed`, `toggled`, `mouse_entered`, `focus_entered` and the rest),
-which gameplay code reads each tick and agents subscribe to. An agent clicks and types with
-`input.inject`, presses a button by ID with `ui.press` and moves focus with `ui.focus`, and
-`ui.layout` shows each button's **draw mode** (normal, hover, pressed, hover pressed or
-disabled) and which control has focus and which is hovered. The
-[UI buttons example](../examples/ui-buttons/) is a title menu worked by mouse, keys and touch.
+**Buttons**: the `gui` system hands each tick's input events to controls: the
+pointer goes to the control drawn on top under it, and on to its parents as each one's **mouse
+filter** says (stop, pass or ignore). A `Button` or `ImageButton` is pressed by a click or tap
+that ends over it, by `ui_accept` while it has **focus**, or by its **shortcut**; toggle buttons
+switch on and off, and a **button group** keeps at most one of them on. One control has focus: a
+click gives it quietly, and the arrow keys, Tab and a gamepad move it to the closest button that
+way and show it. Controls report what happened as **UI events** (`pressed`, `toggled`,
+`mouse_entered`, `focus_entered` and the rest), which gameplay code reads each tick and agents
+subscribe to. An agent clicks and types with `input.inject`, presses a button by ID with
+`ui.press` and moves focus with `ui.focus`, and `ui.layout` shows each button's **draw mode**
+(normal, hover, pressed, hover pressed or disabled) and which control has focus and which is
+hovered. The [UI buttons example](../examples/ui-buttons/) is a title menu worked by mouse, keys
+and touch.
 
 **Check boxes** (`CheckBox`) and **check buttons** (`ToggleSwitch`, a switch) are toggle buttons
 that draw an **icon** beside their text instead of a box; check boxes in a button group draw as
-radio buttons. A **slider** (`Slider`, Godot's `HSlider` or `VSlider` with `vertical`) holds a
+radio buttons. A **slider** (`Slider`, horizontal or, with `vertical`, vertical) holds a
 value between a minimum and a maximum, always a multiple of its **step**: a click moves its
 grabber there, dragging moves it, and the wheel, arrow keys and gamepads step it, each change
-emitting `value_changed`. Icons are theme items like colors and style boxes; Godot's default
+emitting `value_changed`. Icons are theme items like colors and style boxes; the default
 ones are drawn by the engine, named `builtin:checked`, `builtin:toggle_on` and so on, so a game
 needs no image files for them. The [UI settings example](../examples/ui-settings/) is a
 settings screen.
@@ -563,7 +554,7 @@ as moving an item between inventory slots. Text fields drag their selected text 
 An agent drags with `ui.drag` and shows a tooltip with `ui.tooltip`. The
 [UI drag and drop example](../examples/ui-drag-and-drop/) is an inventory.
 
-Text in every language follows Godot's text server. **BiDi** (the Unicode Bidirectional
+Text works in every language. **BiDi** (the Unicode Bidirectional
 Algorithm) orders each paragraph: Arabic and Hebrew go right to left, with English words and
 numbers in them still left to right, and a label's `text_direction` can set the paragraph's
 direction. A control's **layout direction** (`layout_direction` `rtl`) mirrors it and everything
@@ -574,7 +565,7 @@ on the machine, which `ui.layout` counts in `system_glyphs` since other machines
 The [text languages example](../examples/text-languages/) is a menu in Arabic laid out right to
 left, with Hebrew, Japanese and Chinese text.
 
-How often frames are drawn follows Godot. The world ticks at a fixed rate (`tick_hz`), while frames
+The world ticks at a fixed rate (`tick_hz`), while frames
 come as fast as the **V-Sync mode** lets them (`window.vsync`: wait for each refresh, present
 at once, mailbox or adaptive) and no faster than the **frame cap** (`max_fps`, none by default). So
 a 60 Hz world on a 120 Hz display runs a tick every other frame, and the frames in between draw each
@@ -587,8 +578,8 @@ example](../examples/frame-pacing/) uses all three commands.
 
 ## Building worlds
 
-Past Godot's nodes, the engine has tools for agents to fill a world at a fraction of the work
-by hand. Each follows one pattern, so learning one teaches the rest:
+Beyond entities and components, the engine has tools for agents to fill a world at a fraction of the
+work by hand. Each follows one pattern, so learning one teaches the rest:
 
 - **A recipe file says what a thing is.** A `.character.json` body, face, hair and clothes, a
   `.creature.json` animal, a `.vehicle.json` car, boat or aircraft with its own physics, a
@@ -696,10 +687,10 @@ lists them by command name. Undo restores entities and components; the tick coun
 counting. Opening or creating a scene clears the history.
 
 Commands that change project files, such as `storyboard.edit`, record how to reverse their change
-and how to make it again, as Godot's UndoRedo does. Their files are written only when the whole
-command succeeds, and not at all in a dry run; if another program changed a file meanwhile,
-nothing is written and the command fails with `-32005`. Undo of such a step is refused the same
-way when the files changed since.
+and how to make it again. Their files are written only when the whole command succeeds, and not
+at all in a dry run; if another program changed a file meanwhile, nothing is written and the
+command fails with `-32005`. Undo of such a step is refused the same way when the files changed
+since.
 
 ### Dry runs and snapshots
 
@@ -721,10 +712,10 @@ differs. A removed component is `null`.
 `events.subscribe` starts queueing **events**, which `events.read` returns: entities created and
 destroyed (by commands or by systems), a `command` event with the changes for each command that
 changed the world, and events the game emits itself. Gameplay code emits one with
-`world.emit("coin_collected", "coin", data)`, much as a Godot node emits a signal. Polling
-`events.read` is cheaper than re-querying the world, and it works the same over every front end.
+`world.emit("coin_collected", "coin", data)`, much. Polling `events.read` is cheaper than
+re-querying the world, and it works the same over every front end.
 
-Gameplay code reacts to events as Godot code does to signals, through `world.events()`: the events
+Gameplay code reacts to events through `world.events()`: the events
 of the tick before, from the start of the last tick to the start of this one, so a loaded scene's
 entities too. Each system sees each event once, at the tick after it came, whatever order the
 systems run in:
@@ -804,13 +795,13 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 
 | Term | Meaning |
 | --- | --- |
-| Action | A named thing a game does, such as `jump`, and the input bindings that press it, as Godot's input map |
+| Action | A named thing a game does, such as `jump`, and the input bindings that press it |
 | Ambient light | The color lit draws start from where no light reaches: the `AmbientTint2D` color |
 | Anchor | Where a control's edge sits in its parent's rect, from 0 (left or top) to 1 (right or bottom) |
 | Animation | A `.anim.json` file's named set of tracks, which an `Animator` plays on its entity's fields |
 | Autotiling | Picking each tile so its edges connect to its neighbors' terrains, as `tilemap.paint` does |
 | Asset | A file a game loads by project path into a shared, reference-counted handle |
-| Audio effect | What a bus does to its sound before sending it on: a filter, EQ, delay, reverb, compressor and the rest of Godot's |
+| Audio effect | What a bus does to its sound before sending it on: a filter, EQ, delay, reverb, compressor and more |
 | BiDi | The Unicode Bidirectional Algorithm, which orders text that mixes right-to-left scripts such as Arabic with left-to-right ones |
 | Binding | A key, mouse button, gamepad button or stick direction that presses an action |
 | Button group | Toggle buttons with the same `button_group` name, of which at most one is on |
@@ -859,7 +850,7 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Occluder | A polygon that casts shadows from 2D lights (`Occluder2D`) |
 | Option button | A button that shows the option picked and opens a list of the options below it (`Dropdown`) |
 | Parent | The entity whose `Transform2D` lists another in its `children`, placing it in its space |
-| Peering | The terrain a tile's side or corner must touch for the tile to fit, as Godot's terrain peering bits |
+| Peering | The terrain a tile's side or corner must touch for the tile to fit |
 | Popup menu | A list of items shown over everything until one is picked or a click lands outside (`PopupList`); option buttons and menu buttons open one |
 | Prefab | One entity's components in a `.prefab.json` file, which entities extend and override |
 | Project | A game's folder: `project.json` plus its scenes |
@@ -890,6 +881,6 @@ servers (including local ones), OpenAI's Responses API, Anthropic and Gemini; se
 | Tile set | A `.tileset.json` file: atlas textures cut into tiles, and the terrains that connect them |
 | Tile map layer | A grid of tiles from a tile set, kept as rows of legend keys (`TileLayer2D`) |
 | Tool name | A command's MCP name, with `_` in place of `.` |
-| UI event | Something a control did, as Godot's signals: `pressed`, `toggled`, `button_down`, `button_up`, `mouse_entered`, `mouse_exited`, `focus_entered` or `focus_exited` |
+| UI event | Something a control did: `pressed`, `toggled`, `button_down`, `button_up`, `mouse_entered`, `mouse_exited`, `focus_entered` or `focus_exited` |
 | Track | One field an animation sets, or one kind of event it emits, over time, as keys |
 | World | Every entity in a running game, held in EnTT |

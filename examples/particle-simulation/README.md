@@ -1,9 +1,9 @@
 # Particle simulation
 
-Simulation stages run over CPU particles in 2D and 3D, as Unreal's Niagara modules (Godot has
-none): a `ParticleSimulation3D` or `ParticleSimulation2D` on the same entity as a
-`Emitter3D` or `Emitter2D` works on its particles each tick after the emitter has moved
-them. In [main.scene.json](main.scene.json):
+Simulation stages run over CPU particles in 2D and 3D, as Unreal's Niagara modules: a
+`ParticleSimulation3D` or `ParticleSimulation2D` on the same entity as a `Emitter3D` or `Emitter2D`
+works on its particles each tick after the emitter has moved them. In
+[main.scene.json](main.scene.json):
 
 - a fountain's drops bounce on a floor (a `ParticleColliderBox3D`, `collide: "colliders"`),
   fade by an `alpha` attribute, start two puffs in the `mist` emitter on a quarter of their
@@ -25,7 +25,7 @@ bees for three seconds with their stages and again without, when they drift fart
 - Neighbors are found by sorting particles along a Morton curve by their cells and looking up
   each one's cell and those round it with binary searches, so no grid is kept; at most
   `max_neighbors`, the nearest, count.
-- Attributes are Godot `Expression`s over the particle's values (`age`, `life`, `lifetime`,
+- Attributes are expressions over the particle's values (`age`, `life`, `lifetime`,
   `speed`, `x`, `y`, `z`, `vx`, `vy`, `vz`, `neighbors`, `index`, `collided`, `random`, `time`,
   `delta`) and the attributes before them; `size`, `alpha` and `kill` change how it draws or
   whether it lives.

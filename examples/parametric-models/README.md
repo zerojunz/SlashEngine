@@ -1,13 +1,13 @@
 # Parametric models
 
 Props written as text: a `.model.json` recipe names its parameters, materials and parts, and the
-engine builds the mesh when it loads the file, so a `Model3D` draws a recipe as it draws a
-glTF file. Parts are Godot's CSG shapes (box, sphere, cylinder, torus, polygon pushed, spun or swept
-along a path) and its capsule and prism meshes, combined with their children in order as Godot's
-CSG nodes are, with bevels on boxes and cylinders and arrays of copies.
+engine builds the mesh when it loads the file, so a `Model3D` draws a recipe as it draws a glTF
+file. Parts are CSG shapes (box, sphere, cylinder, torus, polygon pushed, spun or swept
+along a path) and capsule and prism meshes, combined with their children in order, with bevels
+on boxes and cylinders and arrays of copies.
 
 [props/table.model.json](props/table.model.json) is a table sized by six parameters. Any number can
-be an expression over them, in Godot's `Expression` syntax:
+be an expression over them, in the expression syntax:
 
 ```json
 "parameters": {"width": 1.4, "depth": 0.8, "height": 0.75, "thickness": 0.05, "leg": 0.06, "inset": 0.1},
@@ -25,9 +25,8 @@ be an expression over them, in Godot's `Expression` syntax:
 
 Each top-level part is a node of the model with a mesh of its own: the top, rounded by its bevel,
 and the four legs, two arrays of two. Making the table longer is changing `width`; the legs move
-with it. [props/vase.model.json](props/vase.model.json) spins a profile around y, as Godot's
-`SolidExtrusion3D` in spin mode, and cuts its mouth out with a cylinder child whose `operation` is
-`subtraction`.
+with it. [props/vase.model.json](props/vase.model.json) spins a profile around y in spin mode, and
+cuts its mouth out with a cylinder child whose `operation` is `subtraction`.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

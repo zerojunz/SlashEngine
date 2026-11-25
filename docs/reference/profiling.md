@@ -20,11 +20,10 @@ are zones, frames start in `platform::Loop`, and the job system's threads are na
 code worth seeing; they change no layout, so gameplay modules built without Tracy still load.
 
 `perf.stats` with `"memory": true` adds what the process uses (`platform::process_memory`) and
-`World::memory`: the world's own part, one for components (each type's storage plus
-`heap_bytes` of its fields, through `ComponentType::memory`), and a part from each memory source.
-A module that keeps state outside components adds a source when it installs
-(`World::add_memory_source`, as Godot's `Performance.add_custom_monitor`): physics2d, audio,
-navigation, both particle systems and ui's glyph atlases do. Asset types say what a loaded asset holds with
-`add_type`'s `bytes` function, else the file's size counts; a running game adds the render
-device's texture bytes (`render::Stats::texture_bytes`). Count from capacities, and keep a
-source cheap: agents call it between ticks. `examples/memory-report` finds a growing trail.
+`World::memory`: the world's own part, one for components (each type's storage plus `heap_bytes` of
+its fields, through `ComponentType::memory`), and a part from each memory source. A module that
+keeps state outside components adds a source when it installs (`World::add_memory_source`):
+physics2d, audio, navigation, both particle systems and ui's glyph atlases do. Asset types say what
+a loaded asset holds with `add_type`'s `bytes` function, else the file's size counts; a running game
+adds the render device's texture bytes (`render::Stats::texture_bytes`). Count from capacities, and
+keep a source cheap: agents call it between ticks. `examples/memory-report` finds a growing trail.

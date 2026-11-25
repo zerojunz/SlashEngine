@@ -1,12 +1,12 @@
 # Custom shaders
 
-A game's own shaders, as Godot's canvas_item shaders, for what a material's node graph can't
-say. A `.material.json` file's `"shader"` names an `.hlsl` file with a `fragment()` function, a
-`vertex()` function or both. [main.scene.json](main.scene.json) has two sprites:
-[dissolve](dissolve.material.json) burns the crate away with
-[shaders/dissolve.hlsl](shaders/dissolve.hlsl), and [wave](wave.material.json) sways the flag
-with [shaders/wave.hlsl](shaders/wave.hlsl). [main.cpp](main.cpp) writes their textures, checks
-them with `material.eval` and `frame.capture` as an agent would, then edits a shader.
+A game's own shaders, for what a material's node graph can't say. A `.material.json` file's
+`"shader"` names an `.hlsl` file with a `fragment()` function, a `vertex()` function or both.
+[main.scene.json](main.scene.json) has two sprites: [dissolve](dissolve.material.json) burns the
+crate away with [shaders/dissolve.hlsl](shaders/dissolve.hlsl), and [wave](wave.material.json)
+sways the flag with [shaders/wave.hlsl](shaders/wave.hlsl). [main.cpp](main.cpp) writes their
+textures, checks them with `material.eval` and `frame.capture` as an agent would, then edits a
+shader.
 
 ```hlsl
 void vertex() {
@@ -18,9 +18,9 @@ void fragment() {
 }
 ```
 
-- The code reads and writes Godot's built-ins as globals: `COLOR`, `UV`, `VERTEX`, `TIME`,
+- The code reads and writes the built-ins as globals: `COLOR`, `UV`, `VERTEX`, `TIME`,
   `TEXTURE`, `TEXTURE_PIXEL_SIZE`, `FRAGCOORD`, `NORMAL_MAP` and `SPECULAR_SHININESS`.
-  `texture(TEXTURE, UV)` samples a texture, as in Godot. Helper functions are plain HLSL.
+  `texture(TEXTURE, UV)` samples a texture. Helper functions are plain HLSL.
 - Each param in the material file is a global of the same name in the shader: a `float`,
   `float2`, `float3` or `float4` (colors too), or a texture. Sprites set them through
   `Sprite2D`'s `material_params`, as for graph materials.

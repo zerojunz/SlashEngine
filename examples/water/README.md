@@ -1,6 +1,6 @@
 # Water
 
-Oceans, lakes and rivers after Unreal's Water plugin (Godot has none). A `.water.json` recipe
+Oceans, lakes and rivers after Unreal's Water plugin. A `.water.json` recipe
 (`slash-cli schema water`) says what a body of water is; a `Water3D` or `Water2D` places one.
 
 - [waters/lake.water.json](waters/lake.water.json) is a lake with two small Gerstner waves.

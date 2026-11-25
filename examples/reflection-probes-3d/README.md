@@ -1,10 +1,10 @@
 # Reflection probes 3D
 
-A chrome ball on a polished floor reflecting the room around it through a `ReflectionProbe`, as
-Godot 4.6's Forward+ renderer, the default `rendering.renderer`.
-[main.scene.json](main.scene.json) is a room seen through a `Camera3D` in a 320x180 window: green,
-blue, cream and orange walls, a metallic floor with a roughness of 0.1 and a ball with a roughness
-of 0.05, lit by grey ambient light and a lamp, over a nearly black background.
+A chrome ball on a polished floor reflecting the room around it through a `ReflectionProbe`, in the
+clustered renderer, the default `rendering.renderer`. [main.scene.json](main.scene.json) is a room
+seen through a `Camera3D` in a 320x180 window: green, blue, cream and orange walls, a metallic floor
+with a roughness of 0.1 and a ball with a roughness of 0.05, lit by grey ambient light and a lamp,
+over a nearly black background.
 
 The `probe` entity's box is the room's size plus a little, so the floor and walls are inside it,
 and `blend_distance` 0.25 fades it in over the last quarter meter rather than the default meter.
@@ -35,7 +35,6 @@ frame.capture {"points":[[160,88],[160,150],[100,100],[250,110]],"path":"shots/r
   the floor reflect only the dark background, and the ball's middle is black.
 
 The cube is drawn once, when the probe first shows, and again only when it moves or its box,
-offset, distance, layers or shadows change, as Godot's `"once"` update mode; a scene whose lights
-or meshes move would set `update_mode` to `"always"`. Godot's Compatibility renderer
-(`"renderer": "compatibility"`, and always with the OpenGL drivers) draws no probes
-here yet.
+offset, distance, layers or shadows change (the `"once"` update mode); a scene whose lights
+or meshes move would set `update_mode` to `"always"`. The compatibility renderer (`"renderer":
+"compatibility"`, and always with the OpenGL drivers) draws no probes here yet.

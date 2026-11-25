@@ -1,9 +1,8 @@
 # Navigation
 
-Paths over navigation meshes, as Godot 4.6's `NavigationServer3D` and `NavigationServer2D`.
-[main.scene.json](main.scene.json) has a house on the 3D map: two rooms joined the long way
-round by a corridor and the short way by a hatch, a `NavLink3D` six meters long that
-costs one and a half times as much to cross as to walk. The house's floor is
+Paths over navigation meshes. [main.scene.json](main.scene.json) has a house on the 3D map: two
+rooms joined the long way round by a corridor and the short way by a hatch, a `NavLink3D` six
+meters long that costs one and a half times as much to cross as to walk. The house's floor is
 [nav/house.navmesh.json](nav/house.navmesh.json), seven convex polygons over shared vertices, as
 a baked `NavigationMesh`:
 
@@ -18,8 +17,7 @@ A guard with a `NavAgent3D` is sent to the far room, and on the 2D map a cat wit
 `NavAgent2D` crosses a yard shaped like an L ([nav/yard.navmesh2d.json](nav/yard.navmesh2d.json),
 two polygons). The navigation system finds each agent's path and keeps track of where it is
 along it; [main.cpp](main.cpp) moves them with a plain C++ system that walks each one toward
-`next_path_position_3d` or `next_path_position_2d`, as a Godot script calling
-`get_next_path_position` would.
+`next_path_position_3d` or `next_path_position_2d`.
 
 The program then asks the `navigation.*` commands what an agent would, printing each call and
 its reply ([expected.txt](expected.txt)):

@@ -1,6 +1,6 @@
 # ENet peers
 
-A server and three clients on one machine over ENet, as Godot's `ENetMultiplayerPeer`
+A server and three clients on one machine over ENet
 ([docs/reference/networking.md](../../docs/reference/networking.md)). [main.cpp](main.cpp)
 polls each `net::ENetPeer` itself, as a game's multiplayer does once a tick:
 

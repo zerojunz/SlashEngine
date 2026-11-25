@@ -1,14 +1,14 @@
 # Surround sound
 
-Up to 7.1 speakers, as Godot's speaker modes. [project.json](project.json) sets
-`audio.speaker_mode` to `surround_71`, so every bus mixes eight speakers: front left and right,
-center, LFE, rear left and right, and side left and right. In [main.scene.json](main.scene.json)
-a bee flies round the listener once every four seconds, moved by
-[fly.anim.json](fly.anim.json). [main.cpp](main.cpp) writes the sound files (no audio files are
-committed), then plays the game the way an agent does over MCP (tools `step`, `audio_state`,
-`audio_capture`) or JSON-RPC. `expected.txt` holds each call and its reply.
+Up to 7.1 speakers. [project.json](project.json) sets `audio.speaker_mode` to `surround_71`, so
+every bus mixes eight speakers: front left and right, center, LFE, rear left and right, and side
+left and right. In [main.scene.json](main.scene.json) a bee flies round the listener once every
+four seconds, moved by [fly.anim.json](fly.anim.json). [main.cpp](main.cpp) writes the sound
+files (no audio files are committed), then plays the game the way an agent does over MCP (tools
+`step`, `audio_state`, `audio_capture`) or JSON-RPC. `expected.txt` holds each call and its
+reply.
 
-- The bee's `SoundPlayer3D` pans over the speakers by Godot's Spcap: each speaker's gain
+- The bee's `SoundPlayer3D` pans over the speakers by Spcap: each speaker's gain
   grows as it faces the sound, so the buzz moves from the front speakers to the right, the rear
   and the left as the bee goes round. `audio.state` shows `volume` (the front pair) and
   `speakers`: the `center`, the `lfe` and the `rear` and `side` pairs.

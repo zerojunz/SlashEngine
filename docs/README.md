@@ -32,7 +32,7 @@ Status: current · Updated: 2026-11-20
 | Send packets between the machines in a multiplayer game | [reference/networking.md](reference/networking.md) |
 | Build the engine with double-precision positions for worlds far from the origin | [reference/precision.md](reference/precision.md) |
 | Try virtualized geometry (Nanite-style cluster hierarchies), a research feature | [reference/virtualized-geometry.md](reference/virtualized-geometry.md) |
-| Try SDFGI, Godot's fully dynamic global illumination, a research feature | [reference/sdfgi.md](reference/sdfgi.md) |
+| Try SDFGI, fully dynamic global illumination, a research feature | [reference/sdfgi.md](reference/sdfgi.md) |
 | Light scenes of many shadowed lights with ReSTIR, a research feature | [reference/restir.md](reference/restir.md) |
 | Draw scenery captured from photos as Gaussian splats, a research feature | [reference/gaussian-splats.md](reference/gaussian-splats.md) |
 | Read what digital humans needed and the order they came in, a research note | [reference/digital-humans.md](reference/digital-humans.md) |
@@ -81,7 +81,7 @@ Every doc in this folder. Each new doc gets a row in the same PR ([DOCS-STANDARD
 | [reference/jobs.md](reference/jobs.md) | The job system. | current |
 | [reference/localization.md](reference/localization.md) | Translation files, locales and plural rules. | current |
 | [reference/navigation.md](reference/navigation.md) | Navigation meshes, maps, paths and agents. | current |
-| [reference/networking.md](reference/networking.md) | Multiplayer packets between machines, as Godot's high-level multiplayer; plus engine notes. | current |
+| [reference/networking.md](reference/networking.md) | Multiplayer packets between machines, with spawning and syncing; plus engine notes. | current |
 | [reference/npcs.md](reference/npcs.md) | NPC brains, planning, quests, dialogue and fauna. | current |
 | [reference/particles.md](reference/particles.md) | CPU and GPU particles. | current |
 | [reference/physics-2d.md](reference/physics-2d.md) | 2D physics on Box2D. | current |

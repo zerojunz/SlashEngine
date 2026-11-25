@@ -6,9 +6,9 @@ Status: current · Updated: 2026-11-20
 
 A game's own components and systems are plain C++ in the folders and files `project.json`'s
 `gameplay.sources` names (`src` in games `slash-cli init` makes), registered in one
-`SLASH_GAME_MODULE(game) { ... }` function (`engine/world/include/slash/world/game_module.hpp`),
-as Godot's scripts are. Exports compile the sources into the game (`SLASH_GAME_SOURCES` in
-`export/CMakeLists.txt`). The tools load them as a library instead, on macOS, Linux and Windows:
+`SLASH_GAME_MODULE(game) { ... }` function (`engine/world/include/slash/world/game_module.hpp`).
+Exports compile the sources into the game (`SLASH_GAME_SOURCES` in `export/CMakeLists.txt`). The
+tools load them as a library instead, on macOS, Linux and Windows:
 
 ```bash
 $cli build --project path/to/game     # or the gameplay.build command; compiler errors with file and line
@@ -52,7 +52,7 @@ saved under older code (`undo`, `world.restore`) leaves out what no longer fits.
 `examples/gameplay-code` builds, changes and breaks a game's code while it runs, and
 `examples/build-check` checks it as it is edited and applies the compiler's fix.
 
-Plugins are Godot's GDExtension: libraries built apart from the engine against
+Plugins are libraries built apart from the engine against
 `engine/plugin/include/slash/plugin/slash_plugin.h`, a C interface that only grows, so they load
 into later engines and can be written in any language that calls C. `engine/plugin` loads them
 (`plugin::Plugins`, `src/plugins.cpp`): project.json's `plugins` lists `.plugin.json` files

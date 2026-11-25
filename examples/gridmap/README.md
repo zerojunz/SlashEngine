@@ -1,9 +1,8 @@
 # BlockMap3D
 
-A level built from blocks in cells, as Godot 4.6's `BlockMap3D` and `MeshLibrary`.
-[blocks.blocks.json](blocks.blocks.json) is the library: four items, each a mesh (here a
-primitive with a material), the shapes it collides with and a navigation mesh, all in the
-space of one 2 x 2 x 2 meter cell.
+A level built from blocks in cells. [blocks.blocks.json](blocks.blocks.json) is the library:
+four items, each a mesh (here a primitive with a material), the shapes it collides with and a
+navigation mesh, all in the space of one 2 x 2 x 2 meter cell.
 
 ```json
 "ramp": {
@@ -20,7 +19,7 @@ moved to their tops by `navigation_mesh_transform`. The ramp has its own slope.
 The `level` entity in [main.scene.json](main.scene.json) places them. Like a `TileLayer2D`, a
 `BlockMap3D` writes its cells as text: a `legend` of short keys, and per floor (`y`) rows of keys
 going toward +z, each key a cell toward +x. `"r": "ramp:10"` is the ramp turned 180 degrees
-about y by Godot's orthogonal index 10, so it rises toward the platform:
+about y (orthogonal index 10), so it rises toward the platform:
 
 ```json
 "legend": {"f": "floor", "p": "platform", "r": "ramp:10", "w": "wall"},

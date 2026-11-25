@@ -1,13 +1,13 @@
 # Accessibility
 
-What a screen reader gets from a game's controls, as Godot 4.5's controls describe themselves.
+What a screen reader gets from a game's controls, which describe themselves.
 [main.scene.json](main.scene.json) is a pause menu in a 320x240 window
-([project.json](project.json), which serves a screen reader `always`): a title read out
-politely when it changes, a Resume button, a Music check box, a Volume slider labeled by the
-title, a Difficulty list, a name field described by a hint, and an icon button with nothing to
-call it. [calls.jsonl](calls.jsonl) works it the way an agent does over MCP (tools
-`ui_accessibility`, `ui_accessibility_action`, `events_read`, `step`) or JSON-RPC, and
-[results.jsonl](results.jsonl) holds the replies.
+([project.json](project.json), which serves a screen reader `always`): a title read out politely
+when it changes, a Resume button, a Music check box, a Volume slider labeled by the title, a
+Difficulty list, a name field described by a hint, and an icon button with nothing to call it.
+[calls.jsonl](calls.jsonl) works it the way an agent does over MCP (tools `ui_accessibility`,
+`ui_accessibility_action`, `events_read`, `step`) or JSON-RPC, and [results.jsonl](results.jsonl)
+holds the replies.
 
 ```text
 ui.accessibility {}

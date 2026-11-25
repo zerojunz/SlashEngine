@@ -1,9 +1,8 @@
 # Terrain
 
-An island made on a heightmap terrain, as the Terrain3D plugin for Godot (Godot has no terrain
-node of its own). The `land` entity in [main.scene.json](main.scene.json) has an `Terrain3D`
-naming three maps that don't exist yet, so it starts as flat ground at the low end of its
-`height_range`:
+An island made on a heightmap terrain. The `land` entity in [main.scene.json](main.scene.json) has
+an `Terrain3D` naming three maps that don't exist yet, so it starts as flat ground at the low end of
+its `height_range`:
 
 ```json
 "Terrain3D": {

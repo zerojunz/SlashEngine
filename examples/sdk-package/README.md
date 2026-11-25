@@ -1,8 +1,8 @@
 # SDK package
 
-A closed vendor SDK added to a game without touching the engine, as Godot's Android and iOS
-plugins are. [project.json](project.json)'s `sdks` lists [sdks/hello](sdks/hello/sdk.json), a
-package whose `sdk.json` says what each platform's build links:
+A closed vendor SDK added to a game without touching the engine. [project.json](project.json)'s
+`sdks` lists [sdks/hello](sdks/hello/sdk.json), a package whose `sdk.json` says what each
+platform's build links:
 
 - `build` names a CMake project in the package, [stand-in/](sdks/hello/stand-in/CMakeLists.txt),
   which each export builds with the game's own compilers. Here it stands in for the vendor's

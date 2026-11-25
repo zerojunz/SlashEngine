@@ -3,8 +3,8 @@
 A generated or modeled character usually comes as a mesh with no skeleton, so no animation can
 play on it. Services such as Meshy's rig a standing humanoid figure: they place a skeleton by the
 body's shape and weight the skin to it. `asset.refine` with `"rig": "humanoid"` has a generator
-named in `providers.json` do that to a library model, then retargets the result to Godot's
-`SkeletonProfileHumanoid` (as [`model.retarget`](../humanoid-retarget/) does) before the library
+named in `providers.json` do that to a library model, then retargets the result to the humanoid
+skeleton profile (as [`model.retarget`](../humanoid-retarget/) does) before the library
 keeps it, so every rigged character plays every other's animations.
 
 [main.cpp](main.cpp) makes two figures of boxes in code and writes them as `.glb` files:

@@ -1,9 +1,9 @@
 # Input actions
 
-Keys, mouse buttons, touches and gamepads, read through named actions as Godot's input map.
+Keys, mouse buttons, touches and gamepads, read through named actions.
 [project.json](project.json) binds `move_left`, `move_right`, `move_up` and `move_down` to WASD
 (by physical key, so they sit in the same place on any keyboard layout), the arrow keys and the
-left stick, `jump` to Space and the A button, and `move_to` to the left mouse button. Godot's
+left stick, `jump` to Space and the A button, and `move_to` to the left mouse button. The
 `ui_*` actions (`ui_accept`, `ui_cancel`, `ui_left` and the rest) are built in.
 [main.cpp](main.cpp) adds a `player` system that moves by `get_vector`, counts jumps with
 `is_action_just_pressed` and remembers where `move_to` clicked, then plays it the way an agent
@@ -18,8 +18,7 @@ holds each call and its reply.
 - A touch clicks the left mouse button too (`pointer.mouse_from_touch`,
   on by default), so mouse code works on phones.
 - `{"type": "action", "action": "move_right"}` presses an action by name, with an optional
-  `strength`, as Godot's `Input.action_press`. A misspelled action is an error with the closest
-  name, and nothing is queued.
+  `strength`. A misspelled action is an error with the closest name, and nothing is queued.
 - Gameplay code rebinds actions with `input::map(world)`, e.g. from an options menu.
 - `input.state` with no params lists only actions that are pressed or just changed; name
   actions to see them either way.

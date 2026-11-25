@@ -3,7 +3,7 @@
 Agents design a cast's faces against the game's rules, without looking at them: `face.check`
 measures how alike faces are, `face.generate` writes a new face from a brief, and
 `face.portrait` draws one to a PNG file to look at. The rules are a `face_rules` entry in the
-storyboard (Godot has none; after MetaHuman Creator's presets and the character rules of
+storyboard (after MetaHuman Creator's presets and the character rules of
 [character-design](../character-design/)).
 
 - [design.json](storyboard/design.json) holds `face_rules/cast`: faces at least 0.6% apart in

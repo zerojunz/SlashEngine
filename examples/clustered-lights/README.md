@@ -1,15 +1,13 @@
 # Clustered lights
 
-3D lights lit as Godot's Forward+ renderer lights them. [main.scene.json](main.scene.json) is a
-plaza at night under a dim `moon`, seen from above through a `Camera3D` in a 320x180 window, with
-100 `PointLight3D` lanterns in rows of 10, warm on the left and cool on the right, each reaching
-0.9 meters.
+3D lights lit. [main.scene.json](main.scene.json) is a plaza at night under a dim `moon`, seen
+from above through a `Camera3D` in a 320x180 window, with 100 `PointLight3D` lanterns in rows of
+10, warm on the left and cool on the right, each reaching 0.9 meters.
 
-That is more lights than Godot's Compatibility renderer draws: it adds the first 64 to every
-pixel. [project.json](project.json) leaves `rendering.renderer` at its default,
-`clustered`, so each frame sorts the lanterns into tiles of 32 pixels and slices of depth,
-and a pixel adds only the moon and the few lanterns whose range reaches its tile and slice. All
-100 light the plaza.
+That is more lights than the compatibility renderer draws: it adds the first 64 to every pixel.
+[project.json](project.json) leaves `rendering.renderer` at its default, `clustered`, so each
+frame sorts the lanterns into tiles of 32 pixels and slices of depth, and a pixel adds only the
+moon and the few lanterns whose range reaches its tile and slice. All 100 light the plaza.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -29,5 +27,5 @@ frame.capture {"points":[[96,33],[131,107],[150,107],[263,167],[160,115]]}
 - `component.set` turns `lantern100` red, and `frame.capture` reads it red. `path` saves the
   frame as `shots/plaza.png`.
 
-With `"renderer": "compatibility"` in project.json, as Godot's Compatibility renderer
-and as the OpenGL drivers always draw, the plaza from `lantern064` on stays dark.
+With `"renderer": "compatibility"` in project.json, as the compatibility renderer and as the
+OpenGL drivers always draw, the plaza from `lantern064` on stays dark.

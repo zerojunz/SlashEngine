@@ -2,8 +2,7 @@
 
 Screen distortion and the effects the creature, vehicle and foliage tools play through `.vfx.json`
 recipes, after Niagara's distortion materials and the Niagara components a Blueprint starts on
-its events (Godot has neither: its distortion is a shader reading `SCREEN_TEXTURE`, and its
-effects are scenes a script spawns).
+its events.
 
 - [fauna/dog.creature.json](fauna/dog.creature.json) names `fx/joy.vfx.json` for
   `creature_fed`: feeding the dog with `creature.interact` plays it as `rex_creature_fed`, a

@@ -1,10 +1,9 @@
 # TAA 3D
 
-A card's edges smoothed by temporal antialiasing, as Godot 4.6's TAA in its Forward+ renderer.
-[main.scene.json](main.scene.json) is a cream card turned 0.5 radians, seen through a
-`Camera3D` in a 160x90 window against a dark blue background, so each of its edges steps across
-the pixels. [project.json](project.json) turns TAA on with
-`rendering.anti_aliasing.taa`, as Godot's project setting.
+A card's edges smoothed by temporal antialiasing in the clustered renderer.
+[main.scene.json](main.scene.json) is a cream card turned 0.5 radians, seen through a `Camera3D`
+in a 160x90 window against a dark blue background, so each of its edges steps across the pixels.
+[project.json](project.json) turns TAA on with `rendering.anti_aliasing.taa`.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -31,8 +30,8 @@ frame.capture {"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/smooth.p
   darker.
 
 Captures keep TAA's history between them, as a running game's frames do, so the first capture
-after a change shows what one frame of a game would. TAA blends only the 3D world, in Forward+:
-the canvas, controls and the compatibility renderer (`"renderer":
-"compatibility"`, and always with the OpenGL drivers) draw without it. As in Godot, where a
-background pixel was covered in the frame before, a little of the old color can trail for a
-frame or two; and details thinner than a pixel, which most frames miss, fade rather than smooth.
+after a change shows what one frame of a game would. TAA blends only the 3D world, in the
+clustered renderer: the canvas, controls and the compatibility renderer (`"renderer":
+"compatibility"`, and always with the OpenGL drivers) draw without it. Where a background pixel
+was covered in the frame before, a little of the old color can trail for a frame or two; and
+details thinner than a pixel, which most frames miss, fade rather than smooth.

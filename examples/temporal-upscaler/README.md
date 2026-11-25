@@ -1,15 +1,15 @@
 # Temporal upscaler
 
 A game's own temporal upscaler, run in place of FSR 2, as DLSS, XeSS or FSR 4 come in from a
-vendor's SDK package. Godot hands its `RenderingDevice`'s native objects to a
-`CompositorEffect` for this; SlashEngine hands them to a `render::TemporalUpscaler`.
+vendor's SDK package. The engine hands the render device's native objects to a
+`render::TemporalUpscaler`.
 
 [main.cpp](main.cpp) adds `splat` with `render::add_upscaler`, marked `temporal` and made by
 `make_temporal`. [project.json](project.json) sets `rendering.scaling` to `fsr2` at a `scale` of
-`0.5` with `upscaler` `splat`, so wherever FSR 2 would run (Forward+, a scale under 1, the GPU
-device on Vulkan, Direct3D 12 or Metal, or the software device) the device runs `splat` instead.
-[main.scene.json](main.scene.json) is the cream card of [fsr2-3d](../fsr2-3d/) in a 160x90
-window, so the 3D world draws at 80x45.
+`0.5` with `upscaler` `splat`, so wherever FSR 2 would run (the clustered renderer, a scale
+under 1, the GPU device on Vulkan, Direct3D 12 or Metal, or the software device) the device runs
+`splat` instead. [main.scene.json](main.scene.json) is the cream card of [fsr2-3d](../fsr2-3d/)
+in a 160x90 window, so the 3D world draws at 80x45.
 
 Each frame, `upscale` gets a `render::TemporalFrame`: the color, depth and motion vectors at the
 render size, the output at the window's size, the camera's jitter in render pixels and whether

@@ -1,17 +1,17 @@
 # Post-processing 3D
 
-What happens to a 3D world's colors after it is lit, as Godot's `Environment` does it in its
-Compatibility renderer, which [project.json](project.json)'s `rendering.renderer` picks
-(`compatibility`; [glow-3d](../glow-3d/) has Forward+'s). [main.scene.json](main.scene.json)
-is a crate and a glowing lantern on the ground at night, seen through a `Camera3D` in a 320x180
-window. Its `environment` entity's `Environment3D` sets:
+What happens to a 3D world's colors after it is lit in
+the compatibility renderer, which [project.json](project.json)'s `rendering.renderer` picks
+(`compatibility`; [glow-3d](../glow-3d/) has the clustered renderer's).
+[main.scene.json](main.scene.json) is a crate and a glowing lantern on the ground at night, seen
+through a `Camera3D` in a 320x180 window. Its `environment` entity's `Environment3D` sets:
 
 - `tonemap_mode` `"aces"` with `tonemap_exposure` 1.2: lit colors are brightened, then mapped
-  into the screen's range by Godot's ACES curve.
+  into the screen's range by the ACES curve.
 - `glow_enabled`, with `glow_hdr_threshold` 0.6 and `glow_hdr_scale` 0.5: what is brighter than
   0.6 bleeds into what is around it. The lantern's emission is three times its color, so it glows.
-  The textures glow is made from hold 8 bits a channel, as Godot's Compatibility renderer's do,
-  so nothing is brighter than 1 and the threshold has to be below it.
+  The textures glow is made from hold 8 bits a channel, as the compatibility renderer's do, so
+  nothing is brighter than 1 and the threshold has to be below it.
 - `adjustment_enabled`, with `adjustment_contrast` 1.1 and `adjustment_saturation` 1.2.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and

@@ -38,7 +38,7 @@ that asset (`used_version`). A model in another format (`.gltf`, `.obj`, `.fbx`,
 one with `cleanup`, is imported (`import_model`): loaded through the session's assets, cleaned up
 with `model.cleanup`'s options (`command::read_cleanup` and `clean_up` in
 `slash/command/model_cleanup.hpp`) and kept as the `.glb` file `write_glb` makes, its record
-keeping the file's name, the SHA-256 of its bytes and the cleanup, as Godot's `.import` files;
+keeping the file's name, the SHA-256 of its bytes and the cleanup;
 `library.json` keeps the hash, so `asset.check` reports an edited source, and adding it again
 makes a new version with the same cleanup. `review` reviews what was kept as `asset.review`
 does; `examples/imported-assets` imports a CAD crate and an edit of it. A recipe made of other model files (its model parts) is kept with
@@ -65,20 +65,19 @@ builds it again (`generate_scripted` and `refine_scripted` in `src/commands.cpp`
 `examples/blender-scripts` builds a bookshelf.
 
 Materials are `.standard_material.json` files (`$cli schema standard_material`;
-`slash/scene3d/material.hpp`), one `Surface3D` each as Godot's `.tres`, which a recipe's
-`materials` name by path or `extends` with fields over them (`resolve_materials` in
-`engine/scene3d/src/recipe.cpp`, reading through the same `ModelReader` as model parts).
-`asset.generate`'s `material` type (`generate_material` in `src/commands.cpp`) makes one that
-tiles from a generated or library image: `seam_ratio`, `make_seamless`, `normal_map` and
-`roughness_map` (`slash/library/material.hpp`, integer math only) make the albedo tile and its
-maps, kept as images and the material as type `material` naming them by `asset:` reference;
-`asset_refs` lists what a recipe or material names, which `library_form`, `project_form` and
-`describe_file` follow. `examples/tileable-materials` shares cobblestones between a wall and
-steps.
+`slash/scene3d/material.hpp`), one `Surface3D` each, which a recipe's `materials` name by path
+or `extends` with fields over them (`resolve_materials` in `engine/scene3d/src/recipe.cpp`,
+reading through the same `ModelReader` as model parts). `asset.generate`'s `material` type
+(`generate_material` in `src/commands.cpp`) makes one that tiles from a generated or library
+image: `seam_ratio`, `make_seamless`, `normal_map` and `roughness_map`
+(`slash/library/material.hpp`, integer math only) make the albedo tile and its maps, kept as
+images and the material as type `material` naming them by `asset:` reference; `asset_refs` lists
+what a recipe or material names, which `library_form`, `project_form` and `describe_file`
+follow. `examples/tileable-materials` shares cobblestones between a wall and steps.
 
 `entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
 each entity goes to a point (`at`) or along a `Spline3D` (`along`, turned to face it with
-`rotate`), is dropped onto what is below as Godot's Snap Object to Floor drops a node (a ray from
+`rotate`), is dropped onto what is below (a ray from
 a meter above the bottom of its bounds; `on` limits what it may stand on), and is moved to the
 nearest free spot in rings around it when its bounds overlap anything but what it stands on.
 What it stands on and avoids is `navigation::world_geometry`, each entity's own geometry as a
