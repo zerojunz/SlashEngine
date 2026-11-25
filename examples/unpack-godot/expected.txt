@@ -300,7 +300,7 @@ godot/sfx/jump.wav is the game's sound: yes
   },
   "rendering": {
     "driver": "opengl",
-    "renderer": "gl_compatibility"
+    "renderer": "compatibility"
   },
   "version": "0.1.0",
   "window": {

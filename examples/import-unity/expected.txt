@@ -534,32 +534,32 @@ project.import {"source":"unity"}
           "offset_top": 8.0,
           "theme_styles": {
             "disabled": {
-              "bg_color": [0.7843, 0.7843, 0.7843, 0.4016],
+              "background_color": [0.7843, 0.7843, 0.7843, 0.4016],
               "corner_radius": 3,
               "type": "flat"
             },
             "focus": {
-              "bg_color": [0.9608, 0.9608, 0.9608, 0.8],
+              "background_color": [0.9608, 0.9608, 0.9608, 0.8],
               "corner_radius": 3,
               "type": "flat"
             },
             "hover": {
-              "bg_color": [0.9608, 0.9608, 0.9608, 0.8],
+              "background_color": [0.9608, 0.9608, 0.9608, 0.8],
               "corner_radius": 3,
               "type": "flat"
             },
             "hover_pressed": {
-              "bg_color": [0.7843, 0.7843, 0.7843, 0.8],
+              "background_color": [0.7843, 0.7843, 0.7843, 0.8],
               "corner_radius": 3,
               "type": "flat"
             },
             "normal": {
-              "bg_color": [1.0, 1.0, 1.0, 0.8],
+              "background_color": [1.0, 1.0, 1.0, 0.8],
               "corner_radius": 3,
               "type": "flat"
             },
             "pressed": {
-              "bg_color": [0.7843, 0.7843, 0.7843, 0.8],
+              "background_color": [0.7843, 0.7843, 0.7843, 0.8],
               "corner_radius": 3,
               "type": "flat"
             }
