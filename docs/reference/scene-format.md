@@ -3053,6 +3053,7 @@ textures and a material, [`paint.edit`](commands.md#paintedit) changes it by lay
 | `material` | string | The `.standard_material.json` `paint.bake` writes (default: next to the stack) |
 | `seed` | integer | Added to every noise's seed: the same stack, worn anew (default 0) |
 | `variants` | object | Stacks [`paint.bake`](commands.md#paintbake) draws from this one: `count`, `seed`, and `ranges`, parameters by name each `[low, high]` (numbers, or two colors) |
+| `damage` | object | Wear from damage: `profile` (a [`.damage.json`](#damage-profiles) file, made when missing), `parameter` (default `wear`) and `states`, each `below` (a share of health) and the parameter's `value` (default `[{below 0.66, value 0.5}, {below 0.33, value 1}]`); `paint.bake` bakes a look per state and points the profile's states at them |
 | `expect` | object | Ranges for [`texture.check`](commands.md#texturecheck): `"<output>.<measure>"` or `"mask.<layer>"` (the mask's mean) |
 
 Channels are `albedo`, `roughness`, `metallic`, `ao`, `height`, `normal` and `emission`; outputs

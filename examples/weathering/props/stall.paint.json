@@ -26,6 +26,8 @@
     {"name": "rain", "weather": {"age": "$age", "rain": 1, "dust": 1, "rust": 0.5,
                                  "moss": 0.3, "wind": [1, 0, 0]}}
   ],
+  "damage": {"profile": "props/stall.damage.json", "parameter": "age",
+             "states": [{"below": 0.6, "value": 0.85}, {"below": 0.3, "value": 1}]},
   "expect": {"mask.painted": [0.1, 0.5], "mask.rain.dust": [0.01, 0.5],
              "mask.rain.rain": [0.01, 0.6]}
 }

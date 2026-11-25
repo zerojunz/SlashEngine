@@ -747,6 +747,11 @@ or `<stack>.standard_material.json`). The mesh maps its masks read bake first, a
 `texel_density` (texels per unit of the model). When nothing would change it writes nothing and
 returns `"unchanged": true`.
 
+With a [`damage`](scene-format.md#layer-stacks) block, it also bakes the stack once per damage
+state, with the state's value of the parameter, as `<stack>_d<n>_<output>.png` (and a material for
+a model), and writes them into the profile's `states` (`material` on a model, `mesh` on a sprite),
+keeping what else each state holds; `damage` in the reply lists each look and its measures.
+
 With `variant`, it bakes the stack's [`variants`](scene-format.md#layer-stacks) instead: one by
 number, or `"all"`, each as `<stack>_v<n>_<output>.png` with its own material, and returns them in
 `variants`, each with the `parameters` it drew.

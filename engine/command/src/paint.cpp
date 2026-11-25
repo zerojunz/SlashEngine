@@ -16,6 +16,7 @@
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/ragdoll.hpp"
 
 #include <algorithm>
@@ -487,6 +488,79 @@ Result<void> write_bake(Session& session, const Prepared& p, const Baked& baked,
     return {};
 }
 
+// Wear from damage: the stack baked at each damage state's value of its parameter, beside it as
+// <stem>_d<n>, and the looks written into the profile's states (keeping what else they hold).
+Result<void> bake_damage(Session& session, const Prepared& p, const json::Object& overrides,
+                         const std::string& stem, json::Value& result, bool& changed) {
+    const json::Value& damage = *p.resolved.find("damage");
+    const std::string& profile = damage.find("profile")->as_string();
+    const json::Value* given = damage.find("parameter");
+    const std::string parameter = given != nullptr ? given->as_string() : "wear";
+    json::Value states = json::Array{json::Object{{"below", 0.66}, {"value", 0.5}},
+                                     json::Object{{"below", 0.33}, {"value", 1}}};
+    if (const json::Value* listed = damage.find("states"); listed != nullptr) {
+        states = *listed;
+    }
+
+    json::Value doc = json::Object{{"format", 1}};
+    auto before = session.read_project_file(profile);
+    if (!before) {
+        return before.error();
+    }
+    if (const std::optional<std::string>& text = before.value(); text.has_value()) {
+        auto parsed = json::parse(*text);
+        if (!parsed || !parsed.value().is_object()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/damage/profile: " + quoted(profile) + " isn't a JSON object");
+        }
+        doc = std::move(parsed).value();
+    }
+    const json::Value* had = doc.find("states");
+    json::Array written;
+    json::Array looks;
+    for (std::size_t i = 0; i < states.as_array().size(); ++i) {
+        const json::Value& state = states.as_array()[i];
+        json::Object moved = overrides;
+        moved.insert_or_assign(parameter, *state.find("value"));
+        auto baked = bake(session, p, moved);
+        if (!baked) {
+            return baked.error();
+        }
+        const std::string suffix = "_d" + std::to_string(i + 1);
+        json::Value one;
+        one["below"] = *state.find("below");
+        if (auto done = write_bake(session, p, baked.value(), stem + suffix, suffix, one, changed);
+            !done) {
+            return done.error();
+        }
+        json::Value entry = json::Object{};
+        if (had != nullptr && had->is_array() && i < had->as_array().size() &&
+            had->as_array()[i].is_object()) {
+            entry = had->as_array()[i];
+        }
+        entry["below"] = *state.find("below");
+        if (const json::Value* material = one.find("material")) {
+            entry["material"] = *material;
+        } else {
+            // 2D: a damage state's mesh is the texture it draws.
+            entry["mesh"] = *one.find("textures")->find("albedo");
+        }
+        written.push_back(std::move(entry));
+        looks.push_back(std::move(one));
+    }
+    doc["states"] = std::move(written);
+    if (const auto errors = world::validate_damage(doc); !errors.empty()) {
+        return make_error(ErrorCode::InvalidArgument, "/damage/profile: " + quoted(profile) +
+                                                          " at " + errors.front().path + ": " +
+                                                          errors.front().message);
+    }
+    if (auto staged = stage(session, profile, json::write(doc), changed); !staged) {
+        return staged.error();
+    }
+    result["damage"] = json::Object{{"profile", profile}, {"states", std::move(looks)}};
+    return {};
+}
+
 Reply paint_bake(Session& session, const json::Value& params) {
     const std::string& path = params.find("path")->as_string();
     StackFile read;
@@ -559,6 +633,13 @@ Reply paint_bake(Session& session, const json::Value& params) {
                                       result, changed);
             !written) {
             return Reply::failure(written.error());
+        }
+        if (prepared.value().resolved.find("damage") != nullptr) {
+            if (auto worn = bake_damage(session, prepared.value(), overrides, stem_of(path), result,
+                                        changed);
+                !worn) {
+                return stack_error(path, "/path", worn.error());
+            }
         }
     }
     if (!changed) {

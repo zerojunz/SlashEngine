@@ -546,9 +546,27 @@ void check_flavours(const json::Value& doc, std::vector<json::ValidationError>& 
             }
         }
     }
-    const json::Value* variants = doc.find("variants");
-    const json::Value* ranges = variants != nullptr ? variants->find("ranges") : nullptr;
-    if (ranges == nullptr || doc.find("extends") != nullptr) {
+    if (const json::Value* damage = doc.find("damage"); damage != nullptr) {
+        if (const json::Value* states = damage->find("states"); states != nullptr) {
+            double last = 1.0;
+            for (std::size_t i = 0; i < states->as_array().size(); ++i) {
+                const double below = states->as_array()[i].find("below")->as_double();
+                if (below <= 0.0 || below >= last) {
+                    std::string at = "/damage/states/";
+                    at += std::to_string(i);
+                    at += "/below";
+                    errors.push_back({std::move(at), "must be above 0 and lower than the state "
+                                                     "before's (and 1)"});
+                }
+                last = below;
+            }
+        }
+        if (const json::Value* profile = damage->find("profile");
+            !profile->as_string().ends_with(".damage.json")) {
+            errors.push_back({"/damage/profile", "a profile is a .damage.json file"});
+        }
+    }
+    if (doc.find("extends") != nullptr) {
         return; // what it extends may hold the parameters
     }
     const json::Value* parameters = doc.find("parameters");
@@ -557,6 +575,22 @@ void check_flavours(const json::Value& doc, std::vector<json::ValidationError>& 
         for (const auto& [name, value] : parameters->as_object()) {
             names.push_back(name);
         }
+    }
+    if (const json::Value* damage = doc.find("damage"); damage != nullptr) {
+        const json::Value* given = damage->find("parameter");
+        const std::string name = given != nullptr ? given->as_string() : "wear";
+        if (std::ranges::find(names, name) == names.end()) {
+            std::string message = quoted(name) + " isn't a parameter of the stack";
+            if (const std::string_view near = closest_match(name, names); !near.empty()) {
+                message += " (did you mean " + quoted(near) + "?)";
+            }
+            errors.push_back({given != nullptr ? "/damage/parameter" : "/damage", message});
+        }
+    }
+    const json::Value* variants = doc.find("variants");
+    const json::Value* ranges = variants != nullptr ? variants->find("ranges") : nullptr;
+    if (ranges == nullptr) {
+        return;
     }
     for (const auto& [name, range] : ranges->as_object()) {
         const std::string at = "/variants/ranges/" + json::pointer_escape(name);
@@ -2311,6 +2345,33 @@ json::Value paint_schema() {
     variants["properties"]["ranges"]["additionalProperties"]["type"] = "array";
     variants["properties"]["ranges"]["additionalProperties"]["minItems"] = 2;
     variants["properties"]["ranges"]["additionalProperties"]["maxItems"] = 2;
+    json::Value& damage = p["damage"];
+    damage["type"] = "object";
+    damage["additionalProperties"] = false;
+    damage["required"] = json::Array{"profile"};
+    damage["description"] =
+        "Wear from damage: paint.bake also bakes the stack at each damage state's value of "
+        "parameter and writes the looks into the profile's states, so a Destructible3D or "
+        "Destructible2D wears as gameplay damages it.";
+    damage["properties"]["profile"] =
+        text_field("The .damage.json profile whose states draw the worn looks; made when missing.");
+    damage["properties"]["parameter"] =
+        text_field("The stack's parameter damage moves. Default \"wear\".");
+    json::Value& states = damage["properties"]["states"];
+    states["type"] = "array";
+    states["minItems"] = 1;
+    states["maxItems"] = 8;
+    states["description"] = "Highest below first. Default [{below 0.66, value 0.5}, {below 0.33, "
+                            "value 1}].";
+    states["items"]["type"] = "object";
+    states["items"]["additionalProperties"] = false;
+    states["items"]["required"] = json::Array{"below", "value"};
+    states["items"]["properties"]["below"] = number_field(
+        0.5F, "The share of its health below which it looks so, between 0 and 1.", 0.0, 1.0);
+    states["items"]["properties"]["value"]["type"] = json::Array{"number", "array"};
+    states["items"]["properties"]["value"]["items"]["type"] = "number";
+    states["items"]["properties"]["value"]["description"] =
+        "The parameter's value in that state: a number or a color.";
     json::Value& expect = p["expect"];
     expect["type"] = "object";
     expect["description"] =

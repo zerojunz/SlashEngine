@@ -18,12 +18,17 @@ grain, the counter in a `paint` color, the canvas awning, then
   translation paints just as well;
 - `rain`: the `weather` layer, its age the stack's `$age` parameter, the wind from +x.
 
-Its `variants` draw three stalls from it, each its own paint color and age, the same on every
+Its `damage` block wears it as gameplay damages it: [props/stall.damage.json](props/stall.damage.json)
+is the stall's damage profile, and each bake also bakes the stack with `age` at 0.85 and at 1 and
+writes those looks into the profile's `states`, so a `Destructible3D` stall looks older below 60%
+and 30% of its health. Its `variants` draw three stalls from it, each its own paint color and age, the same on every
 machine. The calls in [calls.jsonl](calls.jsonl):
 
 1. `paint.bake` bakes the stall's mesh maps, then the stack, into `props/stall_albedo.png`,
    `stall_orm.png`, `stall_height.png` and `stall_normal.png` and a material. Each part of the
    weather has its own mask in the reply: `rain.rain`, `rain.rust`, `rain.dust`, `rain.moss`.
+   `damage` lists the two worn looks, `props/stall_d1.standard_material.json` and `_d2`, now
+   named by the profile's states.
 2. The same with `age` at 1 for the call: more rain streaks and rust.
 3. `"variant": "all"` bakes the three variants as `props/stall_v1_albedo.png` and on, each with
    its own `.standard_material.json`; the reply lists the parameters each one drew.

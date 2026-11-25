@@ -628,3 +628,50 @@ TEST_CASE("paint.bake writes variants, and text stamps paint words") {
     CHECK(drawn.find("channels")->find("a")->as_array()[2].as_double() == 255);
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("paint.bake wears a stack by damage into a profile's states") {
+    const std::string root = make_project("command_paint_damage_project");
+    Engine engine(root);
+    // A profile that tints its first state already; the tint stays.
+    REQUIRE(slash::platform::write_file(root + "/props/panels.damage.json",
+                                        R"({"format": 1, "material": "wood",
+                                            "states": [{"below": 0.9, "tint": [1, 0.5, 0.5]}]})")
+                .ok());
+    engine.ok("paint.edit", R"({"path": "props/panels.paint.json",
+        "patch": {"model": "props/panels.obj", "size": 32, "maps": {"rays": 2},
+                  "parameters": {"wear": 0},
+                  "damage": {"profile": "props/panels.damage.json"}},
+        "layers": {"base": {"fill": {"albedo": [0.2, 0.4, 0.8]}},
+                   "scratches": {"fill": {"albedo": [0.9, 0.9, 0.9]},
+                                 "mask": {"map": "noise", "scale": 6, "above": "=1 - wear * 0.6",
+                                          "softness": 0.02}}}})");
+    const json::Value baked = engine.ok("paint.bake", R"({"path": "props/panels.paint.json"})");
+    const json::Value& damage = *baked.find("damage");
+    CHECK(damage.find("profile")->as_string() == "props/panels.damage.json");
+    REQUIRE(damage.find("states")->size() == 2);
+    const json::Value& worst = damage.find("states")->as_array()[1];
+    CHECK(worst.find("material")->as_string() == "props/panels_d2.standard_material.json");
+    // More wear, more scratches: none new, some at half, more at full.
+    CHECK(baked.find("masks")->find("scratches")->as_double() < 0.01);
+    const double half =
+        damage.find("states")->as_array()[0].find("masks")->find("scratches")->as_double();
+    CHECK(half > 0.01);
+    CHECK(worst.find("masks")->find("scratches")->as_double() > half);
+    CHECK(std::filesystem::exists(root + "/props/panels_d1_albedo.png"));
+    // The profile's states draw the worn materials, the first keeping its tint.
+    auto text = slash::platform::read_file(root + "/props/panels.damage.json");
+    REQUIRE(text.ok());
+    const json::Value profile = parse(text.value());
+    CHECK(profile.find("material")->as_string() == "wood");
+    const json::Array& states = profile.find("states")->as_array();
+    REQUIRE(states.size() == 2);
+    CHECK(states[0].find("below")->as_double() == doctest::Approx(0.66));
+    CHECK(states[0].find("tint") != nullptr);
+    CHECK(states[1].find("material")->as_string() == "props/panels_d2.standard_material.json");
+    // Damage moves a parameter the stack has.
+    const command::Reply refused = engine.call("paint.edit", R"({"path": "props/panels.paint.json",
+        "patch": {"damage": {"profile": "props/panels.damage.json", "parameter": "waer"}}})");
+    CHECK_FALSE(refused.ok);
+    CHECK(refused.message.find("\"wear\"") != std::string::npos);
+    std::filesystem::remove_all(root);
+}
