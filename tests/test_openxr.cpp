@@ -31,7 +31,8 @@ using namespace slash;
 
 TEST_CASE("openxr: the default action map is Godot's") {
     const xr::ActionMap& map = xr::default_action_map();
-    CHECK(map.action_set == "godot");
+    CHECK(map.action_set == "game");
+    CHECK(map.localized_name == "Game actions");
     CHECK(map.actions.size() == 23);
     CHECK(map.profiles.size() == 11);
     const auto touch = std::ranges::find_if(map.profiles, [](const xr::MapProfile& profile) {

@@ -62,8 +62,8 @@ struct MapProfile {
 };
 // Godot's OpenXRActionMap: one action set and the profiles it suggests.
 struct ActionMap {
-    std::string action_set = "godot";
-    std::string localized_name = "Godot action set";
+    std::string action_set = "game";
+    std::string localized_name = "Game actions";
     std::vector<MapAction> actions;
     std::vector<MapProfile> profiles;
 };
