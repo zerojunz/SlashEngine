@@ -506,7 +506,7 @@ project.import {"source":"godot"}
   "rendering": {
     "clear_color": [0.1, 0.12, 0.2, 1.0],
     "driver": "opengl",
-    "renderer": "gl_compatibility",
+    "renderer": "compatibility",
     "texture_filter": "nearest"
   },
   "ui": {
