@@ -1231,11 +1231,11 @@ fn cs_main(@builtin(global_invocation_id) id : vec3<u32>) {
 }
 )wgsl"};
 
-inline constexpr char kSkinHlsl[] = R"hlsl(// Skinning on the GPU, as Godot's skeleton compute shader (servers/rendering/renderer_rd/
-// shaders/skeleton.glsl) moves a skinned surface's vertices: a thread a vertex, its rest vertex
-// moved by the blend shapes at their weights, then by its joints' transforms summed by its
-// weights, into the mesh's vertex buffer. scene3d's blend_vertices and skin_vertices are its CPU
-// twins (src/blend_shapes.cpp, src/skeleton.cpp); keep them in step.
+inline constexpr char kSkinHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Skinning on the GPU, which moves a skinned surface's vertices: a thread a vertex, its rest vertex
+// moved by the blend shapes at their weights, then by its joints' transforms summed by its weights,
+// into the mesh's vertex buffer. scene3d's blend_vertices and skin_vertices are its CPU twins
+// (src/blend_shapes.cpp, src/skeleton.cpp); keep them in step.
 
 #ifdef SLASH_MSL
 #define UNIFORMS register(b0)
@@ -1302,7 +1302,7 @@ float3 unit(float3 v) {
     float3 position = load3(rest, base);
     float3 normal = load3(rest, base + 3u);
     float3 tangent = load3(rest, base + 6u);
-    // Blend shapes first, then the skin, as Godot's skeleton shader moves them.
+    // Blend shapes first, then the skin.
     if (counts.z > 0u) {
         float3 normals = float3(0.0, 0.0, 0.0);
         float3 tangents = float3(0.0, 0.0, 0.0);

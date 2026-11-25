@@ -100,7 +100,7 @@ Light3D shadowed(LightType type) {
         light.direction = {0.70710677F, -0.70710677F, 0.0F};
         light.up = {0.70710677F, 0.70710677F, 0.0F};
         // At the default normal bias of 2, a light at 45 degrees sits right on the edge of acne
-        // with the 5-tap filter in a 2048-texel atlas, as in Godot; a little more keeps the lit
+        // with the 5-tap filter in a 2048-texel atlas; a little more keeps the lit
         // floor clean so the checks can be exact.
         light.shadow_normal_bias = 3.0F;
     } else {
@@ -185,7 +185,7 @@ TEST_CASE("lights with shadows take slots, directional and positional apart") {
     CHECK(render::detail::shadow_slots(scene)[render::kMaxDirectionalShadows] == -1);
 }
 
-TEST_CASE("shadow plans split the atlases as Godot's do") {
+TEST_CASE("shadow plans split the atlases") {
     render::Scene3D scene = above(shadowed(LightType::Directional));
     scene.lights.push_back(shadowed(LightType::Omni));
     scene.lights.push_back(shadowed(LightType::Spot));

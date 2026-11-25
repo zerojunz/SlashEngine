@@ -186,8 +186,7 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         }
         // SDL's Wayland code calls what the xkbcommon it is built against has, and the sysroot's
         // 1.0 has more than Ubuntu 20.04's 0.10, so pkg-config finds one saying 0.10 first: the
-        // sysroot's headers and library, used as that version, as Godot builds against old
-        // headers it keeps.
+        // sysroot's headers and library, used as that version.
         const fs::path packages = fs::absolute(work / "pkgconfig", error);
         fs::create_directories(packages, error);
         if (auto written =

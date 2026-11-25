@@ -21,7 +21,7 @@ struct RunOptions {
     // Headless runs tick as real time says, as windowed runs do, instead of as fast as they can:
     // for a game played headless by someone at the other end of a connection, such as an agent.
     bool real_time = false;
-    // Frames per second at most, from 0 (no cap, Godot's default) to kMaxFps. Windowed runs wait
+    // Frames per second at most, from 0 (no cap, the default) to kMaxFps. Windowed runs wait
     // between frames to keep to it, and on the web the browser calls frames at this rate;
     // headless runs never wait.
     int max_fps = 0;

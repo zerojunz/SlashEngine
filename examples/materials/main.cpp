@@ -1,8 +1,8 @@
-// Materials, as Godot's canvas shaders: a .material.json file is a node graph that colors each
-// pixel of a sprite, and Sprite2D's material and material_params pick one and set its params.
+// Materials: a .material.json file is a node graph that colors each pixel of a sprite, and
+// Sprite2D's material and material_params pick one and set its params.
 //
-// main.scene.json has three sprites: the hero flashes white with hit_flash.material.json, the
-// pond scrolls ripples over itself with water.material.json, and the spark adds its light with
+// main.scene.json has three sprites: the hero flashes white with hit_flash.material.json, the pond
+// scrolls ripples over itself with water.material.json, and the spark adds its light with
 // glow.material.json. This program writes their textures, checks colors with material.eval as an
 // agent would, then draws the scene into a texture.
 

@@ -1,4 +1,5 @@
-// Godot's AudioFilterSW (servers/audio/audio_filter_sw.cpp).
+// A biquad filter.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "filter.hpp"
 

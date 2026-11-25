@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/skeleton.hpp"
 
 #include "slash/core/json.hpp"
@@ -36,7 +37,7 @@ Vec3 lerp(Vec3 a, Vec3 b, float t) {
     return a + ((b - a) * t);
 }
 
-// Godot's Basis::get_quaternion, on a rotation basis whose columns are x, y and z.
+// A quaternion from a rotation basis whose columns are x, y and z.
 Quat basis_quaternion(const world::Affine3D& m) {
     // rows[r][c] is column c's component r.
     const std::array<std::array<float, 3>, 3> rows{
@@ -126,7 +127,7 @@ Quat slerp(const Quat& from, const Quat& to, float weight) {
     }
     float scale0 = 1.0F - weight;
     float scale1 = weight;
-    if (1.0F - cosom > 0.00001F) { // Godot's CMP_EPSILON
+    if (1.0F - cosom > 0.00001F) { // the epsilon for approximate comparisons
         const float sinom = std::sqrt(std::max(0.0F, 1.0F - (cosom * cosom)));
         const float omega = atan2(sinom, cosom);
         scale0 = cos_sin((1.0F - weight) * omega).y / sinom;
@@ -137,7 +138,7 @@ Quat slerp(const Quat& from, const Quat& to, float weight) {
 }
 
 Vec3 xform_inv(const Quat& q, Vec3 v) {
-    // Godot's Quaternion::xform on the inverse.
+    // The vector turned by the inverse.
     const Vec3 u{-q.x, -q.y, -q.z};
     const Vec3 uv{(u.y * v.z) - (u.z * v.y), (u.z * v.x) - (u.x * v.z), (u.x * v.y) - (u.y * v.x)};
     const Vec3 uuv{(u.y * uv.z) - (u.z * uv.y), (u.z * uv.x) - (u.x * uv.z),
@@ -237,14 +238,14 @@ std::array<float, 4> sample_track(const NodeTrack& track, double time, double le
 
 namespace {
 
-// Godot's mixer on a model animation's tracks: each position and scale moves its node's weight of
+// Blends a model animation's tracks: each position and scale moves its node's weight of
 // the way from rest to the track's value, and each rotation turns that much of the way.
 template <typename WeightOf>
 void blend_tracks(const Model& target, const Model& source, const ModelAnimation& animation,
                   double time, const WeightOf& weight_of, std::span<const int> map,
                   std::vector<NodePose>& pose) {
     const bool same = map.empty();
-    // Godot's mixer multiplies a bone's position track by its skeleton's motion scale, which
+    // A bone's position track is multiplied by its skeleton's motion scale, which
     // retargeting sets; a model's tracks keep its own scale, so they change by the ratio here.
     float ratio = 1.0F;
     std::vector<bool> bones;
@@ -360,7 +361,7 @@ NodePose decompose(const world::Affine3D& transform) {
         Vec3{std::sqrt(dot(transform.x, transform.x)), std::sqrt(dot(transform.y, transform.y)),
              std::sqrt(dot(transform.z, transform.z))} *
         sign;
-    // Godot's Basis::orthonormalized: Gram-Schmidt on the columns, x first; then turned into a
+    // Orthonormalized: Gram-Schmidt on the columns, x first; then turned into a
     // proper rotation when it mirrors.
     world::Affine3D m = transform;
     m.x = normalized(m.x);

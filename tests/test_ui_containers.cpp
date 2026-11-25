@@ -22,7 +22,7 @@
 #include <vector>
 
 // Containers, themes, style boxes and the controls that draw them. The positions expected here
-// are worked out by hand from Godot's code for each container (scene/gui/*_container.cpp).
+// are worked out by hand for each container.
 
 namespace asset = slash::asset;
 namespace canvas = slash::canvas;
@@ -402,7 +402,7 @@ TEST_CASE("layout reports themes, variations and textures it can't use") {
           });
 }
 
-TEST_CASE("style boxes read Godot's property names, with shorthands for every side") {
+TEST_CASE("style boxes read their property names, with shorthands for every side") {
     const auto style = ui::parse_style_box(parse(R"({"corner_radius": 4,
                                                      "corner_radius_top_left": 0,
                                                      "border_width": 2,
@@ -501,7 +501,7 @@ TEST_CASE("theme files are checked for unknown types, items and broken variation
                                    "\"background_colour\"; did you mean \"background_color\"?"});
 }
 
-TEST_CASE("draw_calls draws rounded style boxes with smooth edges, as Godot's StyleBoxFlat") {
+TEST_CASE("draw_calls draws rounded style boxes with smooth edges") {
     Scene scene;
     scene.create("panel", R"({"Widget": {"offset_left": 10, "offset_top": 10,
                                           "offset_right": 110, "offset_bottom": 60,
@@ -898,7 +898,7 @@ TEST_CASE("a top-level control is placed in the viewport and left out by its con
     scene.create("after", R"({"Widget": {"offset_right": 400, "offset_bottom": 300},
                               "ColorFill": {}})");
     // The box lines up a and b as if tip weren't there; tip keeps its own offsets, in the
-    // viewport rather than the box, as Godot's top_level.
+    // viewport rather than the box.
     ui::Layout layout = scene.layout();
     CHECK(rect_of(scene, layout, "a") == Rect{100, 50, 200, 20});
     CHECK(rect_of(scene, layout, "b") == Rect{100, 74, 200, 30});
@@ -913,8 +913,8 @@ TEST_CASE("a top-level control is placed in the viewport and left out by its con
     CHECK(layout.find(scene.world.find("b"))->modulate == Vec4{1, 1, 1, 0.5F});
 
     // It draws by its own z_index, so under the box's tree, and before after, a root made after
-    // the box. At the box's z_index, it draws after the rest of the box's tree, as Godot orders
-    // a canvas's top-level items in tree order.
+    // the box. At the box's z_index, it draws after the rest of the box's tree, as a canvas's
+    // top-level items are ordered in tree order.
     const auto drawing_order = [&] {
         std::vector<std::string> order;
         for (const ui::Placed& placed : scene.layout().controls) {

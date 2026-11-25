@@ -7,16 +7,14 @@
 #include <string>
 #include <vector>
 
-// What the gui system and the layout share about LineEdits (line_edit.cpp): the state Godot's
-// TextField keeps between events, and the geometry it works out from its shaped text and theme
-// (scene/gui/line_edit.cpp: _shape, set_caret_column, get_caret_pixel_pos,
-// set_caret_at_pixel_pos, _get_right_icon_size, get_minimum_size and NOTIFICATION_DRAW).
+// What the gui system and the layout share about LineEdits (line_edit.cpp): the state a
+// TextField keeps between events, and the geometry it works out from its shaped text and theme.
 namespace slash::ui {
 
-// The clear button's icon, Godot's line_edit_clear: 16 by 16 pixels.
+// The clear button's icon: 16 by 16 pixels.
 inline constexpr float kClearIconSize = 16.0F;
 
-// What a TextField keeps between events, as Godot's LineEdit members. Columns count characters
+// What a TextField keeps between events. Columns count characters
 // (code points).
 struct EditState {
     struct Selection {
@@ -40,7 +38,7 @@ struct EditState {
     Selection selection;
     float scroll_offset = 0.0F;
     std::u32string ime_text;
-    int ime_selection_start = 0; // Godot's ime_selection: x the start, y the length
+    int ime_selection_start = 0; // x the start, y the length
     int ime_selection_length = 0;
     std::vector<Operation> undo;
     int undo_pos = -1; // the entry undo stepped back to; -1 for none (undo_stack_pos null)
@@ -70,7 +68,7 @@ struct EditState {
 // Whether a TextField has focus (gui.cpp).
 [[nodiscard]] bool has_focus(const world::World& world, entt::entity entity);
 
-// A TextField's text shaped for its rect, and where Godot's LineEdit puts things in it.
+// A TextField's text shaped for its rect, and where things are in it.
 class Field {
 public:
     Field(text::Fonts& fonts, const LineEditView& view, Vec2 size);
@@ -136,7 +134,7 @@ private:
     std::string error_;
 };
 
-// A TextField's text as Godot's String: characters (code points).
+// A TextField's text as characters (code points).
 [[nodiscard]] std::u32string characters(const world::TextField& edit);
 
 } // namespace slash::ui

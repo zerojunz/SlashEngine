@@ -13,12 +13,11 @@ struct ReferencePage {
     std::string text;
 };
 
-// The engine's reference, written from engine.describe's full reply ({"full": true}) as Godot's
-// --doctool writes its class reference from the running engine: README.md (what is there),
-// components.md (each component's fields with their types, defaults, limits and docs, and the
-// structs inside them), commands.md (each command's description, capabilities and params) and
-// systems.md (the systems in the order they run). Names are sorted, so the same engine makes the
-// same pages.
+// The engine's reference, written from engine.describe's full reply ({"full": true}): README.md
+// (what is there), components.md (each component's fields with their types, defaults, limits and
+// docs, and the structs inside them), commands.md (each command's description, capabilities and
+// params) and systems.md (the systems in the order they run). Names are sorted, so the same engine
+// makes the same pages.
 [[nodiscard]] std::vector<ReferencePage> reference_pages(const json::Value& describe);
 
 // What the reply leaves without a description, as "component X", "field X.y", "command x.y" or

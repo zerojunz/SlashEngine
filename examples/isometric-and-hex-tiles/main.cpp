@@ -1,4 +1,4 @@
-// Isometric and hexagonal tile maps, as Godot's TileSet shapes and layouts.
+// Isometric and hexagonal tile maps.
 //
 // iso.tileset.json cuts iso.png into 32x16 diamonds in a diamond layout: columns run down to the
 // right and rows down to the left, as in most isometric games. Its grass tiles' peering names
@@ -101,8 +101,7 @@ void write_diamonds(const canvas::TileSet& set) {
                 source.tiles.size());
 }
 
-// Each hexagon pointing up and down, as Godot draws hexagons in offset rows, edged a little
-// darker. Clear outside it.
+// Each hexagon pointing up and down, edged a little darker. Clear outside it.
 void write_hexagons(const canvas::TileSet& set) {
     const canvas::AtlasSource& source = set.sources.at("board");
     render::Image image{.width = 128, .height = 28, .pixels = {}};

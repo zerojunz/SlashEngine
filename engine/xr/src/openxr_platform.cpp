@@ -1,7 +1,7 @@
-// What OpenXR needs of the platform before an instance, ported from Godot's
-// modules/openxr/extensions/platform/openxr_android_extension.cpp (OpenXRAndroidExtension): on
+// What OpenXR needs of the platform before an instance: on
 // Android the loader and the instance are given the app's Java VM and activity. Elsewhere there
 // is nothing to do.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "openxr_graphics.hpp"
 
 #if defined(__ANDROID__)

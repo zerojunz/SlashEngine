@@ -205,7 +205,7 @@ struct Project {
 
 } // namespace
 
-TEST_CASE("canvases stack as Godot's: by layer, the world first among layer 0") {
+TEST_CASE("canvases stack: by layer, the world first among layer 0") {
     Scene scene;
     // With no ScreenLayer, there is only the world.
     CHECK(scene.canvases().all().size() == 1);
@@ -256,7 +256,7 @@ TEST_CASE("canvases stack as Godot's: by layer, the world first among layer 0") 
     CHECK(scene.canvases().of(scene.world.find("label")) == 1);
 }
 
-TEST_CASE("canvas_layer_transform places a layer as Godot's CanvasLayer, following the camera") {
+TEST_CASE("canvas_layer_transform places a layer, following the camera") {
     world::ScreenLayer layer;
     layer.offset = {10.0F, 20.0F};
     layer.rotation = kPi / 2.0F;
@@ -283,7 +283,7 @@ TEST_CASE("canvas_layer_transform places a layer as Godot's CanvasLayer, followi
                {-415.0F, -205.0F});
 }
 
-TEST_CASE("Parallax2D scrolls as Godot's _update_scroll") {
+TEST_CASE("Parallax2D scrolls") {
     world::Parallax2D parallax;
     parallax.scroll_scale = {0.5F, 1.0F};
     parallax.screen_offset = {100.0F, 0.0F};
@@ -385,7 +385,7 @@ TEST_CASE("canvas layers draw in their order, over the camera's view") {
     CHECK(pixel(image, 90, 45) == kGreen);
 }
 
-TEST_CASE("lights shade the canvases their layer range holds, as Godot's") {
+TEST_CASE("lights shade the canvases their layer range holds") {
     Scene scene;
     // The camera puts world (1000, 1000) in the middle of the screen. White ground fills the
     // screen in a dark world; a HUD in layer 1, moved 10 pixels right, is dark too and holds a
@@ -498,7 +498,7 @@ TEST_CASE("light.sample samples an entity in its canvas") {
                     "points": [{"color": [1, 1, 1], "lights": []}]})"));
 }
 
-TEST_CASE("a Parallax2D's repeat draws its children side by side, as Godot's") {
+TEST_CASE("a Parallax2D's repeat draws its children side by side") {
     Scene scene;
     // A camera with the world's origin at the screen's top left.
     scene.create("cam", R"({"Transform2D": {"position": [80, 45]}, "Camera2D": {}})");
@@ -647,7 +647,7 @@ TEST_CASE("canvas.convert turns window pixels into the world through the camera,
               .find("heart") != std::string::npos);
     CHECK_FALSE(project.session->call("canvas.convert", parse(R"({"points": [[0, 0]]})")).ok);
 
-    // The same in C++, as Godot's get_global_mouse_position.
+    // The same in C++.
     const world::World& world = project.session->world();
     check_near(canvas::to_world(world, {80.0F, 45.0F}), {1000.0F, 500.0F});
     check_near(canvas::to_screen(world, {1000.0F, 500.0F}), {80.0F, 45.0F});

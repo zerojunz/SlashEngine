@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/gpu_particles.hpp"
 
 #include "slash/canvas/particles.hpp"
@@ -43,8 +44,7 @@ struct Collision {
     float size = 1.0F;
 };
 
-// One GpuEmitter2D's state: Godot's GPUParticles2D node and its particles storage, and the
-// steps kept.
+// One GpuEmitter2D's state: its emission cycle and particles storage, and the steps kept.
 struct Emitter {
     std::uint64_t serial = next_serial();
     // The node, and what the component said when last seen.
@@ -261,14 +261,13 @@ std::uint32_t trail_of(const GpuEmitter2D& settings) {
         1);
 }
 
-// The steps a second an emitter takes, 0 for one a tick: fixed_fps, or 60 for trails, as
-// Godot's particles storage.
+// The steps a second an emitter takes, 0 for one a tick: fixed_fps, or 60 for trails.
 int fixed_fps_of(const GpuEmitter2D& settings) {
     const int fixed_fps = std::clamp(settings.fixed_rate, 0, 1000);
     return fixed_fps == 0 && settings.trail_enabled ? 60 : fixed_fps;
 }
 
-// The steps a trail spans: Godot's trail_lifetime times its fixed rate, rounded down.
+// The steps a trail spans: the trail lifetime times its fixed rate, rounded down.
 std::uint32_t trail_steps_of(const GpuEmitter2D& settings) {
     if (!settings.trail_enabled) {
         return 1;
@@ -298,10 +297,10 @@ void set_emitting(Emitter& e, const GpuEmitter2D& settings, bool emitting, bool 
             e.emission_time = lifetime_of(settings);
             e.active_time = lifetime_of(settings) *
                             (2.0 - std::clamp(static_cast<double>(settings.burst), 0.0, 1.0));
-            // Godot's docs say this starts a new cycle once the last one's particles are gone,
-            // but its storage carries on with its phase until it has been idle 1.2 lifetimes,
-            // so a burst set off from "finished" may emit nothing there. The storage starts
-            // over here, as GPUParticles2D::restart starts it, so it always does.
+            // This would start a new cycle once the last one's particles are gone, but the storage
+            // carries on with its phase until it has been idle 1.2 lifetimes, so a burst set off
+            // from "finished" may emit nothing there. The storage starts over here, so it always
+            // does.
             e.restart = !first;
         } else {
             e.canceled = true;
@@ -322,9 +321,9 @@ struct SubLink {
     std::optional<Collision> collision;
 };
 
-// The seconds an emitter's particles may live after it stops: 1.2 lifetimes, as Godot's
-// storage waits, and its trails' copies run on behind them. Godot stops drawing then, cutting
-// off longer trails; here they run out.
+// The seconds an emitter's particles may live after it stops: 1.2 lifetimes, as the storage waits,
+// and its trails' copies run on behind them. Drawing stops then, cutting off longer trails; here
+// they run out.
 double idle_of(const GpuEmitter2D& settings) {
     return (lifetime_of(settings) * 1.2) +
            (settings.trail_enabled ? static_cast<double>(std::max(settings.trail_lifetime, 0.0F))
@@ -505,7 +504,7 @@ public:
         const float time_scale = std::max(s_.speed_scale, 0.0F);
         if (fixed_fps > 0) {
             const float frame_time = 1.0F / static_cast<float>(fixed_fps);
-            // Fewer than 10 ticks a second runs slower rather than stall, as Godot.
+            // Fewer than 10 ticks a second runs slower rather than stall.
             const float delta = std::clamp(static_cast<float>(seconds), 0.0F, 0.1F);
             float todo = e.remainder + (delta * time_scale);
             while (todo >= frame_time || e.clear) {
@@ -604,10 +603,10 @@ std::string key_of(const world::World& world, entt::entity entity) {
     return id.empty() ? "#" + std::to_string(entt::to_integral(entity)) : std::string(id);
 }
 
-// What GPU particles collide with, as Godot's viewport draws its signed distance field: the
-// outlines of LightOccluder2Ds with sdf_collision and of tile occluders in occlusion layers with
-// it, in visible canvases, each in the world canvas's coordinates with its bounds. Gathered the
-// first time an emitter that collides asks, once a tick.
+// What GPU particles collide with, as the viewport draws its signed distance field: the outlines of
+// Occluder2Ds with sdf_collision and of tile occluders in occlusion layers with it, in visible
+// canvases, each in the world canvas's coordinates with its bounds. Gathered the first time an
+// emitter that collides asks, once a tick.
 class Colliders {
 public:
     Colliders(const world::World& world, const world::Tree2D& tree, asset::Assets* assets)

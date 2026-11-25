@@ -44,8 +44,8 @@ slash::json::Value parse(const char* text) {
     return std::move(parsed).value();
 }
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has no volumetric fog.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has no volumetric fog.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -289,7 +289,7 @@ std::array<int, 4> pixel(const Image& image, std::uint32_t x, std::uint32_t y) {
             image.pixels.at(at + 3)};
 }
 
-// A Forward+ scene with fog of density and emission only, seen straight ahead.
+// A clustered-renderer scene with fog of density and emission only, seen straight ahead.
 render::Scene3D emitting(float density) {
     render::Scene3D scene;
     scene.camera = render::look_at({0, 0, 0}, {0, 0, -1}, {0, 1, 0});
@@ -311,7 +311,7 @@ TEST_CASE("volumetric fog settings come from project.json's rendering.environmen
     CHECK(read.volume_size == 96);
     CHECK(read.volume_depth == 128);
     CHECK_FALSE(read.use_filter);
-    // Out of Godot's 16 to 512, fractions and other types keep the defaults.
+    // Out of 16 to 512, fractions and other types keep the defaults.
     const render::VolumetricFogSettings kept = render::volumetric_fog_settings_from_json(
         parse(R"({"volume_size": 8, "volume_depth": 64.5, "use_filter": 0})"));
     CHECK(kept == render::VolumetricFogSettings{});
@@ -319,16 +319,16 @@ TEST_CASE("volumetric fog settings come from project.json's rendering.environmen
           render::VolumetricFogSettings{});
 }
 
-TEST_CASE("the fog's volume is sized as Godot sizes it for the frame's shape") {
+TEST_CASE("the fog's volume is sized for the frame's shape") {
     const render::VolumetricFogSettings settings;
-    // Godot: width = size * ratio, height = size / ratio, ratio = w / ((w + h) / 2).
+    // Width = size * ratio, height = size / ratio, ratio = w / ((w + h) / 2).
     CHECK(detail::fog_volume_size(settings, 1280, 720) == std::array<std::uint32_t, 3>{81, 50, 64});
     CHECK(detail::fog_volume_size(settings, 512, 512) == std::array<std::uint32_t, 3>{64, 64, 64});
     CHECK(detail::fog_volume_size({.volume_size = 512, .volume_depth = 512}, 4096, 4096) ==
           std::array<std::uint32_t, 3>{512, 512, 32});
 }
 
-TEST_CASE("only Forward+ frames, not reflection probes' captures, have volumetric fog") {
+TEST_CASE("only clustered-renderer frames, not reflection probes' captures, have volumetric fog") {
     render::Scene3D scene;
     CHECK_FALSE(detail::uses_volumetric_fog(scene));
     scene.volumetric_fog.enabled = true;
@@ -394,7 +394,7 @@ TEST_CASE("the fog reprojects the frame before's density from its second frame o
     }
 }
 
-TEST_CASE("Forward+ volumetric fog lights the view, shaded by the lights' shadows") {
+TEST_CASE("clustered-renderer volumetric fog lights the view, shaded by the lights' shadows") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image clear = draw_fog(*device, {.fog = false});
@@ -423,7 +423,7 @@ TEST_CASE("Forward+ volumetric fog lights the view, shaded by the lights' shadow
         // The shadows darken the fog in them.
         const Image unshaded = draw_fog(*device, {.shadow = false});
         CHECK(differing(unshaded, fogged, 2) > 0);
-        // Godot's Compatibility renderer has no volumetric fog.
+        // the compatibility renderer has no volumetric fog.
         const auto compatibility = render::RenderMethod::Compatibility;
         CHECK(difference(draw_fog(*device, {.method = compatibility}),
                          draw_fog(*device, {.fog = false, .method = compatibility})) == 0);
@@ -461,7 +461,7 @@ TEST_CASE("GPUs draw volumetric fog as the software device does") {
     }
 }
 
-TEST_CASE("fog volumes fill the froxels between their corners, as Godot picks them") {
+TEST_CASE("fog volumes fill the froxels between their corners") {
     render::Scene3D scene = emitting(0.0F);
     const std::array<std::uint32_t, 3> size{16, 16, 32};
     using Range = std::array<std::array<std::int32_t, 3>, 2>;
@@ -508,7 +508,7 @@ TEST_CASE("fog volumes fill the froxels between their corners, as Godot picks th
     CHECK(sent.corner == std::array<std::int32_t, 4>{box[0][0], box[0][1], 16, 0});
 }
 
-TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point") {
+TEST_CASE("fog volumes add their density, light and glow in fixed point") {
     render::Scene3D scene = emitting(0.0F);
     scene.volumetric_fog.ambient_inject = 0.0F;
     const auto density_at = [&scene](std::uint32_t x, std::uint32_t y, std::uint32_t z) {
@@ -527,7 +527,7 @@ TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point"
                                       .edge_fade = 0.0F};
     scene.volumetric_fog.volumes = {glowing};
     detail::Float4 at = density_at(3, 5, 7);
-    // A world volume is as big as twice the froxels in each direction, as Godot sizes it, so
+    // A world volume is as big as twice the froxels in each direction, so
     // its edge fade shows everywhere; at 0 it doesn't fade. Densities in 1024ths, the glow in
     // 511ths of what it gives at the density, held to 1.
     CHECK(at[3] == 0.5F);
@@ -555,7 +555,7 @@ TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point"
                                      .edge_fade = 0.0F}};
     at = density_at(3, 5, 7);
     CHECK(at[3] == doctest::Approx(0.5F - (307.0F / 1024.0F)));
-    // Godot's default material fills its shape and nothing outside it.
+    // The default material fills its shape and nothing outside it.
     scene.volumetric_fog.density = 0.0F;
     scene.volumetric_fog.volumes = {
         {.transform = placed(0.0F, 0.0F, -20.0F), .size = {8.0F, 8.0F, 8.0F}}};

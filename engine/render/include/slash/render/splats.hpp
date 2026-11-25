@@ -9,11 +9,11 @@
 #include <string_view>
 #include <vector>
 
-// Gaussian splats, a research spike of SlashEngine's own (Godot has none): scenery captured as
-// clouds of 3D Gaussians, after Kerbl et al.'s "3D Gaussian Splatting for Real-Time Radiance
-// Field Rendering" (2023), as the .ply files its trainer and the tools after it (Postshot,
-// Polycam, Luma, nerfstudio's splatfacto) write. The software device blends them over the world
-// (see docs/reference/gaussian-splats.md); other devices draw none yet.
+// Gaussian splats, a research spike of SlashEngine's own: scenery captured as clouds of 3D
+// Gaussians, after Kerbl et al.'s "3D Gaussian Splatting for Real-Time Radiance Field Rendering"
+// (2023), as the .ply files its trainer and the tools after it (Postshot, Polycam, Luma,
+// nerfstudio's splatfacto) write. The software device blends them over the world (see
+// docs/reference/gaussian-splats.md); other devices draw none yet.
 namespace slash::render {
 
 // A cloud of 3D Gaussians, in the cloud's own space, values as they are drawn: each splat's

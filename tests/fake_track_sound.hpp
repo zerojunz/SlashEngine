@@ -37,7 +37,7 @@ struct FakeSound {
             streams[id] = {std::string(stream)};
             char from_text[32];
             std::snprintf(from_text, sizeof(from_text), "%g", from);
-            // The mixer's audio_max_polyphony, when it isn't Godot's 32.
+            // The mixer's audio_max_polyphony, when it isn't the default 32.
             const std::string voices =
                 polyphony == 32 ? "" : " polyphony " + std::to_string(polyphony);
             calls.push_back("play " + std::string(w.id_of(entity)) + " " + std::string(stream) +

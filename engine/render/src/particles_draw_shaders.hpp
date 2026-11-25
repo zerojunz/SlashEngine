@@ -1949,8 +1949,8 @@ inline constexpr char kParticlesDrawHlsl[] = R"hlsl(// Turns a particle system i
 // What particles_process.hlsl and particles_draw.hlsl share: the particle, as
 // slash::render::Particle lays it out, and where SDL binds each kind of resource.
 
-// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity
-// its origin [x, y] and velocity [z, w]; custom Godot's CUSTOM and userdata its USERDATA1.
+// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity its
+// origin [x, y] and velocity [z, w]; custom the custom data and userdata its USERDATA1.
 struct Particle {
     float4 basis;
     float4 origin_velocity;
@@ -2093,8 +2093,8 @@ void cs_main(uint3 id : SV_DispatchThreadID) {
     float v1 = v0 + (1.0 / v);
     float2 half_size = transform_b.zw * 0.5;
     if (trails.x > 1u) {
-        // A segment of Godot's trail ribbon, between rings segment and segment + 1, drawn while
-        // the particles it bends with are live: the copies run on after the head has gone.
+        // A segment of the trail ribbon, between rings segment and segment + 1, drawn while the
+        // particles it bends with are live: the copies run on after the head has gone.
         uint last = ring_bones(segment + 1u).y;
         for (uint b = ring_bones(segment).x; b <= last; ++b) {
             if ((particles[bone_index(index, b)].flags.x & (kParticleActive | kParticleTrailed)) ==

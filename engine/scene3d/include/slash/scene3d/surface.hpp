@@ -16,7 +16,7 @@
 namespace slash::scene3d {
 
 // What a surface is drawn with: a Surface3D, such as a CSG shape's or a mesh library
-// item's, or a model's own material; neither for Godot's default material.
+// item's, or a model's own material; neither for the default material.
 struct SurfaceMaterial {
     std::optional<world::Surface3D> standard;
     std::string model_path;             // the model whose material it is, or ""
@@ -30,7 +30,7 @@ struct SurfaceMaterial {
     }
 };
 
-// One surface of a made mesh: triangles with Godot's clockwise front faces, all drawn with one
+// One surface of a made mesh: triangles with clockwise front faces, all drawn with one
 // material.
 struct MeshSurface {
     std::vector<render::Vertex3D> vertices;

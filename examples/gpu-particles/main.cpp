@@ -1,9 +1,8 @@
-// GPU particles, as Godot's GPUParticles2D: main.scene.json has a fire, a one-shot burst of sparks
-// that bursts the same way each time, snow that was already falling when the scene opened, smoke
-// that curls in turbulence, rain that lands on a ledge, fireworks, rockets that burst into
-// sparks in a sub-emitter, comets that draw trails, and fireflies that circle their emitter.
-// How each one's particles start and move is a .particles.json file, Godot's
-// ParticleProcessMaterial in 2D.
+// GPU particles: main.scene.json has a fire, a one-shot burst of sparks that bursts the same way
+// each time, snow that was already falling when the scene opened, smoke that curls in turbulence,
+// rain that lands on a ledge, fireworks, rockets that burst into sparks in a sub-emitter, comets
+// that draw trails, and fireflies that circle their emitter. How each one's particles start and
+// move is a .particles.json file.
 //
 // This program makes the dot and streak textures, checks the particles with particles.eval as an
 // agent would, with no screenshot, hears the sparks finish and sets them off again, then draws the
@@ -121,13 +120,13 @@ int main() {
     call(session, "particles.eval", R"({"id": "sparks", "list": true, "max_results": 2})");
     // The snow ran 6 seconds of preprocess before its first tick, so it was already falling.
     call(session, "particles.eval", R"({"id": "snow"})");
-    // The smoke curls as it rises: turbulence turns each particle's velocity along curl noise
-    // that drifts up, by its turbulence_influence, as Godot's.
+    // The smoke curls as it rises: turbulence turns each particle's velocity along curl noise that
+    // drifts up, by its turbulence_influence.
     call(session, "particles.eval", R"({"id": "smoke", "list": true, "max_results": 2})");
 
-    // A one_shot stops emitting when its cycle ends and says "finished" once its particles have
-    // had time to die, as Godot's: lifetime times 2 - explosiveness after it started. Setting
-    // emitting sets it off again; with use_fixed_seed, the burst is the same as the first.
+    // A one_shot stops emitting when its cycle ends and says "finished" once its particles have had
+    // time to die: lifetime times 2 - explosiveness after it started. Setting emitting sets it off
+    // again; with use_fixed_seed, the burst is the same as the first.
     call(session, "step", R"({"ticks": 30})");
     call(session, "events.read", R"({"subscription": "events_1"})");
     call(session, "entity.get",
@@ -137,29 +136,29 @@ int main() {
     call(session, "step", R"({"ticks": 30})");
     call(session, "particles.eval", R"({"id": "sparks", "list": true, "max_results": 2})");
 
-    // The rain has landed on the ledge, a Occluder2D 40 pixels wide whose top is at y 100:
-    // its process material's collision_mode "rigid" stops particles at Occluder2D outlines,
-    // as Godot's, so the oldest rest on it, half the dot's average side (4 pixels) above it.
+    // The rain has landed on the ledge, an Occluder2D 40 pixels wide whose top is at y 100: its
+    // process material's collision_mode "rigid" stops particles at Occluder2D outlines, so the
+    // oldest rest on it, half the dot's average side (4 pixels) above it.
     call(session, "particles.eval", R"({"id": "rain", "list": true, "max_results": 3})");
 
     // Fireworks: the rockets' sub_emitter is the burst, and their process material's
-    // sub_emitter_mode "at_end" starts 16 of its particles where each rocket dies of age, as
-    // Godot's. The burst emits nothing on its own and steps with the rockets; three rockets have
-    // burst so far, 16 sparks each.
+    // sub_emitter_mode "at_end" starts 16 of its particles where each rocket dies of age. The burst
+    // emits nothing on its own and steps with the rockets; three rockets have burst so far, 16
+    // sparks each.
     call(session, "particles.eval", R"({"id": "rockets"})");
     call(session, "particles.eval", R"({"id": "burst"})");
 
-    // Comets: with trail_enabled each draws as Godot's trail ribbon, the streak stretched down
-    // the path it took over the last trail_lifetime (0.4 s), through trail_sections (12) copies
-    // of it that follow that path behind it. Their process material's particle_flag_align_y
-    // turns each along its velocity, so the ribbon is as wide as the streak across the path.
-    // particles.eval gives the trails' bounds and, for each comet, how far its trail reaches.
+    // Comets: with trail_enabled each draws as a trail ribbon, the streak stretched down the path
+    // it took over the last trail_lifetime (0.4 s), through trail_sections (12) copies of it that
+    // follow that path behind it. Their process material's particle_flag_align_y turns each along
+    // its velocity, so the ribbon is as wide as the streak across the path. particles.eval gives
+    // the trails' bounds and, for each comet, how far its trail reaches.
     call(session, "particles.eval", R"({"id": "comets", "list": true, "max_results": 1})");
 
-    // Fireflies: their process material has particle graphs, Godot's particle shaders as node
-    // graphs. "start" puts each on a circle round the emitter, "process" turns it round at a speed
-    // of its own each step, swaying in and out, and makes it twinkle; the material alone could
-    // only send it off in a line. The CPU here runs the graphs as the GPU's compute shader does.
+    // Fireflies: their process material has particle graphs, particle shaders as node graphs.
+    // "start" puts each on a circle round the emitter, "process" turns it round at a speed of its
+    // own each step, swaying in and out, and makes it twinkle; the material alone could only send
+    // it off in a line. The CPU here runs the graphs as the GPU's compute shader does.
     call(session, "particles.eval", R"({"id": "fireflies", "list": true, "max_results": 2})");
 
     // A process material with a mistake is refused with the JSON Pointer of the bad value.

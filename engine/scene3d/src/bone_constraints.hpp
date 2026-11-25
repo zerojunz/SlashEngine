@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -10,12 +11,11 @@
 #include <optional>
 #include <vector>
 
-// Godot's LookAtModifier3D (scene/3d/look_at_modifier_3d.cpp) and BoneCopy3D
-// (scene/3d/copy_transform_modifier_3d.cpp, over bone_constraint_3d.cpp), ported line for line
-// onto a model's pose in its own space. ik.cpp runs them among the other skeleton modifiers.
+// BoneLookAt3D and BoneCopy3D, ported line for line onto a model's pose in its own space. ik.cpp
+// runs them among the other skeleton modifiers.
 namespace slash::scene3d::detail {
 
-// What a BoneLookAt3D carries from one process to the next, as Godot's node does: the way it
+// What a BoneLookAt3D carries from one process to the next: the way it
 // last looked, the turn it eases from and how much of the turn is left.
 struct LookAtState {
     Vec3 forward_vector;

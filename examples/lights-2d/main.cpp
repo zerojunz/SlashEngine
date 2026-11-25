@@ -1,7 +1,6 @@
-// 2D lights, as Godot's: a AmbientTint2D darkens the scene in main.scene.json, a torch
-// (PointLight2D) and the moon (SunLight2D) light it, the crate's Occluder2D casts a
-// shadow from the torch and its normal map gives it bevelled edges, and the neon sign's material
-// is unshaded, so it glows in the dark.
+// 2D lights: an AmbientTint2D darkens the scene in main.scene.json, a torch (PointLight2D) and the
+// moon (SunLight2D) light it, the crate's Occluder2D casts a shadow from the torch and its normal
+// map gives it bevelled edges, and the neon sign's material is unshaded, so it glows in the dark.
 //
 // This program makes the textures, asks light.sample how lit some points are, as an agent would,
 // changes the torch and asks again, then draws the scene into a texture.
@@ -60,8 +59,8 @@ void write_png(const std::string& path, std::uint32_t width, std::uint32_t heigh
     std::printf("wrote %s: %ux%u\n", path.c_str(), width, height);
 }
 
-// A normal map pixel, OpenGL style as Godot reads them: red is x, green is up, blue is toward
-// the viewer, each from -1 (0) to 1 (255).
+// A normal map pixel, OpenGL style: red is x, green is up, blue is toward the viewer, each from -1
+// (0) to 1 (255).
 Rgba normal_pixel(float x, float up, float z) {
     const float length = std::sqrt((x * x) + (up * up) + (z * z));
     const auto channel = [&](float value) {

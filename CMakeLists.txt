@@ -61,10 +61,9 @@ if(NOT SLASH_PROFILER STREQUAL "" AND NOT SLASH_PROFILER STREQUAL "tracy")
     message(FATAL_ERROR "SLASH_PROFILER is \"${SLASH_PROFILER}\"; use \"\" or tracy")
 endif()
 
-# How precise positions are, as Godot's precision build option: "single" keeps Vec2, Vec3 and
-# Quat in floats, "double" makes them doubles (slash::real_t) for worlds that reach far from the
-# origin (engine/core defines SLASH_REAL_T_IS_DOUBLE for it). A game's code built against one
-# can't load into the other.
+# How precise positions are: "single" keeps Vec2, Vec3 and Quat in floats, "double" makes them
+# doubles (slash::real_t) for worlds that reach far from the origin (engine/core defines
+# SLASH_REAL_T_IS_DOUBLE for it). A game's code built against one can't load into the other.
 set(SLASH_PRECISION "single" CACHE STRING "Floating-point precision of positions: single or double")
 set_property(CACHE SLASH_PRECISION PROPERTY STRINGS single double)
 if(NOT SLASH_PRECISION STREQUAL "single" AND NOT SLASH_PRECISION STREQUAL "double")

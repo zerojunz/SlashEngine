@@ -1,8 +1,7 @@
-// Three worlds in one program play one game over ENet, as Godot's SceneMultiplayer runs it: a
-// server and two clients that hear about each other through the server, a chat call any peer
-// may make, each player's position sent unreliably by the client it belongs to, a door only its
-// authority may open, raw packets and a client leaving. IDs change every run, so the output names
-// peers by role.
+// Three worlds in one program play one game over ENet: a server and two clients that hear about
+// each other through the server, a chat call any peer may make, each player's position sent
+// unreliably by the client it belongs to, a door only its authority may open, raw packets and a
+// client leaving. IDs change every run, so the output names peers by role.
 #include "slash/net/enet.hpp"
 #include "slash/net/multiplayer.hpp"
 #include "slash/world/component_registry.hpp"

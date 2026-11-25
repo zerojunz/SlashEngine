@@ -1,12 +1,11 @@
-// Ground and a minimap made by gameplay code while the game runs, as Godot's SurfaceTool,
-// ArrayMesh and ImageTexture.
+// Ground and a minimap made by gameplay code while the game runs.
 //
-// A game's own Ground component says which seed of noise to raise hills from. Its system, each
-// time the seed changes, samples procedural::Noise over a grid, builds the hills with
+// A game's own Ground component says which seed of noise to raise hills from. Its system, each time
+// the seed changes, samples procedural::Noise over a grid, builds the hills with
 // scene3d::SurfaceTool (vertices colored by height, smooth normals) and makes them a mesh at
-// "made:ground", which the entity's Model3D draws, and paints the same heights into a
-// texture at "made:minimap", which a Sprite2D shows in the corner. An agent then looks at both
-// through the usual commands: asset.list, model.inspect, texture.generate and frame.capture.
+// "made:ground", which the entity's Model3D draws, and paints the same heights into a texture at
+// "made:minimap", which a Sprite2D shows in the corner. An agent then looks at both through the
+// usual commands: asset.list, model.inspect, texture.generate and frame.capture.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -91,7 +90,7 @@ scene3d::Model build_hills(const std::vector<float>& height) {
                              (static_cast<float>(z) * step) - (kSize / 2.0F)});
         }
     }
-    // Two triangles a cell, clockwise from above as Godot's front faces.
+    // Two triangles a cell, clockwise from above.
     for (int z = 0; z < kCells; ++z) {
         for (int x = 0; x < kCells; ++x) {
             const auto corner = [](int cx, int cz) {

@@ -190,10 +190,10 @@ std::vector<ParticleProcess> varied_processes() {
     set_param(ring, ParticleParam::RadialVelocity, -20.0F, -10.0F);
     set_param(ring, ParticleParam::Scale, -1.0F, 1.0F);
     processes.push_back(ring);
-    // Turbulence, with Godot's strength (a curl from close differences) and a stronger one. Strong
-    // turbulence at a high frequency is chaotic, and an influence near a half all but stops a
-    // particle the noise points against, so a GPU's rounding grows step by step there; these stay
-    // where it doesn't.
+    // Turbulence, with the default strength (a curl from close differences) and a stronger one.
+    // Strong turbulence at a high frequency is chaotic, and an influence near a half all but
+    // stops a particle the noise points against, so a GPU's rounding grows step by step there;
+    // these stay where it doesn't.
     ParticleProcess turbulent = busy_process();
     turbulent.turbulence_enabled = true;
     turbulent.turbulence_noise_speed = {0.5F, -0.25F, 0.1F};
@@ -255,10 +255,10 @@ TEST_CASE("the GPU device runs particles as the CPU twin does") {
     }
 }
 
-TEST_CASE("turbulence turns particles along Godot's curl noise") {
+TEST_CASE("turbulence turns particles along curl noise") {
     using slash::render::process_particles;
     using slash::render::turbulence_frequency;
-    // Godot's noise scale slider: a frequency of -4 at 0, 0 at 10, by fourth roots between.
+    // The noise scale slider: a frequency of -4 at 0, 0 at 10, by fourth roots between.
     CHECK(turbulence_frequency(0.0F) == doctest::Approx(-4.0));
     CHECK(turbulence_frequency(10.0F) == doctest::Approx(0.0).epsilon(1e-6));
     CHECK(turbulence_frequency(9.0F) ==
@@ -332,7 +332,7 @@ TEST_CASE("turbulence turns particles along Godot's curl noise") {
     }
 
     // The displacement moves particles where they start, by up to the noise direction's length:
-    // 0.9 at a strength of 9, as Godot's.
+    // 0.9 at a strength of 9.
     set_param(process, ParticleParam::TurbulenceInfluence, 0.0F, 0.0F);
     set_param(process, ParticleParam::TurbulenceDisplacement, 10.0F, 10.0F);
     process.turbulence_noise_strength = 9.0F;
@@ -346,7 +346,7 @@ TEST_CASE("turbulence turns particles along Godot's curl noise") {
     CHECK(displaced > 5);
 }
 
-TEST_CASE("particles collide with shapes as Godot's do with its distance field") {
+TEST_CASE("particles collide with shapes through a distance field") {
     using slash::render::particle_contact;
     using slash::render::process_particles;
     // A solid box from (0, 0) to (100, 20).
@@ -407,7 +407,7 @@ TEST_CASE("particles collide with shapes as Godot's do with its distance field")
     CHECK(below > 5);
     // Rigid ones with no bounce come to rest two pixels above it, gravity pulling them back in by
     // a step's fall at most. One that has just reached it is in it by up to a step's fall at full
-    // speed, as Godot's are until their next step pushes them out.
+    // speed, until their next step pushes them out.
     const auto rests_on = [](const Particle& particle, float rest, float arriving) {
         return particle.origin.y < rest ||
                (particle.velocity.y > arriving && particle.origin.y < rest + (arriving / 10.0F));
@@ -526,7 +526,7 @@ TEST_CASE("the GPU device collides particles with shapes as the CPU twin does") 
     }
 }
 
-TEST_CASE("sub-emitters start particles where their parents' particles are, as Godot's") {
+TEST_CASE("sub-emitters start particles where their parents' particles are") {
     using slash::render::ParticleChainLink;
     using slash::render::SubEmitterMode;
     // Parents fly right at 50 pixels a second from (50, 60), one a step; the particles their
@@ -782,7 +782,7 @@ bool same(const Particle& a, const Particle& b) {
 
 } // namespace
 
-TEST_CASE("trail copies follow their particle's path, as Godot's") {
+TEST_CASE("trail copies follow their particle's path") {
     using slash::render::kParticleCycleShift;
     using slash::render::kParticleStarted;
     using slash::render::kParticleTrailed;
@@ -949,7 +949,7 @@ TEST_CASE("the GPU device runs trails as the CPU twin does") {
     }
 }
 
-TEST_CASE("trails draw as Godot's ribbon through a particle and its copies") {
+TEST_CASE("trails draw as a ribbon through a particle and its copies") {
     using slash::render::kParticleActive;
     using slash::render::kParticleTrailed;
     // A particle moving right with its x axis down, so the ribbon is as wide as a frame across

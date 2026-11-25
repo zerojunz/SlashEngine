@@ -21,7 +21,7 @@ float eased(std::string_view transition, std::string_view ease, float t) {
 
 } // namespace
 
-TEST_CASE("easing: Godot's tween equations by name, from start to end") {
+TEST_CASE("easing: the tween equations by name, from start to end") {
     using doctest::Approx;
     CHECK(eased("linear", "in", 0.5F) == Approx(0.5F));
     CHECK(eased("sine", "in", 0.5F) == Approx(1.0F - std::sqrt(0.5F)).epsilon(1e-5));

@@ -11,8 +11,8 @@
 #include <string_view>
 #include <vector>
 
-// Material files: a Surface3D kept in a .standard_material.json file of its own, as Godot
-// saves one as a resource, so many models share one material and its textures instead of each
+// Material files: a Surface3D kept in a .standard_material.json file of its own, so many models
+// share one material and its textures instead of each
 // carrying its own. A model recipe's material can name one, alone or with fields over it.
 namespace slash::scene3d {
 

@@ -14,7 +14,6 @@
 #include <vector>
 
 // Scenes are JSON files (.scene.json) holding entities keyed by stable ID:
-//
 //   {
 //     "entities": {
 //       "player": {
@@ -27,29 +26,21 @@
 //     },
 //     "format": 1
 //   }
-//
-// Fields equal to their defaults are left out, as Godot does. The schema every scene must satisfy
+// Fields equal to their defaults are left out. The schema every scene must satisfy
 // is generated from the registered components, so it always matches the engine.
-//
 // An entity can extend a prefab, a .prefab.json file holding one entity's components (and
 // optionally extending another prefab):
-//
 //   "enemy_01": {"extends": "prefabs/enemy.prefab.json",
 //                "components": {"Transform2D": {"position": [200.0, 40.0]}, "Sprite": null}}
-//
 // It starts with the prefab's components, and its own fields override the prefab's. A null
-// component removes one the prefab has. Saving writes only what differs from the prefab, as Godot
-// does for instanced scenes. Prefab paths are relative to the project folder and are read with
-// the world's file reader.
-//
-// An entity can also extend a scene that names its "root", as Godot instances a PackedScene. It
-// becomes the scene's root entity, and the scene's other entities come with it, with IDs under
-// the instance's and the references between them renamed to match:
-//
+// component removes one the prefab has. Saving writes only what differs from the prefab. Prefab
+// paths are relative to the project folder and are read with the world's file reader.
+// An entity can also extend a scene that names its "root". It becomes the scene's root entity, and
+// the scene's other entities come with it, with IDs under the instance's and the references
+// between them renamed to match:
 //   "hero": {"extends": "scenes/player.scene.json"},
 //   "hero/sprite": {"components": {"Sprite2D": {"flip_h": true}}},
 //   "hero/gun": null
-//
 // An entry keyed with '/' holds the overrides of an entity an instance brings, or null to leave
 // it out. Scenes can instance scenes, so IDs nest ("hero/gun/muzzle").
 namespace slash::world {
@@ -105,8 +96,8 @@ validate_prefab(const ComponentRegistry& components, const json::Value& given,
                                               std::string_view path);
 
 // Reads every prefab the world's entities extend again and updates the instances of those that
-// changed, keeping each instance's own overrides, as Godot does when an instanced scene changes.
-// A prefab that no longer loads leaves its instances as they are.
+// changed, keeping each instance's own overrides. A prefab that no longer loads leaves its
+// instances as they are.
 struct PrefabReload {
     std::vector<std::string> changed;          // IDs of entities whose components changed, sorted
     std::vector<json::ValidationError> errors; // {prefab path, why it did not load}

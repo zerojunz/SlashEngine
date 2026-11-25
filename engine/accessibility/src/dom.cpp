@@ -10,7 +10,7 @@
 namespace slash::accessibility {
 namespace {
 
-// Godot's roles (ui::AccessElement::role) as WAI-ARIA's, as a browser's accessibility tree maps
+// The roles (ui::AccessElement::role) as WAI-ARIA's, as a browser's accessibility tree maps
 // AccessKit's to its platform's; the window is the application a game's keys go to.
 std::string_view aria_role(std::string_view role) {
     constexpr std::array<std::pair<std::string_view, std::string_view>, 19> kRoles{{

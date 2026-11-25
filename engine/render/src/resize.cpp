@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/core/math.hpp"
 #include "slash/render/image.hpp"
 
@@ -11,7 +12,7 @@
 namespace slash::render {
 namespace {
 
-// Lanczos with three lobes, as Godot's Image::resize with INTERPOLATE_LANCZOS.
+// Lanczos with three lobes.
 constexpr double kLobes = 3.0;
 
 double sinc(double x) {

@@ -465,13 +465,13 @@ fn cs_main(@builtin(global_invocation_id) id : vec3<u32>) {
 }
 )wgsl"};
 
-inline constexpr char kParticlesSort3DHlsl[] = R"hlsl(// Sorts a 3D particle system's slots by view depth, as Godot's particles sort buffer, a thread a
-// slot of the system's amount rounded up to a power of two. Stage 0 makes each slot's key: its
-// particle's depth along sort_direction as bits that order as the floats do, then its index, and
-// keys after the last particle that sort last. The other stages are a bitonic sort's steps over
-// the keys, comparing slots j apart in runs of k, so the keys end in the order the CPU twin's
-// stable sort gives (particle_mesh_vertices_3d in src/particles3d.cpp): farthest first, ties by
-// index. The steps are src/particle_layout_3d.cpp's bitonic_steps.
+inline constexpr char kParticlesSort3DHlsl[] = R"hlsl(// Sorts a 3D particle system's slots by view depth, a thread a slot of the system's amount rounded
+// up to a power of two. Stage 0 makes each slot's key: its particle's depth along sort_direction as
+// bits that order as the floats do, then its index, and keys after the last particle that sort
+// last. The other stages are a bitonic sort's steps over the keys, comparing slots j apart in runs
+// of k, so the keys end in the order the CPU twin's stable sort gives (particle_mesh_vertices_3d in
+// src/particles3d.cpp): farthest first, ties by index. The steps are src/particle_layout_3d.cpp's
+// bitonic_steps.
 
 // What the 3D particle shaders share: the particle, as slash::render::Particle3D lays it out,
 // particles.hlsl's flags and bindings, and the vector and transform helpers of
@@ -480,8 +480,8 @@ inline constexpr char kParticlesSort3DHlsl[] = R"hlsl(// Sorts a 3D particle sys
 // What particles_process.hlsl and particles_draw.hlsl share: the particle, as
 // slash::render::Particle lays it out, and where SDL binds each kind of resource.
 
-// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity
-// its origin [x, y] and velocity [z, w]; custom Godot's CUSTOM and userdata its USERDATA1.
+// One particle (96 bytes): basis is its x axis [x, y] then its y axis [z, w]; origin_velocity its
+// origin [x, y] and velocity [z, w]; custom the custom data and userdata its USERDATA1.
 struct Particle {
     float4 basis;
     float4 origin_velocity;
@@ -510,7 +510,7 @@ static const uint kParticleCycleShift = 16u;
 #endif
 
 // One particle (128 bytes): its transform's axes, each scaled, and its origin, their w 0; the
-// velocity its forces built up and its flags; its color; Godot's CUSTOM (angle, age, frame,
+// velocity its forces built up and its flags; its color; the custom data (angle, age, frame,
 // lifetime) and spare words.
 struct Particle3D {
     float4 x;

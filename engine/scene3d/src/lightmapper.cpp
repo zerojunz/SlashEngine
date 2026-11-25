@@ -1,15 +1,15 @@
-// The lightmap baker: Godot 4.6's GPU lightmapper (modules/lightmapper_rd: LightmapperRD::bake,
-// lm_raster.glsl, lm_compute.glsl and lm_blendseams.glsl) on the CPU. Each mesh's material is
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The lightmap baker, on the CPU. Each mesh's material is
 // drawn into its lightmap's texels, the lightmaps are packed into the slices of an atlas, and the
 // atlas is rastered to the surfaces' positions and normals; then each texel is pushed out of walls
 // it sits in, lit directly by the lights with soft shadows, lit by paths that bounce off other
 // surfaces or leave for the environment, denoised, dilated into the empty texels around it and
-// blended across the seams where a mesh's lightmap is cut. Godot's grid of triangle clusters is a
-// bounding volume hierarchy here, which finds the same nearest hits. Every texel's rays come from
+// blended across the seams where a mesh's lightmap is cut. A bounding volume hierarchy finds the
+// nearest hits. Every texel's rays come from
 // its own random numbers, as on the GPU, so threads can't change what it gets, and the math goes
 // through slash::cos_sin, atan2, exp and ln, so neither can the platform.
 //
-// Godot's denoiser is a joint non-local means filter based on YoctoImageDenoiser's, which carries
+// The denoiser is a joint non-local means filter based on YoctoImageDenoiser's, which carries
 // this notice:
 //
 // MIT License
@@ -61,10 +61,10 @@ namespace {
 
 constexpr float kPi = std::numbers::pi_v<float>; // as lm_compute.glsl's PI
 
-// Godot's rendering/lightmapping/bake_performance/max_transparency_rays (lm_compute.glsl's, which
-// the GPU's bake shares).
+// The default of rendering/lightmapping/bake_performance/max_transparency_rays, which the GPU's
+// bake shares.
 constexpr std::uint32_t kTransparencyRays = 8;
-// Godot's AA_SAMPLES: texel samples a light's shadow is traced from.
+// Texel samples a light's shadow is traced from.
 constexpr std::uint32_t kAaSamples = 16;
 
 // ---- Vectors, as GLSL's
@@ -468,7 +468,7 @@ void for_each(jobs::Pool* pool, std::size_t count, const std::function<void(std:
     }
 }
 
-// ---- Rasterizing, as the GPU does in lm_raster.glsl's and Godot's UV2 passes
+// ---- Rasterizing, as the GPU does ----
 
 struct Point2 {
     float x = 0.0F;
@@ -580,7 +580,7 @@ struct MeshInstance {
     std::vector<Vec3> normals;
 };
 
-// Draws a mesh's material into its lightmap's texels, as Godot's bake_render_uv2: its triangles
+// Draws a mesh's material into its lightmap's texels: its triangles
 // in UV2 space, after their edges at the nine places a texel around for texels the triangles
 // leave out, so albedo reaches past the charts' edges.
 void bake_material(const MeshInstance& mesh, Layers<Rgba>& albedo, Layers<Rgba>& emission) {
@@ -689,8 +689,7 @@ int power_of_two(int n) {
     return p;
 }
 
-// Godot's Geometry2D::partial_pack_rects: where stb_rect_pack puts each size in one atlas, and
-// whether it fit.
+// Where stb_rect_pack puts each size in one atlas, and whether it fit.
 std::vector<std::array<int, 3>> pack(const std::vector<std::array<int, 2>>& sizes, int width,
                                      int height) {
     std::vector<stbrp_node> nodes(static_cast<std::size_t>(width));
@@ -711,7 +710,7 @@ std::vector<std::array<int, 3>> pack(const std::vector<std::array<int, 2>>& size
     return out;
 }
 
-// Floats as Godot's Math::is_equal_approx compares them.
+// Whether floats are approximately equal.
 bool equal_approx(float a, float b) {
     if (a == b) {
         return true;
@@ -963,7 +962,7 @@ private:
             l.static_bake = from.static_bake;
             lights_.push_back(l);
         }
-        // Directional lights first, then omni, then spot, as Godot sorts them.
+        // Directional lights first, then omni, then spot.
         std::stable_sort(lights_.begin(), lights_.end(), [](const Light& a, const Light& b) {
             return static_cast<int>(a.type) < static_cast<int>(b.type);
         });
@@ -971,7 +970,7 @@ private:
 
     void set_environment(const render::HdrImage& environment) {
         if (environment.width == 0 || environment.height == 0) {
-            // As Godot's: an 8x8 black panorama.
+            // An 8x8 black panorama.
             environment_.resize(8, 8, 1, Rgba{0.0F, 0.0F, 0.0F, 1.0F});
             return;
         }
@@ -1094,14 +1093,14 @@ private:
                 triangles_.push_back(t);
             }
         }
-        // The light probes count too, as Godot's.
+        // The light probes count too.
         for (const std::array<float, 3>& point : probes_->points) {
             lo = {std::min<real_t>(lo.x, point[0]), std::min<real_t>(lo.y, point[1]),
                   std::min<real_t>(lo.z, point[2])};
             hi = {std::max<real_t>(hi.x, point[0]), std::max<real_t>(hi.y, point[1]),
                   std::max<real_t>(hi.z, point[2])};
         }
-        // Grown a little against rounding, as Godot's.
+        // Grown a little against rounding.
         lo = lo - Vec3{0.1F, 0.1F, 0.1F};
         hi = hi + Vec3{0.1F, 0.1F, 0.1F};
         world_size_ = length(hi - lo);
@@ -1112,8 +1111,8 @@ private:
         bvh_ = std::make_unique<Bvh>(vertices_, triangles_);
     }
 
-    // The texel offset Godot's raster gives every triangle, so edges don't fall on texel
-    // centers (godotengine/godot#69126): half a texel up and left.
+    // The texel offset the raster gives every triangle, so edges don't fall on texel
+    // centers: half a texel up and left.
     [[nodiscard]] Point2 raster_texel(std::uint32_t vertex) const {
         const std::array<float, 2>& uv = vertices_[vertex].uv;
         return {(uv[0] * static_cast<float>(albedo_.width)) - 0.5F,
@@ -1324,7 +1323,7 @@ private:
         return out;
     }
 
-    // Godot's get_omni_attenuation.
+    // The omni light attenuation.
     static float omni_attenuation(float distance, float inv_range, float decay) {
         float nd = distance * inv_range;
         nd *= nd;
@@ -1756,7 +1755,7 @@ private:
         return light;
     }
 
-    // MODE_BOUNCE_LIGHT, in passes of rays_per_pass rays as Godot's, each seeded afresh.
+    // MODE_BOUNCE_LIGHT, in passes of rays_per_pass rays, each seeded afresh.
     void bounce_light() {
         const std::uint32_t ray_count = settings_.rays;
         const std::uint32_t per_pass = std::max(settings_.rays_per_pass, 1U);
@@ -1788,7 +1787,7 @@ private:
     }
 
     // MODE_LIGHT_PROBES: each probe's light as spherical harmonics, from rays in every direction,
-    // in passes of rays_per_probe_pass seeded afresh as Godot's. The rays leave in the probes'
+    // in passes of rays_per_probe_pass seeded afresh. The rays leave in the probes'
     // space, turned into the world's, so the harmonics are kept in the probes' space.
     std::vector<LightmapSh> light_probes() {
         const std::vector<std::array<float, 3>>& points = probes_->points;
@@ -1835,7 +1834,7 @@ private:
         return out;
     }
 
-    // MODE_DENOISE: Godot's joint non-local means filter, each texel a weighted mean of those
+    // MODE_DENOISE: a joint non-local means filter, each texel a weighted mean of those
     // within denoiser_range whose neighborhoods, albedo and normals look like its own. The
     // patches' distances are box sums here, each offset's over the whole slice at once.
     void denoise() {
@@ -2066,7 +2065,7 @@ private:
         }
     }
 
-    // The texels as the .hdr file holds them, shrunk by the supersampling as Godot resizes them,
+    // The texels as the .hdr file holds them, shrunk by the supersampling,
     // and each mesh's place.
     void finish(LightmapBake& out) {
         const int w = accum_.width;

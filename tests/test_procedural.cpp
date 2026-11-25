@@ -113,9 +113,9 @@ struct MemoryFiles {
 
 } // namespace
 
-TEST_CASE("noise samples as Godot's FastNoiseLite, the same on every machine") {
+TEST_CASE("noise samples, the same on every machine") {
     const procedural::Noise noise;
-    // Godot's defaults: simplex smooth, fractal Brownian motion of five octaves, frequency 0.01.
+    // The defaults: simplex smooth, fractal Brownian motion of five octaves, frequency 0.01.
     CHECK(noise.settings().noise_type == procedural::NoiseType::SimplexSmooth);
     CHECK(noise.settings().fractal_octaves == 5);
 
@@ -168,7 +168,7 @@ TEST_CASE("noise samples as Godot's FastNoiseLite, the same on every machine") {
     CHECK(noise.get_values(2, 2, true, 5)[3] == noise.get_noise_3d(1.0F, 1.0F, 5.0F));
 }
 
-TEST_CASE("noise settings read and write Godot's property names") {
+TEST_CASE("noise settings read and write their property names") {
     const json::Value doc = parse(R"({"noise_type": "cellular", "seed": 4, "frequency": 0.05,
         "offset": [1, 2, 3], "fractal_type": "ping_pong", "cellular_return_type": "distance2_div",
         "domain_warp_enabled": true, "domain_warp_type": "basic_grid"})");
@@ -196,7 +196,7 @@ TEST_CASE("noise settings read and write Godot's property names") {
     CHECK(named);
 }
 
-TEST_CASE("gradients blend as Godot's") {
+TEST_CASE("gradients blend") {
     procedural::Gradient gradient;
     // Black to white by default; outside the points, the end colors.
     CHECK(gradient.color_at(0.5F) == Vec4{0.5F, 0.5F, 0.5F, 1.0F});
@@ -216,7 +216,7 @@ TEST_CASE("gradients blend as Godot's") {
     CHECK(gradient.color_at(0.5F).x == doctest::Approx(0.388573F).epsilon(1.0e-4));
     CHECK(gradient.color_at(0.0F).x == 0.0F);
 
-    // Cubic passes through each point and eases between them, by Godot's cubic_interpolate.
+    // Cubic passes through each point and eases between them.
     procedural::Gradient three = procedural::parse_gradient(parse(R"({
         "points": [{"offset": 1, "color": [1, 0, 0]}, {"offset": 0, "color": [0, 0, 0]},
                    {"offset": 0.5, "color": [0.2, 0, 0, 0.5]}],
@@ -243,14 +243,14 @@ TEST_CASE("gradients blend as Godot's") {
                     "interpolation_mode": "cubic"})"));
 }
 
-TEST_CASE("gradient textures fill as Godot's GradientTexture1D and GradientTexture2D") {
+TEST_CASE("gradient textures fill in one and two dimensions") {
     const render::Image row = image_of(R"({"format": 1, "type": "gradient_1d", "width": 3})");
     CHECK(row.width == 3);
     CHECK(row.height == 1);
     CHECK(pixel(row, 0, 0) == std::vector<int>{0, 0, 0, 255});
     CHECK(pixel(row, 1, 0) == std::vector<int>{128, 128, 128, 255});
     CHECK(pixel(row, 2, 0) == std::vector<int>{255, 255, 255, 255});
-    // One pixel wide, the first color, where Godot divides by zero.
+    // One pixel wide, the first color, where a division by zero would be.
     CHECK(pixel(image_of(R"({"format": 1, "type": "gradient_1d", "width": 1})"), 0, 0) ==
           std::vector<int>{0, 0, 0, 255});
 
@@ -289,7 +289,7 @@ TEST_CASE("gradient textures fill as Godot's GradientTexture1D and GradientTextu
                 1, 1) == std::vector<int>{255, 127, 0, 255});
 }
 
-TEST_CASE("noise textures make Godot's NoiseTexture2D pixels") {
+TEST_CASE("noise textures make their pixels") {
     const render::Image plain =
         image_of(R"({"format": 1, "type": "noise", "width": 64, "height": 32})");
     CHECK(plain.width == 64);
@@ -353,7 +353,7 @@ TEST_CASE("seamless noise textures tile") {
     CHECK(vertical / 64.0 < seamless_inside * 1.5);
 }
 
-TEST_CASE("noise textures make normal maps as Godot's bump_map_to_normal_map") {
+TEST_CASE("noise textures make normal maps") {
     // A flat bump map points straight out.
     render::Image flat;
     flat.width = 2;
@@ -402,7 +402,7 @@ TEST_CASE(".texture.json files validate, format and load as textures") {
     CHECK(procedural::texture_schema().find("oneOf")->as_array().size() ==
           4); // three resources and graphs
 
-    // Written back, only what differs from Godot's defaults stays.
+    // Written back, only what differs from the defaults stays.
     const json::Value doc = parse(R"({"format": 1, "type": "noise", "width": 128,
         "seamless": true, "noise": {"noise_type": "perlin"},
         "color_ramp": {"interpolation_mode": "constant"}})");
@@ -742,7 +742,7 @@ render::Image solid(std::uint32_t size, std::vector<std::uint8_t> rgba) {
     return image;
 }
 
-// Two clockwise triangles of a square in the xy plane, facing +z, as Godot's front faces.
+// Two clockwise triangles of a square in the xy plane, facing +z, as front faces.
 void add_square(slash::scene3d::SurfaceTool& tool, float half) {
     const std::array<Vec3, 4> corners{Vec3{-half, -half, 0.0F}, Vec3{half, -half, 0.0F},
                                       Vec3{half, half, 0.0F}, Vec3{-half, half, 0.0F}};
@@ -756,7 +756,7 @@ void add_square(slash::scene3d::SurfaceTool& tool, float half) {
 
 } // namespace
 
-TEST_CASE("SurfaceTool builds surfaces as Godot's") {
+TEST_CASE("SurfaceTool builds surfaces") {
     using slash::scene3d::SurfaceTool;
     SurfaceTool tool;
     add_square(tool, 1.0F);

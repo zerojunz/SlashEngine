@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "space.hpp"
 
 #include <Jolt/Physics/Body/BodyInterface.h>
@@ -9,9 +10,9 @@
 #include <optional>
 #include <vector>
 
-// Godot's VehicleBody3D and Wheel3D (scene/3d/physics/vehicle_body_3d.cpp), its port of
-// Bullet's raycast vehicle: after each step every wheel of an awake vehicle casts a ray down its
-// suspension, and its spring, damper and tire friction push the vehicle's body.
+// The raycast vehicle, ported from Bullet's: after each step every wheel of an awake vehicle
+// casts a ray down its suspension, and its spring, damper and tire friction push the vehicle's
+// body.
 namespace slash::physics3d::detail {
 
 namespace {
@@ -23,7 +24,7 @@ using world::WheeledBody3D;
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
 
-// A rotation of angle radians about a unit axis, as Godot's Basis(axis, angle).
+// A rotation of angle radians about a unit axis.
 Affine3D rotation(Vec3 axis, float angle) {
     const JPH::Mat44 matrix = JPH::Mat44::sRotation(to_jolt(axis), angle);
     return {.x = from_jolt(matrix.GetAxisX()),
@@ -54,7 +55,7 @@ bool same_place(const Transform3D& a, const Transform3D& b) {
 }
 
 // The wheels of a vehicle: the entities with a Wheel3D placed right under it, in its
-// children's order, as Godot keeps the wheels in the order they entered the tree.
+// children's order.
 std::vector<entt::entity> wheels_of(const entt::registry& registry, const world::Tree3D& tree,
                                     entt::entity vehicle) {
     std::vector<entt::entity> wheels;
@@ -72,8 +73,7 @@ std::vector<entt::entity> wheels_of(const entt::registry& registry, const world:
     return wheels;
 }
 
-// What a wheel finds in a step, as the members of Godot's VehicleWheel3D that the step works
-// out: its m_raycastInfo, suspension and friction.
+// What a wheel finds in a step: its raycast info, suspension and friction.
 struct WheelStep {
     entt::entity entity = entt::null;
     Wheel3D* wheel = nullptr;
@@ -88,7 +88,7 @@ struct WheelStep {
     entt::entity ground = entt::null;
     float suspension_length = 0.0F;
     float relative_velocity = 0.0F;
-    float clipped_inverse = 0.0F; // Godot's m_clippedInvContactDotSuspension
+    float clipped_inverse = 0.0F; // the inverse of contact dot suspension, clipped
     float suspension_force = 0.0F;
     Vec3 friction_axle{};
     Vec3 forward{};
@@ -97,7 +97,7 @@ struct WheelStep {
     float skid = 0.0F;
 };
 
-// The body under a wheel, as Godot's friction code reads it: where it is, how it moves and its
+// The body under a wheel, as the friction code reads it: where it is, how it moves and its
 // inverse mass, 0 for anything but a rigid body.
 struct Ground {
     Vec3 origin;
@@ -129,8 +129,7 @@ void Space::pre_step_vehicles(world::World& world, const world::Tree3D& tree, fl
                 continue;
             }
             // A new or moved wheel: where it is mounted is where its Transform3D puts it, less its
-            // steering, roll and suspension, as Godot takes the mount from where a wheel enters
-            // the tree.
+            // steering, roll and suspension.
             const auto& wheel = registry.get<Wheel3D>(wheel_entity);
             const Unscaled pose = unscale(scale_rows(world::affine(transform), scale));
             Affine3D mount = pose.transform * rotation({1.0F, 0.0F, 0.0F}, -wheel.rotation) *
@@ -146,8 +145,8 @@ void Space::pre_step_vehicles(world::World& world, const world::Tree3D& tree, fl
                 wheels_.emplace(wheel_entity, fresh);
             }
         }
-        // As Godot's set_engine_force, set_brake and set_steering, when they change. A change
-        // also wakes the vehicle, which Godot leaves asleep.
+        // The engine force, brake and steering, when they change. A change
+        // also wakes the vehicle.
         const auto& inputs = registry.get<WheeledBody3D>(entity);
         VehicleInputs* last = vehicles_.find(entity);
         if (last == nullptr) {
@@ -233,8 +232,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
         const float inverse_mass = jolt->GetMotionProperties()->GetInverseMass();
         const float mass = 1.0F / inverse_mass;
         const JPH::Mat44 inverse_inertia = jolt->GetInverseInertia();
-        // The body's velocities as they stand: each impulse below changes them, as Godot's
-        // direct body state reads them from Jolt.
+        // The body's velocities as they stand: each impulse below changes them.
         const auto velocity_at = [&, jolt](Vec3 relative) {
             return from_jolt(jolt->GetLinearVelocity()) +
                    cross(from_jolt(jolt->GetAngularVelocity()), relative);
@@ -273,7 +271,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
                 step_wheel.contact_normal = hit->normal;
                 step_wheel.in_contact = true;
                 step_wheel.ground = hit->entity;
-                // Clamped to its travel, as Godot clamps it: the upper limit last.
+                // Clamped to its travel: the upper limit last.
                 float suspension = (param * ray_length) - wheel.wheel_radius;
                 suspension =
                     std::max(suspension, wheel.wheel_rest_length - wheel.suspension_travel);
@@ -401,7 +399,7 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
                 apply_impulse(step_wheel.forward * step_wheel.forward_impulse, relative);
             }
             if (step_wheel.side_impulse != 0.0F) {
-                // Godot's ROLLING_INFLUENCE_FIX: the side impulse acts lower, by the roll
+                // The side impulse acts lower, by the roll
                 // influence, so the vehicle rolls less.
                 const Vec3 up = chassis.y;
                 relative =
@@ -434,8 +432,8 @@ void Space::step_vehicles(world::World& world, const world::Tree3D& tree, float 
             wheel.suspension_length = step_wheel.suspension_length;
             wheel.skid_info = step_wheel.skid;
 
-            // Where it is now, in the vehicle's space: Godot's _update_wheel, from this step's
-            // suspension and roll, and turned properly where Godot's basis is mirrored.
+            // Where it is now, in the vehicle's space: from this step's
+            // suspension and roll, and turned properly where the basis is mirrored.
             Affine3D pose = mount.mount * rotation({0.0F, 1.0F, 0.0F}, wheel.steering) *
                             rotation({1.0F, 0.0F, 0.0F}, wheel.rotation);
             pose.x = pose.x * mount.mount_scale.x;

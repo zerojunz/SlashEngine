@@ -1,5 +1,5 @@
 # A yard: ground that only collides, a wall that draws and collides as its convex hull, and a
-# rock that only draws. The hints are Godot's import hints, on the objects' names.
+# rock that only draws. The hints are import hints on the objects' names.
 o Ground-colonly
 v -4 0 -4
 v 4 0 -4

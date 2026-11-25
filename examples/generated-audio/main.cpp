@@ -1,12 +1,12 @@
-// Sound a game makes as it runs, as Godot's AudioStreamGenerator and AudioStreamPolyphonic.
-// audio/synth.audio.json is a generator: a gameplay system in C++ pushes a square-wave tune into
-// it each tick, through audio::stream_playback. audio/sfx.audio.json is polyphonic: one player
-// plays many sounds at once, each started by audio.play's "stream" at its own volume and pitch.
+// Sound a game makes as it runs. audio/synth.audio.json is a generator: a gameplay system in C++
+// pushes a square-wave tune into it each tick, through audio::stream_playback. audio/sfx.audio.json
+// is polyphonic: one player plays many sounds at once, each started by audio.play's "stream" at its
+// own volume and pitch.
 //
-// This program writes the hit sound (made without libm, so it is the same everywhere) and adds
-// the synth system, then plays the game as an agent does over MCP or JSON-RPC: audio.state shows
-// the generator's free frames and skips (mixes that ran out of frames) and the streams the
-// polyphonic player has going, and audio.capture shows the tune and the hits slice by slice.
+// This program writes the hit sound (made without libm, so it is the same everywhere) and adds the
+// synth system, then plays the game as an agent does over MCP or JSON-RPC: audio.state shows the
+// generator's free frames and skips (mixes that ran out of frames) and the streams the polyphonic
+// player has going, and audio.capture shows the tune and the hits slice by slice.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -49,8 +49,8 @@ std::vector<audio::Frame> click(int hz, float amplitude, int frames) {
 constexpr std::array<int, 4> kNotes{220, 262, 330, 440};
 constexpr std::int64_t kNoteFrames = kSynthRate / 4;
 
-// Fills the synth's generator with the tune's next frames, as Godot's AudioStreamGenerator demo
-// fills its playback in _process. The playback is there from the tick after the player starts.
+// Fills the synth's generator with the tune's next frames. The playback is there from the tick
+// after the player starts.
 void push_tune(world::World& w, std::int64_t& pushed) {
     audio::Playback* playback = audio::stream_playback(w, w.find("synth"));
     audio::GeneratorPlayback* generator = playback != nullptr ? playback->generator() : nullptr;
@@ -102,10 +102,9 @@ int main() {
 
     call(session, "scene.open", R"({"path": "main.scene.json"})");
     // The synth autoplays. Its first tick has no frames yet (the system runs before the voice
-    // starts), so those mixes count as skips; from then on the system keeps it full. Its
-    // buffer holds 4095 frames, 0.1 seconds at 22050 Hz rounded up to a power of two, as Godot's.
-    // Master peaks at -11 dB: the square's 0.25 is -12 dB, and resampling it to 44100 Hz
-    // overshoots its edges a little.
+    // starts), so those mixes count as skips; from then on the system keeps it full. Its buffer
+    // holds 4095 frames, 0.1 seconds at 22050 Hz rounded up to a power of two. Master peaks at -11
+    // dB: the square's 0.25 is -12 dB, and resampling it to 44100 Hz overshoots its edges a little.
     call(session, "step", R"({"ticks": 20})");
     call(session, "audio.state", R"({"ids": ["synth"]})");
 

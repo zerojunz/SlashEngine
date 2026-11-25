@@ -14,7 +14,7 @@ namespace slash::world {
 class World;
 } // namespace slash::world
 
-// Splat3D, a research spike of SlashEngine's own (Godot has none): clouds of 3D Gaussians
+// Splat3D, a research spike of SlashEngine's own: clouds of 3D Gaussians
 // from 3D Gaussian Splatting .ply files, which scene3d::Renderer hands the frame as
 // render::Scene3D::splats (see docs/reference/gaussian-splats.md).
 namespace slash::scene3d {

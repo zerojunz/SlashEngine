@@ -824,11 +824,11 @@ fn cs_main(@builtin(global_invocation_id) id : vec3<u32>) {
 
 inline constexpr char kMeshCullHlsl[] = R"hlsl(// Culls a frame's mesh draws, as Unity's GPU-driven pipeline does before its indirect draws, and
 // draws runs of them (one mesh with one material, in the camera's order) as instances of one
-// indexed indirect draw, as Godot's Forward+ draws repeated elements. Its first pass (counts.w 0)
-// tests a draw a thread: whether any corner of its box is in the camera's view. Its second
-// (counts.w 1) lists a run a thread the run's draws in view, in order, for mesh_instanced.hlsl
-// to read, and writes the run's arguments: its indices, as many instances as draws in view.
-// mesh_cull.cpp's box_in_view and cull_runs are its CPU twin; keep them in step.
+// indexed indirect draw, for repeated elements. Its first pass (counts.w 0) tests a draw a thread:
+// whether any corner of its box is in the camera's view. Its second (counts.w 1) lists a run a
+// thread the run's draws in view, in order, for mesh_instanced.hlsl to read, and writes the run's
+// arguments: its indices, as many instances as draws in view. mesh_cull.cpp's box_in_view and
+// cull_runs are its CPU twin; keep them in step.
 
 #ifdef SLASH_MSL
 #define UNIFORMS register(b0)

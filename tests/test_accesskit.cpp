@@ -28,10 +28,8 @@
 #include <utility>
 #include <vector>
 
-// The screen reader backend, as Godot 4.5's AccessibilityDriverAccessKit
-// (drivers/accesskit/accessibility_driver_accesskit.cpp): the controls' accessibility tree as
-// AccessKit's nodes, the updates that send what changed, and screen readers' requests run on
-// the controls.
+// The screen reader backend: the controls' accessibility tree as AccessKit's nodes, the updates
+// that send what changed, and screen readers' requests run on the controls.
 
 namespace accessibility = slash::accessibility;
 namespace command = slash::command;
@@ -223,7 +221,7 @@ std::vector<std::uint64_t> ids(accesskit_node_ids list) {
 
 } // namespace
 
-TEST_CASE("Nodes become AccessKit's, as Godot's driver fills them") {
+TEST_CASE("Nodes become AccessKit's") {
     REQUIRE(accessibility::available());
     Session s;
     make_menu(s);
@@ -243,7 +241,7 @@ TEST_CASE("Nodes become AccessKit's, as Godot's driver fills them") {
     accesskit_node_free(menu);
 
     accesskit_node* title = accessibility::make_node(node_of(snapshot, s.id("title")));
-    // Godot's ROLE_STATIC_TEXT is AccessKit's label, with the text as its value.
+    // A static text role is AccessKit's label, with the text as its value.
     CHECK(accesskit_node_role(title) == ACCESSKIT_ROLE_LABEL);
     CHECK(take(accesskit_node_value(title)) == "Paused");
     const accesskit_opt_rect bounds = accesskit_node_bounds(title);

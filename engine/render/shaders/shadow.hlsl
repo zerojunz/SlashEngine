@@ -1,8 +1,8 @@
-// Shadow maps: meshes drawn into a shadow atlas from a light, depth only, as Godot's Compatibility
-// renderer draws them (drivers/gles3/shaders/scene.glsl with RENDER_SHADOWS). Depths are pushed
-// away from the light by the pass's bias, as Godot pushes them. Alpha scissor materials cut their
-// holes in the shadow too. Keep it in step with shadow_vertex and shadow_keeps in
-// src/shadow.cpp, its CPU twins. The vertex input, Instance and Surface are mesh.hlsl's. With
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Shadow maps: meshes drawn into a shadow atlas from a light, depth only, as the compatibility
+// renderer draws them. Depths are pushed away from the light by the pass's bias. Alpha scissor
+// materials cut their holes in the shadow too. Keep it in step with shadow_vertex and shadow_keeps
+// in src/shadow.cpp, its CPU twins. The vertex input, Instance and Surface are mesh.hlsl's. With
 // GAME_SHADER defined, as mesh.hlsl's, a game's spatial shader's fragment() cuts the holes, and
 // with GAME_VERTEX its vertex() places the corners. shadow_plain.hlsl defines NO_ALPHA_HASH, which
 // leaves alpha hash out, for the OpenGL devices' shadows that don't use it.
@@ -67,7 +67,7 @@ VertexOutput vs_main(VertexInput input) {
     if (pass_options.y != 0.0) {
         v += v * (pass_options.x / max(length(v), 1e-6));
     } else {
-        // Godot's normalize(v) * bias / length(v).
+        // normalize(v) * bias / length(v).
         v += v * (pass_options.x / max(dot(v, v), 1e-12));
     }
     output.position = mul(projection, float4(v, 1.0));
@@ -121,8 +121,8 @@ cbuffer Surface : register(b0, space3) {
 
 #ifdef GAME_SHADER
 void fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
-    // A shader that writes ALPHA_SCISSOR_THRESHOLD cuts its holes; one that only writes ALPHA
-    // casts its whole shape, as Godot's transparent materials do.
+    // A shader that writes ALPHA_SCISSOR_THRESHOLD cuts its holes; one that only writes ALPHA casts
+    // its whole shape.
     if ((options.x & kAlphaScissor) != 0u) {
         GameSurface game =
             game_surface(input.world, input.normal, input.tangent, input.binormal, input.uv,

@@ -46,8 +46,7 @@ json::Value number_property(std::string_view description, double fallback) {
     return property;
 }
 
-// Godot's physics/jolt_physics_3d settings, by their names there: numbers with their range,
-// whole numbers and switches.
+// The Jolt settings: numbers with their range, whole numbers and switches.
 struct NumberSetting {
     const char* name;
     float Settings::*field;
@@ -137,7 +136,7 @@ constexpr SwitchSetting kSwitchSettings[] = {
      "shapes."},
 };
 
-// What a query sees, as Godot's JoltQueryFilter3D: bodies, areas or both, on the mask's layers,
+// What a query sees: bodies, areas or both, on the mask's layers,
 // less the excluded entities.
 class QueryFilters final : public JPH::BroadPhaseLayerFilter,
                            public JPH::ObjectLayerFilter,
@@ -392,7 +391,6 @@ std::vector<entt::entity> overlap_point(world::World& world, Vec3 point, const Q
     if (space == nullptr) {
         return {};
     }
-    // Godot's intersect_point.
     const QueryFilters filters(*space, filter);
     JPH::AllHitCollisionCollector<JPH::CollidePointCollector> collector;
     space->system()->GetNarrowPhaseQueryNoLock().CollidePoint(to_jolt_place(point), collector,
@@ -420,7 +418,7 @@ std::vector<entt::entity> overlap_shape(world::World& world, const world::Collid
     if (built.shape == nullptr) {
         return {};
     }
-    // Godot's intersect_shape: the shape at its transform, from its center of mass.
+    // The shape at its transform, from its center of mass.
     const auto affine = [](Vec3 at, Vec3 turn) {
         world::Transform3D transform;
         transform.position = at;
@@ -452,8 +450,7 @@ std::optional<Vec3> closest_point(world::World& world, entt::entity entity, Vec3
     if (body == nullptr) {
         return std::nullopt;
     }
-    // Godot's JoltPhysicsDirectSpaceState3D::get_closest_point_to_object_volume: GJK from the
-    // point to each convex shape, at most 32 of them.
+    // GJK from the point to each convex shape, at most 32 of them.
     class Shapes final : public JPH::TransformedShapeCollector {
     public:
         void AddHit(const JPH::TransformedShape& shape) override {
@@ -576,7 +573,7 @@ std::optional<RayHit> Space::cast_ray(Vec3 from, Vec3 to, const QueryFilter& fil
     if (system_ == nullptr || from == to) {
         return std::nullopt;
     }
-    // Godot's JoltPhysicsDirectSpaceState3D::intersect_ray, not hitting from inside.
+    // The ray does not hit from inside.
     const QueryFilters filters(*this, filter);
     const JPH::RRayCast ray(to_jolt_place(from), to_jolt(to - from));
     JPH::RayCastSettings settings;

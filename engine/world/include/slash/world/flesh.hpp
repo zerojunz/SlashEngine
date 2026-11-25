@@ -1,14 +1,14 @@
 #pragma once
 
-// A character's anatomy and flesh, after Unreal's Chaos Flesh (Godot has none): the bones under
-// the skin (skull, spine, ribs, pelvis, limbs' long bones) and the muscles between them, each a
-// spindle from its origin on one bone to its insertion on another, simulated as a tetrahedral
-// (in 2D, triangular) body of stable Neo-Hookean flesh by XPBD (Macklin and Müller's constraint
-// form), which keeps its volume, so a muscle that shortens bulges; contracts along its fibers as
-// it is activated; is held to where the skeleton puts it by tethers that let it jiggle; and stays
-// outside the bone it rests on. The skin follows the muscles under it. Both dimensions share it:
-// slash/scene3d/flesh.hpp runs it on a character's model, add_flesh_2d_system here on its 2D
-// cut-out. Built with -ffp-contract=off, so it steps the same everywhere.
+// A character's anatomy and flesh, after Unreal's Chaos Flesh: the bones under the skin (skull,
+// spine, ribs, pelvis, limbs' long bones) and the muscles between them, each a spindle from its
+// origin on one bone to its insertion on another, simulated as a tetrahedral (in 2D, triangular)
+// body of stable Neo-Hookean flesh by XPBD (Macklin and Müller's constraint form), which keeps its
+// volume, so a muscle that shortens bulges; contracts along its fibers as it is activated; is held
+// to where the skeleton puts it by tethers that let it jiggle; and stays outside the bone it rests
+// on. The skin follows the muscles under it. Both dimensions share it: slash/scene3d/flesh.hpp runs
+// it on a character's model, add_flesh_2d_system here on its 2D cut-out. Built with
+// -ffp-contract=off, so it steps the same everywhere.
 
 #include "slash/core/math.hpp"
 #include "slash/world/character.hpp"

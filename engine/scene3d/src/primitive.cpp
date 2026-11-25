@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/primitive.hpp"
 
 #include "slash/core/math.hpp"
@@ -7,8 +8,7 @@
 #include <numbers>
 #include <string>
 
-// Each maker follows the Godot function of the same mesh in scene/resources/3d/
-// primitive_meshes.cpp, loop for loop, leaving out the second texture coordinates (UV2).
+// Each maker builds its mesh loop for loop, leaving out the second texture coordinates (UV2).
 namespace slash::scene3d {
 
 namespace {
@@ -18,7 +18,7 @@ constexpr float kPi = std::numbers::pi_v<float>;
 constexpr float kOneThird = 1.0F / 3.0F;
 constexpr float kTwoThirds = 2.0F / 3.0F;
 
-// Builds a mesh corner by corner, as Godot's arrays.
+// Builds a mesh corner by corner, into arrays.
 struct Builder {
     MeshData mesh;
     std::uint32_t point = 0;
@@ -46,7 +46,7 @@ Vec3 normalized(Vec3 v) {
     return length == 0.0F ? v : Vec3{v.x / length, v.y / length, v.z / length};
 }
 
-// The angle's cosine and sine as Godot reads them going round: x = sin, z = cos.
+// The angle's cosine and sine as read going round: x = sin, z = cos.
 Vec2 around(float u) {
     return cos_sin(u * kTau);
 }
@@ -68,7 +68,7 @@ MeshData flipped(MeshData mesh, bool flip) {
     return mesh;
 }
 
-// The four index pattern of a strip of quads between two rows of corners, as Godot pushes it.
+// The four index pattern of a strip of quads between two rows of corners.
 void quad(Builder& b, int prev_a, int prev_b, int this_a, int this_b) {
     b.triangle(prev_a, prev_b, this_a);
     b.triangle(prev_b, this_b, this_a);
@@ -393,7 +393,7 @@ MeshData flat_mesh(Vec2 size, int subdivide_w, int subdivide_d, Vec3 center_offs
             const std::array<float, 4> tangent = orientation == "x"
                                                      ? std::array{0.0F, 0.0F, -1.0F, 1.0F}
                                                      : std::array{1.0F, 0.0F, 0.0F, 1.0F};
-            // 1 - uv to match orientation with Quad, as Godot says.
+            // 1 - uv to match orientation with Quad.
             b.add(point + center_offset, normal, tangent, {1.0F - u, 1.0F - v});
             if (i > 0 && j > 0) {
                 quad(b, prevrow + i - 1, prevrow + i, thisrow + i - 1, thisrow + i);

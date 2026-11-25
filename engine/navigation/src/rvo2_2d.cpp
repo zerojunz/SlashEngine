@@ -1,5 +1,6 @@
-// RVO2's 2D agents, k-d tree and linear programs (Agent2d.cpp, KdTree2d.cpp), as Godot 4.6
-// changes them in thirdparty/rvo2/rvo2_2d. See rvo2.hpp for the license and the changes.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// RVO2's 2D agents, k-d tree and linear programs (Agent2d.cpp, KdTree2d.cpp). See rvo2.hpp for the
+// license and the changes.
 
 #include "rvo2.hpp"
 
@@ -169,7 +170,7 @@ void linear_program_3(const std::vector<Line>& lines, std::size_t num_obst_lines
 
 void Simulation2D::add_obstacle(const std::vector<V2>& vertices, float height, float elevation,
                                 std::uint32_t avoidance_layers) {
-    // Godot's NavMap2D::_update_rvo_obstacles_tree, after RVOSimulator::addObstacle.
+    // After RVOSimulator::addObstacle.
     if (vertices.size() < 2) {
         return;
     }
@@ -656,7 +657,7 @@ void Simulation2D::compute_new_velocity(std::size_t agent) {
 }
 
 void Simulation2D::insert_agent_neighbor(std::size_t agent, std::size_t other, float& range_sq) {
-    // Agent2D::insertAgentNeighbor, with Godot's checks.
+    // Agent2D::insertAgentNeighbor, with extra checks.
     if (agent == other) {
         return;
     }
@@ -694,7 +695,7 @@ void Simulation2D::insert_agent_neighbor(std::size_t agent, std::size_t other, f
 
 void Simulation2D::insert_obstacle_neighbor(std::size_t agent, std::size_t obstacle,
                                             float range_sq) {
-    // Agent2D::insertObstacleNeighbor, with Godot's checks.
+    // Agent2D::insertObstacleNeighbor, with extra checks.
     const Agent2D& a = agents[agent];
     const Obstacle2D& o = obstacles_[obstacle];
     const Obstacle2D& next = obstacles_[o.next];

@@ -6,11 +6,11 @@
 #include <span>
 #include <vector>
 
-// Networking, as Godot's multiplayer: a Peer moves packets between the machines in a game, and
+// Networking: a Peer moves packets between the machines in a game, and
 // each transport (ENet, WebSocket) is one kind of Peer.
 namespace slash::net {
 
-// How a packet travels, as Godot's MultiplayerPeer::TransferMode.
+// How a packet travels.
 enum class TransferMode : std::uint8_t {
     Unreliable,        // may be lost or arrive out of order
     UnreliableOrdered, // may be lost; older packets arriving after newer ones are dropped
@@ -24,7 +24,7 @@ enum class ConnectionStatus : std::uint8_t { Disconnected, Connecting, Connected
 inline constexpr int kTargetPeerBroadcast = 0;
 inline constexpr int kTargetPeerServer = 1;
 
-// A peer joining or leaving, as Godot's peer_connected and peer_disconnected signals.
+// A peer joining or leaving.
 struct PeerEvent {
     enum class Kind : std::uint8_t { Connected, Disconnected };
     Kind kind = Kind::Connected;
@@ -33,7 +33,7 @@ struct PeerEvent {
     friend bool operator==(const PeerEvent&, const PeerEvent&) = default;
 };
 
-// One machine's end of a game's network, as Godot's MultiplayerPeer: a server is peer 1 and each
+// One machine's end of a game's network: a server is peer 1 and each
 // client has an ID of its own. poll() takes in what arrived; packets then wait in order, each
 // with the peer that sent it, its channel and how it travelled, and peers joining and leaving
 // wait in take_events().
@@ -53,7 +53,7 @@ public:
     // Turns away peers that try to join from now on.
     virtual void set_refuse_new_connections(bool refuse) { refuse_connections_ = refuse; }
     [[nodiscard]] bool is_refusing_new_connections() const { return refuse_connections_; }
-    // Whether the server can relay packets between clients, as Godot's.
+    // Whether the server can relay packets between clients.
     [[nodiscard]] virtual bool is_server_relay_supported() const { return false; }
 
     // Where later packets go: a peer's ID, kTargetPeerBroadcast, or minus an ID for all but it.
@@ -99,11 +99,11 @@ private:
     std::vector<PeerEvent> events_;
 };
 
-// A random ID for a client, above 1 and below 2^31, as Godot's generate_unique_id.
+// A random ID for a client, above 1 and below 2^31.
 std::uint32_t generate_unique_id();
 
-// A peer that is always a connected server with no one else, as Godot's
-// OfflineMultiplayerPeer: games run alone with the same code they run online with.
+// A peer that is always a connected server with no one else: games run alone with the same
+// code they run online with.
 class OfflinePeer final : public Peer {
 public:
     void set_target_peer(int /*peer*/) override {}

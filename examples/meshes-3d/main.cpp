@@ -1,11 +1,11 @@
-// Meshes lit by a frame's lights, as Godot's Compatibility renderer lights them: a floor, a red
-// cube, a small gold cube and a pane of blue glass, seen from a camera and lit by the sun, a lamp
-// and the ambient light, then drawn into a texture.
+// Meshes lit by a frame's lights, as the compatibility renderer lights them: a floor, a red cube, a
+// small gold cube and a pane of blue glass, seen from a camera and lit by the sun, a lamp and the
+// ambient light, then drawn into a texture.
 //
 // Every render device draws meshes: the GPU devices (Metal, Direct3D 12, Vulkan), OpenGL 3.3,
 // OpenGL ES 3.0 and WebGPU on the web. This draws on the software device, which draws the same
-// pixels as they do (tests/test_mesh.cpp holds them to it) on every machine, so the output below
-// is the same everywhere. A game would make its device with create_device_or_null.
+// pixels as they do (tests/test_mesh.cpp holds them to it) on every machine, so the output below is
+// the same everywhere. A game would make its device with create_device_or_null.
 
 #include "slash/core/math.hpp"
 #include "slash/render/device.hpp"
@@ -43,8 +43,8 @@ Float3 sum(const Float3& a, const Float3& b) {
     return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
 }
 
-// A square of side size around center, facing normal, with u along the texture's x and up along
-// its -y. Front faces wind clockwise as the camera sees them, as Godot's do.
+// A square of side size around center, facing normal, with u along the texture's x and up along its
+// -y. Front faces wind clockwise as the camera sees them.
 std::vector<render::Vertex3D> quad(const Float3& center, const Float3& u, const Float3& up,
                                    const Float3& normal, float size) {
     const auto corner = [&](float s, float t) {
@@ -86,7 +86,7 @@ std::vector<render::Vertex3D> cube() {
 }
 
 // A mesh's transform: scaled by scale, turned degrees about the Y axis, then moved to (x, y, z).
-// Matrices are column-major, as Godot's Transform3D written out.
+// Matrices are column-major.
 Mat4 placed(float scale, float degrees, float x, float y, float z) {
     const slash::Vec2 turn = slash::cos_sin(degrees * std::numbers::pi_v<float> / 180.0F);
     const float c = turn.x * scale;
@@ -135,8 +135,8 @@ int main() {
     const render::TextureId target =
         device->create_texture({.width = kWidth, .height = kHeight, .render_target = true}).value();
 
-    // The camera, the sun, a warm lamp beside the red cube and a blue-gray ambient light, each
-    // with Godot's parameters. Colors are sRGB, as Godot's.
+    // The camera, the sun, a warm lamp beside the red cube and a blue-gray ambient light. Colors
+    // are sRGB.
     render::Scene3D scene;
     scene.camera = render::look_at({2.6F, 2.2F, 3.6F}, {0.0F, 0.15F, 0.0F}, {0.0F, 1.0F, 0.0F});
     scene.projection = render::perspective(34.0F, 1.5F, 0.1F, 100.0F);

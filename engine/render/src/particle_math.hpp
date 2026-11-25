@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -7,13 +8,13 @@
 #include <cstddef>
 #include <cstdint>
 
-// What the CPU twins of the particle shaders share, in 2D (particles.cpp) and 3D
-// (particles3d.cpp): GLSL's helpers, Godot's random numbers, hue turn and turbulence noise.
-// shaders/particles_process.hlsl has the same; a change to one goes in the other.
+// What the CPU twins of the particle shaders share, in 2D (particles.cpp) and 3D (particles3d.cpp):
+// GLSL's helpers, random numbers, hue turn and turbulence noise. shaders/particles_process.hlsl has
+// the same; a change to one goes in the other.
 namespace slash::render::particle_math {
 
-// The value of pi Godot's generated shader uses.
-inline constexpr float kPi = 3.14159F; // NOLINT(modernize-use-std-numbers): Godot's, not std's
+// The value of pi the generated shader uses.
+inline constexpr float kPi = 3.14159F; // NOLINT(modernize-use-std-numbers): the shader's, not std's
 inline constexpr float kDegreesToRadians = kPi / 180.0F;
 
 // GLSL's mix: a * (1 - t) + b * t.
@@ -62,7 +63,7 @@ inline float mod(float x, float y) {
     return x - (y * std::floor(x / y));
 }
 
-// Godot's hash, which improves a seed.
+// A hash, which improves a seed.
 inline std::uint32_t hash(std::uint32_t x) {
     x = ((x >> 16U) ^ x) * 73244475U;
     x = ((x >> 16U) ^ x) * 73244475U;
@@ -70,7 +71,7 @@ inline std::uint32_t hash(std::uint32_t x) {
     return x;
 }
 
-// Godot's rand_from_seed: Park and Miller's generator, a number from 0 to 1.
+// Park and Miller's generator, a number from 0 to 1.
 inline float rand_from_seed(std::uint32_t& seed) {
     auto s = static_cast<std::int32_t>(seed);
     if (s == 0) {
@@ -102,9 +103,9 @@ inline float unit_of(std::uint32_t bits) {
     return (static_cast<float>(bits & 0xFFFFU) * (1.0F / 32768.0F)) - 1.0F;
 }
 
-// Godot's grad: a lattice point's gradient. Godot hashes the point with fractions of float
-// products, which round differently on different GPUs; this hashes its integer coordinates, and
-// channel tells apart the three noises curl_3d samples, which Godot moves far apart instead.
+// A lattice point's gradient. It hashes the point's integer coordinates, since fractions of float
+// products round differently on different GPUs; channel tells apart the three noises curl_3d
+// samples.
 inline Coord grad(const std::array<std::int32_t, 4>& cell, std::uint32_t channel) {
     std::uint32_t h =
         hash(static_cast<std::uint32_t>(cell[0]) + (channel * 0x632BE59BU) + 0x9E3779B9U);
@@ -115,7 +116,7 @@ inline Coord grad(const std::array<std::int32_t, 4>& cell, std::uint32_t channel
     return {unit_of(h), unit_of(h >> 16U), unit_of(g), unit_of(g >> 16U)};
 }
 
-// Godot's noise: 4D gradient noise, its domain turned to improve the look of slices.
+// 4D gradient noise, its domain turned to improve the look of slices.
 inline float noise(Coord coord, std::uint32_t channel) {
     constexpr float kSixth = -0.1666667F;
     const float shift = dot4(coord, {kSixth, kSixth, kSixth, -0.5F});
@@ -131,9 +132,9 @@ inline float noise(Coord coord, std::uint32_t channel) {
         delta.at(i) = d;
         fade.at(i) = d * d * d * (10.0F + (d * (-15.0F + (d * 6.0F))));
     }
-    // Each corner's dot with its gradient, weighted by the fade along each axis: Godot's mixes
-    // over w, z, y and x as one sum, which the compute shader runs as a loop rather than as
-    // sixteen copies of the hash.
+    // Each corner's dot with its gradient, weighted by the fade along each axis: the corners mix
+    // over w, z, y and x as one sum, which the compute shader runs as a loop rather than as sixteen
+    // copies of the hash.
     float result = 0.0F;
     for (std::uint32_t corner = 0; corner < 16; ++corner) {
         std::array<std::int32_t, 4> cell = base;
@@ -153,9 +154,9 @@ inline float noise(Coord coord, std::uint32_t channel) {
     return result;
 }
 
-// Godot's curl_3d: the curl of three noises, from differences epsilon either side. Godot samples
-// each noise at all six places; the curl uses two at each, taken here in the order its sums take
-// them: term i adds to component i / 2, plus for even i and minus for odd.
+// The curl of three noises, from differences epsilon either side. The curl uses two places of each
+// noise, taken here in the order its sums take them: term i adds to component i / 2, plus for even
+// i and minus for odd.
 inline Vec3f curl_3d(const Coord& p, float c) {
     const float epsilon = 0.001F + c;
     std::array<float, 3> curl{};
@@ -174,7 +175,7 @@ inline Vec3f curl_3d(const Coord& p, float c) {
     return normalize(Vec3f{curl[0], curl[1], curl[2]});
 }
 
-// Godot's rotate_hue: a turn of the color about the gray axis.
+// A turn of the color about the gray axis.
 inline Vec4 rotate_hue(Vec4 color, float angle) {
     const Vec2f turn = cos_sin(angle);
     const float c = turn.x;

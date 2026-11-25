@@ -1,10 +1,10 @@
-// Particle attractors in 3D, as Godot's GPUParticlesAttractor3D nodes: in main.scene.json a sheet
-// of dust hangs in the air over a 6 by 6 meter square. A sphere (the well) pulls the dust near it
-// in, a box (the gust) pushes the dust inside it along its -z as a wind does, and a vector field
-// (the swirl) turns the dust inside it round the y axis by a 3D texture of directions.
+// Particle attractors in 3D: in main.scene.json a sheet of dust hangs in the air over a 6 by 6
+// meter square. A sphere (the well) pulls the dust near it in, a box (the gust) pushes the dust
+// inside it along its -z as a wind does, and a vector field (the swirl) turns the dust inside it
+// round the y axis by a 3D texture of directions.
 //
-// This program makes the swirl's texture, then checks what the attractors did with
-// particles.eval as an agent would, with no screenshot.
+// This program makes the swirl's texture, then checks what the attractors did with particles.eval
+// as an agent would, with no screenshot.
 
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/command/builtin.hpp"
@@ -43,11 +43,10 @@ void check(const slash::Result<void>& result) {
     }
 }
 
-// The swirl's field, 4 texels a side: each texel's color c pushes along c * 2 - 1, here round
-// the y axis, counterclockwise seen from above. Its 4 slices front to back are cut 2 across and
-// 2 down from an 8x8 image, as Godot's Texture3D importer cuts slices/horizontal and
-// slices/vertical; games ship such a PNG made in a tool, this one is made here so the example
-// has no binary file.
+// The swirl's field, 4 texels a side: each texel's color c pushes along c * 2 - 1, here round the y
+// axis, counterclockwise seen from above. Its 4 slices front to back are cut 2 across and 2 down
+// from an 8x8 image; games ship such a PNG made in a tool, this one is made here so the example has
+// no binary file.
 void write_swirl() {
     constexpr int kSide = 4;
     constexpr std::size_t kBytes = std::size_t{8} * 8 * 4;
@@ -151,9 +150,9 @@ int main() {
     call(session, "particles.eval", R"({"id": "dust", "list": true, "max_results": 3})");
     count_swirl(session);
 
-    // An attractor acts only on emitters whose layers share a bit with its cull_mask, as Godot's:
-    // with the well's on layer 2 only, the dust it gathered drifts on, slowed by damping, and no
-    // more is drawn up.
+    // An attractor acts only on emitters whose layers share a bit with its layer_filter: with the
+    // well's on layer 2 only, the dust it gathered drifts on, slowed by damping, and no more is
+    // drawn up.
     call(session, "component.set",
          R"({"id": "well", "components": {"ParticleAttractorSphere3D": {"cull_mask": 2}}})");
     call(session, "step", R"({"ticks": 60})");

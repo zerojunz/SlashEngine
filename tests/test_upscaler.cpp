@@ -368,7 +368,7 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
     CHECK(slash::render::upscaler_names() ==
           std::vector<std::string>{"bilinear", "fsr", "metalfx_spatial", "vendor"});
 
-    // Godot's choices: nothing scales at 1 with bilinear, FSR doesn't scale down, and a game's
+    // The choices: nothing scales at 1 with bilinear, FSR doesn't scale down, and a game's
     // own upscaler is used where it runs.
     const auto null = slash::render::create_null_device();
     const auto software = slash::render::create_software_device();
@@ -400,8 +400,8 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
           "unknown scaling mode fsr1; expected bilinear, fsr, fsr2, fsr3, metalfx_spatial or "
           "metalfx_temporal (did you mean fsr?)");
 
-    // FSR 2 upscales a Forward+ frame's 3D in the device, at a scale under 1; bilinear scaling
-    // stands in for it otherwise, as Godot's.
+    // FSR 2 upscales a clustered-renderer frame's 3D in the device, at a scale under 1; bilinear
+    // scaling stands in for it otherwise.
     const Scaling fsr2{.mode = "fsr2", .scale = 0.5F, .fsr_sharpness = 0.2F, .upscaler = {}};
     using slash::render::RenderMethod;
     CHECK(slash::render::uses_fsr2(fsr2, RenderMethod::ForwardPlus, *software));
@@ -510,7 +510,7 @@ private:
 
 } // namespace
 
-TEST_CASE("MetalFX's modes run where Metal has its scalers and fall back as Godot's elsewhere") {
+TEST_CASE("MetalFX's modes run where Metal has its scalers and fall back elsewhere") {
     using slash::render::RenderMethod;
     const auto scaling = [](const char* mode, float scale) {
         return Scaling{.mode = mode, .scale = scale, .fsr_sharpness = 0.2F, .upscaler = {}};

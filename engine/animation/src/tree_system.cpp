@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "tree_system.hpp"
 
 #include "internal.hpp"
@@ -30,11 +32,11 @@ namespace {
 constexpr double kTau = 2.0 * std::numbers::pi;
 constexpr double kPi = std::numbers::pi;
 
-// The kinds of track a tree mixes, as Godot's track caches.
+// The kinds of track a tree mixes.
 enum class TrackKind : std::uint8_t { Value, Event, Node, Animation, Audio };
 
-// One of a tree's tracks, which every animation's tracks of the same name share, as Godot's
-// AnimationMixer::TrackCache: a value track's path, an event track's event or a model node.
+// One of a tree's tracks, which every animation's tracks of the same name share:
+// a value track's path, an event track's event or a model node.
 struct TreeTrack {
     TrackKind kind = TrackKind::Value;
     std::string name;   // as filters name it
@@ -80,7 +82,7 @@ struct TableKey {
 };
 
 // What the system keeps for an entity between ticks: its table, and which value tracks went back
-// to their rest values, as Godot's TrackCacheValue::is_init. It is only a cache: an entity whose
+// to their rest values. It is only a cache: an entity whose
 // state is empty starts over.
 struct EntityCache {
     TableKey key;
@@ -96,8 +98,8 @@ struct LoadedTree {
     bool used = false;
 };
 
-// Godot's Animation::is_variant_interpolatable, for the values fields take: numbers, booleans and
-// arrays of numbers. As Godot does, booleans blend as 0 and 1.
+// Whether a value is interpolatable, for the values fields take: numbers, booleans and
+// arrays of numbers. Booleans blend as 0 and 1.
 bool interpolatable(const json::Value& value) {
     if (value.is_number() || value.is_bool()) {
         return true;
@@ -109,7 +111,7 @@ bool interpolatable(const json::Value& value) {
                                [](const json::Value& item) { return item.is_number(); });
 }
 
-// Godot's cast_to_blendwise: a value as numbers.
+// A value as numbers.
 std::optional<std::vector<double>> blendwise(const json::Value& value) {
     if (value.is_number()) {
         return std::vector<double>{value.as_double()};
@@ -138,7 +140,7 @@ bool integer_items(const Target& target) {
     return type != nullptr && type->is_string() && type->as_string() == "integer";
 }
 
-// Godot's cast_from_blendwise: numbers back as the init value's kind.
+// Numbers back as the init value's kind.
 json::Value from_blendwise(const std::vector<double>& values, const json::Value& init,
                            const Target& target) {
     if (init.is_bool()) {
@@ -160,7 +162,7 @@ json::Value from_blendwise(const std::vector<double>& values, const json::Value&
     return out;
 }
 
-// Godot's Math::fposmod on floats.
+// Floored modulo on floats.
 float fposmod_float(float x, float y) {
     float value = std::fmod(x, y);
     if ((value < 0.0F && y > 0.0F) || (value > 0.0F && y < 0.0F)) {
@@ -169,7 +171,7 @@ float fposmod_float(float x, float y) {
     return value;
 }
 
-// Godot's Vector3 with Quaternion math on Vec3.
+// Vector3 with Quaternion math on Vec3.
 Vec3 vec_of(const std::array<float, 4>& v) {
     return {v[0], v[1], v[2]};
 }
@@ -265,8 +267,8 @@ struct TreePlayer::State {
         return out;
     }
 
-    // Builds an entity's track table, as Godot's AnimationMixer::_update_caches.
-    // A model node's rest is the drawn model's, as Godot's mixer starts a 3D track from the
+    // Builds an entity's track table.
+    // A model node's rest is the drawn model's: a 3D track starts from the
     // skeleton's bone rest, or else the clip model's.
     static void
     build(EntityCache& cache, const AnimationTreeResource& resource,
@@ -452,7 +454,7 @@ struct TreePlayer::State {
         world::AnimationGraph tree = ecs.get<world::AnimationGraph>(entity);
         const std::string id(world.id_of(entity));
         if (!tree.active || tree.root.empty()) {
-            // An inactive tree stops its audio tracks' sounds, as Godot's clears its caches.
+            // An inactive tree stops its audio tracks' sounds.
             stop_audio(world, entity, Mixer::Tree);
             auto& stored = ecs.get<world::AnimationGraph>(entity);
             clear_report(stored, true);
@@ -542,7 +544,7 @@ struct TreePlayer::State {
         }
     }
 
-    // An audio track, as Godot's AnimationMixer::_blend_process plays one: a seek starts the
+    // An audio track plays one: a seek starts the
     // stream of the key at or before the time from the middle, and playback the stream of the
     // last key it passed.
     void play_audio_track(world::World& world, entt::entity entity, std::string_view id,
@@ -577,7 +579,7 @@ struct TreePlayer::State {
         }
     }
 
-    // An animation track, as Godot's AnimationMixer::_blend_process plays one: a seek moves the
+    // An animation track plays one: a seek moves the
     // track's player to where the key at or before the time started its animation, and playback
     // plays the animation of the last key it passed, or stops the player at "[stop]".
     void play_animation_track(world::World& world, entt::entity on, std::string_view id,
@@ -642,15 +644,14 @@ struct TreePlayer::State {
         return it->second;
     }
 
-    // Mixes the animations a tick plays into the entity's components, as Godot's
-    // AnimationMixer::_blend_calc_total_weight, _blend_process and _blend_apply, and reports
+    // Mixes the animations a tick plays into the entity's components, and reports
     // what it played and the root motion.
     void mix(world::World& world, entt::entity entity, std::string_view id,
              const world::AnimationGraph& tree, EntityCache& cache, const TreeTick& tick,
              std::vector<std::pair<std::string, json::Value>>& events) {
         const TreeTable& table = cache.table;
         const std::size_t count = table.tracks.size();
-        // Godot's track caches, as _blend_init leaves them.
+        // The track caches.
         struct Mixed {
             float total = 0.0F;
             std::optional<std::vector<double>> value; // a value track's, as numbers
@@ -811,7 +812,7 @@ struct TreePlayer::State {
                         continue;
                     }
                     if (cached.angle && numbers->size() == 1) {
-                        // Godot's angle blend: never more than half a turn from the rest value.
+                        // Angle blend: never more than half a turn from the rest value.
                         auto rot_a = static_cast<float>((*out.value)[0]);
                         auto rot_b = static_cast<float>((*numbers)[0]);
                         auto rot_init = static_cast<float>((*init)[0]);
@@ -959,7 +960,7 @@ struct TreePlayer::State {
         }
     }
 
-    // Godot's root motion for one of an animation's tracks of the root motion node: its motion
+    // Root motion for one of an animation's tracks of the root motion node: its motion
     // since the last tick added to the root motion, and its value to the node's pose.
     static void root_motion(const scene3d::ModelAnimation& clip, std::size_t index,
                             const Animation& animation, const PlaybackInfo& info, float blend,

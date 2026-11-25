@@ -110,8 +110,8 @@ constexpr std::string_view kKeywords =
     "triangleadj true try typedef typename uint64_t uniform union unorm unsigned using "
     "vector virtual void volatile while ";
 
-// HLSL's intrinsic functions, which a param of the same name would hide, as Godot refuses
-// built-in function names.
+// HLSL's intrinsic functions, which a param of the same name would hide: built-in function names
+// are refused.
 constexpr std::string_view kIntrinsics =
     " abs acos all any asdouble asfloat asin asint asuint atan atan2 ceil clamp clip cos "
     "cosh countbits cross ddx ddx_coarse ddx_fine ddy ddy_coarse ddy_fine degrees "

@@ -1,6 +1,5 @@
-// Heightmap terrains, as the Terrain3D plugin for Godot (zylann.hterrain, MIT): its data and range
-// map (hterrain_data.gd, hterrain_data_range_map.gd), quad tree (util/quad_tree_lod.gd), chunk
-// seams (hterrain.gd's _update_chunk) and mesher (hterrain_mesher.gd), its generator's
+// Heightmap terrains, as the zylann.hterrain plugin (MIT): its data and range
+// map, quad tree, chunk seams and mesher, its generator's
 // perlin_noise and erode shaders and its brushes' shaders, ported to the CPU.
 //
 // HeightMap terrain for Godot Engine
@@ -1044,7 +1043,7 @@ std::vector<Vec3> terrain_faces(const TerrainData& data) {
     };
     for (int z = 0; z < r - 1; ++z) {
         for (int x = 0; x < r - 1; ++x) {
-            // Godot's HeightMapShape3D parser's two triangles of each quad.
+            // The two triangles of each quad.
             if (!data.hole(x, z) && !data.hole(x + 1, z) && !data.hole(x, z + 1)) {
                 faces.push_back(point(x, z));
                 faces.push_back(point(x + 1, z));

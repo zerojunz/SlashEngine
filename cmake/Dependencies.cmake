@@ -92,12 +92,12 @@ slash_add_dependency(box2d
         "BOX2D_AVX2 OFF"
         ${_slash_box2d_simd})
 
-# 3D physics, as Godot 4.4's Jolt module. It builds deterministic on every platform, with
+# 3D physics, with Jolt Physics. It builds deterministic on every platform, with
 # floating-point contraction off, and with no x86 instruction sets past SSE2 (as Box2D above),
 # since games run on machines from 2020 on. Its debug renderer, profiler, object streams, GPU
 # compute and floating-point exceptions stay out, and it takes this project's compiler flags and
 # runtime library rather than its own. A double-precision engine (SLASH_PRECISION) builds it with
-# double-precision positions, as Godot's Jolt module does with precision=double.
+# double-precision positions.
 if(SLASH_PRECISION STREQUAL "double")
     set(_slash_jolt_double ON)
 else()
@@ -197,7 +197,7 @@ if(httplib_ADDED)
     endif()
 endif()
 
-# Fonts and text, as Godot's: FreeType rasterizes glyphs with its auto-hinter, HarfBuzz shapes
+# Fonts and text: FreeType rasterizes glyphs with its auto-hinter, HarfBuzz shapes
 # text (with its own OpenType font functions, so it needs no FreeType inside), and msdfgen makes
 # multichannel signed distance fields for fonts that scale. FreeType reads TrueType and OpenType
 # outlines only: no compressed or color fonts, so no zlib, bzip2, PNG or Brotli.
@@ -243,11 +243,11 @@ if(msdfgen_ADDED)
     target_compile_definitions(slash_msdfgen PUBLIC MSDFGEN_PUBLIC= MSDFGEN_USE_CPP11)
 endif()
 
-# The default font, as Godot has one: Roboto Regular, built into the engine (cmake/embed.cmake),
+# The default font: Roboto Regular, built into the engine (cmake/embed.cmake),
 # so text draws before a game adds fonts of its own. Version 2 is Apache 2.0; later ones are not.
 slash_add_dependency(roboto DOWNLOAD_ONLY TRUE)
 
-# Audio decoding, as Godot imports sound: WAV and MP3 with miniaudio's decoders and Ogg Vorbis with
+# Audio decoding: WAV and MP3 with miniaudio's decoders and Ogg Vorbis with
 # stb_vorbis from its extras. engine/audio builds them (src/miniaudio.c) with no device backends,
 # threads or engine, since SDL plays the sound and the engine mixes it.
 slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
@@ -256,7 +256,7 @@ slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 # its one source file with the BSD queue.h it carries, the same on every platform.
 slash_add_dependency(libebur128 DOWNLOAD_ONLY TRUE)
 
-# Networking over reliable UDP, as Godot's ENetMultiplayerPeer: upstream ENet, built here from its
+# Networking over reliable UDP: upstream ENet, built here from its
 # C files (engine/net). Browsers have no UDP sockets, so the web has none.
 if(NOT EMSCRIPTEN)
     slash_add_dependency(enet DOWNLOAD_ONLY TRUE)
@@ -283,7 +283,7 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
-# WebSocket framing, as Godot's WSLPeer uses it (engine/net), over TCP sockets made with ENet's
+# WebSocket framing (engine/net), over TCP sockets made with ENet's
 # socket calls; not on the web, where the browser's WebSocket connects. Its handshake hashes
 # with Mbed TLS's SHA-1.
 if(NOT EMSCRIPTEN)
@@ -312,10 +312,10 @@ if(NOT EMSCRIPTEN)
 endif()
 
 # The Khronos OpenXR loader, which finds the headset's runtime (engine/xr), built from its
-# sources as Godot builds its thirdparty/openxr copy: on Windows, Linux, macOS and Android, with
+# sources: on Windows, Linux, macOS and Android, with
 # jsoncpp. On Android it asks the runtime broker for the active runtime through JNI (jnipp and
-# Collabora's android-jni-wrappers, which throw, so only there it keeps exceptions), as the
-# openxr_loader_for_android package Godot ships does. iOS has none and the web has WebXR instead.
+# Collabora's android-jni-wrappers, which throw, so only there it keeps exceptions). iOS has none
+# and the web has WebXR instead.
 if(NOT EMSCRIPTEN AND NOT IOS)
     slash_add_dependency(OpenXR-SDK DOWNLOAD_ONLY TRUE)
     if(OpenXR-SDK_ADDED)
@@ -490,34 +490,34 @@ if(opus_ADDED)
     endif()
 endif()
 
-# 3D models, as Godot imports glTF 2.0: cgltf parses .gltf and .glb files and MikkTSpace makes
-# the tangents a model leaves out, as Godot's SurfaceTool does (engine/scene3d); stb_image decodes
+# 3D models: cgltf parses .gltf and .glb files and MikkTSpace makes
+# the tangents a model leaves out (engine/scene3d); stb_image decodes
 # the JPEG textures models carry, which SDL can't (engine/render, beside PNG and BMP).
 slash_add_dependency(cgltf DOWNLOAD_ONLY TRUE)
 slash_add_dependency(mikktspace DOWNLOAD_ONLY TRUE)
 slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
-# Noise, as Godot's FastNoiseLite resource uses it (engine/procedural builds its one header with
+# Noise: FastNoiseLite (engine/procedural builds its one header with
 # no fused multiply-adds; it calls libm only for sqrtf, so noise is the same everywhere).
 slash_add_dependency(FastNoiseLite DOWNLOAD_ONLY TRUE)
-# FBX models, read with ufbx as Godot 4.3's importer reads them (engine/scene3d builds its one
+# FBX models, read with ufbx (engine/scene3d builds its one
 # source file).
 slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)
-# Lightmap UVs, unwrapped with xatlas as Godot's "Unwrap UV2 for Lightmap/AO" unwraps them
+# Lightmap UVs, unwrapped with xatlas
 # (engine/scene3d builds it through src/xatlas_build.cpp, which makes its charts the same
 # everywhere).
 slash_add_dependency(xatlas DOWNLOAD_ONLY TRUE)
-# Mesh LODs, simplified with meshoptimizer 1.0 as Godot 4.6's importer generates them
+# Mesh LODs, simplified with meshoptimizer 1.0
 # (engine/scene3d builds its simplifier with no fused multiply-adds, so LODs are the same
 # everywhere).
 slash_add_dependency(meshoptimizer DOWNLOAD_ONLY TRUE)
-# Convex decomposition, with V-HACD 4.1 as Godot's importer decomposes meshes into collision hulls
+# Convex decomposition, with V-HACD 4.1: meshes into collision hulls
 # (engine/scene3d builds its one header through src/vhacd_build.cpp; the patch makes its hulls the
 # same everywhere).
 slash_add_dependency(vhacd
     DOWNLOAD_ONLY TRUE
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/vhacd-deterministic.cmake)
 
-# Baking navigation meshes, as Godot does (engine/navigation): Recast voxelizes 3D geometry into
+# Baking navigation meshes (engine/navigation): Recast voxelizes 3D geometry into
 # polygons, and Clipper2 and PolyPartition merge, cut and split 2D outlines. No fused multiply-adds,
 # so bakes give the same polygons on every platform.
 slash_add_dependency(recastnavigation DOWNLOAD_ONLY TRUE)
@@ -550,8 +550,8 @@ if(polypartition_ADDED)
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
 endif()
 
-# CSG shapes, as Godot 4.6's (engine/scene3d/src/csg.cpp): Manifold's booleans, built as Godot
-# builds them, without its threads (MANIFOLD_PAR -1) or cross sections, and with no fused
+# CSG shapes (engine/scene3d/src/csg.cpp): Manifold's booleans, built without its threads
+# (MANIFOLD_PAR -1) or cross sections, and with no fused
 # multiply-adds, so a shape has the same triangles on every platform.
 slash_add_dependency(manifold DOWNLOAD_ONLY TRUE)
 if(manifold_ADDED)
@@ -617,7 +617,7 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT EMSCRIPTEN)
         target_compile_definitions(slash_zstd PRIVATE ZSTD_DISABLE_ASM ZSTD_MULTITHREAD=0)
     endif()
 
-    # OpenEXR heightmaps for terrain.import, read with tinyexr as Godot reads EXR images, its zlib
+    # OpenEXR heightmaps for terrain.import, read with tinyexr, its zlib
     # stb_image's (cmake/tinyexr_zlib.c) rather than the miniz it brings.
     slash_add_dependency(tinyexr DOWNLOAD_ONLY TRUE)
     if(tinyexr_ADDED)
@@ -913,7 +913,7 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT WIN32 AND NOT EMSCRIPTEN)
 endif()
 
 # AccessKit, which hands the controls' accessibility tree to the system's screen reader
-# (engine/accessibility) as Godot's AccessibilityDriverAccessKit does: accesskit-c's Rust crates,
+# (engine/accessibility): accesskit-c's Rust crates,
 # built by cargo from its Cargo.lock into a static library for Windows, macOS and Linux. Games
 # and tools leave it out where cargo, or Rust's standard library for the target, isn't installed
 # (`rustup target add <triple>` adds one); Android and iOS come later. The crates' licenses are

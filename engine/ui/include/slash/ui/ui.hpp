@@ -26,15 +26,15 @@
 #include <unordered_map>
 #include <vector>
 
-// UI, as Godot's Control nodes: Widget places a rect in its parent's by anchors and offsets,
+// UI: Widget places a rect in its parent's by anchors and offsets,
 // containers place their children, and Label, Panel, Picture and the rest draw in it. Theme
 // items (colors, constants, fonts, font sizes, icons and style boxes) come from each control's
-// overrides, the .theme.json themes of it and its parents, the project's theme and Godot's
+// overrides, the .theme.json themes of it and its parents, the project's theme and the built-in
 // default theme. layout() places every control of a world in a viewport, and draw_calls() turns
 // that into triangles for the canvas renderer, which draws them above the world. Text comes from
 // the world's text::Fonts, and themes and textures load through the assets it loads from.
 //
-// The "gui" system sends each tick's input events to controls, as Godot's Viewport does: the
+// The "gui" system sends each tick's input events to controls: the
 // mouse hovers them, clicks and touches press buttons, and the ui_* actions move focus and press
 // the focused button. It emits what happened as UI events (events()) and world events.
 //
@@ -45,39 +45,30 @@ namespace slash::ui {
 inline constexpr std::string_view kThemeSuffix = ".theme.json";
 
 struct Settings {
-    // The viewport controls are placed in when nothing gives its size, as Godot's
-    // display/window/size/viewport_width and _height.
+    // The viewport controls are placed in when nothing gives its size.
     Vec2 viewport{1280.0F, 720.0F};
-    // A .theme.json file every control uses after its own and its parents' themes, as Godot's
-    // gui/theme/custom; "" for none.
+    // A .theme.json file every control uses after its own and its parents' themes; "" for none.
     std::string theme;
     // Whether text may use fonts installed on the machine for characters the project's fonts
     // lack (for fonts that allow it). Off, text lays out the same on every machine, as it does
     // on the web.
     bool allow_system_fallback = true;
-    // Seconds the mouse rests on a control before its tooltip shows, as Godot's
-    // gui/timers/tooltip_delay_sec.
+    // Seconds the mouse rests on a control before its tooltip shows.
     double tooltip_delay_sec = 0.5;
-    // Where a tooltip shows from the pointer, as Godot's
-    // display/mouse_cursor/tooltip_position_offset.
+    // Where a tooltip shows from the pointer.
     Vec2 tooltip_position_offset{10.0F, 10.0F};
-    // Pixels the mouse moves with the left button held before a drag starts, as Godot's
-    // Viewport.gui_drag_threshold.
+    // Pixels the mouse moves with the left button held before a drag starts.
     int drag_threshold = 10;
-    // Seconds after the last edit before typing in a TextArea starts a new undo step, as
-    // Godot's gui/timers/text_edit_idle_detect_sec.
+    // Seconds after the last edit before typing in a TextArea starts a new undo step.
     double text_edit_idle_detect_sec = 3.0;
-    // The undo steps a TextArea keeps, as Godot's gui/common/text_edit_undo_stack_max_size.
+    // The undo steps a TextArea keeps.
     int text_edit_undo_stack_max_size = 1024;
-    // Milliseconds between the letters of one popup menu search, as Godot's
-    // gui/timers/incremental_search_max_interval_msec.
+    // Milliseconds between the letters of one popup menu search.
     int incremental_search_max_interval_msec = 2000;
-    // Seconds a button pressed by its shortcut shows pressed, as Godot's
-    // gui/timers/button_shortcut_feedback_highlight_time.
+    // Seconds a button pressed by its shortcut shows pressed.
     double button_shortcut_feedback_highlight_time = 0.2;
-    // When controls serve a screen reader, as Godot's accessibility/general/
-    // accessibility_support: "auto" (while one is in use), "always" or "disabled". Serving one,
-    // focus_mode "accessibility" takes focus as "all" does.
+    // When controls serve a screen reader: "auto" (while one is in use), "always" or "disabled".
+    // Serving one, focus_mode "accessibility" takes focus as "all" does.
     std::string accessibility_support = "auto";
     // Whether a screen reader is in use, as DisplayServer::accessibility_screen_reader_active:
     // a platform's accessibility backend sets it.
@@ -109,11 +100,11 @@ void set_viewport(world::World& world, Vec2 viewport);
 // Whether an entity is a control: it has Widget or one of the UI components that draw in or lay
 // out one (Label, ColorFill, Panel, a container and so on).
 [[nodiscard]] bool is_control(const world::World& world, entt::entity entity);
-// The control type an entity draws as, as Godot's class: "Button", "Label", "VBoxContainer" for
+// The control type an entity draws as: "Button", "Label", "VBoxContainer" for
 // a vertical StackBox and so on, or "Widget" when it has only a Widget.
 [[nodiscard]] std::string_view control_class(const world::World& world, entt::entity entity);
 
-// A style box, as Godot's StyleBox: what a panel or a bar draws behind its content, and the
+// A style box: what a panel or a bar draws behind its content, and the
 // margins its content keeps. Flat ones are rects with rounded corners, borders and a shadow
 // (StyleBoxFlat), texture ones a texture cut into nine parts (StyleBoxTexture), line ones a line
 // across the rect (StyleBoxLine), and empty ones draw nothing (StyleBoxEmpty). Sides are left,
@@ -251,7 +242,7 @@ struct Placed {
     // lists it, or the world's, and a child's its parent's. A drag's preview, over every canvas,
     // has canvases.size().
     std::size_t canvas = 0;
-    // In the parent's rect, before rotation and scale, as Godot's position and size.
+    // In the parent's rect, before rotation and scale.
     Vec2 position;
     Vec2 size;
     Vec2 minimum_size;
@@ -277,7 +268,7 @@ struct Box {
     Vec2 texture_size; // for texture style boxes: the texture's size in pixels
 };
 
-// What a button looks like, as Godot's BaseButton::DrawMode: hover_pressed is a toggle button
+// What a button looks like: hover_pressed is a toggle button
 // that is on and hovered, or one whose shortcut just pressed it.
 enum class DrawMode : std::uint8_t { Normal, Pressed, Hover, Disabled, HoverPressed };
 // "normal", "pressed", "hover", "disabled" or "hover_pressed".
@@ -366,7 +357,7 @@ struct LineEditView {
     float caret_x = 0.0F;
 };
 
-// One of a TextArea's gutters as laid out, as Godot's TextEdit::GutterInfo: a CodeEditor's
+// One of a TextArea's gutters as laid out: a CodeEditor's
 // main_gutter (breakpoints, bookmarks and executing lines) and line_numbers come first, then the
 // TextArea's own gutters.
 struct TextEditGutterView {
@@ -467,7 +458,7 @@ struct PopupItemView {
 };
 
 // An open popup menu as laid out: a PopupList's, or the list an Dropdown or MenuButton
-// opened. Godot draws it in a window of its own: a panel, with the list scrolled inside its
+// opened. It draws in a window of its own: a panel, with the list scrolled inside its
 // margins.
 struct PopupView {
     entt::entity owner = entt::null; // the PopupList, Dropdown or MenuButton
@@ -535,7 +526,7 @@ struct Layout {
     // after the rest of its tree.
     std::vector<Placed> controls;
     std::unordered_map<entt::entity, std::size_t> index; // entity to its place in controls
-    // Every control in tree order, as Godot's scene tree: by canvas, then parents before
+    // Every control in tree order: by canvas, then parents before
     // children and children in order, roots in the order their entities were made. Pointers hit
     // the last root first, a top_level control being a root of its own.
     std::vector<entt::entity> tree;
@@ -577,16 +568,16 @@ struct ThemeItems {
     std::map<std::string, std::string, std::less<>> icons;
     std::map<std::string, StyleBox, std::less<>> styles;
 };
-// The theme items a control type has in Godot's default theme, its base types' included: a
+// The theme items a control type has in the default theme, its base types' included: a
 // VBoxContainer has StackBox's, Container's and Widget's.
 [[nodiscard]] const ThemeItems& default_theme(std::string_view type);
-// A control type and the types it is built on, as Godot's classes: "Label" gives Label and
+// A control type and the types it is built on: "Label" gives Label and
 // Widget. Empty for a type that isn't one.
 [[nodiscard]] std::vector<std::string_view> base_types(std::string_view type);
 // Every control type, for suggestions.
 [[nodiscard]] const std::vector<std::string_view>& control_types();
 
-// A .theme.json file, as Godot's Theme: items by type, a type being a control type or a variation
+// A .theme.json file: items by type, a type being a control type or a variation
 // of one (base_type), plus a font and a font size for every type that has none.
 struct Theme {
     struct Type {
@@ -618,7 +609,7 @@ struct ThemeItem {
 [[nodiscard]] std::vector<ThemeItem> theme_items(const world::World& world, text::Fonts& fonts,
                                                  entt::entity entity);
 
-// Icons built into the engine, as Godot's default theme draws them from its SVG files: theme
+// Icons built into the engine, drawn from its SVG files: theme
 // icons name them as "builtin:" and the name, e.g. "builtin:radio_checked".
 inline constexpr std::string_view kBuiltinPrefix = "builtin:";
 // A built-in icon by its whole path ("builtin:checked"), or nullptr.
@@ -684,7 +675,7 @@ struct DrawList {
 
 // ---- Buttons, focus and hover ----
 
-// Something controls did, as Godot's signals: "pressed", "toggled", "button_down" and
+// Something controls did: "pressed", "toggled", "button_down" and
 // "button_up" from buttons; "text_changed", "text_submitted", "text_change_rejected" and
 // "editing_toggled" from LineEdits; "value_changed", "drag_started" and "drag_ended" from
 // sliders; "value_changed" and "scrolling" from scroll bars; "scroll_started" and
@@ -723,15 +714,14 @@ struct UiEvent {
 [[nodiscard]] std::span<const UiEvent> events(const world::World& world);
 // Whether a button emitted pressed that tick.
 [[nodiscard]] bool was_pressed(const world::World& world, entt::entity button);
-// Presses a button at the next tick, as Godot's BaseButton::press: a toggle button toggles. A
+// Presses a button at the next tick: a toggle button toggles. A
 // disabled one isn't pressed.
 void press(world::World& world, entt::entity button);
 [[nodiscard]] DrawMode draw_mode(const world::World& world, entt::entity button);
 
-// The control with focus, which gets the ui_* actions first, or entt::null, as Godot's
-// gui_get_focus_owner.
+// The control with focus, which gets the ui_* actions first, or entt::null.
 [[nodiscard]] entt::entity focus_owner(const world::World& world);
-// Gives a control focus and shows it, as Godot's grab_focus; false if its focus_mode is none.
+// Gives a control focus and shows it; false if its focus_mode is none.
 bool grab_focus(world::World& world, entt::entity control);
 void release_focus(world::World& world);
 // The control under the mouse, or entt::null.
@@ -762,10 +752,10 @@ bool select_item(world::World& world, entt::entity owner, int index);
 
 // ---- Tooltips and drag and drop ----
 
-// Shows a control's tooltip now, below its middle, as Godot's Viewport::show_tooltip; nothing
+// Shows a control's tooltip now, below its middle; nothing
 // shows when it and its parents have no tooltip_text.
 void show_tooltip(world::World& world, entt::entity control);
-// Hides the tooltip shown and stops the mouse's rest timer, as Godot's cancel_tooltip.
+// Hides the tooltip shown and stops the mouse's rest timer.
 void cancel_tooltip(world::World& world);
 // The tooltip shown: the control whose it is (or the popup menu whose item's), or entt::null,
 // its text and where the pointer came to rest.
@@ -776,7 +766,7 @@ struct Tooltip {
 };
 [[nodiscard]] Tooltip tooltip(const world::World& world);
 
-// A game's own drag and drop for a control, as Godot's Control::set_drag_forwarding: each call
+// A game's own drag and drop for a control: each call
 // set is used instead of what the control's DragAndDrop says. at is the pointer in the
 // control's rect. get_drag_data returns what a drag from there carries (null for no drag) and
 // may call set_drag_preview; can_drop_data says whether the control takes data dropped there;
@@ -788,11 +778,11 @@ struct DragForwarding {
 };
 // Sets a control's drag forwarding, kept by entity ID; a forwarding with no calls removes it.
 void set_drag_forwarding(world::World& world, entt::entity control, DragForwarding forwarding);
-// Shows a control at the pointer while the drag goes on, as Godot's set_drag_preview: it is
+// Shows a control at the pointer while the drag goes on: it is
 // drawn over the other controls even if hidden, and must have no parent. Only while a drag is
 // starting or going on, as inside get_drag_data.
 void set_drag_preview(world::World& world, entt::entity preview);
-// Starts a drag of data from a control without the mouse, as Godot's Control::force_drag; it
+// Starts a drag of data from a control without the mouse; it
 // drops where the left mouse button is next pressed or let go.
 void force_drag(world::World& world, entt::entity from, json::Value data,
                 entt::entity preview = entt::null);
@@ -801,7 +791,7 @@ void force_drag(world::World& world, entt::entity from, json::Value data,
 // tick emits drag_begin, drop_data if to (or a parent) takes it, and drag_end. False if either
 // has no ID.
 bool drag_and_drop(world::World& world, entt::entity from, entt::entity to);
-// Whether a drag goes on, as Godot's gui_is_dragging, and what it carries (null for none).
+// Whether a drag goes on, and what it carries (null for none).
 [[nodiscard]] bool is_dragging(const world::World& world);
 [[nodiscard]] json::Value drag_data(const world::World& world);
 // Whether the last drag was dropped on a control that took it, as gui_is_drag_successful.
@@ -849,12 +839,12 @@ struct SearchOptions {
 text_edit_search_all(std::string_view text, std::string_view key, const SearchOptions& options);
 
 // What the TextField being edited asks of the platform (text input, where its caret is, the
-// on-screen keyboard), as Godot's LineEdit asks DisplayServer; inactive when none is. Games pass
+// on-screen keyboard); inactive when none is. Games pass
 // it to SdlReader::set_text_input each frame.
 [[nodiscard]] input::TextInput text_input(const world::World& world);
 
-// The clipboard LineEdits cut, copy and paste with, as Godot's DisplayServer::clipboard_get and
-// clipboard_set. The world keeps its own text, so headless runs and tests have one; a backend
+// The clipboard LineEdits cut, copy and paste with. The world keeps its own text, so headless
+// runs and tests have one; a backend
 // (Game and slash-cli run give SDL's when they have a window) shares it with the system's.
 struct ClipboardBackend {
     std::function<std::string()> get;

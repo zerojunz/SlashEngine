@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/material.hpp"
 
 #include "graph.hpp"
@@ -170,7 +171,7 @@ std::vector<std::string_view> op_names() {
 // Where an operand's value comes from.
 enum class Source : std::uint8_t { Register, Literal, Param, Time, Node, Texture };
 
-// A particle graph's stages, as Godot's particle shaders' start() and process().
+// A particle graph's stages: start() and process().
 constexpr std::uint32_t kStartStage = 1;
 constexpr std::uint32_t kProcessStage = 2;
 
@@ -203,7 +204,7 @@ constexpr render::Swizzle lane(std::uint8_t component) {
 // The zw half of a register, as a vec2.
 constexpr render::Swizzle kZw{2, 3, 3, 3};
 
-// Inputs, as Godot's canvas_item shaders name them, lowercased.
+// Inputs, named as canvas shaders name them, lowercased.
 constexpr std::array<Input, 6> kInputs{{
     register_input("uv", Kind::Vec2, render::kUvRegister),
     register_input("color", Kind::Vec4, render::kColorRegister),
@@ -223,8 +224,8 @@ constexpr std::array<Input, 6> kInputs{{
      .stages = 0},
 }};
 
-// A particle graph's inputs, in the registers render/particles.hpp lays out; Godot's particle
-// shaders' built-ins, lowercased, where it has them.
+// A particle graph's inputs, in the registers render/particles.hpp lays out; the particle shaders'
+// built-ins, lowercased, where there are any.
 constexpr std::array<Input, 20> kParticleInputs{{
     register_input("position", Kind::Vec2, render::kParticleMotionRegister),
     register_input("velocity", Kind::Vec2, render::kParticleMotionRegister, kZw),
@@ -329,8 +330,7 @@ constexpr GraphSpec kParticleSpec{.inputs = kParticleInputs,
 constexpr std::array<std::string_view, 6> kParamTypes = {"float", "vec2",  "vec3",
                                                          "vec4",  "color", "texture"};
 constexpr std::array<std::string_view, 3> kFilters = {"inherit", "linear", "nearest"};
-// An sRGB channel made linear, as Godot's Color::srgb_to_linear, with the engine's own exp and
-// ln so it is the same everywhere.
+// An sRGB channel made linear, with the engine's own exp and ln so it is the same everywhere.
 float srgb_to_linear(float c) {
     if (c <= 0.04045F) {
         return c / 12.92F;
@@ -338,7 +338,7 @@ float srgb_to_linear(float c) {
     return slash::exp(2.4F * slash::ln((c + 0.055F) / 1.055F));
 }
 
-// The render modes a spatial material takes, as Godot's.
+// The render modes a spatial material takes.
 constexpr std::array<std::string_view, 11> kRenderModes = {
     "blend_mix",    "blend_add",        "blend_sub",          "blend_mul",
     "cull_back",    "cull_front",       "cull_disabled",      "unshaded",
@@ -2040,7 +2040,7 @@ Result<MaterialInstance> instantiate(const CanvasMaterial& material,
         } else if (param.type == "texture") {
             instance.textures.at(*param.slot - 1) = texture;
         } else if (param.type == "color" && spatial) {
-            // Linear, as Godot's source_color hint makes a uniform's color.
+            // Linear, as the source_color hint makes a uniform's color.
             std::array<float, 4> value = param.value;
             for (std::size_t i = 0; i < 3; ++i) {
                 value.at(i) = srgb_to_linear(value.at(i));

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/world/canvas_layer.hpp"
 
 #include "slash/world/world.hpp"
@@ -10,7 +11,7 @@
 namespace slash::world {
 namespace {
 
-// Godot's Math::fposmod: x modulo y with y's sign.
+// x modulo y with y's sign.
 float fposmod(float x, float y) {
     float value = std::fmod(x, y);
     if ((value < 0.0F && y > 0.0F) || (value > 0.0F && y < 0.0F)) {
@@ -19,7 +20,7 @@ float fposmod(float x, float y) {
     return value + 0.0F;
 }
 
-// Godot's CLAMP.
+// Value limited to low and high.
 float clamped(float value, float low, float high) {
     if (value < low) {
         return low;
@@ -151,7 +152,7 @@ Vec2 parallax_screen_offset(const CameraView& view, Vec2 screen_size) {
 }
 
 Vec2 parallax_position(const Parallax2D& parallax, Vec2 scale, Vec2 screen_size) {
-    // Godot's Parallax2D::_update_scroll, line for line.
+    // The parallax scroll, step by step.
     const Vec2 screen_offset = parallax.screen_offset;
     Vec2 scroll = screen_offset;
     if (parallax.limit_begin.x <= parallax.limit_end.x - screen_size.x) {

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/physical_bones.hpp"
 
 #include <algorithm>
@@ -5,8 +6,7 @@
 #include <memory>
 #include <string>
 
-// Godot 4.6's BoneSimulation3D and the binding half of SimulatedBone3D
-// (scene/3d/physics/physical_bone_simulator_3d.cpp, physical_bone_3d.cpp). The bodies and joints
+// BoneSimulation3D and the binding half of SimulatedBone3D. The bodies and joints
 // are engine/physics3d's.
 namespace slash::scene3d {
 namespace {

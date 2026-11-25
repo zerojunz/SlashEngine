@@ -227,8 +227,8 @@ Vec3 point_of(const json::Value& value, bool three_d) {
             static_cast<float>(xyz.at(1).as_double())};
 }
 
-// The errors past the schema: indices out of range or used twice, and polygons that turn both
-// ways round. Polygons can go either way round, as Godot's, but all their corners the same way.
+// The errors past the schema: indices out of range or used twice, and polygons that turn both ways
+// round. Polygons can go either way round, but all their corners the same way.
 std::vector<json::ValidationError> check_polygons(const json::Value& doc, bool three_d) {
     std::vector<json::ValidationError> errors;
     std::vector<Vec3> vertices;

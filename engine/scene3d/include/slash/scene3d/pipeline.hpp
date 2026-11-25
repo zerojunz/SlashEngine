@@ -18,15 +18,15 @@ namespace slash::render {
 struct Scene3D;
 }
 
-// Pipeline files, as Godot 4.3's Compositor resource and its CompositorEffects: a .pipeline.json
-// file that a Environment3D's or a Camera3D's compositor names (the camera's wins, as Godot's)
+// Pipeline files: a .pipeline.json
+// file that a Environment3D's or a Camera3D's compositor names (the camera's wins)
 // turns the frame's passes off and adds the game's own screen passes. Each effect is a compositor
 // material (a .material.json file with "shader_type": "compositor", whose fragment() reads
 // SCREEN_TEXTURE, DEPTH_TEXTURE and NORMAL_ROUGHNESS_TEXTURE and writes COLOR) drawn over the 3D
-// world at one point of a Forward+ frame (render::EffectCallback), in the file's order within a
+// world at one point of a clustered frame (render::EffectCallback), in the file's order within a
 // point; its code names a C++ callback the game registers, run each frame before drawing with the
-// effect to change. Compatibility and the OpenGL devices draw none, as Godot's Compatibility
-// renderer has no compositor.
+// effect to change. The compatibility renderer and the OpenGL devices draw none, as they have
+// no compositor.
 namespace slash::scene3d {
 
 inline constexpr std::string_view kPipelineSuffix = ".pipeline.json";
@@ -38,7 +38,7 @@ inline constexpr std::array<std::string_view, 12> kPipelinePasses{
     "ssao",  "ssr", "glow",          "adjustments", "subsurface", "volumetric_fog",
     "sdfgi", "dof", "auto_exposure", "taa",         "decals",     "fog"};
 
-// One of a pipeline file's effects, as Godot's CompositorEffect.
+// One of a pipeline file's effects.
 struct PipelineEffect {
     std::string name;
     bool enabled = true;
@@ -56,7 +56,7 @@ struct PipelineFile {
     std::vector<PipelineEffect> effects;
 };
 
-// Godot's names of the callback points: "pre_opaque", "post_opaque", "post_sky",
+// The names of the callback points: "pre_opaque", "post_opaque", "post_sky",
 // "pre_transparent" and "post_transparent".
 [[nodiscard]] std::string_view effect_callback_name(render::EffectCallback callback);
 [[nodiscard]] std::optional<render::EffectCallback> effect_callback_named(std::string_view name);
@@ -70,11 +70,11 @@ struct PipelineFile {
 // Reads a pipeline file that validates.
 [[nodiscard]] Result<PipelineFile> parse_pipeline(const json::Value& doc);
 
-// A game's code for an effect, as Godot's CompositorEffect._render_callback: run each frame
+// A game's code for an effect: run each frame
 // before the effect draws, it may change the effect's material_params, enabled and anything else
 // (but not its name).
 using CompositorCode = std::function<void(const world::World& world, PipelineEffect& effect)>;
-// Registers code by name for every world, as Godot registers a script class; registering a name
+// Registers code by name for every world; registering a name
 // again replaces it (as a reload of the game's code does), and empty code removes it. Call it
 // from a SLASH_GAME_MODULE function.
 void add_compositor_code(const std::string& name, CompositorCode code);

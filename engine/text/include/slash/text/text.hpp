@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/asset/assets.hpp"
@@ -16,7 +18,7 @@
 #include <tuple>
 #include <vector>
 
-// Fonts and text layout, as Godot's text server: fonts are .ttf and .otf files, or .font.json
+// Fonts and text layout: fonts are .ttf and .otf files, or .font.json
 // files that name one with settings and fallbacks; HarfBuzz shapes text with them, characters a
 // font lacks come from its fallbacks and then from fonts installed on the machine, right-to-left
 // and left-to-right text mix in a line by the Unicode Bidirectional Algorithm (SheenBidi), lines
@@ -34,7 +36,7 @@
 namespace slash::text {
 
 inline constexpr std::string_view kFontSuffix = ".font.json";
-// Godot's default font size.
+// The default font size.
 inline constexpr int kDefaultFontSize = 16;
 inline constexpr int kMaxFontSize = 1024;
 
@@ -49,8 +51,8 @@ enum class Hinting : std::uint8_t {
     Normal, // snapped both ways
 };
 
-// A .font.json file: a font file and how it draws, as Godot's FontFile import options, with
-// Godot's Font fallbacks and support overrides.
+// A .font.json file: a font file and how it draws, with its import options,
+// fallbacks and support overrides.
 //
 //   {"format": 1, "font": "fonts/Title.ttf", "multichannel_signed_distance_field": true,
 //    "fallbacks": ["fonts/NotoSansJP.ttf", "fonts/NotoSansArabic.ttf"]}
@@ -70,10 +72,10 @@ struct FontSettings {
     // glyph for; theirs come after them.
     std::vector<std::string> fallbacks;
     // When no font of the chain has a character, look for one installed on the machine, as
-    // Godot's allow_system_fallback. The first font of a chain decides.
+    // Whether to fall back to installed fonts. The first font of a chain decides.
     bool allow_system_fallback = true;
     // Whether the font is for a language (BCP 47, such as "ja") or a script (ISO 15924, such as
-    // "Hani"), as Godot's support overrides; "*" stands for any other. Fallbacks for the text's
+    // "Hani"); "*" stands for any other. Fallbacks for the text's
     // language and script are tried first; a font says yes to anything it doesn't list.
     std::map<std::string, bool, std::less<>> language_support;
     std::map<std::string, bool, std::less<>> script_support;
@@ -114,7 +116,7 @@ struct FontMetrics {
     [[nodiscard]] float height() const { return ascent + descent; }
 };
 
-// Where lines wrap, as Godot's autowrap modes.
+// Where lines wrap.
 enum class Autowrap : std::uint8_t {
     Off,       // only at line breaks
     Arbitrary, // anywhere, between characters
@@ -122,7 +124,7 @@ enum class Autowrap : std::uint8_t {
     WordSmart, // between words, and inside a word longer than the line
 };
 
-// How a line too long for its width is cut, as Godot's text_overrun_behavior.
+// How a line too long for its width is cut.
 enum class Overrun : std::uint8_t {
     NoTrimming,
     TrimChar,         // at the last character that fits
@@ -131,7 +133,7 @@ enum class Overrun : std::uint8_t {
     TrimWordEllipsis, // at the last word that fits with an ellipsis after it
 };
 
-// The direction of a paragraph, as Godot's TextServer::Direction: from its first letter that
+// The direction of a paragraph: from its first letter that
 // has one (left to right if none does), or set.
 enum class Direction : std::uint8_t {
     Auto,
@@ -139,7 +141,7 @@ enum class Direction : std::uint8_t {
     Rtl,
 };
 
-// The mode, behavior or direction with Godot's name ("word_smart", "trim_word_ellipsis",
+// The mode, behavior or direction with its name ("word_smart", "trim_word_ellipsis",
 // "rtl"), or nullopt.
 [[nodiscard]] std::optional<Autowrap> parse_autowrap(std::string_view name);
 [[nodiscard]] std::optional<Overrun> parse_overrun(std::string_view name);
@@ -167,7 +169,7 @@ struct LayoutOptions {
     // The text's language (BCP 47, such as "ja" or "sr-Latn"), which picks fallback fonts and
     // the glyphs a font has for it; "" for none.
     std::string language{}; // NOLINT(readability-redundant-member-init)
-    // Where tabs stop, as Godot's TextParagraph tab_stops: each tab reaches the next stop after
+    // Where tabs stop: each tab reaches the next stop after
     // the text since the last tab, the stops' widths taken in turn. None leaves tabs as the font
     // has them.
     std::vector<float> tab_stops{}; // NOLINT(readability-redundant-member-init)
@@ -289,7 +291,7 @@ public:
               std::string_view ellipsis = "…", bool force_ellipsis = false);
 
     // A glyph's image at a font size, with an outline outline_size wide (0 for none; a quarter of
-    // it in pixels on each side, as Godot's), made the first time it is asked for. nullopt for
+    // it in pixels on each side), made the first time it is asked for. nullopt for
     // glyphs that draw nothing, such as spaces.
     [[nodiscard]] std::optional<GlyphImage> glyph(std::uint32_t face, std::uint32_t index, int size,
                                                   int outline_size = 0);
@@ -311,14 +313,14 @@ private:
 // Where text may be cut into user-perceived characters (extended grapheme clusters, as Unicode's
 // UAX #29 and ICU's character break iterator): the end of each, in characters from the start. A
 // letter and its accents, a flag or an emoji sequence joined by U+200D is one, as is a Hangul
-// syllable made of jamo. Godot's TextServer::string_get_character_breaks.
+// syllable made of jamo.
 [[nodiscard]] std::vector<std::uint32_t> character_breaks(std::u32string_view text);
 
-// One line of a layout seen as Godot's TextServer sees a shaped text for editing it: its
+// One line of a layout as it is seen for editing it: its
 // clusters (the glyphs that show some characters together) in display order, so carets,
 // selections and clicks map between character positions and x. Positions count characters (code
 // points) from the start of the text; x counts pixels from the line's left edge, its spaces
-// included, as Godot's shaped text does.
+// included.
 class ShapedLine {
 public:
     struct Cluster {
@@ -389,7 +391,7 @@ private:
     float height_ = 0.0F;
 };
 
-// Text in upper case, as Godot's Label uppercase: Latin, Greek and Cyrillic letters.
+// Text in upper case: Latin, Greek and Cyrillic letters.
 [[nodiscard]] std::string to_upper(std::string_view text);
 // One character in upper case, the same way.
 [[nodiscard]] char32_t to_upper(char32_t c);

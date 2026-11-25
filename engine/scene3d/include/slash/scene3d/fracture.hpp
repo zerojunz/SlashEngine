@@ -17,7 +17,7 @@ namespace slash::world {
 class World;
 }
 
-// Destruction's geometry (Godot has none; Unreal's geometry collections are the model): a closed
+// Destruction's geometry (Unreal's geometry collections are the model): a closed
 // mesh cut into Voronoi cells around points a pattern places in its bounds, cut again as pieces
 // break again, each cell's share made with
 // Manifold's booleans, as CSG shapes are. physics3d breaks Destructible3D bodies into these

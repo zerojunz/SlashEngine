@@ -195,7 +195,7 @@ Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend
             break;
         case Backend::OpenGl:
         case Backend::OpenGlEs:
-            // The OpenGL devices draw no compositor effects, as Godot's Compatibility renderer.
+            // The OpenGL devices draw no compositor effects, as the compatibility renderer.
             present = shader.type == ShaderType::Compositor ||
                       (!shader.glsl_vertex.empty() && !shader.glsl_fragment.empty());
             break;

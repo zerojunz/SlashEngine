@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/navigation/navigation.hpp"
 
 #include "core.hpp"
@@ -146,7 +147,7 @@ struct MapError {
     std::string message;
 };
 
-// One map: what it was built from and the map itself, as Godot's NavMap and its iteration.
+// One map: what it was built from and the map itself.
 struct MapState {
     Map kind = Map::ThreeD;
     bool built = false;
@@ -158,8 +159,7 @@ struct MapState {
     std::vector<MapError> errors;
 };
 
-// An agent's path and progress, as the state of Godot's NavigationAgent nodes. Paths are in the
-// map's space.
+// An agent's path and progress. Paths are in the map's space.
 struct AgentState {
     bool seen = false;
     Vec3 last_target; // target_position as last seen, to tell when it changes
@@ -170,9 +170,9 @@ struct AgentState {
     std::size_t path_index = 0;
     std::uint64_t last_map_iteration_id = 0;
     Path<Vec3> path;
-    // Avoidance, in the map's space, as Godot's NavAgent and its RVO agent: the velocity the
-    // last step gave it (RVO2's velocity_, which the next step starts from), the velocity it
-    // last asked for, and the safe velocity it was last given.
+    // Avoidance, in the map's space: the velocity the last step gave it (RVO2's velocity_, which
+    // the next step starts from), the velocity it last asked for, and the safe velocity it was last
+    // given.
     Vec3 rvo_velocity;
     Vec3 preferred_velocity;
     Vec3 safe_velocity;
@@ -187,7 +187,7 @@ struct TileBakeKey {
     std::string source;
     Vec2i atlas;
     int alternative = 0;
-    int turns = 0; // flip_h, flip_v and transpose as bits 0, 1 and 2, as Godot keys them
+    int turns = 0; // flip_h, flip_v and transpose as bits 0, 1 and 2
     std::size_t layer = 0;
 
     friend auto operator<=>(const TileBakeKey& a, const TileBakeKey& b) {
@@ -196,9 +196,8 @@ struct TileBakeKey {
     }
 };
 
-// One tile set's tiles' navigation polygons, baked when a cell first needs them and kept while
-// a layer uses the set, as Godot's TileData keeps its navigation polygons and their turned
-// copies.
+// One tile set's tiles' navigation polygons, baked when a cell first needs them and kept while a
+// layer uses the set, with a tile's navigation polygons and their turned copies.
 struct TileBakes {
     std::map<TileBakeKey, std::shared_ptr<const NavigationPolygon>> polygons;
 };
@@ -894,7 +893,7 @@ Path<Vec3> run_query(const MapState& m, Vec3 start, Vec3 target, const PathOptio
     return out;
 }
 
-// ---- Agents, as Godot's NavigationAgent2D and NavAgent3D.
+// ---- Agents.
 
 json::Value point_json(Map kind, Vec3 point) {
     if (kind == Map::TwoD) {
@@ -933,8 +932,8 @@ public:
         agent_.last_waypoint_reached = false;
     }
 
-    // A target_position changed since it was last seen counts as set; a new agent's counts if
-    // it isn't the origin, as a scene's saved property sets Godot's.
+    // A target_position changed since it was last seen counts as set; a new agent's counts if it
+    // isn't the origin, as a scene's saved property sets it.
     void notice_target() {
         if (!agent_.seen) {
             agent_.seen = true;
@@ -1045,8 +1044,7 @@ private:
         }
     }
 
-    // NavigationAgent3D::_trigger_waypoint_reached, with every metadata flag on, as Godot's
-    // default.
+    // NavigationAgent3D::_trigger_waypoint_reached, with every metadata flag on.
     void waypoint_reached() {
         const std::size_t index = agent_.path_index;
         const Vec3 waypoint = agent_.path.points[index];
@@ -1125,8 +1123,8 @@ Map agent_map(const world::World& world, entt::entity entity) {
     return has_agent(world, Map::ThreeD, entity) ? Map::ThreeD : Map::TwoD;
 }
 
-// The agent's state, brought up to date with the maps and its target_position, then its
-// path, as Godot's getters call _update_navigation. Null if the entity has no agent.
+// The agent's state, brought up to date with the maps and its target_position, then its path, as
+// the getters do. Null if the entity has no agent.
 AgentState* refreshed(world::World& world, entt::entity entity, Map kind) {
     State* state = synced(world);
     if (state == nullptr || !has_agent(world, kind, entity)) {
@@ -1152,7 +1150,7 @@ void drop_stale_agents(const world::World& world, State& state) {
     });
 }
 
-// ---- Avoidance, as Godot's NavMap avoidance step: each avoiding agent and obstacle goes into an
+// ---- Avoidance: each avoiding agent and obstacle goes into an
 // RVO2 simulation, which gives each agent a safe velocity.
 
 rvo::V2 ground(Vec3 point) {
@@ -1162,7 +1160,7 @@ rvo::V3 rvo_point(Vec3 point) {
     return {static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z)};
 }
 
-// Godot's Vector3::limit_length (and Vector2's, for (x, 0, y)).
+// Limits a vector's length (and a 2D one's, for (x, 0, y)).
 Vec3 limit_length(Vec3 v, float length) {
     const float l = std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
     if (l > 0.0F && length < l) {

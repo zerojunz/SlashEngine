@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "bone_constraints.hpp"
 
 #include "slash/core/easing.hpp"
@@ -9,9 +10,8 @@
 #include <numbers>
 #include <string_view>
 
-// Ports of Godot 4.6's BoneLookAt3D and BoneCopy3D. Each function names the one
-// it follows. Godot works in the skeleton's global space; these work in the model's, which only
-// differs by the skeleton's own transform, so directions come out the same.
+// BoneLookAt3D and BoneCopy3D. They work in the model's space rather than the skeleton's global
+// space, which only differs by the skeleton's own transform, so directions come out the same.
 namespace slash::scene3d::detail {
 namespace {
 

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/render/texture_graph.hpp"
 
 #include "slash/core/jobs.hpp"
@@ -179,7 +180,7 @@ Color image_sample(const GraphImage& image, bool tiling, float u, float v) {
     return out;
 }
 
-// The ramp in a pass's params, as Godot's Gradient with linear interpolation in sRGB.
+// The ramp in a pass's params, a gradient with linear interpolation in sRGB.
 Color ramp(const std::array<float, kGraphParams>& p, float offset) {
     const int count = std::clamp(to_int(p[kGraphRampAt]), 0, static_cast<int>(kMaxGraphRampPoints));
     const auto point = [&](int i) {
@@ -208,7 +209,7 @@ Color ramp(const std::array<float, kGraphParams>& p, float offset) {
     return color(point(count - 1));
 }
 
-// Godot's FastNoiseLite resource, set up from a pass's params.
+// A FastNoiseLite generator, set up from a pass's params.
 struct GraphNoise {
     FastNoiseLite noise;
     FastNoiseLite warp;
@@ -236,7 +237,7 @@ struct GraphNoise {
         warp.SetSeed(to_int(p[1]));
         warp.SetDomainWarpAmp(p[14]);
         warp.SetFrequency(p[15]);
-        // Godot's _convert_domain_warp_fractal_type_enum: none, progressive, independent.
+        // The domain warp's fractal type: none, progressive, independent.
         const int fractal = to_int(p[16]);
         FastNoiseLite::FractalType warp_fractal = FastNoiseLite::FractalType_None;
         if (fractal == 1) {
@@ -253,7 +254,7 @@ struct GraphNoise {
         oz = p[22];
     }
 
-    // Godot's FastNoiseLite::get_noise_2d: the offset added, the domain warped, then the noise.
+    // The offset added, the domain warped, then the noise.
     [[nodiscard]] float at(float x, float y) const {
         x += ox;
         y += oy;
@@ -264,8 +265,8 @@ struct GraphNoise {
     }
 };
 
-// One noise value as Godot's Noise::_generate_seamless_image places it, without its 8-bit
-// steps: the larger image's quadrants swapped, its skirt blended over the middle seams.
+// One noise value as a seamless image places it, without its 8-bit steps: the larger image's
+// quadrants swapped, its skirt blended over the middle seams.
 float seamless_noise(const GraphNoise& noise, int x, int y, int width, int height, float sx,
                      float sy, float skirt) {
     const int skirt_w = static_cast<int>(std::max(1.0F, static_cast<float>(width) * skirt));
@@ -274,7 +275,7 @@ float seamless_noise(const GraphNoise& noise, int x, int y, int width, int heigh
     const int half_h = height / 2;
     const int src_w = width + skirt_w;
     const int src_h = height + skirt_h;
-    // The source image at (x, y) read as Godot's img_buff with each mode's modulo.
+    // The source image at (x, y) read with each mode's modulo.
     const auto src = [&](int px, int py, bool alt_x, bool alt_y) {
         const int mx = alt_x ? width : src_w;
         const int my = alt_y ? height : src_h;

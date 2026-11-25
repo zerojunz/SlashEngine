@@ -18,8 +18,7 @@ std::string key_of(const world::World& world, entt::entity entity) {
     return id.empty() ? "#" + std::to_string(entt::to_integral(entity)) : std::string(id);
 }
 
-// One Video's playback, as Godot's VideoStreamPlayback: its stream, the decoder and
-// the frame it shows.
+// One Video's playback: its stream, the decoder and the frame it shows.
 struct Player {
     std::string stream;
     asset::Handle<VideoFile> handle;
@@ -87,7 +86,7 @@ struct VideoSystem {
                 player.fresh = true;
             }
             if (component.playing && !component.paused && player.file) {
-                // As Godot's NOTIFICATION_INTERNAL_PROCESS: no time passes on the first tick.
+                // No time passes on the first tick.
                 if (!player.fresh) {
                     component.stream_position += tick_seconds * component.speed_scale;
                 }

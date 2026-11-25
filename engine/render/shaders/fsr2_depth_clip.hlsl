@@ -1,6 +1,6 @@
 // FSR 2's depth clip pass (ffx_fsr2_depth_clip.h): how far each render pixel's surface was hidden
 // in the frame before, from the reconstruct pass's depths, with the world's color prepared for the
-// accumulate pass (YCoCg); and the dilated reactive masks. Godot gives FSR 2 no transparency and
+// accumulate pass (YCoCg); and the dilated reactive masks. FSR 2 gets no transparency and
 // composition mask and draws no reactive mask here yet, so the masks are 0 and the second only
 // carries the motion divergence. Keep it in step with src/fsr2.cpp, its CPU twin.
 //

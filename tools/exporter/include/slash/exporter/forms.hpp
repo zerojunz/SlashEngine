@@ -10,9 +10,8 @@
 #include <string_view>
 #include <vector>
 
-// Textures in the forms exports ship: KTX2 files of the texels as each platform's GPUs sample
-// them, made once and kept in the asset library's cache, as Godot imports a texture once into
-// .godot/imported.
+// Textures in the forms exports ship: KTX2 files of the texels as each platform's GPUs sample them,
+// made once and kept in the asset library's cache.
 namespace slash::exporter {
 
 // The compressed formats a platform's GPUs sample: BC7 on macOS, Windows and Linux, ASTC 4x4 on

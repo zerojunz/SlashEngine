@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "mesh_shading.hpp"
@@ -10,35 +11,33 @@
 #include <span>
 #include <vector>
 
-// What every device shares to upscale a Forward+ frame's 3D with AMD's FidelityFX Super Resolution
-// 2.2, as Godot 4.6's scaling_3d mode "fsr2" runs it: the render size, the camera's jitter, the
-// passes' uniforms, and the CPU twin of the seven passes of shaders/fsr2_*.hlsl, which the software
-// device uses. The 3D draws at the frame's size times the scale with its camera moved across a
-// render pixel by the next point of a Halton sequence each frame, as with TAA; FSR 2 then rebuilds
-// the frame at its full size from that and the frames before, moved by the prepass's motion
-// vectors, and the post passes draw at the full size. Godot's settings: HDR color, reversed depth,
-// motion vectors at the render size, no reactive mask or auto exposure of FSR 2's own.
+// What every device shares to upscale a clustered frame's 3D with AMD's FidelityFX Super Resolution
+// 2.2: the render size, the camera's jitter, the passes' uniforms, and the CPU twin of the seven
+// passes of shaders/fsr2_*.hlsl, which the software device uses. The 3D draws at the frame's size
+// times the scale with its camera moved across a render pixel by the next point of a Halton
+// sequence each frame, as with TAA; FSR 2 then rebuilds the frame at its full size from that and
+// the frames before, moved by the prepass's motion vectors, and the post passes draw at the full
+// size. Its settings: HDR color, reversed depth, motion vectors at the render size, no reactive
+// mask or auto exposure of FSR 2's own.
 namespace slash::render::detail {
 
-// Whether a scene's frame upscales its 3D with FSR 2: in Forward+ only, at a scale under 1, as
-// Godot's (which falls back to bilinear scaling otherwise, done by the canvas renderer here), and
-// never for a probe's capture. TAA is off in a frame with FSR 2, as Godot turns it off.
+// Whether a scene's frame upscales its 3D with FSR 2: in the clustered renderer only, at a scale
+// under 1 (bilinear scaling otherwise, done by the canvas renderer), and never for a probe's
+// capture. TAA is off in a frame with FSR 2.
 [[nodiscard]] inline bool uses_fsr2(const Scene3D& scene) {
     return scene.method == RenderMethod::ForwardPlus && scene.fsr2.has_value() &&
            scene.fsr2->scale < 1.0F && !scene.capture;
 }
 
-// A frame's render size with FSR 2: its size times the scale, rounded down, at least 1, as
-// Godot's RendererViewport sizes it.
+// A frame's render size with FSR 2: its size times the scale, rounded down, at least 1.
 [[nodiscard]] std::array<std::uint32_t, 2>
 fsr2_render_size(const Scene3D& scene, std::uint32_t width, std::uint32_t height);
-// ffxFsr2GetJitterPhaseCount, as Godot works it out: 8 times the display's width over the
-// render's, squared, rounded down.
+// ffxFsr2GetJitterPhaseCount: 8 times the display's width over the render's, squared, rounded down.
 [[nodiscard]] std::uint32_t fsr2_phase_count(std::uint32_t render_width,
                                              std::uint32_t display_width);
 // The camera's jitter in clip space for its frame-th frame of a sequence of phases points: the
 // frame's point of the Halton sequence (bases 2 and 3) over the render size, so at most half a
-// render pixel each way, as Godot's RendererSceneCull::render_camera.
+// render pixel each way.
 [[nodiscard]] std::array<float, 2> camera_jitter(std::uint64_t frame, std::uint32_t phases,
                                                  std::uint32_t width, std::uint32_t height);
 
@@ -53,8 +52,8 @@ struct Fsr2Uniforms {
     // The shading change mip's size, a pass's step (the reconstruct pass: 0 clears and 1
     // scatters; the sharpening pass: 1 copies), and 1 for an orthogonal projection.
     std::array<std::int32_t, 4> options{};
-    // Godot's reprojection matrix, by columns: a point in clip space now to where it was in the
-    // frame before's, each without its jitter, for the motion vectors the prepass left out.
+    // The reprojection matrix, by columns: a point in clip space now to where it was in the frame
+    // before's, each without its jitter, for the motion vectors the prepass left out.
     std::array<Float4, 4> reprojection{};
 };
 static_assert(sizeof(Fsr2Uniforms) == 144);
@@ -69,24 +68,23 @@ struct Fsr2Frame {
     Mat4 projection{};             // the camera's, without the jitter
     Mat4 view_projection{};        // the world to clip space, without the jitter
     Mat4 previous{};               // view_projection in the frame before (the same for a first)
-    float sharpness = 0.2F;        // Godot's scaling_3d/fsr_sharpness: 0 sharpest, 2 none
+    float sharpness = 0.2F;        // 0 sharpest, 2 none
     std::uint32_t frame_index = 0; // frames since the target's last reset
     float phases = 0.0F;           // the jitter's phases, as FSR 2 eases them (Fsr2History)
 };
 [[nodiscard]] Fsr2Uniforms fsr2_uniforms(const Fsr2Frame& frame);
 
-// What the prepass's motion target is cleared to with FSR 2, as Godot's velocity buffer when it
-// upscales: a vector FSR 2 doesn't take, so that it works one out from the depth where no opaque
-// mesh drew, such as the sky.
+// What the prepass's motion target is cleared to with FSR 2: a vector FSR 2 doesn't take, so that
+// it works one out from the depth where no opaque mesh drew, such as the sky.
 inline constexpr float kInvalidMotion = -1.0F;
 
-// Godot's reprojection matrix, by columns, as Fsr2Uniforms::reprojection: a point in clip space
-// now (view_projection) to where it was in the frame before's (previous), each without its jitter.
+// The reprojection matrix, by columns, as Fsr2Uniforms::reprojection: a point in clip space now
+// (view_projection) to where it was in the frame before's (previous), each without its jitter.
 [[nodiscard]] std::array<Float4, 4> reprojection(const Mat4& view_projection, const Mat4& previous);
 
-// Godot's derive_motion_vector: the motion vector of the render pixel at uv (texture coordinates,
-// y down) whose depth is depth, from where reprojection (Fsr2Uniforms::reprojection) puts it in the
-// frame before. FSR 2 takes it in place of a motion vector of kInvalidMotion both ways.
+// The motion vector of the render pixel at uv (texture coordinates, y down) whose depth is depth,
+// from where reprojection (Fsr2Uniforms::reprojection) puts it in the frame before. FSR 2 takes it
+// in place of a motion vector of kInvalidMotion both ways.
 [[nodiscard]] std::array<float, 2> derive_motion_vector(const std::array<Float4, 4>& reprojection,
                                                         const std::array<float, 2>& uv,
                                                         float depth);

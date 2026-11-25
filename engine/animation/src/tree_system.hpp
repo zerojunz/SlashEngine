@@ -1,7 +1,9 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 // The animation_tree system: plays each AnimationGraph's tree (tree_run.hpp) and mixes the
-// animations it plays as Godot's AnimationMixer does.
+// animations it plays.
 
 #include "slash/asset/assets.hpp"
 #include "slash/scene3d/skeleton.hpp"

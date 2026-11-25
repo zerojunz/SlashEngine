@@ -1,18 +1,14 @@
-// Godot's easing equations (scene/animation/easing_equations.h), with its sines, powers and
-// exponentials through slash::cos_sin, exp and ln. Derived, as Godot's are, from Robert Penner's
-// easing equations (http://robertpenner.com/easing/):
-//
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Easing equations, with sines, powers and exponentials through slash::cos_sin, exp and ln.
+// Derived from Robert Penner's easing equations (http://robertpenner.com/easing/):
 // Copyright (c) 2001 Robert Penner
-//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this software
 // and associated documentation files (the "Software"), to deal in the Software without
 // restriction, including without limitation the rights to use, copy, modify, merge, publish,
 // distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
 // Software is furnished to do so, subject to the following conditions:
-//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
 // BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
 // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
@@ -118,7 +114,7 @@ float poly_in_out(float t, float b, float c, float d) {
     }
 }
 
-// Godot's Quad::out and in_out, written as Penner wrote them.
+// Quad out and in_out, written as Penner wrote them.
 float quad_out(float t, float b, float c, float d) {
     t /= d;
     return (-c * t * (t - 2)) + b;

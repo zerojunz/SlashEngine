@@ -1,9 +1,9 @@
-// The sky's radiance, filtered as Godot's Compatibility renderer filters it
-// (drivers/gles3/shaders/effects/cubemap_filter.glsl): each level of the radiance cube from the
-// raw cube the sky is drawn into, one face at a time. Level 0 is a copy of the raw cube's; each
-// next one blurs it for a rougher surface, by GGX importance samples around the texel's
-// direction, mixed in linear. Reflection probes' cubes are filtered the same way, but hold linear
-// colors in RGBA16F. Keep it in step with filter_cube in src/sky.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The sky's radiance, filtered as the compatibility renderer filters it: each level of the radiance
+// cube from the raw cube the sky is drawn into, one face at a time. Level 0 is a copy of the raw
+// cube's; each next one blurs it for a rougher surface, by GGX importance samples around the
+// texel's direction, mixed in linear. Reflection probes' cubes are filtered the same way, but hold
+// linear colors in RGBA16F. Keep it in step with filter_cube in src/sky.cpp, its CPU twin.
 
 #include "tonemap.hlsl"
 

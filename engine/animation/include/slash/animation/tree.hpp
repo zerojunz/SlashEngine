@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/animation/animation.hpp"
@@ -14,7 +16,7 @@
 #include <string_view>
 #include <vector>
 
-// Blending animations, as Godot's AnimationTree: a .animtree.json file holds a tree of animation
+// Blending animations: a .animtree.json file holds a tree of animation
 // nodes, and the AnimationGraph component plays it on its entity, with the animations of its
 // libraries. A blend tree connects nodes that blend their inputs; blend spaces blend the points
 // nearest a position; a Transition cross-fades between its inputs and a OneShot plays one over
@@ -40,14 +42,14 @@
 //     }
 //   }
 //
-// Node types are Godot's AnimationNode classes without the prefix, with their properties'
+// Node types are named for the animation node classes without the prefix, with their properties'
 // names. A node's parameters, which the AnimationGraph component keeps, are named by the path of
-// node names to it, then the parameter, as Godot's without "parameters/": "speed/blend_amount",
+// node names to it, then the parameter, without "parameters/": "speed/blend_amount",
 // "shot/request". A blend space's points are named by their index, a state machine's states by
 // their names: "move/travel", "move/run/blend_position".
 //
 // A tree's variables are values games set for its state machines' advance expressions to read,
-// as Godot's read the properties of the tree's advance_expression_base_node: with
+// the properties of the tree's advance_expression_base_node: with
 // "variables": {"speed": 0.0} and "triggers": ["jump"], a transition's "advance_expression":
 // "jump and speed < 4" is taken once the game sets the parameter "jump" to true while "speed" is
 // below 4. A trigger is a variable that starts false and goes back to false once a transition
@@ -100,14 +102,13 @@ struct MachineState {
     Vec2 position;
 };
 
-// A transition between two of a state machine's states, as Godot's
-// AnimationNodeStateMachineTransition.
+// A transition between two of a state machine's states.
 struct MachineTransition {
     std::string from;
     std::string to;
     std::string advance_condition; // an auto transition waits for "conditions/<it>" to be true
-    // An auto transition also waits for this to run to a value that counts as true, as Godot's
-    // advance_expression; it reads the tree's variables. Empty for none.
+    // An auto transition also waits for this to run to a value that counts as true;
+    // it reads the tree's variables. Empty for none.
     Expression advance_expression;
     double xfade_time = 0.0;
     TreeCurve xfade_curve;
@@ -215,9 +216,9 @@ struct AnimationTreeResource {
 };
 
 [[nodiscard]] std::string_view tree_node_type_name(TreeNodeType type);
-// The names of a node type's inputs, as Godot's: Blend2's "in" and "blend".
+// The names of a node type's inputs: Blend2's "in" and "blend".
 [[nodiscard]] std::vector<std::string> tree_node_input_names(const TreeNode& node);
-// Whether a node type has filters, as Godot's has_filter.
+// Whether a node type has filters.
 [[nodiscard]] bool tree_node_has_filter(TreeNodeType type);
 
 // JSON Schema for .animtree.json files.
@@ -230,7 +231,7 @@ struct AnimationTreeResource {
 // The tree in a .animtree.json document, or its first error.
 [[nodiscard]] Result<AnimationTreeResource> parse_tree(const json::Value& doc);
 
-// A node's parameter, as Godot's AnimationNode parameters.
+// A node's parameter.
 struct TreeParameter {
     std::string key;  // its node's path then its name: "speed/blend_amount"
     std::string name; // "blend_amount"

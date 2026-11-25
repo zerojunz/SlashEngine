@@ -1,9 +1,9 @@
-// A frame's passes as a graph, after Unity's render graph and Godot's RenderingDevice graph: each
-// pass names the resources it reads and writes, compile() leaves out the passes nothing kept
-// reads, gives the textures and buffers made for the frame alone (transient ones) their first and
-// last use, lets those whose uses never overlap share one allocation (aliasing), and groups
-// compute passes next to each other that touch nothing another in the group writes, so a device
-// records each group in one compute pass. execute() runs the kept passes in order.
+// A frame's passes as a graph, after Unity's render graph: each pass names the resources it reads
+// and writes, compile() leaves out the passes nothing kept reads, gives the textures and buffers
+// made for the frame alone (transient ones) their first and last use, lets those whose uses never
+// overlap share one allocation (aliasing), and groups compute passes next to each other that touch
+// nothing another in the group writes, so a device records each group in one compute pass.
+// execute() runs the kept passes in order.
 //
 // The devices build one a frame from the passes they run, so agents read what a frame did
 // (FrameGraphReport) the same way on every device.

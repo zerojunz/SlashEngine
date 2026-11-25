@@ -1,8 +1,7 @@
-// The geometry a bake works from, as Godot 4.6's source geometry parsers: the region entity and
-// those under it, each giving what Godot's node of the same kind gives
-// (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's, CSGShape3D's,
-// NavObstacle3D's and 2D's, TileLayer2D's), placed in the region's space as Godot's
-// root_node_transform places it.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The geometry a bake works from: the region entity and those under it, each giving what its kind
+// gives (Model3D, static bodies, solid shapes, NavObstacle3D and 2D, TileLayer2D), placed in the
+// region's space.
 
 #include "slash/canvas/tilemap.hpp"
 #include "slash/navigation/navigation.hpp"
@@ -32,10 +31,10 @@ using world::Affine2D;
 using world::Affine3D;
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
-// The points of the circle an obstacle's radius projects, as Godot's: no excessive detail.
+// The points of the circle an obstacle's radius projects: no excessive detail.
 constexpr int kObstacleCirclePoints = 12;
 
-// ---- 3D, as Godot's NavigationMeshSourceGeometryData3D.
+// ---- 3D.
 
 void add_vertex(SourceGeometry3D& out, Vec3 point) {
     out.vertices.push_back(point.x);
@@ -47,8 +46,8 @@ int vertex_count(const SourceGeometry3D& out) {
     return static_cast<int>(out.vertices.size() / 3);
 }
 
-// An indexed surface, as _add_mesh and _add_mesh_array: Godot's clockwise triangles turned to
-// Recast's counterclockwise ones.
+// An indexed surface, as _add_mesh and _add_mesh_array: clockwise triangles turned to Recast's
+// counterclockwise ones.
 void add_surface(SourceGeometry3D& out, const std::vector<render::Vertex3D>& vertices,
                  const std::vector<std::uint32_t>& indices, const Affine3D& transform) {
     if (vertices.empty() || indices.empty() || indices.size() % 3 != 0) {
@@ -90,8 +89,8 @@ Affine3D shape_transform(const world::Collider3D& shape) {
     return world::affine(transform);
 }
 
-// A shape as StaticBody3D's parser adds it: primitives as Godot's meshes of them (with the
-// meshes' default segments), polygons as their faces. World boundaries add nothing.
+// A shape as StaticBody3D's parser adds it: primitives as meshes of them (with the meshes' default
+// segments), polygons as their faces. World boundaries add nothing.
 void add_shape(SourceGeometry3D& out, const world::Collider3D& shape, const Affine3D& transform) {
     std::optional<scene3d::Primitive> primitive;
     if (shape.shape == "box") {
@@ -123,9 +122,9 @@ bool parses_colliders(ParsedGeometry type) {
     return type == ParsedGeometry::StaticColliders || type == ParsedGeometry::Both;
 }
 
-// The body's collision layer when it is a static or animatable body, which Godot's StaticBody
-// parsers take (AnimatableBody extends StaticBody); nullopt for any other entity, or one that is
-// a rigid or character body first, as physics takes it.
+// The body's collision layer when it is a static or animatable body, which the static body parsers
+// take; nullopt for any other entity, or one that is a rigid or character body first, as physics
+// takes it.
 template <typename Static, typename Animatable, typename Rigid, typename Character>
 std::optional<std::uint32_t> static_layer(const entt::registry& registry, entt::entity entity) {
     if (registry.any_of<Rigid, Character>(entity)) {
@@ -176,7 +175,7 @@ void add_obstacle(SourceGeometry3D& out, const world::NavObstacle3D& obstacle, c
             obstruction.vertices.push_back(
                 circle.apply({cs.x * obstacle.radius, 0.0F, cs.y * obstacle.radius}));
         }
-        // Godot lowers it by the radius as written, unscaled.
+        // It is lowered by the radius as written, unscaled.
         obstruction.elevation = elevation - obstacle.radius;
         obstruction.height = max_scale * obstacle.radius;
         obstruction.carve = obstacle.carve_navigation_mesh;
@@ -280,8 +279,8 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
         }
     }
     // An Terrain3D's heights at full detail, holes left out, with mesh_instances or both, else,
-    // with static_colliders, when it collides on a layer the mask takes: what Godot parses of
-    // the HeightMapShape3D it collides as.
+    // with static_colliders, when it collides on a layer the mask takes: what is parsed of the
+    // height field it collides as.
     if (const auto* terrain = registry.try_get<world::Terrain3D>(entity); terrain != nullptr) {
         const bool collides = terrain->collision_enabled &&
                               (terrain->collision_layer & settings.geometry_collision_mask) != 0U;
@@ -335,7 +334,7 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
     }
 }
 
-// ---- 2D, as Godot's NavigationMeshSourceGeometryData2D and StaticBody2D's parser.
+// ---- 2D.
 
 // The points' convex hull, counterclockwise from the lowest, as Andrew's monotone chain.
 std::vector<Vec2> convex_hull(std::vector<Vec2> points) {

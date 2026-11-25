@@ -1,12 +1,12 @@
 #pragma once
 
-// How things take damage and break, after Unreal's Chaos Destruction (Godot has none): a
-// .damage.json profile names a material (wood splinters, glass shatters, stone crumbles), its
-// health and what resists which kind of damage, the damage states that change its looks, how it
-// breaks (a fracture pattern, levels of pieces that break again) and whether its pieces stand
-// linked, as Chaos's connection graph, until the weight through a link is more than it holds.
-// Destructible3D and Destructible2D name a profile; physics3d and physics2d break them, and
-// scene3d cuts meshes by the cuts here (fracture_sites).
+// How things take damage and break, after Unreal's Chaos Destruction: a .damage.json profile names
+// a material (wood splinters, glass shatters, stone crumbles), its health and what resists which
+// kind of damage, the damage states that change its looks, how it breaks (a fracture pattern,
+// levels of pieces that break again) and whether its pieces stand linked, as Chaos's connection
+// graph, until the weight through a link is more than it holds. Destructible3D and Destructible2D
+// name a profile; physics3d and physics2d break them, and scene3d cuts meshes by the cuts here
+// (fracture_sites).
 
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"

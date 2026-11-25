@@ -6,8 +6,7 @@
 #include <string_view>
 #include <vector>
 
-// The certificates the operating system trusts to sign servers', for TLS connections, as Godot's
-// OS::get_system_ca_certificates.
+// The certificates the operating system trusts to sign servers', for TLS connections.
 namespace slash::platform {
 
 // The system's root certificates as PEM text: SSL_CERT_FILE's when it names a file, else Windows'

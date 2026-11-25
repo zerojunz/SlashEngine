@@ -169,7 +169,7 @@ TEST_CASE("face: a sculpted head is closed, faces out and has lips, brows, eyes 
     }
     CHECK(head.areas.size() * 3 == head.indices.size());
     CHECK(head.bearded.size() == head.areas.size());
-    // Godot's front faces turn clockwise seen from outside, so (c - a) x (b - a) points out.
+    // Front faces turn clockwise seen from outside, so (c - a) x (b - a) points out.
     std::size_t outward = 0;
     std::size_t counted = 0;
     for (std::size_t t = 0; t < head.areas.size(); ++t) {

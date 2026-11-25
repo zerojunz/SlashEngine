@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "taa.hpp"
 
 #include "forward_post.hpp"
@@ -21,8 +22,8 @@ bool frame_generation(const json::Value& rendering) {
 
 } // namespace slash::render
 
-// The CPU twin of shaders/taa.hlsl, as Godot 4.6's taa_resolve.glsl (MIT, Copyright (c) 2016-2022
-// Panos Karabelas, from Spartan Engine). Keep the two in step.
+// The CPU twin of shaders/taa.hlsl, as taa_resolve (MIT, Copyright (c) 2016-2022 Panos Karabelas,
+// from Spartan Engine). Keep the two in step.
 namespace slash::render::detail {
 
 namespace {
@@ -35,7 +36,7 @@ constexpr float kRpc9 = 0.11111111111F;
 constexpr float kRpc16 = 0.0625F;
 // Scales the weight of a pixel whose motion changed by more than the threshold.
 constexpr float kDisocclusionScale = 0.01F;
-// The 3x3 neighborhood, in Godot's order.
+// The 3x3 neighborhood, in order.
 constexpr std::array<std::array<int, 2>, 9> kOffsets3x3{{
     {-1, -1},
     {0, -1},
@@ -108,8 +109,8 @@ struct Frame {
         return {inputs->last_velocity[i], inputs->last_velocity[i + 1]};
     }
 
-    // The history filtered linearly at uv, clamped to its edges, as Godot's linear sampler with
-    // repeat disabled reads it.
+    // The history filtered linearly at uv, clamped to its edges, as a linear sampler with repeat
+    // disabled reads it.
     [[nodiscard]] Float3 history_linear(const Float2& uv) const {
         const float x = (uv[0] * static_cast<float>(width)) - 0.5F;
         const float y = (uv[1] * static_cast<float>(height)) - 0.5F;
@@ -125,8 +126,7 @@ struct Frame {
     }
 };
 
-// Godot's sample_catmull_rom_9: the history at uv, filtered with a Catmull-Rom spline over 4x4
-// texels in nine linear reads.
+// The history at uv, filtered with a Catmull-Rom spline over 4x4 texels in nine linear reads.
 Float3 sample_catmull_rom_9(const Frame& frame, const Float2& uv, const Float2& resolution) {
     Float3 result{0.0F, 0.0F, 0.0F};
     std::array<Float2, 3> positions{};
@@ -158,7 +158,7 @@ Float3 sample_catmull_rom_9(const Frame& frame, const Float2& uv, const Float2& 
     return {std::max(result[0], 0.0F), std::max(result[1], 0.0F), std::max(result[2], 0.0F)};
 }
 
-// Godot's clip_aabb, from Playdead's "Temporal Reprojection Anti-Aliasing".
+// Clips to the box, from Playdead's "Temporal Reprojection Anti-Aliasing".
 Float3 clip_aabb(const Float3& aabb_min, const Float3& aabb_max, const Float3& p, const Float3& q) {
     Float3 r = sub(q, p);
     const Float3 rmax = sub(aabb_max, p);
@@ -196,7 +196,7 @@ Float3 resolve_pixel(const Frame& frame, const TaaUniforms& uniforms, int x, int
     Float3 color_history = sample_catmull_rom_9(frame, uv_reprojected, resolution);
 
     // get_closest_pixel_velocity_3x3: the motion of the neighbor of least depth. With reversed
-    // depth, as Godot 4.6 has it, that is the farthest.
+    // depth, that is the farthest.
     float min_depth = 1.0F;
     std::array<int, 2> min_pos{x, y};
     for (const auto& offset : kOffsets3x3) {

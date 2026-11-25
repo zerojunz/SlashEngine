@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/ui/ui.hpp"
 
 #include "internal.hpp"
@@ -532,7 +533,7 @@ double range_value(const Range& range, double value) {
         return value;
     }
     if (range.step > 0.0) {
-        // Math::snapped, from min unless min is too big to snap from. Godot rounds in decimal
+        // Snapped to the step, from min unless min is too big to snap from. It rounds in decimal
         // (R128) so steps such as 0.1 give 0.3, not 0.30000000000000004: a step that is one
         // over a whole number divides by that number instead of multiplying.
         const double from = std::abs(range.min) > range.step * 1e14 ? 0.0 : range.min;

@@ -150,7 +150,7 @@ TEST_CASE("atan2 matches the standard library and its special cases") {
     CHECK(slash::atan2(std::numeric_limits<float>::quiet_NaN(), 1.0F) == 0.0F);
 }
 
-TEST_CASE("affine and parts turn a Transform2D into Godot's matrix and back") {
+TEST_CASE("affine and parts turn a Transform2D into a matrix and back") {
     world::Transform2D transform;
     transform.position = {10.0F, 20.0F};
     transform.rotation = 0.5F;
@@ -167,7 +167,7 @@ TEST_CASE("affine and parts turn a Transform2D into Godot's matrix and back") {
     check_near(back.scale, transform.scale);
     CHECK(back.skew == doctest::Approx(0.25F));
 
-    // A flip on y comes back as a negative y scale, as Godot's get_scale gives it.
+    // A flip on y comes back as a negative y scale.
     transform.scale = {2.0F, -3.0F};
     const world::Transform2D flipped = world::parts(world::affine(transform));
     check_near(flipped.scale, {2.0F, -3.0F});
@@ -185,7 +185,7 @@ TEST_CASE("affine and parts turn a Transform2D into Godot's matrix and back") {
     check_near((matrix * matrix.inverse()).apply({-3.0F, 11.0F}), {-3.0F, 11.0F});
 }
 
-TEST_CASE("an entity in another's children is placed in its space, as Godot's Node2D") {
+TEST_CASE("an entity in another's children is placed in its space") {
     Scene scene;
     const entt::entity ship = scene.add("ship", {100.0F, 50.0F}, kPi / 2.0F, {2.0F, 2.0F});
     const entt::entity gun = scene.add("gun", {10.0F, 0.0F}, 0.25F, {1.0F, 0.5F});
@@ -280,7 +280,7 @@ TEST_CASE("children draw after their parent, before the next root") {
     }
 }
 
-TEST_CASE("a top_level child is placed in the world and draws after its tree, as Godot's") {
+TEST_CASE("a top_level child is placed in the world and draws after its tree") {
     Scene scene;
     const entt::entity ship = scene.add("ship", {100.0F, 50.0F}, kPi / 2.0F, {2.0F, 2.0F});
     const entt::entity deck = scene.add("deck", {10.0F, 0.0F});
@@ -442,7 +442,7 @@ TEST_CASE("top_level and z_as_relative stop what children take from their parent
         {"id": "flag", "kind": "Sprite2D", "rect": [40, 37, 16, 16], "shown": 0.5},
         {"id": "crate", "kind": "Sprite2D", "rect": [48, 37, 16, 16]}],
         "clear": ["ship"]})")));
-    // With the same z_index it draws in tree order, as Godot's top-level items: after the
+    // With the same z_index it draws in tree order, like top-level items: after the
     // ship's tree, under the crate made after it.
     project.ok("component.set", R"({"id": "flag", "components": {"Sprite2D": {"z_index": 1}}})");
     CHECK(drawn() == compact(parse(R"({"viewport": [160, 90], "drawn": [
@@ -493,7 +493,7 @@ TEST_CASE("entity.get gives a child's parent and global transform") {
               .find("\"global\"") == std::string::npos);
 }
 
-TEST_CASE("entity.destroy takes the entity's children with it, as Godot frees a node's") {
+TEST_CASE("entity.destroy takes the entity's children with it") {
     const Project project("tree2d_destroy_project");
     project.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "ship", "components": {"Transform2D": {}}}},
@@ -525,7 +525,7 @@ TEST_CASE("entity.destroy takes the entity's children with it, as Godot frees a 
           R"({"count":0,"entities":[],"truncated":false})");
 }
 
-TEST_CASE("an edit that breaks the tree fails and changes nothing, as Godot's add_child") {
+TEST_CASE("an edit that breaks the tree fails and changes nothing") {
     const Project project("tree2d_refuse_project");
     project.ok("batch", R"({"commands": [
         {"command": "entity.create", "params": {"id": "ship", "components": {"Transform2D": {}}}},

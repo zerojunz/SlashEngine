@@ -140,7 +140,7 @@ asset files reload while it runs: prefab instances update and keep their overrid
 ## Gameplay code
 
 The game's own components and systems are plain C++ in `src/` (`project.json`'s
-`gameplay.sources`), as Godot's scripts are; there is no scripting language. `src/game.cpp`
+`gameplay.sources`); there is no scripting language. `src/game.cpp`
 registers them in its `SLASH_GAME_MODULE` function; copy its pattern. Before calling engine C++
 you haven't seen, call `api_search` with its name or what it should do (`"play a sound"`): it
 returns the real signature, doc comment and header, and lines of the engine's verified examples
@@ -205,15 +205,15 @@ environment variables, never from the file.
 - `tiles/` (or any folder): `.tileset.json` tile sets (`slash-cli schema tileset`) that cut atlas
   textures into tiles and name the terrains they connect. A `TileLayer2D` draws them; paint one
   with `tilemap_paint` rather than editing its rows by hand.
-- Physics bodies and areas are components on scene entities, as Godot's nodes: `RigidBody2D`,
+- Physics bodies and areas are components on scene entities: `RigidBody2D`,
   `CharacterMover2D`, `Zone2D` and the rest, with `Collider2D` shapes. Ask what is where
   with `physics_raycast`, `physics_overlap` and `physics_contacts` rather than by geometry.
-- Particles are `Emitter2D` components, as Godot's, with a texture from `sprites/`, or
+- Particles are `Emitter2D` components, with a texture from `sprites/`, or
   `GpuEmitter2D` ones for many thousands, moved on the GPU as a `.particles.json` file
   (`slash-cli schema particles`) says. Check either with `particles_eval` (how many,
   where, and each one) rather than a screenshot.
-- UI is `Widget`, `Label`, `Button` and the other UI components, as Godot's Control nodes,
-  laid out in the window by anchors and offsets or by containers. `fonts/` (or any folder):
+- UI is `Widget`, `Label`, `Button` and the other UI components, laid out
+  in the window by anchors and offsets or by containers. `fonts/` (or any folder):
   `.ttf` and `.otf` files, and `.font.json` files (`slash-cli schema font`) for distance-field
   fonts that stay sharp at any size or that list `fallbacks` for the characters a font lacks
   (Arabic, Japanese and so on). `Widget.layout_direction` `rtl` mirrors a menu for
@@ -223,8 +223,8 @@ environment variables, never from the file.
   `TextField` is a text field and `TextArea` one of several lines: type into them with
   `input_inject` `{"type": "text", "text": "Mira"}` after a click or `ui_focus`, and read
   `text_changed` events (and a TextField's `text_submitted`).
-- Controls are input actions in `project.json`'s `input`, as Godot's input map: name what the
-  game does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
+- Controls are input actions in `project.json`'s `input`: name what the game
+  does (`jump`, `move_left`) and bind keys, mouse buttons, gamepad buttons and sticks to it;
   gameplay code reads actions, never keys. Try them with `input_inject` (keys, clicks, touches,
   sticks or actions by name) and `step`, then `input_state`.
 - `audio/` (or any folder): `.wav`, `.ogg` and `.mp3` sounds, `.audio.json` files
@@ -241,9 +241,9 @@ environment variables, never from the file.
 )md";
 
 constexpr std::string_view kGameCode =
-    R"(// The game's own C++ code, as Godot's scripts: components that scenes use and systems the world
-// runs every tick. `slash-cli build` (or the gameplay_build tool) compiles it, and the tools swap
-// it into the open world, keeping its entities and their fields. Exports link it in.
+    R"(// The game's own C++ code: components that scenes use and systems the world runs every
+// tick. `slash-cli build` (or the gameplay_build tool) compiles it, and the tools swap it into
+// the open world, keeping its entities and their fields. Exports link it in.
 
 #include "slash/world/components.hpp"
 #include "slash/world/game_module.hpp"

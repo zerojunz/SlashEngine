@@ -1,5 +1,5 @@
-// Soft bodies, as Godot's SoftBody3D on its Jolt module (scene/3d/physics/soft_body_3d.cpp and
-// modules/jolt_physics/objects/jolt_soft_body_3d.cpp): each function names the one it follows.
+// Soft bodies, on Jolt's soft body support.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "space.hpp"
 
 #include "slash/core/json.hpp"
@@ -63,8 +63,7 @@ std::optional<std::pair<scene3d::Primitive, std::string>> mesh_of(const world::W
     return std::pair{found, std::move(key)};
 }
 
-// The points pinned, as Godot's pin_vertices finds them: each pinned mesh vertex's point, those
-// out of range left out.
+// The points pinned: each pinned mesh vertex's point, those out of range left out.
 std::vector<int> pinned_points(const SoftBody& soft, const SoftBody3D& component) {
     std::vector<int> pinned;
     for (const world::SoftBodyPin& pin : component.pinned_points) {
@@ -189,9 +188,8 @@ void Space::restore_points(SoftBody& soft, const std::vector<std::optional<KeptP
     system_->GetBodyInterfaceNoLock().ActivateBody(soft.id);
 }
 
-// Godot's JoltSoftBody3D::_ref_shared_data and _add_to_space: the mesh's vertices welded by
-// position into points, its faces and edge springs, then the body with the component's settings,
-// its points placed by the entity's transform without its scale.
+// The mesh's vertices welded by position into points, its faces and edge springs, then the body
+// with the component's settings, its points placed by the entity's transform without its scale.
 void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
                              const SoftBody3D& component) {
     const JPH::Ref<JPH::SoftBodySharedSettings> shared = new JPH::SoftBodySharedSettings();
@@ -201,7 +199,7 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
         const auto& [x, y, z] = mesh.vertices[i].position;
         soft.mesh_positions[i] = Vec3{x, y, z};
     }
-    // Godot's HashMap<Vector3, int>: vertices at equal positions are one point.
+    // Vertices at equal positions are one point.
     std::map<std::tuple<float, float, float>, int> points;
     int count = 0;
     soft.torn = component.torn;
@@ -252,7 +250,7 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
     for (const int point : pinned_points(soft, component)) {
         shared->mVertices[static_cast<std::size_t>(point)].mInvMass = 0.0F;
     }
-    // Godot maps its stiffness coefficient, 0 to 1, to Jolt's edge stiffness with an arbitrary
+    // The stiffness coefficient, 0 to 1, maps to Jolt's edge stiffness with an arbitrary
     // constant.
     const float coefficient = std::clamp(component.linear_stiffness, 0.0F, 1.0F);
     const float stiffness =
@@ -300,7 +298,7 @@ void Space::create_soft_body(SoftBody& soft, const scene3d::MeshData& mesh,
     ++added_;
 }
 
-// Godot's JoltSoftBody3D::_update_mass.
+// Updates the body's mass.
 void Space::update_masses(SoftBody& soft) {
     const JPH::BodyLockWrite lock(system_->GetBodyLockInterfaceNoLock(), soft.id);
     if (!lock.Succeeded()) {
@@ -348,7 +346,7 @@ void Space::sync_soft_bodies(world::World& world, const world::Tree3D& tree) {
         std::vector<std::optional<KeptPoint>> kept;
         if (std::unique_ptr<SoftBody>* found = soft_bodies_.find(entity); found != nullptr) {
             soft = found->get();
-            // Godot keeps the springs it made for a mesh; a new mesh or springs make it again.
+            // The springs made for a mesh are kept; a new mesh or springs make them again.
             if (soft->mesh_key != mesh->second ||
                 soft->linear_stiffness != component.linear_stiffness ||
                 soft->shrinking_factor != component.shrinking_factor) {
@@ -407,8 +405,7 @@ void Space::sync_soft_bodies(world::World& world, const world::Tree3D& tree) {
                 motion.SetPressure(pressure);
                 motion.SetLinearDamping(damping);
                 if (placed != soft->placed) {
-                    // Godot's JoltSoftBody3D::set_transform: the change moves every point, which
-                    // stops.
+                    // The change moves every point, which stops.
                     const world::Affine3D relative = placed * soft->placed.inverse();
                     for (JPH::SoftBodyVertex& point : motion.GetVertices()) {
                         point.mPosition = point.mPreviousPosition =
@@ -457,7 +454,7 @@ std::vector<AreaWind> Space::area_winds(const world::World& world,
 
 // The wind on each face pushes its three points: WindSource3Ds' wind as air drags a sheet,
 // by the body's drag_coefficient, and the wind of the Area3Ds whose shapes hold the face's
-// middle, as GodotSoftBody3D::apply_forces and _compute_area_windforce.
+// middle.
 bool Space::blow_soft_body(const SoftBody& soft, float drag_coefficient, JPH::Body& body,
                            const world::WindField& field, double time,
                            const std::vector<AreaWind>& areas, float seconds) const {
@@ -510,7 +507,7 @@ bool Space::blow_soft_body(const SoftBody& soft, float drag_coefficient, JPH::Bo
             }
             const float toward_normal = normal.Dot(wind->direction);
             const float toward_middle = JPH::Vec3(middle - wind->source).Dot(wind->direction);
-            // pow(toward_middle, -attenuation), which Godot leaves undefined behind the source.
+            // pow(toward_middle, -attenuation), which is undefined behind the source.
             float attenuated = 1.0F;
             if (wind->attenuation != 0.0F) {
                 if (toward_middle <= 0.0F) {
@@ -558,8 +555,7 @@ void Space::pre_step_soft_bodies(const world::World& world, const world::Tree3D&
         JPH::Body& body = lock.GetBody();
         JPH::Array<JPH::SoftBodyVertex>& points = motion_of(body).GetVertices();
         const JPH::RVec3 center = body.GetCenterOfMassPosition();
-        // Godot's SoftBody3D::_update_physics_server: each pinned point with an attachment goes
-        // where the attachment puts its offset, as JoltSoftBody3D::set_vertex_position.
+        // Each pinned point with an attachment goes where the attachment puts its offset.
         for (const world::SoftBodyPin& pin : component.pinned_points) {
             if (pin.attachment == entt::null || !world.valid(pin.attachment) ||
                 !registry.all_of<world::Transform3D>(pin.attachment) || pin.point < 0 ||
@@ -671,8 +667,8 @@ bool Space::sleeping(const SoftBody& soft) const {
     return system_ == nullptr || !system_->GetBodyInterfaceNoLock().IsActive(soft.id);
 }
 
-// Godot's JoltContactListener3D::OnSoftBodyContactValidate and
-// _try_override_collision_response, with parent_collision_ignore as its collision exception.
+// Validates soft body contacts and overrides the collision response, with
+// parent_collision_ignore as its collision exception.
 JPH::SoftBodyValidateResult
 ContactListener::OnSoftBodyContactValidate(const JPH::Body& soft, const JPH::Body& other,
                                            JPH::SoftBodyContactSettings& settings) {

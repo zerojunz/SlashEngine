@@ -1,12 +1,11 @@
 #pragma once
 
-// Hair and fur, after Unreal's Groom and its Chaos-driven strand simulation (Godot has none). A
+// Hair and fur, after Unreal's Groom and its Chaos-driven strand simulation. A
 // .groom.json file says how strands grow (how many, how long, how thick, standing up or combed
 // down, clumped and curled, their colors and the maps that vary them), how they draw (thin
 // strands, cards or fur shells) and how they move. A Hair3D grows a groom over the model
 // its entity draws, a Hair2D along a line in its own space; a few guide strands are simulated
 // and the strands drawn follow them.
-//
 //   {
 //     "format": 1,
 //     "render": "strands",
@@ -16,7 +15,6 @@
 //     "root_color": [0.18, 0.11, 0.06, 1], "tip_color": [0.42, 0.28, 0.15, 1],
 //     "simulation": {"stiffness": 0.4, "damping": 2, "drag_coefficient": 1}
 //   }
-//
 // The simulation is the strands' own position-based dynamics, stepped by 2D and 3D physics in
 // their step: gravity, the wind (WindSource3D and WindSource2D), physics fields, a pull back
 // toward the groomed shape that weakens toward the tips, bending, follow-the-leader lengths and

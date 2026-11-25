@@ -58,7 +58,7 @@ std::string system_ca_certificates() {
         }
     }
 #if defined(_WIN32)
-    // As Godot's OS_Windows: the root store's certificates.
+    // The root store's certificates.
     std::string pem;
     HCERTSTORE store = CertOpenSystemStoreW(0, L"ROOT");
     if (store == nullptr) {
@@ -90,7 +90,7 @@ std::string system_ca_certificates() {
     }
     return {};
 #elif defined(__linux__)
-    // As Godot's OS_LinuxBSD: the first bundle the distribution keeps.
+    // The first bundle the distribution keeps.
     static constexpr std::array<const char*, 6> kBundles{
         "/etc/ssl/certs/ca-certificates.crt",                // Debian, Ubuntu, Arch
         "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora, RHEL

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json_schema.hpp"
@@ -20,15 +21,12 @@ namespace slash::asset {
 class Assets;
 }
 
-// 3D models, read as Godot's importers read them: glTF 2.0 as modules/gltf/gltf_document.cpp
-// (.gltf files, their buffers and images beside them or in data URIs, and .glb files with
-// everything in one), Wavefront OBJ as editor/import/3d/resource_importer_obj.cpp (.obj files
-// and the .mtl material libraries and textures beside them), and FBX as modules/fbx/
-// fbx_document.cpp reads it with ufbx (.fbx files, binary or ASCII, and their textures inside them
-// or beside them). Blender's .blend files are read as the glTF Blender exports of them
-// (blend.hpp). Model3D's mesh draws one.
-// Meshes keep Godot's clockwise front faces, and a model with no tangents gets MikkTSpace's, as
-// Godot's importers make them.
+// 3D models: glTF 2.0 (.gltf files, their buffers and images beside them or in data URIs, and
+// .glb files with everything in one), Wavefront OBJ (.obj files and the .mtl material libraries
+// and textures beside them), and FBX, read with ufbx (.fbx files, binary or ASCII, and their
+// textures inside them or beside them). Blender's .blend files are read as the glTF Blender
+// exports of them (blend.hpp). Model3D's mesh draws one.
+// Meshes keep clockwise front faces, and a model with no tangents gets MikkTSpace's.
 namespace slash::scene3d {
 
 // Reads a file a model names, by project path.
@@ -41,7 +39,7 @@ struct ModelImage {
     render::Image image;
 };
 
-// A model's material as Godot's importer makes it a Surface3D. Its texture fields are
+// A model's material as a Surface3D. Its texture fields are
 // left empty: the *_image fields say which of the model's images each one samples, or -1 for
 // none, read from the channels standard's *_texture_channel fields name (a glTF model's metallic
 // and roughness share one image, read from its blue and green).
@@ -55,8 +53,8 @@ struct ModelMaterial {
     int emission_image = -1;
 };
 
-// How a vertex of a skinned surface follows its skin's joints, as Godot's bone indices and
-// weights: up to eight joints (indices into the skin's joints) and how much each moves it, adding
+// How a vertex of a skinned surface follows its skin's joints: up to eight joints (indices into
+// the skin's joints) and how much each moves it, adding
 // up to 1. Unused places have a weight of 0.
 struct VertexWeights {
     std::array<std::uint16_t, 8> joints{};
@@ -65,8 +63,8 @@ struct VertexWeights {
     friend bool operator==(const VertexWeights&, const VertexWeights&) = default;
 };
 
-// A coarser copy of a surface's triangles over the same vertices, as a surface LOD of Godot's
-// ArrayMesh: drawn in its place once distance (in the model's units: how far, at most, its
+// A coarser copy of a surface's triangles over the same vertices (a surface LOD): drawn in its
+// place once distance (in the model's units: how far, at most, its
 // surface strays from the full one) times the mesh's scale covers less than the project's
 // rendering.mesh_lod threshold of pixels where the camera sees it.
 struct SurfaceLod {
@@ -75,9 +73,9 @@ struct SurfaceLod {
 };
 
 // How one blend shape moves a surface's vertices, as a glTF morph target: an offset for each
-// vertex's position, normal and tangent, each list empty where the shape leaves that alone. Godot
-// draws a vertex at its position plus each shape's offset times the shape's weight, its normal
-// and tangent the same way, then normalized (skeleton.glsl's blend shapes).
+// vertex's position, normal and tangent, each list empty where the shape leaves that alone. A
+// vertex is drawn at its position plus each shape's offset times the shape's weight, its normal
+// and tangent the same way, then normalized.
 struct SurfaceBlendShape {
     std::vector<std::array<float, 3>> positions;
     std::vector<std::array<float, 3>> normals;
@@ -87,11 +85,11 @@ struct SurfaceBlendShape {
 };
 
 // One part of a mesh drawn with one material, as a glTF primitive or an OBJ material's faces
-// become a surface of Godot's ArrayMesh: triangles only, with Godot's clockwise front faces.
+// become a surface: triangles only, with clockwise front faces.
 struct ModelSurface {
     std::vector<render::Vertex3D> vertices;
     std::vector<std::uint32_t> indices;
-    int material = -1; // into Model::materials, or -1 for Godot's default material
+    int material = -1; // into Model::materials, or -1 for the default material
     // One per vertex for a surface a skin deforms; empty for one that doesn't.
     std::vector<VertexWeights> weights;
     // Its LODs, finest first (generate_lods).
@@ -104,8 +102,8 @@ struct ModelSurface {
 struct ModelMesh {
     std::string name;
     std::vector<ModelSurface> surfaces;
-    // Its blend shapes' names, as Godot's ArrayMesh blend shapes (a glTF mesh's morph targets,
-    // named by its extras' targetNames, else "morph_<n>" as Godot's importer names them), and
+    // Its blend shapes' names (a glTF mesh's morph targets, named by its extras' targetNames, else
+    // "morph_<n>"), and
     // the weight each has until a Model3D or an animation gives it another (the mesh's
     // weights).
     std::vector<std::string> blend_shapes{}; // NOLINT(readability-redundant-member-init)
@@ -123,24 +121,24 @@ struct ModelPart {
     int skin = -1;
 };
 
-// A node of the model's scene, as Godot's importer makes it a Node3D or a skeleton's bone: its
-// name, unique in the model as Godot's importer makes it, its parent (into Model::nodes, or -1),
+// A node of the model's scene, as a Node3D or a skeleton's bone: its
+// name, unique in the model, its parent (into Model::nodes, or -1),
 // and where it is in its parent at rest.
 struct ModelNode {
     std::string name;
-    // Its name in the file, before Godot's naming rules made name of it ("mixamorig:Hips" for
+    // Its name in the file, before the naming rules made name of it ("mixamorig:Hips" for
     // "mixamorig_Hips"), by which other engines' scenes name the node; "" for none.
     std::string file_name;
     int parent = -1;
     Vec3 position;
     Quat rotation;
     Vec3 scale{1.0F, 1.0F, 1.0F};
-    // Its index in the file (a glTF node's index, an FBX node's typed_id), by which Godot's
-    // importer orders a skeleton's bones; -1 where the file has none.
+    // Its index in the file (a glTF node's index, an FBX node's typed_id), by which a skeleton's
+    // bones are ordered; -1 where the file has none.
     int file_index = -1;
 };
 
-// A skin, as glTF's and Godot's Skin: the nodes that are its joints, each with its inverse bind
+// A skin, as in glTF: the nodes that are its joints, each with its inverse bind
 // matrix, which takes a vertex from the skinned mesh's space into the joint's at rest.
 struct ModelSkin {
     std::string name;
@@ -148,26 +146,25 @@ struct ModelSkin {
     std::vector<world::Affine3D> inverse_binds;
 };
 
-// Which part of a node a track moves, as Godot's position_3d, rotation_3d and scale_3d tracks.
+// Which part of a node a track moves: its position, rotation or scale.
 enum class NodeProperty : std::uint8_t { Position, Rotation, Scale };
 
-// A track of a model's animation: one node's position, rotation or scale over time, as Godot's
-// importer makes a glTF channel a 3D track. Values are xyz, or a rotation's quaternion xyzw.
-// Keys interpolate linearly (rotations the shorter way round, as Godot's slerp), or hold until
-// the next with step set, as Godot's nearest interpolation.
+// A track of a model's animation: one node's position, rotation or scale over time, made from a
+// glTF channel. Values are xyz, or a rotation's quaternion xyzw.
+// Keys interpolate linearly (rotations the shorter way round, by slerp), or hold until
+// the next with step set.
 struct NodeTrack {
     std::size_t node = 0; // into Model::nodes
     NodeProperty property = NodeProperty::Position;
     bool step = false;
-    // In a looping animation, move from the last key to the first across the loop's end, as
-    // Godot's loop wrap.
+    // In a looping animation, move from the last key to the first across the loop's end.
     bool loop_wrap = true;
     std::vector<float> times; // seconds, earliest first
     std::vector<std::array<float, 4>> values;
 };
 
-// A track of a model's animation that moves one blend shape's weight, as Godot's importer makes
-// a glTF channel of a node's morph target weights a blend shape track for each shape. Keys
+// A track of a model's animation that moves one blend shape's weight, made from a glTF channel
+// of a node's morph target weights, one track for each shape. Keys
 // interpolate linearly, or hold until the next with step set.
 struct BlendShapeTrack {
     std::size_t node = 0; // into Model::nodes: the node whose mesh has the shape
@@ -178,8 +175,8 @@ struct BlendShapeTrack {
     std::vector<float> values;
 };
 
-// An animation in a model file, as Godot's importer makes it an Animation: as long as its last
-// key, and looping (linearly) when its name ends with Godot's "-loop" or "-cycle" import hint.
+// An animation in a model file: as long as its last
+// key, and looping (linearly) when its name ends with the "-loop" or "-cycle" import hint.
 struct ModelAnimation {
     std::string name;
     double length = 0.0;
@@ -192,7 +189,7 @@ struct ModelAnimation {
     double frame_rate = 0.0;
 };
 
-// A collision shape that comes with a model, as Godot's importer makes one of a mesh whose node's
+// A collision shape that comes with a model, made of a mesh whose node's
 // name ends with a collision hint: the mesh's triangles ("-col", "-colonly") or their convex hull
 // ("-convcol", "-convcolonly"), in the model's space at rest.
 struct ModelCollision {
@@ -200,7 +197,7 @@ struct ModelCollision {
     int node_index = -1; // into Model::nodes; -1 for a model without them (OBJ)
     bool convex = false;
     std::vector<Vec3> points;
-    // Triangles over points, three corners each in Godot's winding: a trimesh's faces, or the
+    // Triangles over points, three corners each in clockwise winding: a trimesh's faces, or the
     // faces of a convex hull, whose points alone make its shape.
     std::vector<std::uint32_t> indices;
 };
@@ -219,15 +216,14 @@ struct Model {
     std::vector<ModelCollision> collision{}; // NOLINT(readability-redundant-member-init)
 };
 
-// Godot's collision import hints (ResourceImporterScene::_pre_fix_node), which load_model applies
+// Collision import hints, which load_model applies
 // to every model: a part whose node's name ends with "-col" or "-convcol" ("_" in place of "-",
 // any case, or "$col" anywhere) keeps drawing and also collides as its mesh's triangles or their
 // convex hull, and one ending with "-colonly" or "-convcolonly" only collides, its mesh no longer
 // drawn. The hint is taken off the node's name either way.
 void apply_import_hints(Model& model);
 
-// Makes a surface's LODs, as Godot's importer does for every model it imports
-// (ImporterMesh::generate_lods): corners at one position that agree on their normals (within
+// Makes a surface's LODs: corners at one position that agree on their normals (within
 // normal_merge_angle degrees), texture coordinates, tangent sign and colors merge, then
 // meshoptimizer's simplifier halves the triangles again and again, weighing normals and colors,
 // until it can't or a LOD would stray by more than the mesh's size. A skinned surface is
@@ -236,7 +232,7 @@ void apply_import_hints(Model& model);
 void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones = {},
                    float normal_merge_angle = 20.0F);
 
-// The LOD to draw, as Godot's renderers pick it (MeshStorage::mesh_surface_get_lod): 0 for the
+// The LOD to draw: 0 for the
 // full surface, else 1 + the index of the coarsest of lods (finest first) whose distance times
 // model_scale, over distance, is at most threshold. model_scale is the mesh's largest scale times
 // its lod_bias, distance how far the camera is from its box times the projection's
@@ -251,14 +247,14 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
 // Reads a model from its file's bytes; path is its project path, which the files it names are
 // relative to, read with read. Points and lines are left out, since only triangles draw. glTF
 // files that need extensions it doesn't read, such as Draco compression, are refused, naming
-// them. An OBJ model whose material library can't be read loads with Godot's default material,
-// and an OBJ or FBX model whose textures can't be found loads without them, as Godot's importers.
+// them. An OBJ model whose material library can't be read loads with the default material,
+// and an OBJ or FBX model whose textures can't be found loads without them.
 // A .blend file's bytes must be the glTF Blender made of it (blend.hpp). A recipe's path can
 // name one of its variants after "::" (recipe.hpp), which it builds instead; other files have none.
 [[nodiscard]] Result<Model> load_model(std::string_view bytes, std::string_view path,
                                        const ModelReader& read);
 
-// A model as a glTF 2.0 file, as Godot's GLTFDocument exports one, which load_model reads back
+// A model as a glTF 2.0 file, which load_model reads back
 // as written: its nodes (or for a model without them, as an OBJ model, a node for each part,
 // where it puts it), the meshes they place, the materials and the images those sample. path is
 // the project path it is written to. An image beside the model is named by its path relative to
@@ -269,8 +265,8 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
 // matrices, a skinned part's node naming its skin when its mesh has weights for every vertex,
 // and animations with a sampler per track (an animation that loops takes "-loop" on its name).
 [[nodiscard]] Result<std::string> write_gltf(const Model& model, std::string_view path);
-// The same model as one binary glTF (.glb) file that holds everything, as Godot's GLTFDocument
-// writes one: its buffer and every image, those beside the model read with read and put in as
+// The same model as one binary glTF (.glb) file that holds everything: its buffer and every
+// image, those beside the model read with read and put in as
 // they are when PNG or JPEG files, else as PNGs.
 [[nodiscard]] Result<std::string> write_glb(const Model& model, std::string_view path,
                                             const ModelReader& read);
@@ -309,7 +305,7 @@ struct ModelSummary {
         std::size_t triangles = 0;
     };
     std::vector<Part> parts;
-    // Attachment points, as Godot's Marker3D in an imported scene: nodes that place no mesh,
+    // Attachment points: nodes that place no mesh,
     // have no children and are no skin's joint. Each is placed at rest in the model's space,
     // under the nearest node above it that places a mesh ("" for none), and a
     // BoneSocket3D's bone_name follows it.

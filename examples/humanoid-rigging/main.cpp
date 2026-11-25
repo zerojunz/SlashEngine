@@ -1,11 +1,11 @@
-// An unrigged figure rigged through the asset library: a boxy knight standing with its arms at
-// its sides goes in with asset.add, and asset.refine's rig has a generator give it a skeleton
-// and skin, retargeted to Godot's humanoid skeleton before the library keeps it. A dancer rigged
-// another way, in a T-pose with a wave, then plays its wave on the knight.
+// An unrigged figure rigged through the asset library: a boxy knight standing with its arms at its
+// sides goes in with asset.add, and asset.refine's rig has a generator give it a skeleton and skin,
+// retargeted to the humanoid skeleton before the library keeps it. A dancer rigged another way, in
+// a T-pose with a wave, then plays its wave on the knight.
 //
 // The test generator rigs here, placing the skeleton by a standing figure's proportions; with
-// Meshy's key in the environment, a "meshy-rig" generator in providers.json rigs it instead.
-// The models are made in code and written as .glb files, so none is committed.
+// Meshy's key in the environment, a "meshy-rig" generator in providers.json rigs it instead. The
+// models are made in code and written as .glb files, so none is committed.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -46,7 +46,7 @@ json::Value call(command::Session& session, std::string_view name, std::string_v
     return reply.ok ? reply.value : json::Value();
 }
 
-// A box of a surface, its faces wound clockwise from outside, as Godot's front faces are.
+// A box of a surface, its faces wound clockwise from outside.
 void add_box(scene3d::ModelSurface& surface, Vec3 low, Vec3 high) {
     const std::array<Vec3, 8> corner{{{low.x, low.y, low.z},
                                       {high.x, low.y, low.z},

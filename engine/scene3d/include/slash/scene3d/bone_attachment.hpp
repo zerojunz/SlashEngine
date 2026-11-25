@@ -9,7 +9,7 @@
 #include <functional>
 #include <vector>
 
-// Bone attachments, as Godot's BoneAttachment3D: entities that the skeleton_modifiers system puts
+// Bone attachments: entities that the skeleton_modifiers system puts
 // where a bone of a model is posed each tick (ik.hpp), after the model's animations and
 // modifiers, so what hangs under them moves with the bone.
 namespace slash::scene3d {
@@ -19,8 +19,8 @@ namespace slash::scene3d {
 [[nodiscard]] entt::entity attachment_skeleton(const world::World& world, const world::Tree3D& tree,
                                                entt::entity attachment);
 
-// Puts each entity with a BoneSocket3D where its bone is posed, as Godot's
-// BoneAttachment3D::on_skeleton_update: its Transform3D becomes what puts it at the drawing
+// Puts each entity with a BoneSocket3D where its bone is posed: its Transform3D becomes what puts
+// it at the drawing
 // entity's transform times the bone's in the model, the pose being pose_of's, then the modifiers'
 // (apply_modifiers), on the models load gives. Parents come before their children, so one
 // attachment can hang under another. Fields that don't change are left alone.

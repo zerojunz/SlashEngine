@@ -170,13 +170,13 @@ TEST_CASE("a material with no color draws the texture times the vertex color") {
     const auto out = colors(material, uvs, {}, half, 0.0, "two.png", images);
     CHECK(near(out[0], {1.0F, 0.0F, 0.0F, 0.5F}));
     CHECK(near(out[1], {0.0F, 0.0F, 1.0F, 0.5F}));
-    // Every blend mode has Godot's name.
+    // Every blend mode has its name.
     for (const char* blend : {"mix", "add", "sub", "mul", "premul_alpha"}) {
         CHECK(first_error(R"({"format": 1, "blend": ")" + std::string(blend) + "\"}") == "(valid)");
     }
 }
 
-TEST_CASE("a material says how 2D lights shade it, as Godot's light_mode") {
+TEST_CASE("a material says how 2D lights shade it") {
     CHECK(compile(R"({"format": 1})").light_mode == render::LightMode::Normal);
     CHECK(compile(R"({"format": 1, "light_mode": "unshaded"})").light_mode ==
           render::LightMode::Unshaded);
@@ -425,7 +425,7 @@ TEST_CASE("instantiate fills in a sprite's params and the time") {
     CHECK(canvas::instantiate(flash, {{"flash", 1}}, 0.0, &failed).ok());
     CHECK(failed.empty());
 
-    // Time wraps every hour, as Godot's TIME, and never runs backward past 0.
+    // Time wraps every hour, and never runs backward past 0.
     const canvas::CanvasMaterial clock = compile(
         R"({"format": 1, "color": {"op": "vec4", "args": [
                 {"op": "vec3", "args": [{"op": "fract", "args": ["time"]}]}, 1]}})");
@@ -505,7 +505,7 @@ TEST_CASE("evaluate samples textures and reads inputs as the GPU does") {
     CHECK(near(out[0], {0.0F, 0.0F, 1.0F, 1.0F}));
     CHECK(near(out[1], {0.0F, 0.0F, 1.0F, 1.0F}));
 
-    // A texture param left at "" samples white, as Godot's hint_default_white.
+    // A texture param left at "" samples white.
     out = colors(compile(tiled), uvs, {{"stripes", ""}}, {}, 0.0, "", images);
     CHECK(near(out[0], {1.0F, 1.0F, 1.0F, 1.0F}));
 

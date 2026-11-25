@@ -1,10 +1,10 @@
 // FSR 3's prepare reactivity pass (ffx_fsr3upscaler_prepare_reactivity.h): for each render pixel,
 // how far its surface was hidden in the frame before (from the reconstruct pass's depths), how much
 // its shading changed, how its motion differs from where it came from, and how many frames it has
-// gathered, which it keeps for the next frame. Godot gives no reactive or transparency and
-// composition mask, so those are 0. The thin features this pass locks AMD scatters to the display
-// pixels they land on; fsr3_lock.hlsl gathers them there instead. Keep it in step with
-// src/fsr3.cpp, its CPU twin.
+// gathered, which it keeps for the next frame. There is no reactive or transparency and composition
+// mask, so those are 0. The thin features this pass locks AMD scatters to the display pixels they
+// land on; fsr3_lock.hlsl gathers them there instead. Keep it in step with src/fsr3.cpp, its CPU
+// twin.
 //
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
 //

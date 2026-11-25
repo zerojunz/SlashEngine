@@ -1,9 +1,9 @@
-// Post-processing for a frame's 3D world, as Godot's Forward+ renderer does it
-// (servers/rendering/renderer_rd/shaders/effects/copy.glsl's gaussian glow, luminance_reduce.glsl
-// and tonemap.glsl): the sky and meshes draw linear into a texture of half floats; with auto
-// exposure, the luminance passes average its brightness down to one texel; glow's passes blur its
-// bright parts into up to seven textures, the first half the target's size and each next one half
-// the last; and the tonemap pass exposes the colors, blends the glow in, tonemaps, adjusts and
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Post-processing for a frame's 3D world in the clustered renderer (a gaussian glow, a luminance
+// reduction and the tonemapper): the sky and meshes draw linear into a texture of half floats; with
+// auto exposure, the luminance passes average its brightness down to one texel; glow's passes blur
+// its bright parts into up to seven textures, the first half the target's size and each next one
+// half the last; and the tonemap pass exposes the colors, blends the glow in, tonemaps, adjusts and
 // corrects them as it draws over the frame's target. Every pass draws one triangle over its whole
 // target. Depth of field (bokeh_dof.glsl) comes first, as the world's texture is drawn: each
 // pixel's blur size from the depth buffer, the blur and a composite that blends it in. Keep it in
@@ -91,7 +91,7 @@ cbuffer ForwardPost : register(b0, space3) {
     float4 levels_low;  // levels 0 to 3's weights, 0 for those not added
     float4 levels_high; // levels 4 to 6's weights, then the intensity (glow_mix for the mix mode)
     float4 tonemap;     // exposure, white, the 3D LUT's size
-    float4 tonemapper;  // the tonemapper's parameters, as Godot's tonemapper_params
+    float4 tonemapper;  // the tonemapper's parameters
     float4 adjust;      // brightness, contrast, saturation
     // Auto exposure's scale, the brightness's least and most, and how far it moves this frame
     float4 exposure;
@@ -374,7 +374,7 @@ float3 tonemap_filmic(float3 color) {
 }
 
 // From https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl (MIT License), as
-// Godot adapts it. GLSL's mat3 takes columns, so these rows are its columns and its color *= m is
+// adapted here. GLSL's mat3 takes columns, so these rows are its columns and its color *= m is
 // mul(m, color).
 float3 tonemap_aces(float3 color) {
     const float bias = 1.8;
@@ -411,10 +411,10 @@ float3 allenwp_curve(float3 x) {
                   x.b < crossover ? t.b : s.b);
 }
 
-// Godot 4.6's simplification of EaryChow's AgX, as Blender uses it
+// A simplification of EaryChow's AgX, as Blender uses it
 // (https://github.com/EaryChow/AgX_LUT_Gen/blob/main/AgXBasesRGB.py): Rec. 709 to Rec. 2020 with
-// AgX's inset, allenwp's curve, then the outset and back. These rows are GLSL's columns, so its
-// m * color is mul(color, m).
+// AgX's inset, allenwp's curve, then the outset and back. These rows are GLSL's columns, so its m *
+// color is mul(color, m).
 float3 tonemap_agx(float3 color) {
     const float3x3 inset = float3x3(
         float3(0.544814746488245, 0.140416948464053, 0.0888104196149096),

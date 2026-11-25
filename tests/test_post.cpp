@@ -52,7 +52,7 @@ std::vector<Vertex3D> square(float half) {
 }
 
 // An orthogonal camera on +Z looking at the origin, seeing from -1 to 1 both ways, drawn as
-// Compatibility (test_forward_post.cpp has Forward+'s post-processing).
+// Compatibility (test_forward_post.cpp has the clustered renderer's post-processing).
 render::Scene3D facing(const PostProcess& post) {
     render::Scene3D scene;
     scene.method = render::RenderMethod::Compatibility;
@@ -108,7 +108,7 @@ constexpr std::uint32_t kBeside = 26;
 
 } // namespace
 
-TEST_CASE("tonemappers map colors as Godot's do") {
+TEST_CASE("tonemappers map colors") {
     namespace detail = render::detail;
     CHECK(detail::srgb_to_linear({0.5F, 0.0F, 1.0F})[0] == doctest::Approx(0.21496747F));
     CHECK(detail::linear_to_srgb({0.5F, 0.0F, 1.0F})[0] == doctest::Approx(0.73535698F));

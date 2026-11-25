@@ -37,9 +37,9 @@ bool has_children(const World& world) {
     });
 }
 
-// A parent's global transform, then its child's own, as Godot multiplies their matrices. A
-// parent that only turns, moves and scales evenly adds its rotation and scale to the child's
-// instead, which is the same transform with no rounding in the angle.
+// A parent's global transform, then its child's own. A parent that only turns, moves and scales
+// evenly adds its rotation and scale to the child's instead, which is the same transform with no
+// rounding in the angle.
 Transform2D compose(const Transform2D& parent, const Transform2D& local) {
     if (parent.skew == 0.0F && parent.scale.x == parent.scale.y && parent.scale.x > 0.0F) {
         const float s = parent.scale.x;
@@ -103,7 +103,7 @@ Transform2D parts(const Affine2D& matrix) {
     const float x_length = length(matrix.x);
     const float y_length = length(matrix.y);
     out.scale = {x_length, sign * y_length};
-    // acos(d) - pi / 2, as Godot's get_skew, is -asin(d).
+    // acos(d) - pi / 2, is -asin(d).
     if (x_length > 0.0F && y_length > 0.0F && sign != 0.0F) {
         const float d =
             std::clamp(dot(matrix.x, matrix.y) * sign / (x_length * y_length), -1.0F, 1.0F);
@@ -141,10 +141,10 @@ Tree2D::Tree2D(const World& world) : world_(&world) {
             up = parent(up);
         }
     }
-    // Draw keys: the root's place in the order entities were made, then the place in its tree.
-    // As Godot, a top_level entity is an item of the canvas of its own, with the entities under
-    // it: it draws after the rest of the tree it is in, top-level items in tree order, and
-    // before the roots made after that tree's.
+    // Draw keys: the root's place in the order entities were made, then the place in its tree. A
+    // top_level entity is an item of the canvas of its own, with the entities under it: it draws
+    // after the rest of the tree it is in, top-level items in tree order, and before the roots made
+    // after that tree's.
     struct Visit {
         entt::entity entity;
         std::size_t item; // the place in the tree of its top-level item, or 0 for the root's

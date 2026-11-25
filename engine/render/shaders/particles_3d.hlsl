@@ -5,7 +5,7 @@
 #include "particles.hlsl"
 
 // One particle (128 bytes): its transform's axes, each scaled, and its origin, their w 0; the
-// velocity its forces built up and its flags; its color; Godot's CUSTOM (angle, age, frame,
+// velocity its forces built up and its flags; its color; the custom data (angle, age, frame,
 // lifetime) and spare words.
 struct Particle3D {
     float4 x;

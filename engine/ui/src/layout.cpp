@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "internal.hpp"
 #include "line_edit.hpp"
 #include "text_edit.hpp"
@@ -30,16 +31,14 @@
 #include <utility>
 #include <vector>
 
-// Controls are placed as Godot's Control::_size_changed places them, containers place their
-// children as Godot's containers sort them (scene/gui/*_container.cpp), and labels are laid out
-// as Godot's Label shapes and draws them (scene/gui/label.cpp): the same minimum sizes, lines
-// shown, trimming and alignment, down to where Godot rounds to whole pixels. Godot's desired and
-// maximum sizes aren't here.
+// Controls are placed by their anchors and offsets, containers place their children, and labels
+// are laid out with minimum sizes, lines shown, trimming and alignment that round to whole
+// pixels. Desired and maximum sizes aren't here.
 //
 // A layout is two walks: minimum sizes from the leaves up, then rects from the roots down. Some
 // minimums depend on a control's own size, as a wrapping label's height on its width; a control
 // that a container sizes is measured at the size it got, and if that changes its minimum, the
-// walks run again with that size, as Godot's next sort would, at most kMaxPasses times.
+// walks run again with that size, at most kMaxPasses times.
 namespace slash::ui {
 namespace {
 
@@ -81,9 +80,9 @@ struct ThemeLink {
     const ThemeLink* parent = nullptr;
 };
 
-// Looks up theme items for one component of a control, as Godot's ThemeOwner: the control's
+// Looks up theme items for one component of a control: the control's
 // overrides, then each theme it uses, over its type variation's types and its type's, then
-// Godot's default theme.
+// the default theme.
 class Resolver {
 public:
     Resolver(const ThemeLink* themes, const world::Widget& control, std::string_view type)
@@ -147,8 +146,8 @@ public:
             [](const Theme& /*theme*/) { return std::optional<std::string>(); }, std::string(),
             from);
     }
-    // Whether an override, a theme or the default theme has a style box, as Godot's
-    // has_theme_stylebox: Button's hover_pressed only when a theme gives one, CheckBox's always.
+    // Whether an override, a theme or the default theme has a style box: Button's hover_pressed
+    // only when a theme gives one, CheckBox's always.
     [[nodiscard]] bool has_style(const std::string& name) const {
         if (control_->theme_styles.contains(name)) {
             return true;
@@ -280,7 +279,7 @@ LabelWork start_label(const world::Label& label, const Resolver& theme, bool rtl
     out.shadow_outline_size = std::max(theme.constant("shadow_outline_size"), 0);
     out.shadow_offset = {static_cast<float>(theme.constant("shadow_offset_x")),
                          static_cast<float>(theme.constant("shadow_offset_y"))};
-    // Godot takes the ellipsis's first character, or U+2026.
+    // The ellipsis's first character is taken, or U+2026.
     if (work.overrun == text::Overrun::TrimEllipsis ||
         work.overrun == text::Overrun::TrimWordEllipsis) {
         out.ellipsis = std::string(text::first_characters(label.ellipsis_char, 1));
@@ -304,7 +303,7 @@ LabelWork start_label(const world::Label& label, const Resolver& theme, bool rtl
 // load is reported and the default font used instead.
 void shape(text::Fonts& fonts, LabelWork& work, std::optional<float> width) {
     const bool wraps = work.autowrap != text::Autowrap::Off && width.has_value();
-    // Godot wraps to the width in whole pixels.
+    // The text wraps to the width in whole pixels.
     const std::optional<float> wrap =
         wraps ? std::optional<float>(std::max(std::trunc(*width), 1.0F)) : std::nullopt;
     if (work.shaped && work.shaped_width == wrap) {
@@ -791,7 +790,7 @@ void grow(float& position, float& length, float minimum, std::string_view direct
     length = minimum;
 }
 
-// Godot's SizeFlags.
+// A control's size flags in one axis.
 struct Flags {
     bool fill = true;
     bool expand = false;
@@ -974,13 +973,13 @@ ScrollBarView measure_bar(const BarTheme& theme, const Range& range, float custo
     view.decrement = along(bar_icon(theme.decrement_size[0], theme.icon_max_size), vertical);
     view.increment = along(bar_icon(theme.increment_size[0], theme.icon_max_size), vertical);
     view.begin = theme.scroll.margin(vertical ? kTop : kLeft);
-    // The area takes the icons' own sizes, not their fitted ones, as Godot's does.
+    // The area takes the icons' own sizes, not their fitted ones.
     const double grabber = grabber_minimum(theme);
     view.area = static_cast<double>(along(size, vertical)) -
                 along(theme.scroll.minimum_size(), vertical) -
                 along(theme.increment_size[0].value_or(Vec2{}), vertical) -
                 along(theme.decrement_size[0].value_or(Vec2{}), vertical) - grabber;
-    // The page's share in single precision, as Godot's.
+    // The page's share in single precision.
     const auto span = static_cast<float>(range.max - range.min);
     if (span > 0.0F) {
         const float page = range.page > 0.0 ? static_cast<float>(range.page) : 0.0F;
@@ -1342,15 +1341,14 @@ struct Builder {
 
     // ---- Nodes ----
 
-    // Text as a control shows it: translated when the control auto-translates, as Godot's
-    // Node::atr.
+    // Text as a control shows it: translated when the control auto-translates.
     [[nodiscard]] std::string shown_text(const Node& node, const std::string& text) const {
         return node.translate && !text.empty() ? l10n::tr(world, text) : text;
     }
 
-    // An item's text as it shows, as PopupMenu::_atr: "inherit" translates as its owner does.
+    // An item's text as it shows: "inherit" translates as its owner does.
     // The language a control's text shapes in: its own, else the locale's once the project
-    // localizes, as Godot's text server.
+    // localizes.
     [[nodiscard]] std::string shown_language(const std::string& language) const {
         return language.empty() ? l10n::text_language(world) : language;
     }
@@ -1716,7 +1714,7 @@ struct Builder {
     }
 
     // A ScrollBox's theme items and the scroll it asks for. Its bars take HScrollBar's and
-    // VScrollBar's items from the themes it uses, not its overrides, as Godot's bars are
+    // VScrollBar's items from the themes it uses, not its overrides, since its bars are
     // controls of their own.
     void start_scroll(Node& node, const world::ScrollBox& scroll, const Resolver& theme) {
         ScrollWork& work = node.scroll.emplace();
@@ -1845,8 +1843,8 @@ struct Builder {
         }
     }
 
-    // A TextArea's theme items, its scroll bars' from the VScrollBar and HScrollBar types (they
-    // are its children in Godot, so its own overrides don't reach them).
+    // A TextArea's theme items, its scroll bars' from the VScrollBar and HScrollBar types (its own
+    // overrides don't reach them).
     void start_text_edit(Node& node, const world::TextArea& edit, const Resolver& theme) {
         auto view = std::make_unique<TextEditView>();
         view->normal = theme.style("normal");
@@ -1979,7 +1977,7 @@ struct Builder {
         if (!bar.show_percentage) {
             return;
         }
-        // Its minimum height fits "100%" in the font, as Godot's.
+        // Its minimum height fits "100%" in the font.
         text::LayoutOptions options{.font = percent.font,
                                     .font_size = percent.font_size,
                                     .autowrap = text::Autowrap::Off,
@@ -2246,7 +2244,7 @@ struct Builder {
         if (node.text_edit != nullptr) {
             const world::TextArea& edit = *node.text_edit;
             if (edit.scroll_fit_content_height || edit.scroll_fit_content_width) {
-                // Fitting its height, it is measured with room for every row, the size Godot's
+                // Fitting its height, it is measured with room for every row, the size a
                 // TextArea settles on a frame or two after its minimum size changes.
                 Vec2 at = size.value_or(Vec2{});
                 if (edit.scroll_fit_content_height) {
@@ -2869,7 +2867,7 @@ struct Builder {
     void place(Node& node) {
         const world::Widget& control = *node.control;
         const Node* up = node.parent != kNone ? &nodes[node.parent] : nullptr;
-        // A top_level control hangs from its canvas, as Godot's get_parent_item: it is placed in
+        // A top_level control hangs from its canvas: it is placed in
         // the viewport and takes none of its parent's transform, tint, z_index, texture filter
         // or clip. Its parent still hides it.
         const Node* parent = control.top_level ? nullptr : up;
@@ -2932,8 +2930,7 @@ struct Builder {
         if (parent != nullptr) {
             placed.transform = parent->placed.transform * local;
         } else if (const std::optional<Transform> canvas = canvas_transform(node.canvas)) {
-            // A root of a ScreenLayer's is in the layer's space, as Godot's
-            // get_global_transform_with_canvas.
+            // A root of a ScreenLayer's is in the layer's space.
             placed.transform = *canvas * local;
         } else {
             placed.transform = local;
@@ -3484,8 +3481,7 @@ struct Builder {
                 static_cast<float>(static_cast<int>(size.y * scale))};
     }
 
-    // A Slider's track, the filled part of it, its ticks and its grabber, as its
-    // NOTIFICATION_DRAW draws them, with Godot's whole-pixel rects.
+    // A Slider's track, the filled part of it, its ticks and its grabber, in whole-pixel rects.
     static void slider_boxes(const SliderWork& work, Vec2 rect_size, std::vector<Box>& boxes) {
         const world::Slider& slider = *work.slider;
         const int width = static_cast<int>(rect_size.x);
@@ -4208,7 +4204,7 @@ struct Builder {
             const Vec2 icon_size = work.icon.value_or(Vec2{});
             Vec2 at{0.0F, tops[i]};
             if (std::cmp_equal(view.focused, i)) {
-                const int half_separation = look.v_separation / 2; // whole pixels, as Godot's
+                const int half_separation = look.v_separation / 2; // whole pixels
                 style(look.hover, {at.x, at.y - static_cast<float>(half_separation)},
                       {display_width, h + static_cast<float>(look.v_separation)});
             }
@@ -4323,9 +4319,8 @@ std::vector<entt::entity> all_controls(const world::World& world) {
 
 // Links the controls into trees and makes a node for each, parents before children, with the
 // themes each one uses, and the layout's tree. Nodes are in tree order by canvas, except that a
-// top_level control hangs from its canvas, as Godot's: it and its subtree come after the rest of
-// its tree and before the roots after that tree, so it draws over the rest of its tree, as
-// Godot orders a canvas's root items in tree order.
+// top_level control hangs from its canvas: it and its subtree come after the rest of
+// its tree and before the roots after that tree, so it draws over the rest of its tree.
 void build(Builder& builder, const std::vector<entt::entity>& controls) {
     builder.link(controls);
     builder.break_loops(controls);
@@ -4485,7 +4480,7 @@ Layout layout(const world::World& world, text::Fonts& fonts, Vec2 viewport) {
     if (dragging) {
         builder.drag_view(*dragging);
     }
-    // Then by canvas, then z: Godot draws a canvas item over those of its canvas with a lower
+    // Then by canvas, then z: a canvas item draws over those of its canvas with a lower
     // z_index, the rest in tree order.
     std::ranges::stable_sort(out.controls, [](const Placed& a, const Placed& b) {
         return a.canvas != b.canvas ? a.canvas < b.canvas : a.z < b.z;

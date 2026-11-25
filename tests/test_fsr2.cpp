@@ -20,7 +20,7 @@ namespace detail = render::detail;
 using render::Image;
 using namespace slash::test::upscale;
 
-TEST_CASE("FSR 2 draws at Godot's render size with its jitter phases") {
+TEST_CASE("FSR 2 draws at its render size with its jitter phases") {
     render::Scene3D scene;
     scene.fsr2 = render::Fsr2Scaling{.scale = 0.77F, .sharpness = 0.2F};
     CHECK(detail::fsr2_render_size(scene, 1920, 1080) == std::array<std::uint32_t, 2>{1478, 831});
@@ -41,7 +41,8 @@ TEST_CASE("FSR 2 draws at Godot's render size with its jitter phases") {
     CHECK(detail::fsr2_luma_mip_size(1478, 831) == std::array<std::uint32_t, 2>{46, 25});
     CHECK(detail::fsr2_luma_mip_size(16, 16) == std::array<std::uint32_t, 2>{1, 1});
 
-    // Only Forward+ at a scale under 1, and never a probe's capture; TAA is off with it.
+    // Only the clustered renderer at a scale under 1, and never a probe's capture; TAA is off with
+    // it.
     scene.fsr2->scale = 0.5F;
     scene.use_taa = true;
     CHECK(detail::uses_fsr2(scene));
@@ -58,7 +59,7 @@ TEST_CASE("FSR 2 draws at Godot's render size with its jitter phases") {
     CHECK_FALSE(detail::uses_fsr2(scene));
 }
 
-TEST_CASE("FSR 2's uniforms follow AMD's dispatch from Godot's settings") {
+TEST_CASE("FSR 2's uniforms follow AMD's dispatch from the settings") {
     const std::array<float, 16> projection = render::perspective(60.0F, 2.0F, 0.1F, 100.0F);
     const detail::Fsr2Uniforms uniforms =
         detail::fsr2_uniforms({.render_width = 64,
@@ -86,7 +87,7 @@ TEST_CASE("FSR 2's uniforms follow AMD's dispatch from Godot's settings") {
     CHECK(uniforms.view_depth[2] == doctest::Approx(1.0F / projection[0]));
     CHECK(uniforms.view_depth[3] == doctest::Approx(1.0F / projection[5]));
     CHECK(uniforms.options[3] == 0);
-    // Godot's sharpness 0.2 is RCAS's 0.9: a lobe scale of 2^(2 * 0.9 - 2).
+    // A sharpness of 0.2 is RCAS's 0.9: a lobe scale of 2^(2 * 0.9 - 2).
     CHECK(uniforms.frame[1] == 32.0F);
     CHECK(uniforms.frame[2] == 3.0F);
     CHECK(uniforms.frame[3] == doctest::Approx(std::exp2(-0.2F)));
@@ -125,7 +126,8 @@ TEST_CASE("FSR 2's jitter phases follow a change of size one a frame, as AMD's")
     CHECK(clock.frames == 5);
 }
 
-TEST_CASE("Forward+ FSR 2 rebuilds a still square's edges at the full size over its frames") {
+TEST_CASE("the clustered renderer's FSR 2 rebuilds a still square's edges at the full size over "
+          "its frames") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         // Drawn at the full size without it, and with TAA, which smooths the edges.
@@ -154,7 +156,8 @@ TEST_CASE("Forward+ FSR 2 rebuilds a still square's edges at the full size over 
     }
 }
 
-TEST_CASE("Forward+ FSR 2 follows moving meshes and a moving camera by their motion vectors") {
+TEST_CASE("the clustered renderer's FSR 2 follows moving meshes and a moving camera by their "
+          "motion vectors") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         // Moved by its transform, the square ends where the still one is and looks as it does.
@@ -174,8 +177,8 @@ TEST_CASE("Forward+ FSR 2 follows moving meshes and a moving camera by their mot
     }
 }
 
-TEST_CASE("FSR 2 works out the sky's motion vectors from the depth, as Godot's") {
-    // Godot's derive_motion_vector, checked against where a point is now and was in the frame
+TEST_CASE("FSR 2 works out the sky's motion vectors from the depth") {
+    // The motion vector is checked against where a point is now and was in the frame
     // before through a camera that turned and moved, as the prepass's motion vectors are.
     const std::array<float, 16> projection = render::perspective(60.0F, 2.0F, 0.1F, 100.0F);
     const std::array<float, 16> before = render::look_at({0, 0, 0}, {0, 0, -1}, {0, 1, 0});

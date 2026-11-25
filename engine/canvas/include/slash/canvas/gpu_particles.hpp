@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/asset/assets.hpp"
@@ -17,24 +18,24 @@
 #include <string_view>
 #include <vector>
 
-// GPU particles, as Godot's GPUParticles2D. Each tick the "gpu_particles_2d" system works out
-// each emitter's steps as Godot's GPUParticles2D node and particles storage do (its emission
-// cycle, fixed_fps steps, preprocess, one_shot timing) and keeps them; a renderer runs the steps
-// it hasn't run on its device (render::RenderDevice::process_particles) and draws the particles
-// there, so a new renderer, or one that missed frames, catches up from the steps kept. The steps
-// are the same on every machine, and so are the particles they make on every device. Particles
-// are not part of the world's components, so scenes, snapshots and undo leave them as they are.
+// GPU particles, GpuEmitter2D. Each tick the "gpu_particles_2d" system works out each emitter's
+// steps (its emission cycle, fixed_rate steps, preprocess, one_shot timing) and keeps them; a
+// renderer runs the steps it hasn't run on its device (render::RenderDevice::process_particles) and
+// draws the particles there, so a new renderer, or one that missed frames, catches up from the
+// steps kept. The steps are the same on every machine, and so are the particles they make on every
+// device. Particles are not part of the world's components, so scenes, snapshots and undo leave
+// them as they are.
 //
 // A process material with a collision_mode collides with the Occluder2D outlines that have
-// sdf_collision, and tile occluders in occlusion layers that have it, in every visible canvas,
-// as Godot's particles collide with the signed distance field its viewport draws from them:
-// each step carries the shapes, in the world canvas's coordinates, the nearest first up to
+// sdf_collision, and tile occluders in occlusion layers that have it, in every visible canvas, as
+// particles collide with the signed distance field the viewport draws from them: each step carries
+// the shapes, in the world canvas's coordinates, the nearest first up to
 // render::kMaxParticleShapePoints points, and how near a particle comes before it touches
-// (collision_base_size, times half the texture's average side). Godot's field covers the
-// screen and a margin around it; these shapes count everywhere.
+// (collision_size, times half the texture's average side). The field covers the screen and a margin
+// around it; these shapes count everywhere.
 //
-// .particles.json files are Godot's ParticleProcessMaterial in 2D, with its property
-// names; fields left out keep Godot's defaults, and gravity is [0, 98] as a 2D one's:
+// .particles.json files are a particle process material in 2D; fields left out keep their defaults,
+// and gravity is [0, 98] as a 2D one's:
 //
 //   {
 //     "format": 1,
@@ -108,20 +109,20 @@ struct ParticleChainMember {
     ParticleSteps steps;
 };
 
-// Adds the "gpu_particles_2d" system, which steps every GpuEmitter2D's emission each tick after
-// the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
-// end, as Godot's: lifetime times 2 - explosiveness after it started. Emitters collide only with
-// assets to load their process materials, textures and tile sets from.
+// Adds the "gpu_particles_2d" system, which steps every GpuEmitter2D's emission each tick after the
+// CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to end:
+// lifetime times 2 - burst after it started. Emitters collide only with assets to load their
+// process materials, textures and tile sets from.
 //
-// A GpuEmitter2D's sub_emitter names another that its particles start particles in, as its
-// process material's sub_emitter_mode says, and that one's sub_emitter can name a third, up to
+// A GpuEmitter2D's sub_emitter names another that its particles start particles in, as its process
+// material's sub_emitter_mode says, and that one's sub_emitter can name a third, up to
 // render::kMaxParticleChain. A chain steps together, each sub-emitter a step for each of its
 // root's, as long as its speed_scale makes it, and emitting only what the particles before it
-// start: its own emitting, one_shot, fixed_fps and preprocess go unused, and it emits no
+// start: its own emitting, one_shot, fixed_rate and preprocess go unused, and it emits no
 // "finished". Where two name the same sub-emitter, the one whose ID sorts first has it; a
-// sub_emitter that would loop back or make the chain too long is left out. Godot steps each
-// sub-emitter in its own time, so a step may see its parent's particles from a frame before;
-// here they always see the step's.
+// sub_emitter that would loop back or make the chain too long is left out. Each sub-emitter steps
+// in its own time, so a step may see its parent's particles from a frame before; here they always
+// see the step's.
 void add_gpu_particles_system(world::World& world, asset::Assets* assets = nullptr);
 
 // A GpuEmitter2D's sub_emitter that no chain takes: the emitter's ID and why.

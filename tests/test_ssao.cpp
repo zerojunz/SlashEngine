@@ -30,8 +30,8 @@ using render::Vertex3D;
 
 namespace {
 
-// The devices that draw Forward+: the software device and the GPU device. The OpenGL devices
-// always draw as Compatibility, which has no SSAO.
+// The devices that draw with the clustered renderer: the software device and the GPU device.
+// The OpenGL devices always draw with the compatibility renderer, which has no SSAO.
 std::vector<std::unique_ptr<RenderDevice>> forward_devices() {
     std::vector<std::unique_ptr<RenderDevice>> devices;
     devices.push_back(render::create_software_device());
@@ -159,7 +159,7 @@ std::size_t count(const detail::SsaoPlan& plan, SsaoPass pass) {
 
 } // namespace
 
-TEST_CASE("SSAO plans Godot's passes for each quality") {
+TEST_CASE("SSAO plans its passes for each quality") {
     using detail::kSsaoAo;
     using detail::kSsaoFinal;
     using detail::kSsaoPong;
@@ -222,14 +222,14 @@ TEST_CASE("SSAO plans Godot's passes for each quality") {
     CHECK(sized(full.sizes.at(kSsaoAo), 32, 24));
 }
 
-TEST_CASE("SSAO's uniforms are Godot's push constants") {
+TEST_CASE("SSAO's uniforms are its push constants") {
     const std::array<float, 16> projection = render::perspective(60.0F, 1.0F, 0.1F, 20.0F);
     render::Ssao3D ssao{.enabled = true};
     const detail::SsaoPlan plan = detail::ssao_plan(ssao.settings, 64, 48);
     const detail::SsaoStep& gather = *std::ranges::find_if(
         plan.steps, [](const detail::SsaoStep& step) { return step.pass == SsaoPass::Gather; });
     const detail::SsaoUniforms u = detail::ssao_uniforms(ssao, gather, projection, 64, 48);
-    // Godot's shader quality is one less than the setting.
+    // The shader quality is one less than the setting.
     CHECK(u.options[1] == 1);
     CHECK(u.buffers == std::array<std::uint32_t, 4>{16, 12, 8, 6});
     // half_screen_pixel_size, doubled at half size.
@@ -273,7 +273,7 @@ TEST_CASE("SSAO's uniforms are Godot's push constants") {
     CHECK(slice.pass_offset[1] == 1.0F);
 }
 
-TEST_CASE("SSAO's depth pass makes depth linear, as Godot's downsample_depth") {
+TEST_CASE("SSAO's depth pass makes depth linear") {
     // A wall 3 meters in front of a perspective camera, then of an orthogonal one.
     for (const std::array<float, 16>& projection : {render::perspective(60.0F, 1.0F, 0.1F, 20.0F),
                                                     render::orthogonal(2.0F, 1.0F, 0.5F, 10.0F)}) {
@@ -320,7 +320,7 @@ TEST_CASE("SSAO settings come from project.json's rendering.ssao") {
     CHECK(render::ssao_settings_from_json(wrong.value()) == render::SsaoSettings{});
 }
 
-TEST_CASE("Forward+ SSAO darkens corners and what is close to a surface") {
+TEST_CASE("clustered-renderer SSAO darkens corners and what is close to a surface") {
     for (auto& device : forward_devices()) {
         CAPTURE(render::backend_name(device->backend()));
         const Image plain = draw_corner(*device, {});
@@ -337,7 +337,7 @@ TEST_CASE("Forward+ SSAO darkens corners and what is close to a surface") {
         none.intensity = 0.0F;
         CHECK(draw_corner(*device, {.ssao = none}).pixels == plain.pixels);
         // A transparent square isn't drawn in the prepass, so the wall behind it isn't darkened,
-        // and it takes no occlusion itself, as in Godot.
+        // and it takes no occlusion itself.
         const Material3D glass{.albedo = {1.0F, 1.0F, 1.0F, 0.5F},
                                .transparency = render::Transparency::Alpha};
         const Image clear = draw_corner(*device, {.floating = glass});

@@ -182,8 +182,9 @@ set(slash_shader_headers "")
 # whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
 # which have no varyings. The mesh shader's code is long enough to come in pieces, and its fifteen
 # textures put its WGSL samplers 16 bindings after them instead of 8, as the thirteen textures of
-# the Forward+ post passes (post16) do. clustered is the mesh shader's Forward+ fragment stage,
-# which reads storage buffers, and normal its fragment stage for Forward+'s normal-roughness
+# the clustered renderer's post passes (post16) do. clustered is the mesh shader's clustered
+# fragment stage, which reads storage buffers, and normal its fragment stage for the clustered
+# renderer's normal-roughness
 # prepass; motion is that prepass with TAA's motion vectors, whose vertex stage reads where each
 # vertex was in the frame before and whose varyings carry it. The SSAO and SSR passes (ssao) are post passes with twelve and eight textures whose
 # code comes in pieces; ssr_trace is the SSR trace's fragment stage, which draws with ssr's vertex

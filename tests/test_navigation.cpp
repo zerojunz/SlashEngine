@@ -162,7 +162,7 @@ TEST_CASE("navigation files are validated with the JSON Pointer of each error") 
     CHECK(flat[0].path == "/polygons/0");
     CHECK(flat[0].message == "the polygon has no area");
 
-    // Either way round is fine, as in Godot.
+    // Either way round is fine.
     CHECK(navigation::validate_polygon(parse(R"({"format": 1,
         "vertices": [[0, 0], [4, 0], [4, 4]], "polygons": [[0, 1, 2], [2, 1, 0]]})"))
               .empty());
@@ -177,7 +177,7 @@ TEST_CASE("navigation files are validated with the JSON Pointer of each error") 
     CHECK(mesh.value().cell_size == 0.25F);
 }
 
-TEST_CASE("paths over a navigation mesh are shaped as Godot's three postprocessings") {
+TEST_CASE("paths over a navigation mesh are shaped by three postprocessings") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
     const entt::entity floor = scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
@@ -227,7 +227,7 @@ TEST_CASE("paths from off the map start and end at its closest points") {
     const auto closest = navigation::closest_point(scene.world, Vec3{-3, 2, 1});
     CHECK(text_of(closest.point) == "(0, 0, 1)");
     CHECK(closest.owner == floor);
-    // Godot's: the cross of the polygon's first two edges, not normalized.
+    // The cross of the polygon's first two edges, not normalized.
     CHECK(text_of(closest.normal) == "(0, 16, 0)");
     const auto above = navigation::closest_point(scene.world, Vec3{6, 3, 6});
     CHECK(text_of(above.point) == "(6, 0, 6)");
@@ -270,7 +270,7 @@ TEST_CASE("regions join where edges meet or come within the edge connection marg
         "NavArea3D": {"navigation_mesh": "a.navmesh.json"}})");
     auto info = navigation::map_info(scene.world, navigation::Map::ThreeD);
     CHECK(info.regions == 2);
-    // The shared edge joins them; the path has a point where it crosses it, as Godot's.
+    // The shared edge joins them; the path has a point where it crosses it.
     CHECK(info.edge_connections == 1);
     CHECK(info.free_edges == 6);
     CHECK(text_of(navigation::query_path(scene.world, Vec3{1, 0, 1}, Vec3{7, 0, 3}).points) ==
@@ -320,7 +320,7 @@ TEST_CASE("links carry paths between regions, and travel costs steer them") {
     REQUIRE(through.types.size() == 4);
     CHECK(through.types[1] == navigation::Segment::Link);
     CHECK(through.owners[1] == link);
-    // The point it leaves the link at is on the room it leads to, as in Godot.
+    // The point it leaves the link at is on the room it leads to.
     CHECK(through.types[2] == navigation::Segment::Region);
 
     // Going through the link costs ten times its length: the corridor is cheaper.
@@ -446,7 +446,7 @@ TEST_CASE("the 2D map is in pixels and follows Transform2D") {
     CHECK(text_of(up.points) == "(110, 60) (110, 350) (120, 380)");
 }
 
-TEST_CASE("an agent follows its path and emits Godot's signals as events") {
+TEST_CASE("an agent follows its path and emits its signals as events") {
     Scene scene;
     scene.files.write("l.navmesh.json", std::string(kL));
     scene.create("floor", R"({"Transform3D": {}, "NavArea3D":
@@ -791,7 +791,7 @@ TEST_CASE("a 2D bake merges outlines, cuts out obstructions and shrinks by the a
     const navigation::SourceGeometry2D geometry =
         navigation::parse_source_geometry(scene.world, scene.assets, yard, settings);
     REQUIRE(geometry.obstruction_outlines.size() == 1);
-    CHECK(geometry.obstruction_outlines[0].size() == 12); // Godot's circle has 12 sides
+    CHECK(geometry.obstruction_outlines[0].size() == 12); // a circle has 12 sides
 
     auto baked = navigation::bake(settings, geometry);
     REQUIRE(baked.ok());
@@ -939,7 +939,7 @@ Vec2 position_of(Scene& scene, entt::entity entity) {
 
 } // namespace
 
-TEST_CASE("agents with avoidance_enabled steer round each other, as Godot's RVO2 avoidance") {
+TEST_CASE("agents with avoidance_enabled steer round each other by RVO2 avoidance") {
     const auto meet = [](bool avoid) {
         Scene scene;
         open_field(scene);
@@ -1125,7 +1125,7 @@ Crossing head_on_3d(float b_y, std::string_view fields, float y_velocity = 0.0F,
 } // namespace
 
 TEST_CASE("3D agents avoid on the ground by elevation and height, or in 3D") {
-    // On the ground, as Godot's 3D agents avoid by default: those whose heights overlap.
+    // On the ground, as 3D agents avoid by default: those whose heights overlap.
     CHECK(head_on_3d(0.0F, "").closest >= 0.95F); // two radii of 0.5
     CHECK(head_on_3d(0.5F, "").closest >= 0.95F);
     CHECK(head_on_3d(3.0F, "").closest < 0.2F); // b is above a's height of 1
@@ -1239,7 +1239,7 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 2D bakes") {
     auto& obstacle = scene.world.ecs().get<world::NavObstacle2D>(crate);
     obstacle.carve_navigation_mesh = true;
     CHECK(baked_area() == doctest::Approx(32400.0 - 1600.0));
-    // A circle is 12 sides, as Godot's, turned with the obstacle and scaled by its largest scale.
+    // A circle is 12 sides, turned with the obstacle and scaled by its largest scale.
     obstacle.vertices.clear();
     obstacle.radius = 10.0F;
     scene.world.ecs().get<world::Transform2D>(crate).scale = {2.0F, 1.0F};
@@ -1336,7 +1336,7 @@ TEST_CASE("a tile map layer's cells are regions of their tiles' navigation polyg
     CHECK(info.regions == 8); // five floors and a ledge in layer 1, two waters in layer 2
     const std::uint64_t first = info.iteration_id;
 
-    // Round the wall to the ledge's top half, cell to cell. Godot's funnel gives the corner where
+    // Round the wall to the ledge's top half, cell to cell. the funnel gives the corner where
     // the path turns into the next cell twice.
     const auto around = navigation::query_path(scene.world, Vec2{148, 16}, Vec2{148, 90});
     CHECK(text_of(around.points) == "(148, 16) (132, 32) (132, 32) (132, 64) (148, 80)");

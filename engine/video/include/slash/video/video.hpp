@@ -17,12 +17,11 @@ namespace slash::world {
 class World;
 }
 
-// Video playback, as Godot's VideoStream and Video, with AV1 in place of Theora:
-// dav1d decodes the frames, which are the same pixels on every machine.
+// Video playback with AV1: dav1d decodes the frames, which are the same pixels on every machine.
 namespace slash::video {
 
-// An audio track of a video file, as the embedded tracks Godot's VideoStreamPlayer picks with
-// audio_track: its codec and where each of its packets is.
+// An audio track of a video file, as the embedded tracks the Video picks with audio_track: its
+// codec and where each of its packets is.
 struct AudioTrack {
     enum class Codec : std::uint8_t {
         Pcm,   // A_PCM/INT/LIT: little-endian integers, unsigned at 8 bits
@@ -51,8 +50,8 @@ struct AudioTrack {
     std::vector<Packet> packets; // in order, without gaps
 };
 
-// An AV1 video in an IVF, WebM or Matroska file, as Godot's VideoStream: its size, frame rate,
-// where each frame's temporal unit is, and its audio tracks.
+// An AV1 video in an IVF, WebM or Matroska file: its size, frame rate, where each frame's temporal
+// unit is, and its audio tracks.
 struct VideoFile {
     struct Frame {
         std::size_t offset = 0; // of the temporal unit's bytes in data
@@ -160,7 +159,7 @@ struct YuvPicture {
 };
 
 // Converts a picture to RGBA8 with integer math, the same everywhere: limited range expanded,
-// chroma sampled at the nearest sample (as Godot's Theora player does).
+// chroma sampled at the nearest sample.
 void to_rgba(const YuvPicture& picture, render::Image& out);
 // And back, for encoders and tests: RGBA8 to 8-bit 4:2:0 at limited range, chroma the mean of
 // each 2x2 block. Odd sizes repeat the last column and row.
@@ -233,7 +232,7 @@ struct Playing {
     std::uint64_t version = 0;
 };
 [[nodiscard]] Playing playing(const world::World& world, std::string_view entity);
-// A player's stream's length in seconds, 0 before it loads, as Godot's get_stream_length.
+// A player's stream's length in seconds, 0 before it loads.
 [[nodiscard]] double stream_length(const world::World& world, std::string_view entity);
 
 // Drawing names a player's frame as a texture path of this prefix and the entity's ID, which

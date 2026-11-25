@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/procedural/pcg.hpp"
 
 #include "json_fields.hpp"
@@ -106,13 +107,13 @@ float distance_squared(Vec2 a, Vec2 b) {
     return (dx * dx) + (dy * dy);
 }
 
-// Godot's Basis(axis, angle) as a transform's columns: a turn of angle radians about a unit axis.
+// A basis as a transform's columns: a turn of angle radians about a unit axis.
 world::Affine3D axis_angle(Vec3 axis, float angle) {
     const Vec2 cs = cos_sin(angle);
     const float c = cs.x;
     const float s = cs.y;
     const float t = 1.0F - c;
-    // Rows of Godot's basis, then put as columns.
+    // Rows of the basis, then put as columns.
     const Vec3 r0{(axis.x * axis.x * t) + c, (axis.x * axis.y * t) - (axis.z * s),
                   (axis.x * axis.z * t) + (axis.y * s)};
     const Vec3 r1{(axis.x * axis.y * t) + (axis.z * s), (axis.y * axis.y * t) + c,
@@ -872,7 +873,7 @@ void pcg_transform(std::vector<PcgPoint>& points, const PcgTransform& transform,
         if (flat) {
             point.rotation.z += transform.rotation.z + heading;
             const Vec2 cs = cos_sin(point.rotation.z);
-            // A 2D point's up is its -y: y grows down the screen, as Godot's.
+            // A 2D point's up is its -y: y grows down the screen.
             point.position = point.position + (Vec3{cs.y, -cs.x, 0.0F} * transform.offset_up);
             continue;
         }

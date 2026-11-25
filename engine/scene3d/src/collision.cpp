@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/collision.hpp"
 
 #include "model_internal.hpp"
@@ -24,7 +25,7 @@ namespace slash::scene3d {
 
 namespace {
 
-// Godot's _teststr and _fixstr (resource_importer_scene.cpp): a name without the trailing
+// Whether a name has the hint: a name without the trailing
 // digits, spaces and dots Blender adds to copies has the hint as "$hint" anywhere, or ends with
 // "-hint" or "_hint", in any case.
 std::size_t hinted_length(std::string_view name) {
@@ -61,7 +62,7 @@ std::string without_hint(std::string_view name, std::string_view hint) {
     const std::string lower = lowered(what);
     const std::string hinted(hint);
     if (lower.find("$" + hinted) != std::string::npos) {
-        // Godot's String::replace, which matches case.
+        // Replaces the hint, matching case.
         const std::string needle = "$" + hinted;
         for (std::size_t at = what.find(needle); at != std::string::npos; at = what.find(needle)) {
             what.erase(at, needle.size());
@@ -101,7 +102,7 @@ float dot(Vec3 a, Vec3 b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
-// A hull's faces wound as Godot's: clockwise seen from outside, so each face's
+// A hull's faces wound clockwise seen from outside, so each face's
 // (b - a) x (c - a) points in, toward the middle of its corners.
 void wind_inward(ModelCollision& hull) {
     if (hull.points.empty()) {

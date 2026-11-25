@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/csg.hpp"
 
 #include "model_internal.hpp"
@@ -28,9 +29,9 @@ namespace {
 
 constexpr double kPi = std::numbers::pi;
 constexpr double kTau = 2.0 * std::numbers::pi;
-constexpr float kCmpEpsilon = 0.00001F; // Godot's CMP_EPSILON
+constexpr float kCmpEpsilon = 0.00001F; // the epsilon for approximate comparisons
 
-// ---- Godot's math, operation for operation, so faces match Godot's bit for bit where it can ----
+// ---- Math, operation for operation, so faces are bit for bit the same everywhere ----
 
 Vec3 cross(Vec3 a, Vec3 b) {
     return {(a.y * b.z) - (a.z * b.y), (a.z * b.x) - (a.x * b.z), (a.x * b.y) - (a.y * b.x)};
@@ -46,7 +47,7 @@ Vec3 normalized(Vec3 v) {
     return {v.x / length, v.y / length, v.z / length};
 }
 
-// Plane(a, b, c)'s normal: Godot's faces are clockwise, so it points out of them.
+// Plane(a, b, c)'s normal: faces are clockwise, so it points out of them.
 Vec3 plane_normal(Vec3 a, Vec3 b, Vec3 c) {
     return normalized(cross(a - c, a - b));
 }
@@ -72,12 +73,12 @@ bool is_equal_approx(const std::array<float, 3>& a, const std::array<float, 3>& 
            is_equal_approx(a[2], b[2]);
 }
 
-// An angle in radians as Godot's float math leaves it after a double multiply.
+// An angle in radians as float math leaves it after a double multiply.
 float angle(double radians) {
     return static_cast<float>(radians);
 }
 
-// A Transform3D with Godot's row-major basis, for SolidExtrusion3D's spin.
+// A Transform3D with a row-major basis, for SolidExtrusion3D's spin.
 struct Xform {
     std::array<std::array<float, 3>, 3> rows{
         {{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}};
@@ -138,7 +139,7 @@ float area(const std::vector<Vec2>& contour) {
     return a * 0.5F;
 }
 
-// Triangulate::is_inside_triangle; include_edges is Godot's name, though it excludes them.
+// Whether a point is inside a triangle; include_edges is its name, though it excludes them.
 bool is_inside_triangle(Vec2 a, Vec2 b, Vec2 c, Vec2 p, bool include_edges) {
     const float ax = c.x - b.x;
     const float ay = c.y - b.y;
@@ -186,14 +187,14 @@ bool snip(const std::vector<Vec2>& contour, int u, int v, int w, int n, const st
     return true;
 }
 
-// ---- Brushes, as Godot's CSGBrush ----
+// ---- Brushes ----
 
 struct Face {
     std::array<Vec3, 3> vertices{};
     std::array<Vec2, 3> uvs{};
     bool smooth = false;
     bool invert = false;
-    int material = -1; // into Brush::materials, or -1 for Godot's default
+    int material = -1; // into Brush::materials, or -1 for the default
 };
 
 struct Brush {
@@ -378,7 +379,7 @@ std::vector<Face> cylinder_faces(const world::SolidCylinder3D& cylinder) {
             face_of({times(p[1], mul), times(p[0], mul), times(Vec3{0.0F, -1.0F, 0.0F}, mul)},
                     {cap_uv(p[1]), cap_uv(p[0]), Vec2{0.5F, 0.5F}}, false));
         if (!cylinder.cone) {
-            // The top takes the bottom's texture coordinates, as Godot's does.
+            // The top takes the bottom's texture coordinates.
             faces.push_back(
                 face_of({times(p[3], mul), times(p[2], mul), times(Vec3{0.0F, 1.0F, 0.0F}, mul)},
                         {cap_uv(p[1]), cap_uv(p[0]), Vec2{0.5F, 0.5F}}, false));
@@ -533,7 +534,7 @@ std::vector<Face> polygon_faces(const world::SolidExtrusion3D& polygon, const st
         extrusion_step *= curve_length;
     }
 
-    // Where each ring of the polygon is: Godot's spin turns an Xform; a path places an Affine3D,
+    // Where each ring of the polygon is: a spin turns an Xform; a path places an Affine3D,
     // its rings facing the way the curve goes.
     Xform current;
     world::Affine3D on_path;
@@ -606,7 +607,7 @@ std::vector<Face> polygon_faces(const world::SolidExtrusion3D& polygon, const st
         before_previous_on_path = previous_on_path;
         previous_on_path = on_path;
         if (along_path) {
-            // Godot's MODE_PATH step: the next ring along the curve.
+            // The path step: the next ring along the curve.
             const double previous_offset = x0 * extrusion_step;
             double current_offset = (x0 + 1) * extrusion_step;
             if (polygon.path_joined && x0 == extrusions - 1) {
@@ -800,7 +801,7 @@ Brush own_brush(const CsgNode& node, std::vector<Problem>& problems) {
         node.shape);
 }
 
-// ---- Manifold, as Godot's _pack_manifold and _unpack_manifold ----
+// ---- Manifold: packing and unpacking brushes ----
 
 enum Property : std::uint8_t { PositionX, PositionY, PositionZ, Invert, Smooth, UvX, UvY, Count };
 constexpr std::array<std::size_t, 3> kOrder = {0, 2, 1};
@@ -913,7 +914,7 @@ std::string status_name(manifold::Manifold::Error error) {
     }
 }
 
-// Godot's _get_brush: the shape's own faces, then its visible children's in order, each added to,
+// The shape's own faces, then its visible children's in order, each added to,
 // intersected with or cut from what came before.
 Brush brush_of(const CsgNode& node, std::vector<Problem>& problems) {
     const Brush own = own_brush(node, problems);
@@ -964,7 +965,7 @@ struct Vec3Hash {
     }
 };
 
-// Godot's update_shape: one surface per material, smooth faces' normals the sum of the faces
+// One surface per material, smooth faces' normals the sum of the faces
 // meeting at each corner, inverted faces turned round, and tangents by MikkTSpace.
 CsgMesh mesh_of(const Brush& brush, const CsgSettings& settings) {
     CsgMesh out;
@@ -1282,7 +1283,7 @@ void measure(const Brush& brush, FracturePiece& piece) {
         const Vec3 a = face.vertices[0];
         const Vec3 b = face.vertices[face.invert ? 2 : 1];
         const Vec3 c = face.vertices[face.invert ? 1 : 2];
-        // Godot's faces wind clockwise seen from outside, so the signed volume is negated.
+        // Faces wind clockwise seen from outside, so the signed volume is negated.
         const double six =
             -((static_cast<double>(a.x) *
                ((static_cast<double>(b.y) * c.z) - (static_cast<double>(b.z) * c.y))) -

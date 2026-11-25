@@ -1,10 +1,10 @@
-// Navigation, as Godot's NavigationServer: main.scene.json has a house of two rooms joined the
-// long way round by a corridor and the short way by a hatch (a NavLink3D), with a guard
-// (a NavAgent3D) sent across it, and a yard on the 2D map with a cat (a NavAgent2D).
+// Navigation: main.scene.json has a house of two rooms joined the long way round by a corridor and
+// the short way by a hatch (a NavLink3D), with a guard (a NavAgent3D) sent across it, and a yard on
+// the 2D map with a cat (a NavAgent2D).
 //
-// Agents move nothing themselves: a plain C++ system walks each one toward its next path
-// position, as a game's would. Then the program asks the navigation commands about the maps, as
-// an agent would.
+// Agents move nothing themselves: a plain C++ system walks each one toward its next path position,
+// as a game's would. Then the program asks the navigation commands about the maps, as an agent
+// would.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -38,8 +38,8 @@ Vec3 toward(Vec3 from, Vec3 to, float step) {
     return length <= step ? to : from + (way * (step / length));
 }
 
-// Walks each agent toward its next path position until its navigation finishes, as a Godot
-// script calling get_next_path_position in _physics_process would.
+// Walks each agent toward its next path position until its navigation finishes, as gameplay code
+// asking for the next path position each physics tick would.
 void walk_agents(world::World& world, double seconds) {
     const auto step = static_cast<float>(seconds);
     for (const entt::entity guard : world.ecs().view<world::NavAgent3D>()) {

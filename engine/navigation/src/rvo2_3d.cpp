@@ -1,5 +1,6 @@
-// RVO2-3D's agents, k-d tree and linear programs (Agent3d.cpp, KdTree3d.cpp), as Godot 4.6
-// changes them in thirdparty/rvo2/rvo2_3d. See rvo2.hpp for the license and the changes.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// RVO2-3D's agents, k-d tree and linear programs (Agent3d.cpp, KdTree3d.cpp). See rvo2.hpp for the
+// license and the changes.
 
 #include "rvo2.hpp"
 
@@ -355,7 +356,7 @@ void Simulation3D::compute_new_velocity(std::size_t agent) {
 }
 
 void Simulation3D::insert_agent_neighbor(std::size_t agent, std::size_t other, float& range_sq) {
-    // Agent3D::insertAgentNeighbor, with Godot's checks.
+    // Agent3D::insertAgentNeighbor, with extra checks.
     if (agent == other) {
         return;
     }

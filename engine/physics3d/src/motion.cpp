@@ -1,7 +1,7 @@
-// Godot's body_test_motion on Jolt (modules/jolt_physics/spaces/
-// jolt_physics_direct_space_state_3d.cpp): a body is first pushed out of what it overlaps, then
+// Body test motion on Jolt: a body is first pushed out of what it overlaps, then
 // each of its convex shapes is swept along the motion by a binary search, then what it touches
 // where it stops is collected, deepest first.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "space.hpp"
 
@@ -25,7 +25,7 @@ namespace {
 constexpr int kMaxCollisions = 32;
 constexpr int kMaxCastBodies = 1024;
 
-// The first hits of a query, up to max, as Godot's JoltQueryCollectorAnyMulti.
+// The first hits of a query, up to max.
 template <typename Base>
 class AnyMulti final : public Base {
 public:
@@ -50,7 +50,7 @@ private:
     int max_;
 };
 
-// Whether a query hit anything, as Godot's JoltQueryCollectorAny.
+// Whether a query hit anything.
 template <typename Base>
 class Any final : public Base {
 public:
@@ -62,8 +62,7 @@ public:
     bool hit = false;
 };
 
-// The deepest hits of a query, up to max, deepest first, as Godot's
-// JoltQueryCollectorClosestMulti.
+// The deepest hits of a query, up to max, deepest first.
 class ClosestMulti final : public JPH::CollideShapeCollector {
 public:
     explicit ClosestMulti(int max) : max_(max) {}
@@ -86,7 +85,7 @@ private:
     int max_;
 };
 
-// What a moving body hits, as Godot's JoltMotionFilter3D: bodies, not areas, whose collision
+// What a moving body hits: bodies, not areas, whose collision
 // layer is in its mask, but not itself, bodies a joint keeps it apart from or what the motion
 // excludes.
 class MotionFilter final : public JPH::BroadPhaseLayerFilter,
@@ -117,7 +116,7 @@ private:
     const std::vector<entt::entity>* exclude_;
 };
 
-// A convex shape swept along a motion, as Godot's JoltCustomMotionShape: its support in any
+// A convex shape swept along a motion: its support in any
 // direction the motion points along is moved by the motion. Only what collision needs of a
 // convex shape is there; it lives on the stack for one query.
 class MotionShape final : public JPH::ConvexShape {
@@ -195,14 +194,14 @@ world::Affine3D scaled_local(world::Affine3D transform, Vec3 scale) {
     return transform;
 }
 
-// floor(log2(x)) for x at least 1, as Godot's int(logf(x) / Math_LN2), without libm.
+// floor(log2(x)) for x at least 1, without libm.
 int log2_floor(float x) {
     int exponent = 0;
     (void)std::frexp(x, &exponent);
     return exponent - 1;
 }
 
-// A narrow phase shape query, skipping inner edges as Godot's motion queries do unless its
+// A narrow phase shape query, skipping inner edges unless its
 // motion_queries/use_enhanced_internal_edge_removal is off.
 void collide_shape(const JPH::NarrowPhaseQuery& query, const Settings& tuning,
                    const JPH::Shape* shape, JPH::RMat44Arg place,
@@ -217,8 +216,8 @@ void collide_shape(const JPH::NarrowPhaseQuery& query, const Settings& tuning,
     }
 }
 
-// Godot's _body_motion_recover: pushes the body out of what it overlaps, a little at a time.
-// Godot's motion_queries settings say how many passes and how much of each overlap.
+// Pushes the body out of what it overlaps, a little at a time.
+// The motion_queries settings say how many passes and how much of each overlap.
 bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Affine3D& transform,
              float margin, const MotionFilter& filter, const Settings& tuning, Vec3& recovery) {
     const JPH::NarrowPhaseQuery& query = system.GetNarrowPhaseQueryNoLock();
@@ -237,7 +236,7 @@ bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Af
             break;
         }
         recovered = true;
-        // Every body's collision priority is Godot's default, 1, so each pushes alike.
+        // Every body's collision priority is the default, 1, so each pushes alike.
         Vec3 step;
         for (const JPH::CollideShapeResult& hit : collector.hits) {
             const Vec3 axis = from_jolt(hit.mPenetrationAxis.Normalized());
@@ -258,7 +257,7 @@ bool recover(const JPH::PhysicsSystem& system, const Body& body, const world::Af
     return recovered;
 }
 
-// Godot's _cast_motion_impl: how far a convex shape moves before it hits something, by a
+// How far a convex shape moves before it hits something, by a
 // binary search to about a millimeter against each body in its way.
 bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
                 const world::Affine3D& transform_com, Vec3 scale, Vec3 motion,
@@ -339,7 +338,7 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
     return collided;
 }
 
-// Godot's _body_motion_cast: each convex shape of the body swept on its own.
+// Each convex shape of the body swept on its own.
 bool cast(const JPH::PhysicsSystem& system, const Body& body, const world::Affine3D& transform,
           Vec3 scale, Vec3 motion, const MotionFilter& filter, const Settings& tuning, float& safe,
           float& unsafe) {
@@ -363,7 +362,7 @@ bool cast(const JPH::PhysicsSystem& system, const Body& body, const world::Affin
     return collided;
 }
 
-// The velocity of a body at a point, as Godot's JoltBody3D::get_velocity_at_position, with a
+// The velocity of a body at a point, with a
 // static or animatable body's constant velocities.
 Vec3 point_velocity(const JPH::Body& jolt, const Body& body, Vec3 position) {
     const Vec3 linear = from_jolt(jolt.GetLinearVelocity()) + body.constant_linear_velocity;
@@ -371,7 +370,7 @@ Vec3 point_velocity(const JPH::Body& jolt, const Body& body, Vec3 position) {
     return linear + cross(angular, position - from_jolt_place(jolt.GetCenterOfMassPosition()));
 }
 
-// Godot's _body_motion_collide: what the body touches at transform, deepest first.
+// What the body touches at transform, deepest first.
 bool collide(const JPH::PhysicsSystem& system, const Body& body, const world::Affine3D& transform,
              Vec3 motion, float margin, int max_collisions, const MotionFilter& filter,
              const Settings& tuning, MotionResult& result) {
@@ -404,7 +403,6 @@ bool collide(const JPH::PhysicsSystem& system, const Body& body, const world::Af
         JPH::ContactPoints points_1;
         JPH::ContactPoints points_2;
         if (max_collisions > 1) {
-            // Godot's _generate_manifold.
             JPH::ManifoldBetweenTwoFaces(hit.mContactPointOn1, hit.mContactPointOn2, axis,
                                          tolerance_squared, hit.mShape1Face, hit.mShape2Face,
                                          points_1, points_2);

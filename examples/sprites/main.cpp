@@ -1,10 +1,10 @@
-// Sprites and flipbook animation, as in Godot: Sprite2D draws a texture, or one frame of a sprite
-// sheet, and Flipbook2D plays the animations in a .frames.json file on it.
+// Sprites and flipbook animation: Sprite2D draws a texture, or one frame of a sprite sheet, and
+// Flipbook2D plays the animations in a .frames.json file on it.
 //
 // main.scene.json has three sprites and hero.frames.json two animations of the same sheet. This
 // program writes the sheet, plays the hero's animations with the commands an agent sends, then
-// draws the scene into a texture. Sessions and games set the canvas up themselves; a world of
-// your own needs slash::canvas::install(world, assets).
+// draws the scene into a texture. Sessions and games set the canvas up themselves; a world of your
+// own needs slash::canvas::install(world, assets).
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

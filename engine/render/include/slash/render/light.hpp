@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/render/material.hpp"
@@ -11,19 +12,19 @@
 #include <string_view>
 #include <vector>
 
-// 2D lighting, as Godot's: point and directional lights shade lit draws per pixel in the
-// material shader (shaders/material.hlsl), after the draw's program has made its color, and
-// occluders cast shadows through shadow maps the CPU fills, one row of kShadowMapWidth texels per
-// shadowed light. shade runs the same lighting on the CPU, for checks and light.sample.
+// 2D lighting: point and directional lights shade lit draws per pixel in the material shader
+// (shaders/material.hlsl), after the draw's program has made its color, and occluders cast shadows
+// through shadow maps the CPU fills, one row of kShadowMapWidth texels per shadowed light. shade
+// runs the same lighting on the CPU, for checks and light.sample.
 //
-// A lit pixel starts from the color its program made (Godot's base color). Normal draws multiply
-// it by the ambient color (their canvas's AmbientTint2D); then each light whose cull mask, z
-// range and layer range take the draw adds, subtracts or mixes in its color times the base color,
-// darkened where the pixel's normal faces away from it and blended toward its shadow color where
-// an occluder hides it.
+// A lit pixel starts from the color its program made (its base color). Normal draws multiply it by
+// the ambient color (their canvas's AmbientTint2D); then each light whose cull mask, z range and
+// layer range take the draw adds, subtracts or mixes in its color times the base color, darkened
+// where the pixel's normal faces away from it and blended toward its shadow color where an occluder
+// hides it.
 namespace slash::render {
 
-// How a draw takes the frame's lights, as Godot's light_mode.
+// How a draw takes the frame's lights.
 enum class LightMode : std::uint8_t {
     Unshaded,  // lights and the ambient color leave it alone; draws are unshaded by default
     Normal,    // the ambient color tints it and lights shade it
@@ -40,8 +41,7 @@ enum class LightKind : std::uint8_t {
     Directional, // shines everywhere from one direction, as SunLight2D
 };
 
-// How soft shadow edges are, as Godot's shadow filters: one shadow map texel, or the average of
-// 5 or 13 neighbors.
+// How soft shadow edges are: one shadow map texel, or the average of 5 or 13 neighbors.
 enum class ShadowFilter : std::uint8_t { None, Pcf5, Pcf13 };
 
 // "none", "pcf5" or "pcf13".
@@ -57,7 +57,7 @@ inline constexpr std::uint32_t kShadowMapWidth = 2048;
 // One light, in the coordinates vertices use.
 struct Light {
     LightKind kind = LightKind::Point;
-    // Add, Sub or Mix, as Godot's light blend modes.
+    // Add, Sub or Mix.
     BlendMode blend = BlendMode::Add;
     // RGB already multiplied by the light's energy, and alpha.
     std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
@@ -161,24 +161,24 @@ struct LightHit {
                                          const ShadowTexel& shadows,
                                          std::vector<LightHit>* hits = nullptr);
 
-// The sRGB color of a black body at kelvin, as Godot's Light3D::get_correlated_color: Krystek's
-// fit to the Planckian locus, made linear sRGB, scaled so its brightest channel is 1, clamped and
-// made sRGB again. With slash::exp and ln, so it is the same bits everywhere.
+// The sRGB color of a black body at kelvin: Krystek's fit to the Planckian locus, made linear sRGB,
+// scaled so its brightest channel is 1, clamped and made sRGB again. With slash::exp and ln, so it
+// is the same bits everywhere.
 [[nodiscard]] std::array<float, 3> color_temperature(float kelvin);
-// An sRGB color tinted by a temperature as Godot's Light3D::set_color does with physical light
-// units: both made linear, multiplied and made sRGB again.
+// An sRGB color tinted by a temperature, with physical light units: both made linear, multiplied
+// and made sRGB again.
 [[nodiscard]] std::array<float, 3> tint_by_temperature(const std::array<float, 3>& color,
                                                        float kelvin);
 
-// Godot's physical light units, from rendering.physical_light_units: what
-// a light's energy is multiplied by, over the energy without them. Godot lights a directional
-// light with energy times lux, and an omni or spot light with energy times lumens over 4 pi or
-// pi, where without units it takes energy times pi.
+// The physical light units, from rendering.physical_light_units: what a light's energy is
+// multiplied by, over the energy without them. A directional light takes energy times lux, and an
+// omni or spot light with energy times lumens over 4 pi or pi, where without units it takes energy
+// times pi.
 [[nodiscard]] float directional_light_units(float lux);
 [[nodiscard]] float omni_light_units(float lumens);
 [[nodiscard]] float spot_light_units(float lumens);
-// Godot's exposure normalization for a CameraLens with physical light units:
-// exposure_sensitivity over 3072007, a CameraAttributesPhysical's default at ISO 100.
+// The exposure normalization for a CameraLens with physical light units: exposure_sensitivity over
+// 3072007, a CameraAttributesPhysical's default at ISO 100.
 [[nodiscard]] float exposure_normalization(float sensitivity);
 
 } // namespace slash::render

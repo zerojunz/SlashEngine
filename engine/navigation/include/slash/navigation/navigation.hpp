@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/asset/assets.hpp"
@@ -15,45 +16,44 @@
 #include <string_view>
 #include <vector>
 
-// Navigation, as Godot 4.6's NavigationServer2D and NavigationServer3D: each world has a 2D and a
-// 3D map, made of the regions of navigation mesh and the links that the components in
-// slash/world/components.hpp place on them (NavArea2D and 3D, NavLink2D and 3D).
-// Regions join where their polygons share edges, or where edges of different regions come
-// within the map's edge_connection_margin; links join the polygons closest to their ends.
+// Navigation: each world has a 2D and a 3D map, made of the regions of navigation mesh and the
+// links that the components in slash/world/components.hpp place on them (NavArea2D and 3D,
+// NavLink2D and 3D). Regions join where their polygons share edges, or where edges of different
+// regions come within the map's edge_connection_margin; links join the polygons closest to their
+// ends.
 //
-// query_path finds a path over a map with Godot's A* and shapes it with its funnel, closest_point
-// and random_point ask where the map is. A NavAgent2D or 3D follows a path to its
-// target_position, as Godot's NavigationAgent nodes: the "navigation" system rebuilds the maps
-// whose regions and links changed, then updates each agent's path and progress and emits its
-// path_changed, waypoint_reached, link_reached, target_reached and navigation_finished events.
-// Agents move nothing; gameplay code moves them toward next_path_position.
+// query_path finds a path over a map with A* and shapes it with its funnel, closest_point and
+// random_point ask where the map is. A NavAgent2D or 3D follows a path to its target_position: the
+// "navigation" system rebuilds the maps whose regions and links changed, then updates each agent's
+// path and progress and emits its path_changed, waypoint_reached, link_reached, target_reached and
+// navigation_finished events. Agents move nothing; gameplay code moves them toward
+// next_path_position.
 //
 // A TileLayer2D with navigation_enabled puts a region on the 2D map for each cell, in each of its
-// tile set's navigation layers that the cell's tile has outlines in, as Godot's TileMapLayer does
-// (slash/canvas/tilemap.hpp).
+// tile set's navigation layers that the cell's tile has outlines in (slash/canvas/tilemap.hpp).
 //
-// Agents with avoidance_enabled and NavObstacle2D and 3D avoid each other as Godot's do,
-// with ORCA from RVO2 (src/rvo2.hpp): last in each tick, each agent's velocity becomes a safe
-// velocity, emitted as velocity_computed and returned by safe_velocity_2d and 3d, which gameplay
-// code moves it at. Obstacles with affect_navigation_mesh are cut out of bakes.
+// Agents with avoidance_enabled and NavObstacle2D and 3D avoid each other with ORCA from RVO2
+// (src/rvo2.hpp): last in each tick, each agent's velocity becomes a safe velocity, emitted as
+// velocity_computed and returned by safe_velocity_2d and 3d, which gameplay code moves it at.
+// Obstacles with affect_navigation_mesh are cut out of bakes.
 //
-// The 2D map is the 3D one with its points at (x, 0, y), as Godot's 2D server was before 4.5, so
-// both share the same code. Maps build at once rather than on a thread, and their floats are the
-// same bits everywhere, so paths repeat on every machine.
+// The 2D map is the 3D one with its points at (x, 0, y), so both share the same code. Maps build at
+// once rather than on a thread, and their floats are the same bits everywhere, so paths repeat on
+// every machine.
 namespace slash::navigation {
 
 inline constexpr std::string_view kMeshSuffix = ".navmesh.json";
 inline constexpr std::string_view kPolygonSuffix = ".navmesh2d.json";
 
-// What geometry under a region bakes into its file, as Godot's ParsedGeometryType.
+// What geometry under a region bakes into its file.
 enum class ParsedGeometry : std::uint8_t { MeshInstances, StaticColliders, Both };
-// How Recast splits a 3D bake's walkable area, as Godot's NavigationMesh SamplePartitionType.
+// How Recast splits a 3D bake's walkable area.
 enum class Partition3D : std::uint8_t { Watershed, Monotone, Layers };
-// How a 2D bake's area is split, as Godot's NavigationPolygon SamplePartitionType.
+// How a 2D bake's area is split.
 enum class Partition2D : std::uint8_t { ConvexPartition, Triangulate };
 
-// A .navmesh.json file, as Godot's NavigationMesh: convex polygons over shared vertices, and the
-// settings that bake them (navigation.bake), with Godot's names and defaults.
+// A .navmesh.json file: convex polygons over shared vertices, and the settings that bake them
+// (navigation.bake).
 //
 //   {"format": 1, "vertices": [[0, 0, 0], [4, 0, 0], [4, 0, 4], [0, 0, 4]],
 //    "polygons": [[0, 1, 2, 3]], "cell_size": 0.25, "agent_radius": 0.4}
@@ -87,12 +87,11 @@ struct NavigationMesh {
     Vec3 filter_baking_aabb_offset;
 };
 
-// A .navmesh2d.json file, as Godot's NavigationPolygon: the same in 2D, in pixels, with outlines
-// that baking fills.
+// A .navmesh2d.json file: the same in 2D, in pixels, with outlines that baking fills.
 struct NavigationPolygon {
     std::vector<Vec2> vertices;
     std::vector<std::vector<int>> polygons;
-    // Closed outlines of the walkable area that baking merges, as Godot's outlines.
+    // Closed outlines of the walkable area that baking merges.
     std::vector<std::vector<Vec2>> outlines;
     float cell_size = 1.0F;
     // Baking, in pixels.
@@ -123,17 +122,17 @@ struct NavigationPolygon {
 // Registers .navmesh.json and .navmesh2d.json files with assets.
 void add_asset_types(asset::Assets& assets);
 
-// ---- Baking, as Godot 4.6's NavigationServer3D and 2D: parse the geometry under a region, then
+// ---- Baking: parse the geometry under a region, then
 // bake it into the region's polygons with the settings in its file.
 
-// What a 3D bake works from, as Godot's NavigationMeshSourceGeometryData3D: triangles in the
-// region's space, wound counterclockwise as Recast takes them.
+// What a 3D bake works from: triangles in the region's space, wound counterclockwise as Recast
+// takes them.
 struct SourceGeometry3D {
     std::vector<float> vertices; // x, y and z of each point
     std::vector<int> indices;    // three per triangle
     // Outlines of obstacles with affect_navigation_mesh, on the ground from elevation up to
-    // elevation + height, as Godot's projected obstructions: taken out before the walkable area
-    // shrinks by agent_radius, or after it with carve.
+    // elevation + height: taken out before the walkable area shrinks by agent_radius, or after it
+    // with carve.
     struct Obstruction {
         std::vector<Vec3> vertices; // y is not used
         float elevation = 0.0F;
@@ -143,8 +142,8 @@ struct SourceGeometry3D {
     std::vector<Obstruction> projected_obstructions{}; // NOLINT(readability-redundant-member-init)
 };
 
-// What a 2D bake works from, as Godot's NavigationMeshSourceGeometryData2D: outlines in the
-// region's space of where agents can go and of what is in their way.
+// What a 2D bake works from: outlines in the region's space of where agents can go and of what is
+// in their way.
 struct SourceGeometry2D {
     std::vector<std::vector<Vec2>> traversable_outlines;
     std::vector<std::vector<Vec2>> obstruction_outlines;
@@ -155,13 +154,12 @@ struct SourceGeometry2D {
     std::vector<Obstruction> projected_obstructions{}; // NOLINT(readability-redundant-member-init)
 };
 
-// The geometry under a region entity, as Godot's parse_source_geometry_data with the region as
-// its root node: the entity and those under it in Transform3D children, each Model3D's
-// primitive mesh or model file (with geometry_parsed_geometry_type mesh_instances or both) and
-// the shapes of each StaticBody3D and MovingBody3D whose collision_layer shares a bit with
-// geometry_collision_mask (static_colliders or both), and each NavObstacle3D with
-// affect_navigation_mesh as a projected obstruction. Model files load through assets; a mesh
-// that doesn't load is left out with a warning naming its entity.
+// The geometry under a region entity, with the region as its root node: the entity and those under
+// it in Transform3D children, each Model3D's primitive mesh or model file (with
+// geometry_parsed_geometry_type mesh_instances or both) and the shapes of each StaticBody3D and
+// MovingBody3D whose collision_layer shares a bit with geometry_collision_mask (static_colliders or
+// both), and each NavObstacle3D with affect_navigation_mesh as a projected obstruction. Model files
+// load through assets; a mesh that doesn't load is left out with a warning naming its entity.
 [[nodiscard]] SourceGeometry3D parse_source_geometry(const world::World& world,
                                                      asset::Assets& assets, entt::entity root,
                                                      const NavigationMesh& settings,
@@ -190,11 +188,10 @@ world_geometry(const world::World& world, asset::Assets& assets, const Navigatio
                                                      const NavigationPolygon& settings,
                                                      std::vector<std::string>* warnings = nullptr);
 
-// The settings with their polygons baked from the geometry, as Godot's
-// bake_from_source_geometry_data: Recast's walkable area, its detail mesh's triangles as the
-// polygons. With no geometry the polygons are empty. Warnings say which settings don't fit
-// whole cells, as Godot's do. Fails when Recast does, or when the geometry spans more than
-// 30 million cells, as Godot refuses to bake.
+// The settings with their polygons baked from the geometry: Recast's walkable area, its detail
+// mesh's triangles as the polygons. With no geometry the polygons are empty. Warnings say which
+// settings don't fit whole cells. Fails when Recast does, or when the geometry spans more than 30
+// million cells.
 [[nodiscard]] Result<NavigationMesh> bake(const NavigationMesh& settings,
                                           const SourceGeometry3D& geometry,
                                           std::vector<std::string>* warnings = nullptr);
@@ -209,11 +206,12 @@ world_geometry(const world::World& world, asset::Assets& assets, const Navigatio
 [[nodiscard]] json::Value with_polygons(json::Value doc, const NavigationMesh& mesh);
 [[nodiscard]] json::Value with_polygons(json::Value doc, const NavigationPolygon& polygon);
 
-// One map's settings, as Godot's navigation/2d and navigation/3d project settings.
+// One map's settings.
 struct MapSettings {
     float cell_size = 0.25F;
     float cell_height = 0.25F; // 3D only
-    // Edge ends closer than cell_size times this (at most 0.1, as Godot clamps it) are the same.
+    // Edge ends closer than cell_size times this (at most 0.1, which it is clamped to) are the
+    // same.
     float merge_rasterizer_cell_scale = 1.0F;
     bool use_edge_connections = true;
     float edge_connection_margin = 0.25F;
@@ -247,7 +245,7 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
 // Changes the settings of a world the system was installed in.
 void set_settings(world::World& world, const Settings& settings);
 
-// ---- Paths, as Godot's NavigationPathQueryParameters and NavigationPathQueryResult.
+// ---- Paths: the query's parameters and result.
 
 enum class Postprocessing : std::uint8_t { CorridorFunnel, EdgeCentered, None };
 // The name an agent's path_postprocessing uses for it, and the other way; false if unknown.
@@ -259,8 +257,8 @@ struct PathOptions {
     Postprocessing postprocessing = Postprocessing::CorridorFunnel;
     bool simplify_path = false;
     float simplify_epsilon = 0.0F;
-    // Regions the path may not use, or the only ones it may (when not empty); either leaves
-    // links out, as Godot's.
+    // Regions the path may not use, or the only ones it may (when not empty); either leaves links
+    // out.
     std::vector<entt::entity> excluded_regions{}; // NOLINT(readability-redundant-member-init)
     std::vector<entt::entity> included_regions{}; // NOLINT(readability-redundant-member-init)
     float path_return_max_length = 0.0F;          // 0: no limit
@@ -280,30 +278,29 @@ struct Path {
     float length = 0.0F;
 };
 
-// A path over the map from start to target, as Godot's query_path: from the closest point of
-// the map to start to the closest it can reach to target. Empty when the map is.
+// A path over the map from start to target: from the closest point of the map to start to the
+// closest it can reach to target. Empty when the map is.
 [[nodiscard]] Path<Vec2> query_path(world::World& world, Vec2 start, Vec2 target,
                                     const PathOptions& options = {});
 [[nodiscard]] Path<Vec3> query_path(world::World& world, Vec3 start, Vec3 target,
                                     const PathOptions& options = {});
 
-// The point of the map closest to a point, and the region it is in (null for none), as Godot's
-// map_get_closest_point and map_get_closest_point_owner. Disabled regions count, as in Godot.
+// The point of the map closest to a point, and the region it is in (null for none). Disabled
+// regions count.
 struct ClosestPoint2D {
     Vec2 point;
     entt::entity owner = entt::null;
 };
 struct ClosestPoint3D {
     Vec3 point;
-    Vec3 normal; // its polygon's, as Godot's: the cross of its first two edges
+    Vec3 normal; // its polygon's: the cross of its first two edges
     entt::entity owner = entt::null;
 };
 [[nodiscard]] ClosestPoint2D closest_point(world::World& world, Vec2 point);
 [[nodiscard]] ClosestPoint3D closest_point(world::World& world, Vec3 point);
 
-// A random point of the regions on navigation_layers, as Godot's map_get_random_point: in a
-// random polygon of a random region, or with uniformly, anywhere with the same chance. The same
-// seed picks the same point.
+// A random point of the regions on navigation_layers: in a random polygon of a random region, or
+// with uniformly, anywhere with the same chance. The same seed picks the same point.
 [[nodiscard]] Vec2 random_point_2d(world::World& world, std::uint32_t navigation_layers,
                                    bool uniformly, std::uint64_t seed);
 [[nodiscard]] Vec3 random_point_3d(world::World& world, std::uint32_t navigation_layers,
@@ -311,7 +308,7 @@ struct ClosestPoint3D {
 
 // What a map is made of now.
 struct MapInfo {
-    // Goes up each time the map is rebuilt, as Godot's get_iteration_id.
+    // Goes up each time the map is rebuilt.
     std::uint64_t iteration_id = 0;
     std::size_t regions = 0;
     std::size_t links = 0;
@@ -333,16 +330,16 @@ struct MapInfo {
 // Queries call it themselves.
 void sync(world::World& world);
 
-// ---- Agents, as Godot's NavigationAgent2D and NavAgent3D methods. Each takes an entity
+// ---- Agents. Each takes an entity
 // with an agent component.
 
-// Sets target_position and asks for a path to it, even if it is the same, as Godot's
-// set_target_position; changing the component's target_position asks too.
+// Sets target_position and asks for a path to it, even if it is the same; changing the component's
+// target_position asks too.
 void set_target_position(world::World& world, entt::entity agent, Vec2 position);
 void set_target_position(world::World& world, entt::entity agent, Vec3 position);
 
-// Where the entity should head next: the path point it is going to, or where it is when it has
-// no path. These bring the agent's path up to date first, as Godot's do.
+// Where the entity should head next: the path point it is going to, or where it is when it has no
+// path. These bring the agent's path up to date first.
 [[nodiscard]] Vec2 next_path_position_2d(world::World& world, entt::entity agent);
 [[nodiscard]] Vec3 next_path_position_3d(world::World& world, entt::entity agent);
 // Whether it reached its target or the end of a path that can't reach it.
@@ -357,13 +354,13 @@ void set_target_position(world::World& world, entt::entity agent, Vec3 position)
 // The straight distance from the entity to target_position.
 [[nodiscard]] float distance_to_target(const world::World& world, entt::entity agent);
 
-// Avoidance, as Godot's NavigationAgent avoidance: the safe velocity the last tick gave an agent
-// with avoidance_enabled (its last velocity_computed event's), or its velocity without.
+// Avoidance: the safe velocity the last tick gave an agent with avoidance_enabled (its last
+// velocity_computed event's), or its velocity without.
 [[nodiscard]] Vec2 safe_velocity_2d(const world::World& world, entt::entity agent);
 [[nodiscard]] Vec3 safe_velocity_3d(const world::World& world, entt::entity agent);
-// Replaces the velocity avoidance starts the next step from, as Godot's set_velocity_forced, so
-// an agent that was moved to a new place doesn't carry its old velocity there. It takes effect
-// on the next tick the agent follows a path. Called often, it can get agents stuck.
+// Replaces the velocity avoidance starts the next step from, so an agent that was moved to a new
+// place doesn't carry its old velocity there. It takes effect on the next tick the agent follows a
+// path. Called often, it can get agents stuck.
 void set_velocity_forced(world::World& world, entt::entity agent, Vec2 velocity);
 void set_velocity_forced(world::World& world, entt::entity agent, Vec3 velocity);
 

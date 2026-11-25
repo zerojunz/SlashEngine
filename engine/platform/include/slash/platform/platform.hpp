@@ -104,7 +104,7 @@ public:
     // The connected displays, primary first; none when headless.
     [[nodiscard]] std::vector<Display> displays() const;
 
-    // The system clipboard's text, as Godot's DisplayServer::clipboard_get and clipboard_set.
+    // The system clipboard's text.
     // Headless, there is no clipboard: it reads empty and setting it does nothing.
     [[nodiscard]] std::string clipboard_text() const;
     void set_clipboard_text(const std::string& text) const;
@@ -113,7 +113,7 @@ public:
     void show_window() const;
 
     // Shows width by height straight-alpha RGBA pixels as the window's icon, in its title bar
-    // and task bar, as Godot's DisplayServer::set_icon. Headless, and where the system draws
+    // and task bar. Headless, and where the system draws
     // apps' icons itself (phones and the web), it does nothing.
     void set_icon(std::uint32_t width, std::uint32_t height,
                   const std::vector<std::uint8_t>& pixels) const;

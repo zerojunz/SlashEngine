@@ -12,9 +12,9 @@
 
 namespace slash::accessibility {
 
-// A node as AccessKit's, as Godot's driver fills one: its role (Godot's role map), label,
-// description, value, placeholder, tooltip, live setting, popup, toggled state, numbers, color,
-// bounds, states, actions, children and related nodes. The caller owns it.
+// A node as AccessKit's: its role, label, description, value, placeholder, tooltip, live setting,
+// popup, toggled state, numbers, color, bounds, states, actions, children and related nodes. The
+// caller owns it.
 [[nodiscard]] accesskit_node* make_node(const Node& node);
 
 // A tree update of a snapshot's nodes at the given indexes (every node when nodes is null) and

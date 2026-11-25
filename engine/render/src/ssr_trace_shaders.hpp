@@ -2560,16 +2560,14 @@ inline constexpr const char* kSsrTraceHlsl[] = {
 R"hlsl(// ssr.hlsl's trace pass, which draws each pixel's reflection and its mip level into two targets.
 // It draws with ssr.hlsl's vertex stage.
 #define SSR_TRACE
-// Screen-space reflections for a frame's 3D world, as Godot 4.6's Forward+ renderer makes them
-// (servers/rendering/renderer_rd/shaders/effects/screen_space_reflection_downsample.glsl,
-// screen_space_reflection_hiz.glsl, screen_space_reflection.glsl,
-// screen_space_reflection_filter.glsl and screen_space_reflection_resolve.glsl): a pyramid of the
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Screen-space reflections for a frame's 3D world, in the clustered renderer: a pyramid of the
 // prepass's nearest depths (Hi-Z), a ray from each pixel stepped across it to where it hits the
 // frame before, a pyramid of the reflections blurred for rough surfaces, and the reflections at the
-// frame's size for the meshes' color pass. Godot's compute shaders run as passes that draw one
-// triangle over their target; they load texels and filter in code, so every device draws the same
-// values. ssr_trace.hlsl defines SSR_TRACE for the trace, which draws its reflection and mip level
-// into two targets. Keep it in step with src/ssr.cpp, its CPU twin.
+// frame's size for the meshes' color pass. The passes draw one triangle over their target; they
+// load texels and filter in code, so every device draws the same values. ssr_trace.hlsl defines
+// SSR_TRACE for the trace, which draws its reflection and mip level into two targets. Keep it in
+// step with src/ssr.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -2640,7 +2638,7 @@ static const float kFilterWeights[7] = {0.07130343198685299, 0.1315141208431224,
                                         0.07130343198685299};
 // The filter's rows reach this many rows past each edge of the level.
 static const int kFilterBorder = 3;
-// Mip levels are stored as a fraction of 14 in a byte, as Godot's.
+// Mip levels are stored as a fraction of 14 in a byte.
 static const float kMipScale = 14.0;
 
 // x to the power y for x of 0 or more.
@@ -2694,8 +2692,8 @@ float4 trilinear(Texture2D<float4> tex, float2 uv, float lod, uint2 size, uint l
     return a + (b - a) * fraction;
 }
 
-// A pixel's roughness from the normal-roughness buffer's alpha: Godot keeps dynamic objects'
-// roughness flipped above half, which these never are.
+// A pixel's roughness from the normal-roughness buffer's alpha: dynamic objects' roughness is kept
+// flipped above half, which these never are.
 float decode_roughness(float alpha) {
     float roughness = alpha;
     if (roughness > 0.5) {
@@ -2715,8 +2713,8 @@ float depth_at(int2 p) {
 
 // --- The pyramid, as screen_space_reflection_downsample.glsl and _hiz.glsl ---
 
-// The source pixels a texel of the next level covers, in the order Godot's shaders read them:
-// 2x2, then the third column and row of a source of odd width or height. count says how many.
+// The source pixels a texel of the next level covers, in the order the passes read them: 2x2, then
+// the third column and row of a source of odd width or height. count says how many.
 int footprint(out int2 offsets[9]) {
     offsets[0] = int2(0, 0);
     offsets[1] = int2(1, 0);
@@ -2845,12 +2843,12 @@ void trace_pass(int2 p, out float4 color, out float mip_level_out) {
     if (roughness >= 0.7) {
         return;
     }
-)hlsl",
-R"hlsl(    float3 geom_normal = normalize(geometric_normal(p, screen_pos.z, pos));
+    float3 geom_normal = normalize(geometric_normal(p, screen_pos.z, pos));
     // A small bias towards the geometry's normal keeps the ray off its own surface.
     pos += geom_normal * (1.0 - power(saturate(dot(normal, geom_normal)), 8.0));
     screen_pos = screen_position(pos);
-    bool orthogonal = (options.z & kOrthogonal) != 0u;
+)hlsl",
+R"hlsl(    bool orthogonal = (options.z & kOrthogonal) != 0u;
     float3 view_dir = orthogonal ? float3(0.0, 0.0, -1.0) : normalize(pos);
     float3 ray_dir = normalize(reflect(view_dir, normal));
     // A ray going straight into its own surface bounces off it.
@@ -3121,8 +3119,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
         return float4(downsample(p).x, 0.0, 0.0, 1.0);
     }
     if (pass_kind == kDownsampleNormals) {
-)hlsl",
-R"hlsl(        float3 nearest = downsample(p);
+        float3 nearest = downsample(p);
         return texel(normals, int2((int)nearest.y, (int)nearest.z), (int2)frame.xy);
     }
     if (pass_kind == kCopyDepth) {
@@ -3131,7 +3128,8 @@ R"hlsl(        float3 nearest = downsample(p);
     if (pass_kind == kHiz) {
         return float4(hiz_pass(p), 0.0, 0.0, 1.0);
     }
-    if (pass_kind == kFilterRows) {
+)hlsl",
+R"hlsl(    if (pass_kind == kFilterRows) {
         return filter_rows(p);
     }
     if (pass_kind == kFilterColumns) {

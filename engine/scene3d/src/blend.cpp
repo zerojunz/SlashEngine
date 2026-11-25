@@ -23,7 +23,7 @@ constexpr std::string_view kImportVersion = "1";
 constexpr std::string_view kImportFolder = ".slash/imported/";
 constexpr std::string_view kGlbMagic = "glTF";
 
-// Where Godot's _autodetect_path looks, after PATH.
+// The usual places Blender is installed, after PATH.
 #if defined(_WIN32)
 constexpr std::string_view kInstallFolder = "C:/Program Files/Blender Foundation/";
 constexpr std::array<std::string_view, 2> kInstalled = {
@@ -85,9 +85,8 @@ std::string python_string(std::string_view text) {
     return out;
 }
 
-// The version a Blender program prints for --version ("Blender 4.2.1 LTS"), as Godot's
-// _get_blender_version reads it.
-// The glTF exporter's options Godot imports .blend files with in this version of Blender, as
+// The version a Blender program prints for --version ("Blender 4.2.1 LTS").
+// The glTF exporter's options .blend files are imported with in this version of Blender, as
 // Python dict entries, writing destination.
 std::string gltf_options(const Blender& blender, std::string_view destination) {
     const auto at_least = [&](int major, int minor) {
@@ -285,10 +284,9 @@ Result<Blender> find_blender(std::string_view program) {
                           ": install it, or set SLASH_BLENDER_PATH to its program");
 }
 
-// Godot's import_scene with its default import options, writing one .glb file rather than a
+// A default import, writing one .glb file rather than a
 // .gltf file and the textures it unpacks beside the .blend file, so a conversion is one file in
-// .slash/imported/ and leaves the project's own folders alone. Run through Godot's
-// PYTHON_SCRIPT_DIRECT.
+// .slash/imported/ and leaves the project's own folders alone.
 std::string blend_export_script(const Blender& blender, std::string_view source,
                                 std::string_view destination) {
     // Paths are relative to the project folder, which Blender starts in.

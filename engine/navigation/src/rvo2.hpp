@@ -1,9 +1,9 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
-// Avoidance, as Godot 4.6's: optimal reciprocal collision avoidance (ORCA) from the RVO2 and
-// RVO2-3D libraries, as Godot changes them in thirdparty/rvo2 (rvo2_2d and rvo2_3d): agents with
-// heights, elevations, avoidance layers, masks and priorities, and static obstacles with heights,
-// elevations and layers.
+// Avoidance: optimal reciprocal collision avoidance (ORCA) from the RVO2 and RVO2-3D libraries,
+// changed to take agents with heights, elevations, avoidance layers, masks and priorities, and
+// static obstacles with heights, elevations and layers.
 //
 // Adapted from RVO2 and RVO2-3D, Copyright 2008 University of North Carolina at Chapel Hill
 // (https://gamma.cs.unc.edu/RVO2/), by Jur van den Berg, Stephen J. Guy, Jamie Snape, Ming C. Lin
@@ -21,11 +21,11 @@
 //
 // Changes: written in the engine's style, with indices in place of pointers; each step computes
 // every agent's new velocity before it moves any, as RVO2's own RVOSimulator::doStep does, so the
-// result doesn't depend on the order or the threads; and an obstacle edge split while building
-// the obstacle tree keeps its obstacle's height, elevation and layers, which Godot's leaves at
-// the defaults; and an agent right on top of another at the same velocity leaves it out rather
-// than dividing by zero. The arithmetic is RVO2's in the same order (a vector divides by
-// multiplying by the inverse), built without fused multiply-adds.
+// result doesn't depend on the order or the threads; and an obstacle edge split while building the
+// obstacle tree keeps its obstacle's height, elevation and layers, which the original leaves at the
+// defaults; and an agent right on top of another at the same velocity leaves it out rather than
+// dividing by zero. The arithmetic is RVO2's in the same order (a vector divides by multiplying by
+// the inverse), built without fused multiply-adds.
 
 #include <cmath>
 #include <cstddef>
@@ -130,8 +130,8 @@ class Simulation2D {
 public:
     std::vector<Agent2D> agents;
 
-    // Adds a static obstacle of at least two vertices, as Godot's _update_rvo_obstacles_tree:
-    // agents keep to the right of each edge, so a counterclockwise outline keeps them out.
+    // Adds a static obstacle of at least two vertices: agents keep to the right of each edge, so a
+    // counterclockwise outline keeps them out.
     void add_obstacle(const std::vector<V2>& vertices, float height, float elevation,
                       std::uint32_t avoidance_layers);
     // Builds the trees, computes each agent's new velocity over time_step seconds, then moves

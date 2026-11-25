@@ -13177,36 +13177,35 @@ fn fs_main(@location(0u) v_1153 : vec3<f32>, @location(1u) v_1154 : vec3<f32>, @
 )wgsl"};
 
 inline constexpr const char* kMeshSubsurfaceHlsl[] = {
-R"hlsl(// The 3D shader's fragment stage for Forward+'s subsurface pass, as Godot's MODE_SEPARATE_SPECULAR
-// diffuse buffer: mesh_clustered.hlsl, writing each subsurface pixel's diffuse light (its
-// emission, diffuse and ambient light, fogged) and its strength (below 0 for skin) for
-// subsurface.hlsl to blur. The opaque meshes with a subsurface strength draw it again where they
-// drew, after the opaque pass.
+R"hlsl(// The 3D shader's fragment stage for the clustered renderer's subsurface pass, the diffuse buffer:
+// mesh_clustered.hlsl, writing each subsurface pixel's diffuse light (its emission, diffuse and
+// ambient light, fogged) and its strength (below 0 for skin) for subsurface.hlsl to blur. The
+// opaque meshes with a subsurface strength draw it again where they drew, after the opaque pass.
 #define CLUSTERED
 #define SUBSURFACE
-// The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
-// (drivers/gles3/shaders/scene.glsl), with a Surface3D's albedo, metallic, roughness,
-// specular, emission and normal map, or a terrain's splat-mapped ground as the Terrain3D plugin's
-// Classic4 shader blends it, shadowed by the lights' shadow maps (shadow.hlsl draws them) and lit
-// by the sky's radiance (radiance.hlsl filters it) or a baked lightmap, then fogged. Colors are worked in linear,
-// tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two, or for
-// Forward+ written linear for forward_post.hlsl.
-// Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
-// conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
-// uniforms in space3. mesh_clustered.hlsl defines CLUSTERED and includes this file for Forward+,
-// whose omni and spot lights and decals come from clusters of the screen instead of the scene's
-// uniforms, and which reads screen-space ambient occlusion and reflections (ssao.hlsl and ssr.hlsl
-// draw them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
-// and roughness that ssao.hlsl and ssr.hlsl read, and mesh_motion.hlsl MOTION_VECTORS too for
-// the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
-// With GAME_SHADER defined, a game's spatial shader gives each pixel's surface: the shader tools
-// (tools/shader_compiler) put its code before this file's, with GameSurface, game_surface and
-// game_specular, and its texture params in the Surface3D's slots. With GAME_VERTEX too,
-// its vertex() places the corners, through GameVertex and game_vertex, with its texture params
-// in the vertex stage's slots 0 to 4. With GAME_LIGHT, its light() lights the pixel once a light
-// through game_light, with game_albedo the surface's albedo, and may change ALPHA.
-// mesh_plain.hlsl defines NO_ALPHA_HASH, which leaves alpha hash out, for the OpenGL devices'
-// draws that don't use it.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// The 3D shader: meshes lit by a frame's lights as the compatibility renderer lights them, with a
+// Surface3D's albedo, metallic, roughness, specular, emission and normal map, or a terrain's
+// splat-mapped ground as the Terrain3D plugin's Classic4 shader blends it, shadowed by the lights'
+// shadow maps (shadow.hlsl draws them) and lit by the sky's radiance (radiance.hlsl filters it) or
+// a baked lightmap, then fogged. Colors are worked in linear, tonemapped (tonemap.hlsl) and written
+// as sRGB, with approximations of the two, or for the clustered renderer written linear for
+// forward_post.hlsl. Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers
+// follow SDL's GPU conventions: vertex uniforms in space1, fragment textures and samplers in
+// space2, fragment uniforms in space3. mesh_clustered.hlsl defines CLUSTERED and includes this file
+// for the clustered renderer, whose omni and spot lights and decals come from clusters of the
+// screen instead of the scene's uniforms, and which reads screen-space ambient occlusion and
+// reflections (ssao.hlsl and ssr.hlsl draw them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for the
+// clustered renderer's prepass, which draws the normals and roughness that ssao.hlsl and ssr.hlsl
+// read, and mesh_motion.hlsl MOTION_VECTORS too for the prepass of a frame with TAA, which draws
+// each pixel's motion vector into a second target. With GAME_SHADER defined, a game's spatial
+// shader gives each pixel's surface: the shader tools (tools/shader_compiler) put its code before
+// this file's, with GameSurface, game_surface and game_specular, and its texture params in the
+// Surface3D's slots. With GAME_VERTEX too, its vertex() places the corners, through GameVertex and
+// game_vertex, with its texture params in the vertex stage's slots 0 to 4. With GAME_LIGHT, its
+// light() lights the pixel once a light through game_light, with game_albedo the surface's albedo,
+// and may change ALPHA. mesh_plain.hlsl defines NO_ALPHA_HASH, which leaves alpha hash out, for the
+// OpenGL devices' draws that don't use it.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection;          // world to clip space, with TAA's jitter
@@ -13248,7 +13247,7 @@ float4x4 instance_matrix(uint at) {
 cbuffer Instance : register(b1, space1) {
     float4x4 model;          // the mesh's space to the world
     float4x4 normal_model;   // the inverse transpose of model's upper 3x3, in its upper 3x3
-    float4 uv1;              // xy scale and zw offset, as Godot's uv1_scale and uv1_offset
+    float4 uv1;              // xy scale and zw offset
     float4 lightmap_uv;      // the lightmap's rect: uv2's xy offset and zw scale
     float4x4 previous_model; // model in the frame before
 };
@@ -13299,8 +13298,8 @@ VertexOutput vs_main(VertexInput input) {
 #endif
     VertexOutput output;
 #ifdef GAME_VERTEX
-    // A game's spatial shader moves the corner with its vertex(), as Godot's ShaderMaterial:
-    // game_vertex, which the shader tools write around it, gives it in the world.
+    // A game's spatial shader moves the corner with its vertex(): game_vertex, which the shader
+    // tools write around it, gives it in the world.
     GameVertex moved = game_vertex(input.position, input.normal, input.tangent, input.uv,
                                    input.uv2, input.color, false);
     float4 world = float4(moved.world, 1.0);
@@ -13319,7 +13318,7 @@ VertexOutput vs_main(VertexInput input) {
     float4 world = mul(model, float4(input.position, 1.0));
     output.world = world.xyz;
     output.position = mul(view_projection, world);
-    // Normalized before they are interpolated, per MikkTSpace, as Godot does.
+    // Normalized before they are interpolated, per MikkTSpace.
     float3 binormal = normalize(cross(input.normal, input.tangent.xyz) * input.tangent.w);
     output.normal = normalize(mul((float3x3)normal_model, input.normal));
     output.tangent = normalize(mul((float3x3)normal_model, input.tangent.xyz));
@@ -13404,8 +13403,7 @@ static const uint kTerrainNormals = 16u; // shifted left by the layer
 
 #ifndef NO_ALPHA_HASH
 // Alpha hash's noise at a cell of the mesh: 0 to 1 from three whole numbers, by Jarzynski and
-// Olano's PCG3D, where Godot's hash_3d uses sines, so the CPU (alpha_hash_value in src/mesh.cpp)
-// makes the same bits.
+// Olano's PCG3D, not sines, so the CPU (alpha_hash_value in src/mesh.cpp) makes the same bits.
 float alpha_hash_value(float3 cell) {
     uint3 v = uint3(int3(clamp(cell, -1073741824.0, 1073741824.0))) * 1664525u + 1013904223u;
     v.x += v.y * v.z;
@@ -13418,13 +13416,13 @@ float alpha_hash_value(float3 cell) {
     return float(v.x >> 8u) * (1.0 / 16777216.0);
 }
 
-// Godot's compute_alpha_hash_threshold: the alpha a pixel at pos on the mesh must reach, its
-// neighbors across and down being dx and dy further on, from noise on cells about a pixel wide
-// at two scales, blended so the dither holds still as the mesh moves.
-)hlsl",
-R"hlsl(float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
+// The alpha a pixel at pos on the mesh must reach, its neighbors across and down being dx and dy
+// further on, from noise on cells about a pixel wide at two scales, blended so the dither holds
+// still as the mesh moves.
+float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_scale) {
     float delta_max = max(length(dx), length(dy));
-    float level = clamp(log2(1.0 / (hash_scale * delta_max)), -64.0, 64.0);
+)hlsl",
+R"hlsl(    float level = clamp(log2(1.0 / (hash_scale * delta_max)), -64.0, 64.0);
     float low = floor(level);
     float lerp_factor = level - low;
     float high = lerp_factor > 0.0 ? low + 1.0 : low;
@@ -13444,8 +13442,8 @@ R"hlsl(float alpha_hash_threshold(float3 pos, float3 dx, float3 dy, float hash_s
 }
 #endif
 
-// A VoxelLighting3D a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
-// level's z slices side by side.
+// A VoxelLighting3D a draw traces (clustered renderer): its light is a 3D texture kept in
+// ground_texture_2 as each level's z slices side by side.
 struct VoxelLighting3D {
     float4 rows[3]; // the world to its cells' space, a row each: a unit a texel of level 0
     float4 size;    // texels along x, y and z at level 0, then how many levels
@@ -13471,8 +13469,8 @@ cbuffer Surface : register(b0, space3) {
     // How many of voxel_gis it traces; then the clearcoat, its roughness and the anisotropy.
     float4 voxel_gi;
     VoxelLighting3D voxel_gis[2];
-    // Forward+'s subsurface scattering: its strength (below 0 for skin's profile), the
-    // transmittance's depth and boost, and 1 when the transmittance is on; then the
+    // The clustered renderer's subsurface scattering: its strength (below 0 for skin's profile),
+    // the transmittance's depth and boost, and 1 when the transmittance is on; then the
     // transmittance's color, linear.
     float4 sss_params;
     float4 sss_transmittance;
@@ -13492,7 +13490,7 @@ static const float kDirectional = 0.0;
 static const float kOmni = 1.0;
 static const float kSpot = 2.0;
 static const float kPi = 3.14159265358979323;
-static const float kRadianceMaxLevel = 5.0; // Godot's RADIANCE_MAX_LOD
+static const float kRadianceMaxLevel = 5.0; // the radiance's last level
 
 cbuffer Scene : register(b1, space3) {
     float4 camera;  // the camera's place, then how many lights
@@ -13507,29 +13505,32 @@ cbuffer Scene : register(b1, space3) {
     // ambient light's sky contribution.
     float4 sky;
     float4 sky_rows[3]; // the world to the sky's space, a row each
-    // Forward+'s clusters: tiles across, a tile's words of light bits, depth slices per unit of
-    // view depth (how many over the far plane's distance).
+    // The clustered renderer's clusters: tiles across, a tile's words of light bits, depth slices
+    // per unit of view depth (how many over the far plane's distance).
     float4 cluster;
     // 1 when screen_texture's layer 0 holds the frame's SSAO, its light affect and its AO channel
     // affect, then 1 when its layer 1 holds its SSR.
     float4 ssao;
     float4 view_rows[3]; // the world to the camera's space, a row each, for normals
-    // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
-    // the exposure their light is multiplied by.
+    // The clustered renderer's reflection probes: how many in probes, the level the roughest
+    // surfaces read, and the exposure their light is multiplied by.
     float4 reflections;
-    // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
-    // for high quality, then 1 when screen_texture's layers 5 and 6 hold SDFGI's light.
+    // 1 when meshes trace their VoxelGIs (clustered renderer, and not a reflection probe's
+    // capture), then 1 for high quality, then 1 when screen_texture's layers 5 and 6 hold SDFGI's
+    // light.
     float4 scene_voxel_gi;
-    // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
+    // The clustered renderer's decals: how many, the filter, the atlas's width and height in
+    // texels.
     float4 decal_info;
     float4 screen; // the target's width and height in pixels, then the ray-traced layers' flags
     // The camera's view-projection without TAA's jitter: its x, y and w rows.
     float4 clip_rows[3];
-    // Forward+'s volumetric fog: 1 when the frame has it, 1 over its length, 1 over its detail
-    // spread, its sky affect; then the froxels across, down and deep in fog_froxels.
+    // The clustered renderer's volumetric fog: 1 when the frame has it, 1 over its length, 1 over
+    // its detail spread, its sky affect; then the froxels across, down and deep in fog_froxels.
     float4 volumetric_fog;
     float4 fog_volume;
-    // Every light in Compatibility; in Forward+, only the directional ones.
+    // Every light in the compatibility renderer; in the clustered renderer, only the directional
+    // ones.
     Light lights[64];
 };
 
@@ -13559,22 +13560,22 @@ cbuffer Shadows : register(b2, space3) {
 };
 
 #ifdef CLUSTERED
-// Forward+'s omni and spot lights, nearest first, and the clusters that pick them, laid out as
-// Godot's cluster buffer: for each tile of kClusterSize pixels, cluster.y words with a bit for
-// each light that reaches it, then for each of kClusterSlices depth slices the first of those
-// lights in the slice and one past the last, then the same for the decals in cluster.w words when
-// there are some (src/clusters.cpp). The volumetric fog's froxels are in fog_froxels, rows across,
-// then down, then slices deeper (src/volumetric_fog.hpp). The decals' textures are in decal_atlas, a texel a word (RGBA8,
-// red lowest), its levels one after another (src/decal.cpp). SDL binds a fragment stage's
-// storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a
-// group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
-// frame's size, white when the frame draws neither: layer 0 the screen-space ambient occlusion,
-// layer 1 the screen-space reflections (each pixel's reflection in RGB, premultiplied by how much
-// of the sky's it replaces, in A), with ray-traced shadows (screen.z) layers 2 and 3 their
-// lights' visibility, a light a channel in order of its ray slot (light.shadow.w - 1), four a layer
+// The clustered renderer's omni and spot lights, nearest first, and the clusters that pick them,
+// laid out as: for each tile of kClusterSize pixels, cluster.y words with a bit for each light that
+// reaches it, then for each of kClusterSlices depth slices the first of those lights in the slice
+// and one past the last, then the same for the decals in cluster.w words when there are some
+// (src/clusters.cpp). The volumetric fog's froxels are in fog_froxels, rows across, then down, then
+// slices deeper (src/volumetric_fog.hpp). The decals' textures are in decal_atlas, a texel a word
+// (RGBA8, red lowest), its levels one after another (src/decal.cpp). SDL binds a fragment stage's
+// storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a group
+// of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the frame's
+// size, white when the frame draws neither: layer 0 the screen-space ambient occlusion, layer 1 the
+// screen-space reflections (each pixel's reflection in RGB, premultiplied by how much of the sky's
+// it replaces, in A), with ray-traced shadows (screen.z) layers 2 and 3 their lights' visibility, a
+// light a channel in order of its ray slot (light.shadow.w - 1), four a layer
 // (src/ray_shadows.hpp), and with ray-traced global illumination (screen.w) layer 4 each pixel's
-// ambient light in RGB. The reflection probes' cubes are in probe_atlas, mirrored along
-// z (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
+// ambient light in RGB. The reflection probes' cubes are in probe_atlas, mirrored along z
+// (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
 Texture2DArray<float4> screen_texture : register(t14, space2);
 TextureCubeArray<float4> probe_atlas : register(t15, space2);
 SamplerState screen_sampler : register(s14, space2);
@@ -13630,10 +13631,11 @@ static const uint kClusterSize = 32u;
 static const uint kClusterSlices = 32u;
 #endif
 
-// Godot's color conversions and tonemappers (drivers/gles3/shaders/tonemap_inc.glsl), which
-// mesh.hlsl and post.hlsl share. Keep it in step with tonemap in src/post.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Color conversions and tonemappers, which mesh.hlsl and post.hlsl share. Keep it in step with
+// tonemap in src/post.cpp, its CPU twin.
 
-// Godot's approximations of the sRGB curves, for colors from 0 to 1.
+// Approximations of the sRGB curves, for colors from 0 to 1.
 float3 srgb_to_linear(float3 color) {
     return color * (color * (color * 0.305306011 + 0.682171111) + 0.012522878);
 }
@@ -13671,7 +13673,7 @@ float3 tonemap_filmic(float3 color, float white) {
 }
 
 // From https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl (MIT License), as
-// Godot adapts it, with an exposure bias of 1.8 in the first matrix.
+// adapted here, with an exposure bias of 1.8 in the first matrix.
 float3 tonemap_aces(float3 color, float white) {
     const float bias = 1.8;
     const float A = 0.0245786;
@@ -13702,7 +13704,7 @@ float3 agx_contrast_approx(float3 x) {
            27.069 * x4 * x2;
 }
 
-// Godot's simplification of EaryChow's AgX, as Blender uses it
+// A simplification of EaryChow's AgX, as Blender uses it
 // (https://github.com/EaryChow/AgX_LUT_Gen/blob/main/AgXBasesRGB.py).
 float3 tonemap_agx(float3 color) {
     // Linear sRGB to linear Rec. 2020 with AgX's inset, and back with its outset; the rows are
@@ -13743,8 +13745,8 @@ float3 apply_tonemapping(float3 color, float white, uint tonemapper) {
     return tonemap_agx(color);
 }
 
-// Godot's fog_process: the fog's color at a point in the world, brightened by the directional
-// lights the camera looks toward through it, and how much of it covers the point.
+// The fog's color at a point in the world, brightened by the directional lights the camera looks
+// toward through it, and how much of it covers the point.
 float4 fog_process(float3 world) {
     float3 to_point = world - camera.xyz;
     float distance = length(to_point);
@@ -13794,8 +13796,8 @@ float4 sample_fog_froxels(float3 uvw) {
     return lerp(lerp(a, b, t.y), lerp(c, d, t.y), t.z);
 }
 
-// Godot's volumetric_fog_process: the fog in front of a point view_depth away at a place on the
-// screen, the light it adds, then how much of the point's it lets through.
+// The fog in front of a point view_depth away at a place on the screen, the light it adds, then how
+// much of the point's it lets through.
 float4 volumetric_fog_process(float2 uv, float view_depth) {
     float z = view_depth * volumetric_fog.y;
     if (z < 0.0) {
@@ -13809,10 +13811,10 @@ float4 volumetric_fog_process(float2 uv, float view_depth) {
 #endif
 
 // A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
-// material disables it, then left linear for Forward+, or times the exposure, tonemapped unless
-// the post pass does it, and as sRGB, as Godot's scene.glsl ends. In Forward+ with volumetric
-// fog, the plain fog is seen through the volumetric fog in front of it, as Godot's
-// scene_forward_clustered.glsl blends them; pixel is the fragment's place on the target.
+// material disables it, then left linear for the clustered renderer, or times the exposure,
+// tonemapped unless the post pass does it, and as sRGB. In the clustered renderer with volumetric
+// fog, the plain fog is seen through the volumetric fog in front of it; pixel is the fragment's
+// place on the target.
 float4 finish(float3 color, float alpha, float3 world, float2 pixel) {
     bool fog_on = (options.x & kDisableFog) == 0u;
 #ifdef CLUSTERED
@@ -13887,8 +13889,8 @@ struct Layers {
     float3 geometry;
     float3 tangent;
     float3 binormal;
-    // Forward+'s transmittance: on, through skin's profile, its color (alpha times the subsurface
-    // strength and the light's attenuation), depth and boost.
+    // The clustered renderer's transmittance: on, through skin's profile, its color (alpha times
+    // the subsurface strength and the light's attenuation), depth and boost.
     bool transmittance;
     bool skin;
     float4 transmittance_color;
@@ -13896,7 +13898,7 @@ struct Layers {
     float transmittance_boost;
 };
 
-// light_compute in Godot's scene.glsl, with Burley diffuse and Schlick-GGX specular, its defaults,
+// The light of one light on a pixel, with Burley diffuse and Schlick-GGX specular, its defaults,
 // and the transmittance, rim, clearcoat and anisotropy of layers; transmittance_z is how deep the
 // pixel is in the mesh as the light's shadow map sees it.
 void light_compute(float3 n, float3 l, float3 v, float3 light_color, float attenuation, float3 f0,
@@ -13922,11 +13924,11 @@ void light_compute(float3 n, float3 l, float3 v, float3 light_color, float atten
             through = exp(dd) * layers.transmittance_color.rgb;
         }
         diffuse_light += through * layers.transmittance_color.a * light_color *
-)hlsl",
-R"hlsl(                         clamp(layers.transmittance_boost - n_dot_l, 0.0, 1.0) * (1.0 / kPi);
+                         clamp(layers.transmittance_boost - n_dot_l, 0.0, 1.0) * (1.0 / kPi);
     }
     if (layers.rim > 0.0) {
-        float rim_light = pow(max(1e-4, 1.0 - c_n_dot_v), max(0.0, (1.0 - roughness) * 16.0));
+)hlsl",
+R"hlsl(        float rim_light = pow(max(1e-4, 1.0 - c_n_dot_v), max(0.0, (1.0 - roughness) * 16.0));
         diffuse_light += rim_light * layers.rim *
                          lerp((float3)1.0, layers.albedo, layers.rim_tint) * light_color;
     }
@@ -13934,7 +13936,7 @@ R"hlsl(                         clamp(layers.transmittance_boost - n_dot_l, 0.0,
     float c_n_dot_h = clamp(dot(n, h), 0.0, 1.0);
     float c_l_dot_h = clamp(dot(l, h), 0.0, 1.0);
     if (layers.clearcoat > 0.0) {
-        // The clearcoat ignores the normal map, as Godot's takes the vertex normal.
+        // The clearcoat ignores the normal map and takes the vertex normal.
         float cc_n_dot_h = clamp(dot(layers.geometry, h), 0.0, 1.0);
         float dr = d_ggx(cc_n_dot_h, lerp(0.001, 0.1, layers.clearcoat_roughness));
         float gr = 0.25 / (c_l_dot_h * c_l_dot_h + 1e-4);
@@ -13993,7 +13995,7 @@ float smooth(float edge0, float edge1, float x) {
     return t * t * (3.0 - 2.0 * t);
 }
 
-// One sample of an atlas, as Godot's textureProjLod of a sampler2DShadow.
+// One sample of an atlas, compared with the reference.
 float compare_atlas(bool positional, float2 uv, float reference) {
     if (positional) {
         return positional_atlas.SampleCmpLevelZero(positional_sampler, uv, reference);
@@ -14001,17 +14003,17 @@ float compare_atlas(bool positional, float2 uv, float reference) {
     return directional_atlas.SampleCmpLevelZero(directional_sampler, uv, reference);
 }
 
-// Each tap's offset in texels, in the order Godot's sample_shadow adds them: the center, the far
-// cross, the near cross and the corners. Five taps take the center and the near cross.
+// Each tap's offset in texels, in the order they are added: the center, the far cross, the near
+// cross and the corners. Five taps take the center and the near cross.
 static const float2 kTaps[13] = {float2(0.0, 0.0),  float2(2.0, 0.0),   float2(-2.0, 0.0),
                                  float2(0.0, 2.0),  float2(0.0, -2.0),  float2(1.0, 0.0),
                                  float2(-1.0, 0.0), float2(0.0, 1.0),   float2(0.0, -1.0),
                                  float2(1.0, 1.0),  float2(-1.0, 1.0),  float2(1.0, -1.0),
                                  float2(-1.0, -1.0)};
 
-// Godot's sample_shadow: the shadow at a point through a matrix into an atlas, from 1, 5 or 13
-// samples a texel apart, each kept within clamp_rect's low and high corners. The taps run in a
-// loop, so that drivers compile one sample rather than thirteen.
+// The shadow at a point through a matrix into an atlas, from 1, 5 or 13 samples a texel apart, each
+// kept within clamp_rect's low and high corners. The taps run in a loop, so that drivers compile
+// one sample rather than thirteen.
 float sample_shadow(bool positional, float4x4 to_atlas, float3 p, float texel, float taps,
                     float4 clamp_rect) {
     float4 at = mul(to_atlas, float4(p, 1.0));
@@ -14023,7 +14025,7 @@ float sample_shadow(bool positional, float4x4 to_atlas, float3 p, float texel, f
         float2 offset = kTaps[count == 5u && i > 0u ? i + 4u : i];
         sum += compare_atlas(positional, clamp(uv + offset * texel, clamp_rect.xy, clamp_rect.zw),
                              reference);
-        // Godot stops early where the far samples agree.
+        // It stops early where the far samples agree.
         if (count == 13u && i == 4u) {
             if (sum <= 0.000001) {
                 return 0.0;
@@ -14036,14 +14038,13 @@ float sample_shadow(bool positional, float4x4 to_atlas, float3 p, float texel, f
     return count == 13u ? sum * (1.0 / 13.0) : (count == 5u ? sum * (1.0 / 5.0) : sum);
 }
 
-// Directional cascades aren't clamped, as Godot's aren't.
+// Directional cascades aren't clamped.
 static const float4 kNoClamp = float4(-2.0, -2.0, 3.0, 3.0);
 
-// A light's shadow at a pixel, sampled in one place for every kind of light. A directional
-// light's cascade is picked by view depth as Godot's scene.glsl picks it, blended with the next
-// when the light says so, and offset along the vertex normal by the cascade's normal bias; an
-// omni light's cube face is the one its ray from the light leaves by, and an omni or spot light
-// offsets the point along the vertex normal as Godot offsets it.
+// A light's shadow at a pixel, sampled in one place for every kind of light. A directional light's
+// cascade is picked by view depth, blended with the next when the light says so, and offset along
+// the vertex normal by the cascade's normal bias; an omni light's cube face is the one its ray from
+// the light leaves by, and an omni or spot light offsets the point along the vertex normal.
 float light_shadow(bool directional, uint slot, float3 world, float3 normal, float3 toward_light) {
     uint lookups = 1u; // a directional light's second is the next cascade, blended in
     uint cascade = 0u;
@@ -14090,7 +14091,7 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
             } else {
                 face = local.z > 0.0 ? 4u : 5u;
             }
-            taps = 1.0; // Godot samples an omni light's cube once
+            taps = 1.0; // an omni light's cube is sampled once
         }
     }
     float shadow = 1.0;
@@ -14131,8 +14132,8 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
 }
 
 #ifdef CLUSTERED
-// The depth in a shadow atlas at uv, filtered from the four texels around it as Godot's
-// SAMPLER_LINEAR_CLAMP reads it; texel is a texel's share of the atlas across.
+// The depth in a shadow atlas at uv, filtered from the four texels around it as a linear clamped
+// sampler reads it; texel is a texel's share of the atlas across.
 float atlas_depth(bool positional, float2 uv, float texel) {
     float size = round(1.0 / texel);
     float2 p = clamp(uv, -1.0, 2.0) * size - 0.5;
@@ -14157,11 +14158,11 @@ float atlas_depth(bool positional, float2 uv, float texel) {
 }
 
 // How deep a pixel is in its mesh as a light's shadow map sees it, in world units, for the
-// transmittance (Godot's transmittance_z): from the point moved into the mesh by the light's
-// transmittance bias to the caster the map holds there. A directional light's is measured in
-// the cascade the pixel's view depth falls in, moved along the geometry's normal by the bias
-// times the cascade's depth; an omni or spot light's along the normal by the bias, its caster's
-// depth made linear from the map's. fallback where the light casts no shadow.
+// transmittance: from the point moved into the mesh by the light's transmittance bias to the caster
+// the map holds there. A directional light's is measured in the cascade the pixel's view depth
+// falls in, moved along the geometry's normal by the bias times the cascade's depth; an omni or
+// spot light's along the normal by the bias, its caster's depth made linear from the map's.
+// fallback where the light casts no shadow.
 float shadow_thickness(bool directional, uint slot, float3 world, float3 normal, float3 geometry,
                        float fallback) {
     [branch] if (directional) {
@@ -14184,13 +14185,13 @@ float shadow_thickness(bool directional, uint slot, float3 world, float3 normal,
     if (!(positional_shadows[slot].params.y > 0.001)) {
         return fallback;
     }
-)hlsl",
-R"hlsl(    // The light's transmittance bias is in the last row of its matrix, which places nothing.
+    // The light's transmittance bias is in the last row of its matrix, which places nothing.
     float3 p = world - normal * positional_shadows[slot].light[3].x;
     uint face = 0u;
     if (positional_shadows[slot].params.w > 1.5) {
         float3 local = mul(positional_shadows[slot].light, float4(p, 1.0)).xyz;
-        float3 a = abs(local);
+)hlsl",
+R"hlsl(        float3 a = abs(local);
         if (a.x >= a.y && a.x >= a.z) {
             face = local.x > 0.0 ? 0u : 1u;
         } else if (a.y >= a.z) {
@@ -14256,8 +14257,8 @@ uint cluster_stride() {
     return (uint)cluster.y + kClusterSlices + (decal_words > 0u ? decal_words + kClusterSlices : 0u);
 }
 
-// A texel of the decal atlas at level's offset and size, clamped to its edges, decoded from sRGB for
-// the albedo and emission textures, as Godot's sRGB view of the atlas reads them.
+// A texel of the decal atlas at level's offset and size, clamped to its edges, decoded from sRGB
+// for the albedo and emission textures.
 float4 decal_texel(uint offset, uint width, uint height, int2 at, bool srgb) {
     at = clamp(at, int2(0, 0), int2((int)width - 1, (int)height - 1));
     uint word = decal_atlas[offset + (uint)at.y * width + (uint)at.x];
@@ -14327,12 +14328,11 @@ float4 decal_sample(float2 uv, float2 dx, float2 dy, bool srgb) {
     return color;
 }
 
-// What a light's projector (Godot's light_projector) lets through to a point in the world: its
-// texture, from the decal atlas, by the light's record after the frame's decals, as Godot's
-// scene_forward_lights_inc.glsl reads it. A spot light projects it through its cone, an omni light
-// through a dual paraboloid, the texture's top half facing its -Z and the bottom half its +Z.
-// Level 0 between the four texels around the point, written out rather than in a loop, as loops
-// in the light loop lose Direct3D 12's WARP device.
+// What a light's projector lets through to a point in the world: its texture, from the decal atlas,
+// by the light's record after the frame's decals. A spot light projects it through its cone, an
+// omni light through a dual paraboloid, the texture's top half facing its -Z and the bottom half
+// its +Z. Level 0 between the four texels around the point, written out rather than in a loop, as
+// loops in the light loop lose Direct3D 12's WARP device.
 float3 projector_light(uint projector, bool spot, float3 world) {
     Decal record = decals[(uint)decal_info.x + projector - 1u];
     float3 local = float3(dot(record.rows[0], float4(world, 1.0)),
@@ -14341,10 +14341,10 @@ float3 projector_light(uint projector, bool spot, float3 world) {
     float4 rect = record.rects[0];
     float2 uv;
     if (spot) {
-        // Godot's perspective of twice the spot angle: x and y over the depth in front, by the
-        // cotangent of the angle, from -1 to 1 across the cone.
+        // A perspective of twice the spot angle: x and y over the depth in front, by the cotangent
+        // of the angle, from -1 to 1 across the cone.
         float depth = max(-local.z, 0.00001);
-        // Godot flips a spot light's rect, as its shadow is flipped.
+        // A spot light's rect is flipped, as its shadow is flipped.
         uv = local.xy * (record.params.y / depth) * 0.5 + 0.5;
         uv.y = 1.0 - uv.y;
     } else {
@@ -14392,7 +14392,7 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     }
     // shadow.y holds 1 for a baked light, plus twice its projector's place after the decals.
     uint light_bits = (uint)light.shadow.y;
-    // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
+    // A baked light's light is in the lightmap already, so these lights are skipped.
     if ((light_bits & 1u) != 0u && (options.x & kLightmap) != 0u) {
         return;
     }
@@ -14418,8 +14418,8 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
             attenuation *= 1.0 - pow(rim, light.params.z);
         }
     }
-    // The rim fades with distance but not in shadow, as Godot's, and so does the transmittance,
-    // which takes the depth the shadow map sees.
+    // The rim fades with distance but not in shadow, and so does the transmittance, which takes the
+    // depth the shadow map sees.
     layers.rim *= attenuation;
     float transmittance_z = layers.transmittance_depth;
 #ifdef CLUSTERED
@@ -14446,7 +14446,7 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
         attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
     }
 #ifdef GAME_LIGHT
-    // A game's light() lights the pixel in place of light_compute, as Godot's LIGHT_CODE_USED.
+    // A game's light() lights the pixel in place of light_compute.
     game_light(normal, toward, view, color, directional, attenuation, light.color.w,
                game_albedo, metallic, roughness, diffuse_light, specular_light);
 #else
@@ -14455,16 +14455,16 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
 #endif
 }
 
-)hlsl",
-R"hlsl(#ifdef CLUSTERED
+#ifdef CLUSTERED
 
 // How far a point moves across a pixel to the right (dx) and down (dy), along the plane through it
-// facing geometry, from the camera's rows: what Godot takes from dFdx and dFdy of the vertex, worked
-// out so that every device picks the same atlas levels.
+// facing geometry, from the camera's rows: what dFdx and dFdy of the vertex give, worked out so
+// that every device picks the same atlas levels.
 void surface_steps(float3 world, float3 geometry, out float3 dx, out float3 dy) {
     float3 helper = abs(geometry.y) < 0.999 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
     float3 t1 = normalize(cross(helper, geometry));
-    float3 t2 = cross(geometry, t1);
+)hlsl",
+R"hlsl(    float3 t2 = cross(geometry, t1);
     float4 p = float4(world, 1.0);
     float x = dot(clip_rows[0], p);
     float y = dot(clip_rows[1], p);
@@ -14485,8 +14485,7 @@ void surface_steps(float3 world, float3 geometry, out float3 dx, out float3 dy) 
     dy = (t2 * s1.x - t1 * s2.x) / det;
 }
 
-// x to the power y, as Godot's fade takes it, with anything to the power 0 taken as 1 and 0 to any
-// other power as 0.
+// x to the power y, with anything to the power 0 taken as 1 and 0 to any other power as 0.
 float decal_fade(float x, float y) {
     if (y == 0.0) {
         return 1.0;
@@ -14498,7 +14497,7 @@ bool has_rect(float4 rect) {
     return any(rect != (float4)0.0);
 }
 
-// One decal's textures over the surface, as the body of Godot's decal loop.
+// One decal's textures over the surface.
 void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 dy,
                  inout float3 base, inout float3 normal, inout float ao, inout float roughness,
                  inout float metallic, inout float3 emitted) {
@@ -14515,7 +14514,7 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
     float2 uv_dx = float2(dot(decal.rows[0].xyz, dx), dot(decal.rows[2].xyz, dx));
     float2 uv_dy = float2(dot(decal.rows[0].xyz, dy), dot(decal.rows[2].xyz, dy));
     // Its albedo, normal, ORM and emission textures, in a loop so that the shader samples in one
-    // place; the normal and ORM ones only with an albedo one, as Godot's.
+    // place; the normal and ORM ones only with an albedo one.
     bool albedo_used = has_rect(decal.rects[0]);
     float4 texels[4];
     [loop] for (uint k = 0u; k < 4u; ++k) {
@@ -14554,9 +14553,9 @@ void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 d
     }
 }
 
-// Godot's decals (scene_forward_clustered.glsl): those of the pixel's tile within its slice's
-// range, each word's from its highest bit, that share a layer with the mesh, over its surface
-// before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
+// The decals: those of the pixel's tile within its slice's range, each word's from its highest bit,
+// that share a layer with the mesh, over its surface before it is lit; geometry is its vertex
+// normal, turned to its side.
 void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
                   inout float ao, inout float roughness, inout float metallic,
                   inout float3 emitted) {
@@ -14596,9 +14595,9 @@ float3 sample_probe(Probe probe, float3 direction, float level) {
         .rgb;
 }
 
-// Godot's reflection_process (scene_forward_lights_inc.glsl) for each probe, as its clustered
-// scene shader walks them: each word of 32 from its highest bit, the frame's probes being largest
-// first. reflect_probes in src/reflection.cpp is its CPU twin.
+// The reflection of each probe, walked as the clustered scene shader does: each word of 32 from its
+// highest bit, the frame's probes being largest first. reflect_probes in src/reflection.cpp is its
+// CPU twin.
 void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
                     inout float4 reflection_accum, inout float4 ambient_accum) {
     uint count = (uint)reflections.x;
@@ -14636,8 +14635,8 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
                 float3 rbmax = (extents - local_pos) / nrdir;
                 float3 rbmin = (-extents - local_pos) / nrdir;
                 float3 rbminmax = nrdir > 0.0 ? rbmax : rbmin;
-                // A direction along an axis's walls never meets them: Godot divides by zero
-                // there, and the zero times infinity after it is not a number.
+                // A direction along an axis's walls never meets them: dividing by zero there, and
+                // the zero times infinity after it is not a number.
                 rbminmax = nrdir == 0.0 ? 3.402823e38 : rbminmax;
                 float fa = min(min(rbminmax.x, rbminmax.y), rbminmax.z);
                 local_ray = local_pos + nrdir * fa - probe.offset.xyz;
@@ -14664,9 +14663,8 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
 #endif
 
 #ifdef CLUSTERED
-// Godot 4.6's VoxelLighting3D cone tracing (gi.glsl's voxel_gi_compute and its cone traces), through each
-// VoxelLighting3D's 3D texture kept as tiles of the atlas in ground_texture_2. trace_voxel_gis in
-// src/voxel_gi.cpp is its CPU twin.
+// VoxelLighting3D cone tracing, through each VoxelLighting3D's 3D texture kept as tiles of the
+// atlas in ground_texture_2. trace_voxel_gis in src/voxel_gi.cpp is its CPU twin.
 
 // A VoxelLighting3D's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
 // in the two slices around uvw, each read inside its own tile, then between them.
@@ -14706,8 +14704,7 @@ float4 voxel_gi_sample(uint index, float3 uvw, float lod) {
 }
 
 // voxel_cone_trace: a cone from pos (in cells) along direction, its diameter growing by
-)hlsl",
-R"hlsl(// 2 tan_half_angle a cell, stepping half its diameter, until it is opaque or leaves the texture.
+// 2 tan_half_angle a cell, stepping half its diameter, until it is opaque or leaves the texture.
 float4 voxel_cone_trace(uint index, float3 cell_size, float max_distance, float3 pos,
                         float3 direction, float tan_half_angle, float bias) {
     float dist = bias;
@@ -14721,7 +14718,8 @@ float4 voxel_cone_trace(uint index, float3 cell_size, float max_distance, float3
         }
         float4 scolor = voxel_gi_sample(index, uvw, log2(diameter));
         float a = 1.0 - color.a;
-        color += a * scolor;
+)hlsl",
+R"hlsl(        color += a * scolor;
         dist += half_diameter;
     }
     return color;
@@ -14817,8 +14815,8 @@ void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection
     blend_accum += blend;
 }
 
-// Godot's process_gi: what the pixel's VoxelGIs give it, ambient light and reflections, each with
-// how much of the sky's it replaces in alpha.
+// What the pixel's VoxelGIs give it, ambient light and reflections, each with how much of the sky's
+// it replaces in alpha.
 void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
                      out float4 ambient_accum, out float4 reflection_accum) {
     float3 reflection = normalize(reflect(-view, normal));
@@ -14841,9 +14839,8 @@ void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
 }
 #endif
 
-// Godot's textureArray_bicubic (scene_forward_clustered.glsl): a cubic B-spline over the 4x4
-// texels around uv, as four bilinear taps. w0 to w3 are its basis functions, g0 and g1 the taps'
-// amplitudes and h0 and h1 their offsets.
+// A cubic B-spline over the 4x4 texels around uv, as four bilinear taps. w0 to w3 are its basis
+// functions, g0 and g1 the taps' amplitudes and h0 and h1 their offsets.
 float bicubic_w0(float a) {
     return (1.0 / 6.0) * (a * (a * (-a + 3.0) - 3.0) + 1.0);
 }
@@ -14857,7 +14854,7 @@ float bicubic_w3(float a) {
     return (1.0 / 6.0) * (a * a * a);
 }
 
-// The lightmap's light at uv, linear, times its exposure: bicubic or bilinear, as Godot samples it.
+// The lightmap's light at uv, linear, times its exposure: bicubic or bilinear.
 float3 lightmap_light(float2 uv) {
     float3 light;
     if (lightmap.y != 0.0) {
@@ -14891,8 +14888,8 @@ float3 lightmap_light(float2 uv) {
     return light * lightmap.x;
 }
 
-// The light probes' light along a world normal, as Godot's scene_forward_clustered.glsl evaluates
-// a lightmap capture's spherical harmonics.
+// The light probes' light along a world normal, evaluating a lightmap capture's spherical
+// harmonics.
 float3 capture_light(float3 n) {
     return 0.886227 * capture[0].rgb + 1.023327 * capture[1].rgb * n.y +
            1.023327 * capture[2].rgb * n.z + 1.023327 * capture[3].rgb * n.x +
@@ -14902,8 +14899,9 @@ float3 capture_light(float3 n) {
            0.429043 * capture[8].rgb * (n.x * n.x - n.y * n.y);
 }
 
-// The material's rim, clearcoat, anisotropy and, in Forward+, transmittance at a pixel. An anisotropic one's highlight runs
-// along Godot's default flow map, the tangent turned by its (1, 128 / 255) texel.
+// The material's rim, clearcoat, anisotropy and, in the clustered renderer, transmittance at a
+// pixel. An anisotropic one's highlight runs along the default flow map, the tangent turned by its
+// (1, 128 / 255) texel.
 Layers material_layers(VertexOutput input, float3 albedo, float3 geometry) {
     Layers layers;
     layers.rim = lightmap.z;
@@ -14944,9 +14942,8 @@ Layers material_layers(VertexOutput input, float3 albedo, float3 geometry) {
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
 // lightmap's, and a captured one's its light probes', either standing in for the scene's and the
-// probes', as Godot's USE_LIGHTMAP. rays are its ray-traced shadows.
-// What lit_color lit diffusely (its emission, diffuse and ambient light), which the subsurface
-// pass blurs, as Godot's separate diffuse buffer.
+// probes'. rays are its ray-traced shadows. What lit_color lit diffusely (its emission, diffuse and
+// ambient light), which the subsurface pass blurs.
 static float3 subsurface_light = (float3)0.0;
 
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
@@ -14963,8 +14960,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     game_albedo = base;
 #endif
     float3 view = normalize(camera.xyz - input.world);
-)hlsl",
-R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
+    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
     Layers layers = material_layers(input, base, geometry);
 
     float3 diffuse_light = (float3)0.0;
@@ -14972,9 +14968,8 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
     uint count = (uint)camera.w;
 #ifdef CLUSTERED
     // The directional lights, then the omni and spot lights of the pixel's cluster: its tile's
-    // lights within its slice's range, nearest first, as Godot's scene_forward_clustered.glsl
-    // walks them. One loop calls add_light once, so the shader holds one copy of it, which
-    // keeps it small enough for Direct3D 12's WARP.
+    // lights within its slice's range, nearest first. One loop calls add_light once, so the shader
+    // holds one copy of it, which keeps it small enough for Direct3D 12's WARP.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
     uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride();
@@ -14983,7 +14978,8 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
     uint range = clusters[cell + words + slice];
     uint first = range & 0xFFFFu;
     uint end = range >> 16u;
-    uint word = first >> 5u;
+)hlsl",
+R"hlsl(    uint word = first >> 5u;
     uint last_word = (end + 31u) >> 5u;
     uint mask = word < last_word ? clusters[cell + word] & range_mask(word, first, end) : 0u;
     uint i = 0u;
@@ -15014,14 +15010,14 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
     }
 #endif
 
-    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
-    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
+    // Light from the sky's radiance: reflections by roughness and ambient light by the normal, then
+    // specular occlusion and Lazarov's environment BRDF.
     float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
                            : captured  ? capture_light(normal)
                                        : ambient.rgb;
     float3 reflected = (float3)0.0;
     if (sky.y != 0.0) {
-        // An anisotropic surface reflects about a normal bent along its highlight, as Godot's.
+        // An anisotropic surface reflects about a normal bent along its highlight.
         float3 bent = normal;
         if (layers.anisotropy != 0.0) {
             float3 direction = layers.anisotropy >= 0.0 ? layers.binormal : layers.tangent;
@@ -15046,8 +15042,8 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
         ambient_light = lerp(ambient_light, srgb_to_linear(texel) * sky.z, sky.w);
     }
     if (sky.y != 0.0 && layers.clearcoat > 0.0) {
-        // The clearcoat's reflection of the sky, about the geometry's normal, over what it
-        // lets through: Godot's layer with an IOR of 1.5.
+        // The clearcoat's reflection of the sky, about the geometry's normal, over what it lets
+        // through: a layer with an IOR of 1.5.
         float coat_n_dot_v = max(dot(geometry, view), 0.0001);
         float3 ray = reflect(-view, geometry);
         ray = lerp(ray, geometry, layers.clearcoat_roughness * layers.clearcoat_roughness);
@@ -15064,17 +15060,17 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
 #ifdef CLUSTERED
     if (scene_voxel_gi.z != 0.0 && !lightmapped && !captured &&
         ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
-        // Forward+'s SDFGI, as Godot's GI buffers light a pixel: its ambient light and
-        // reflections, which the gather drew into the screen array's layers 5 and 6, go over the
-        // sky's by how much of them its cascades hold, and VoxelGIs go over it.
+        // The clustered renderer's SDFGI: its ambient light and reflections, which the gather drew
+        // into the screen array's layers 5 and 6, go over the sky's by how much of them its
+        // cascades hold, and VoxelGIs go over it.
         float4 sdfgi_ambient = screen_texture.Load(int4((int2)input.position.xy, 5, 0));
         float4 sdfgi_reflection = screen_texture.Load(int4((int2)input.position.xy, 6, 0));
         ambient_light = lerp(ambient_light, sdfgi_ambient.rgb, sdfgi_ambient.a);
         reflected = lerp(reflected, sdfgi_reflection.rgb, sdfgi_reflection.a);
     }
     if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
-        // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
-        // reflections go over the sky's by how much of their cones met something.
+        // The clustered renderer's VoxelGIs: their ambient light and reflections go over the sky's
+        // by how much of their cones met something.
         float4 gi_ambient;
         float4 gi_reflection;
         trace_voxel_gis(input.world, normal, view, roughness, gi_ambient, gi_reflection);
@@ -15082,9 +15078,8 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
         reflected = lerp(reflected, gi_reflection.rgb, gi_reflection.a);
     }
     if (reflections.x > 0.0) {
-        // Forward+'s reflection probes, as Godot's scene_forward_clustered.glsl takes them: where
-        // they reach, their reflections and ambient light go over the sky's by how much they
-        // cover.
+        // The clustered renderer's reflection probes: where they reach, their reflections and
+        // ambient light go over the sky's by how much they cover.
         float4 reflection_accum = (float4)0.0;
         float4 ambient_accum = (float4)0.0;
         float3 ray = normalize(reflect(-view, normal));
@@ -15121,8 +15116,8 @@ R"hlsl(    float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic
     if (ssr.a < 0.0) {
         reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
     } else {
-        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
-        // the sky's by its premultiplied alpha.
+        // SSR: the reflection, faded out toward the trace's roughness cutoff, put over the sky's by
+        // its premultiplied alpha.
         reflected *= occlusion;
         float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
         reflected = reflected * (1.0 - faded.a) + faded.rgb;
@@ -15147,9 +15142,9 @@ PrepassOutput fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
 #endif
 #ifdef GAME_SHADER
-    // A game's spatial shader gives the surface in place of the Surface3D's, as Godot's
-    // ShaderMaterial: game_surface, which the shader tools write around its fragment()
-    // (tools/shader_compiler), and its ALPHA cut by its ALPHA_SCISSOR_THRESHOLD.
+    // A game's spatial shader gives the surface in place of the Surface3D's: game_surface, which
+    // the shader tools write around its fragment() (tools/shader_compiler), and its ALPHA cut by
+    // its ALPHA_SCISSOR_THRESHOLD.
     uint flags = options.x;
     GameSurface game =
         game_surface(input.world, input.normal, input.tangent, input.binormal, input.uv,
@@ -15192,9 +15187,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     if ((flags & kVertexColorAlbedo) != 0u) {
         color *= input.color;
     }
-)hlsl",
-R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D only sets ALPHA when
-    // it is transparent. A terrain's color map cuts its holes here.
+    // Opaque materials leave alpha alone: ALPHA is only set when it is transparent. A terrain's
+    // color map cuts its holes here.
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
         float threshold = asfloat(options.y);
@@ -15221,7 +15215,8 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
         uint terrain_flags = options.w;
         float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};
         float4 albedo_bump[4] = {emission_texel, mapped_texel, ground_2, ground_3};
-        float4 bumps = float4(albedo_bump[0].a, albedo_bump[1].a, albedo_bump[2].a,
+)hlsl",
+R"hlsl(        float4 bumps = float4(albedo_bump[0].a, albedo_bump[1].a, albedo_bump[2].a,
                               albedo_bump[3].a);
         float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
                              ? depth_blended_weights(metallic_texel, bumps)
@@ -15257,7 +15252,7 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
         normal = -normal;
     }
     if ((flags & kNormalMap) != 0u) {
-        // With the interpolated, unnormalized tangent frame, per MikkTSpace, as Godot does.
+        // With the interpolated, unnormalized tangent frame, per MikkTSpace.
         float3 mapped = mapped_texel.rgb;
         mapped.xy = mapped.xy * 2.0 - 1.0;
         mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));
@@ -15269,14 +15264,13 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
     }
 #endif
 #ifdef NORMAL_ROUGHNESS
-    // The prepass's normal in the camera's space, as Godot's normal_roughness_buffer has it, and
-    // roughness, in its seven bits.
+    // The prepass's normal in the camera's space, and roughness, in its seven bits.
     float3 view_normal =
         normalize(float3(dot(view_rows[0].xyz, normal), dot(view_rows[1].xyz, normal),
                          dot(view_rows[2].xyz, normal)));
     float4 normal_roughness = float4(view_normal * 0.5 + 0.5, roughness * (127.0 / 255.0));
 #ifdef MOTION_VECTORS
-    // Godot's motion vector: the move from where the surface is to where it was, each without its
+    // The motion vector: the move from where the surface is to where it was, each without its
     // frame's jitter, in texture coordinates, whose y runs down.
     float2 position_uv = input.motion_clip.xy / input.motion_clip.w * 0.5;
     float2 previous_uv = input.previous_clip.xy / input.previous_clip.w * 0.5;
@@ -15303,13 +15297,12 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
         emitted = srgb_to_linear(emitted) * emission.w;
     }
 #endif
-    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
-    // terrain's along its shape's.
+    // Shadows offset the point they sample along the vertex normal; a terrain's along its shape's.
     float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
-    // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
-    // with the decals' ambient occlusion, and their direct light by its light affect times its AO
-    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A
-    // game's shader starts them at its AO and AO_LIGHT_AFFECT, as Godot's.
+    // SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light, with the
+    // decals' ambient occlusion, and their direct light by its light affect times its AO channel
+    // affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky. A game's
+    // shader starts them at its AO and AO_LIGHT_AFFECT.
 #ifdef GAME_SHADER
     float ao = game.material.w;
     float ao_light_affect = game.emission.w;
@@ -15324,7 +15317,7 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
     rays.high = float4(1.0, 1.0, 1.0, 1.0);
 #ifdef CLUSTERED
     if (decal_info.x > 0.0) {
-        // Forward+'s decals change the surface before it is lit.
+        // The clustered renderer's decals change the surface before it is lit.
         bool flipped = (flags & kSideCheck) != 0u && !front;
         apply_decals(input, flipped ? -geometry : geometry, base, normal, ao, roughness, metallic,
                      emitted);
@@ -15350,14 +15343,14 @@ R"hlsl(    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D 
                         ao_direct, ssr, rays);
     }
 #ifdef GAME_LIGHT
-    // Its light() may change ALPHA, as Godot's.
+    // Its light() may change ALPHA.
     if ((flags & kHasAlpha) != 0u && (flags & kAlphaScissor) == 0u) {
         alpha = ALPHA;
     }
 #endif
 #ifdef SUBSURFACE
-    // Forward+'s subsurface pass: the diffuse light, fogged, and the strength the blur spreads it
-    // by, as Godot's diffuse buffer.
+    // The clustered renderer's subsurface pass: the diffuse light, fogged, and the strength the
+    // blur spreads it by.
     return float4(finish(subsurface_light, 1.0, input.world, input.position.xy).rgb,
                   sss_params.x);
 #else

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/light.hpp"
 
 #include "slash/world/tree2d.hpp"
@@ -21,7 +22,7 @@ constexpr auto kColumns = static_cast<std::int32_t>(render::kShadowMapWidth);
 constexpr float kNone = std::numeric_limits<float>::infinity();
 // The default light's image size.
 constexpr std::uint32_t kDefaultImageSize = 128;
-// Godot's 20 render layers.
+// The 20 render layers.
 constexpr std::uint32_t kMaskBits = (1U << 20U) - 1U;
 
 float cross(Point u, Point v) {
@@ -159,8 +160,8 @@ Point moved(const world::Affine2D& m, Point p) {
     return {static_cast<float>(out.x), static_cast<float>(out.y)};
 }
 
-// Moves a light from its canvas's coordinates into the lights', through m, as Godot's viewport
-// places a light by its canvas's transform.
+// Moves a light from its canvas's coordinates into the lights', through m, as the viewport places a
+// light by its canvas's transform.
 void move_light(render::Light& light, const world::Affine2D& m) {
     if (light.kind == render::LightKind::Point) {
         light.position = moved(m, light.position);
@@ -174,7 +175,7 @@ void move_light(render::Light& light, const world::Affine2D& m) {
             to_float((t[3] * back.x.x) + (t[4] * back.x.y)),
             to_float((t[3] * back.y.x) + (t[4] * back.y.y)),
             static_cast<float>((t[3] * back.origin.x) + (t[4] * back.origin.y) + t[5])};
-        // As Godot scales a light's height to the canvas.
+        // A light's height scales to the canvas.
         light.height *= (length({static_cast<float>(m.x.x), static_cast<float>(m.x.y)}) +
                          length({static_cast<float>(m.y.x), static_cast<float>(m.y.y)})) *
                         0.5F;
@@ -405,8 +406,8 @@ SceneLighting collect_lighting(const world::World& world, const LightImage& imag
         }
         occluders.push_back(std::move(occluder));
     }
-    // Each cell's occluders, at its center, as Godot's TileMapLayer makes them while the layer
-    // shows. A tile set that doesn't load is the renderer's to report.
+    // Each cell's occluders, at its center, made while the layer shows. A tile set that doesn't
+    // load is the renderer's to report.
     for (const entt::entity entity :
          tile_sets ? in_order(ecs.view<const world::TileLayer2D>()) : std::vector<entt::entity>{}) {
         const auto& layer = ecs.get<world::TileLayer2D>(entity);

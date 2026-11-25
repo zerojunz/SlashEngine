@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "model_internal.hpp"
 
 #include "slash/core/text.hpp"
@@ -17,19 +18,18 @@
 #include <utility>
 #include <vector>
 
-// Wavefront OBJ models and their MTL material libraries, read as Godot's OBJ importer reads one
-// as a scene (editor/import/3d/resource_importer_obj.cpp: _parse_obj and
-// _parse_material_library), with the tangents its scenes are imported with. Each "o" object is a
+// Wavefront OBJ models and their MTL material libraries, with the tangents scenes are imported
+// with. Each "o" object is a
 // mesh of its own, and each run of faces between "usemtl" lines a surface.
 namespace slash::scene3d {
 namespace {
 
-// Godot's smooth group for the corners of faces after "s off".
+// The smooth group for the corners of faces after "s off".
 constexpr std::uint32_t kFlat = std::numeric_limits<std::uint32_t>::max();
 // Larger than any index a model can use, so integer() can't overflow.
 constexpr std::int64_t kHuge = std::int64_t{1} << 40;
 
-// Godot's String::strip_edges: the text without the characters up to ' ' at either end.
+// The text without the characters up to ' ' at either end.
 std::string_view trimmed(std::string_view text) {
     while (!text.empty() && static_cast<unsigned char>(text.front()) <= ' ') {
         text.remove_prefix(1);
@@ -73,12 +73,12 @@ std::vector<std::string_view> parts(std::string_view word) {
     }
 }
 
-// What follows a line's keyword, as Godot's importer takes names and paths.
+// What follows a line's keyword, for names and paths.
 std::string rest(std::string_view line, std::string_view keyword) {
     return std::string(trimmed(line.substr(keyword.size())));
 }
 
-// Godot's String::to_float: the number the word starts with, or 0 if it starts with none.
+// The number the word starts with, or 0 if it starts with none.
 float number(std::string_view word) {
     std::size_t i = 0;
     const auto digits = [&] {
@@ -112,7 +112,7 @@ float number(std::string_view word) {
     return static_cast<float>(parse_decimal(word.substr(0, end)).value_or(0.0));
 }
 
-// Godot's String::to_int: the word's digits up to any '.', other characters skipped, negative
+// The word's digits up to any '.', other characters skipped, negative
 // after a '-' that comes before them.
 std::int64_t integer(std::string_view word) {
     std::int64_t value = 0;
@@ -132,7 +132,7 @@ Vec3 normalized_or_zero(Vec3 v) {
     return length > 0.0F ? v * (1.0F / length) : Vec3{};
 }
 
-// Godot's SurfaceTool::generate_normals over corners three to a triangle, counter-clockwise: a
+// Normals over corners three to a triangle, counter-clockwise: a
 // corner in a smooth group takes the normalized sum of the face normals of the group's
 // triangles around its position, and a corner after "s off" its own face's.
 void smooth_normals(std::vector<render::Vertex3D>& corners,
@@ -174,7 +174,7 @@ void smooth_normals(std::vector<render::Vertex3D>& corners,
     }
 }
 
-// A material in a library, as Godot's _parse_material_library makes it, with the project paths
+// A material in a library, with the project paths
 // of its textures, "" for none.
 struct LibraryMaterial {
     world::Surface3D standard;
@@ -186,7 +186,7 @@ struct LibraryMaterial {
 using Library = std::unordered_map<std::string, LibraryMaterial>;
 
 // A texture a library names, as a project path relative to the library's folder; "" if it can't
-// draw, saying why in problems. Godot's importer reads backslashes as slashes.
+// draw, saying why in problems. Backslashes are read as slashes.
 std::string texture_path(const std::string& where, std::string_view library, std::string named,
                          const Problems& problems) {
     std::ranges::replace(named, '\\', '/');
@@ -215,8 +215,8 @@ std::string texture_path(const std::string& where, std::string_view library, std
     return *std::move(path);
 }
 
-// Godot's _parse_material_library; nullopt where Godot's fails, which leaves the library's
-// materials out, saying why in problems. Ambient colors and textures are left out, as Godot's
+// Reads a material library; nullopt where it fails, which leaves the library's
+// materials out, saying why in problems. Ambient colors and textures are left out, as the
 // renderer has no use for them, and so are other keywords.
 std::optional<Library> parse_library(std::string_view text, const std::string& path,
                                      const Problems& problems) {
@@ -279,7 +279,7 @@ std::optional<Library> parse_library(std::string_view text, const std::string& p
             if (!rgb) {
                 return fail("Ks needs red, green and blue");
             }
-            // As Godot's importer: the specular color's brightest channel is the metallic.
+            // The specular color's brightest channel is the metallic.
             current->standard.metallic = std::max({(*rgb)[0], (*rgb)[1], (*rgb)[2]});
         } else if (l.starts_with("Ns ")) {
             if (current == nullptr) {
@@ -289,7 +289,7 @@ std::optional<Library> parse_library(std::string_view text, const std::string& p
             if (!shininess) {
                 return fail("Ns needs one number");
             }
-            // As Godot's importer, which sets the metallic, not the roughness, from it.
+            // It sets the metallic, not the roughness.
             current->standard.metallic = (1000.0F - *shininess) / 1000.0F;
         } else if (l.starts_with("d ") || l.starts_with("Tr ")) {
             const bool dissolve = l.starts_with("d ");
@@ -327,7 +327,7 @@ std::optional<Library> parse_library(std::string_view text, const std::string& p
     return library;
 }
 
-// Reads one OBJ file, as Godot's _parse_obj with p_single_mesh off.
+// Reads one OBJ file, one mesh per object.
 class ObjReader {
 public:
     ObjReader(std::string_view path, const ModelReader& read, Problems problems)
@@ -371,12 +371,12 @@ private:
     std::vector<std::uint32_t> groups_;
     bool surface_normals_ = false;
     bool uses_uvs_ = false;
-    // What Godot's SurfaceTool gives a corner that doesn't set it: the last corner's.
+    // What a corner that doesn't set it gets: the last corner's.
     render::Vertex3D last_;
 };
 
 Result<Model> ObjReader::run(std::string_view bytes) {
-    // Godot's importer refuses Visual Studio's COFF objects, which share the extension.
+    // Visual Studio's COFF objects, which share the extension, are refused.
     const auto byte = [&](std::size_t i) {
         return i < bytes.size() ? static_cast<unsigned>(static_cast<unsigned char>(bytes[i])) : 0U;
     };
@@ -443,7 +443,7 @@ Result<void> ObjReader::line(std::string_view l, std::size_t at) {
         if (v.size() < 3) {
             return fail("vt needs u and v");
         }
-        // Godot's v runs down the texture, OBJ's up it.
+        // v runs down the texture here, OBJ's up it.
         uvs_.push_back({number(v[1]), 1.0F - number(v[2])});
     } else if (l.starts_with("vn ")) {
         const std::vector<std::string_view> v = words(l);
@@ -462,7 +462,7 @@ Result<void> ObjReader::line(std::string_view l, std::size_t at) {
             }
         }
     } else if (l.starts_with("usemtl ") || l.starts_with("o ")) {
-        // Godot's importer leaves "g" groups alone: they neither split meshes nor name surfaces.
+        // "g" groups are left alone: they neither split meshes nor name surfaces.
         if (auto done = commit_surface(); !done) {
             return done;
         }
@@ -485,7 +485,7 @@ Result<void> ObjReader::face(const std::vector<std::string_view>& v, std::size_t
     if (v.size() < 4) {
         return fail("f needs at least three corners");
     }
-    // A fan of triangles from the first corner. Godot's importer adds each triangle's corners in
+    // A fan of triangles from the first corner. Each triangle's corners are added in
     // the order 1, 0, 2, its clockwise order; they're kept counter-clockwise here until the
     // surface is done.
     std::array<std::string_view, 3> word{v[1], v[2], {}};
@@ -552,7 +552,7 @@ Result<render::Vertex3D> ObjReader::corner(std::string_view word, std::size_t at
         const Vec3 n = normals_[normal.value()];
         last_.normal = {static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)};
         surface_normals_ = true;
-        // Tangents need texture coordinates; without them, Godot's importer makes up one.
+        // Tangents need texture coordinates; without them, one is made up.
         if (!uses_uvs_) {
             last_ = dummy_tangent(last_);
         }
@@ -580,7 +580,7 @@ Result<void> ObjReader::commit_surface() {
     for (std::size_t i = 0; i < corners_.size(); ++i) {
         triangles.indices[i] = static_cast<std::uint32_t>(i);
     }
-    // Godot's importer makes normals for a file without any; so does a surface without any here.
+    // Normals are made for a file without any; so for a surface without any here.
     if (!surface_normals_) {
         smooth_normals(corners_, groups_);
     }

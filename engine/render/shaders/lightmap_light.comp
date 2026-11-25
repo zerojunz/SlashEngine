@@ -3,13 +3,12 @@
 
 // A lightmap's light on a GPU that traces rays (RenderDevice::trace_lightmap): the hardware twin of
 // the direct_light, bounce_light and light_probes passes of scene3d's lightmapper
-// (engine/scene3d/src/lightmapper.cpp), which ports Godot 4.6's lm_compute.glsl and holds the
-// steps' reasons. Rays find the nearest triangle as its Bvh::trace does: every triangle comes to
-// the query as a candidate, is tested with lm_compute.glsl's ray_hits_triangle (a front face's
-// distance less the bias, so it wins over a back face in its plane) and kept when nearer than the
-// best so far; front faces are committed, so the query stops looking beyond them. The random
-// numbers and the order light is summed in are the CPU's, so a bake comes out as the CPU's but
-// for rounding.
+// (engine/scene3d/src/lightmapper.cpp), which holds the steps' reasons. Rays find the nearest
+// triangle as its Bvh::trace does: every triangle comes to the query as a candidate, is tested with
+// lm_compute.glsl's ray_hits_triangle (a front face's distance less the bias, so it wins over a
+// back face in its plane) and kept when nearer than the best so far; front faces are committed, so
+// the query stops looking beyond them. The random numbers and the order light is summed in are the
+// CPU's, so a bake comes out as the CPU's but for rounding.
 //
 // Built as three pipelines by kPass: 0 the direct light of a region of a slice's texels, 1 a pass
 // of their bounces, adding to accum, 2 a pass of the light probes' rays, adding to probe_sums.

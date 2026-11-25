@@ -368,7 +368,7 @@ TEST_CASE("every device refuses particle graphs it can't run") {
     }
 }
 
-TEST_CASE("process material graphs name Godot's particle built-ins and report each mistake") {
+TEST_CASE("process material graphs name the particle built-ins and report each mistake") {
     // A graph's stage names what it changes; params are numbers it reads.
     const ParticleProcess process = process_of(R"({
       "format": 1,

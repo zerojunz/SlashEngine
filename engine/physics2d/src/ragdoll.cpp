@@ -21,10 +21,10 @@
 #include <vector>
 
 // Ragdoll2D: Ragdoll3D's profiles and states over a cut-out character's Transform2D tree, made of
-// RigidBody2D bodies and PinJoint2D joints. Godot's 2D physical bones need a Skeleton2D, which
-// cut-out characters made of sprites don't have, so the bones here are the tree's own entities.
-// The muscles are the same implicit springs physics3d's drives are, set as the bodies'
-// velocities before the step.
+// RigidBody2D bodies and PinJoint2D joints. Physical bones need a skeleton, which cut-out
+// characters made of sprites don't have, so the bones here are the tree's own entities. The muscles
+// are the same implicit springs physics3d's drives are, set as the bodies' velocities before the
+// step.
 namespace slash::physics2d {
 
 namespace {

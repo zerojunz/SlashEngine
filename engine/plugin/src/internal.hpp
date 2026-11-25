@@ -27,8 +27,7 @@ struct Field {
     std::optional<double> max;
 };
 
-// A plugin component type, as Godot's ClassDB keeps an extension's classes: for the whole
-// process, since plugins are never unloaded.
+// A plugin component type, kept for the whole process, since plugins are never unloaded.
 struct Layout {
     std::string name;
     std::string plugin;

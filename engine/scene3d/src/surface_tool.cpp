@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/surface_tool.hpp"
 
 #include "model_internal.hpp"
@@ -24,7 +25,7 @@ Vec3 normalized(Vec3 v) {
     return length > 0.0F ? v * (1.0F / length) : Vec3{};
 }
 
-// Godot's Plane(p1, p2, p3).normal, for clockwise front faces.
+// Plane(p1, p2, p3).normal, for clockwise front faces.
 Vec3 face_normal(Vec3 p1, Vec3 p2, Vec3 p3) {
     const Vec3 a = p1 - p3;
     const Vec3 b = p1 - p2;
@@ -32,8 +33,7 @@ Vec3 face_normal(Vec3 p1, Vec3 p2, Vec3 p3) {
         {(a.y * b.z) - (a.z * b.y), (a.z * b.x) - (a.x * b.z), (a.x * b.y) - (a.y * b.x)});
 }
 
-// A position and smooth group, keyed by the position's bits as Godot's SmoothGroupVertex
-// compares them.
+// A position and smooth group, keyed by the position's bits.
 using SmoothKey = std::pair<std::array<std::uint32_t, 3>, std::uint32_t>;
 
 SmoothKey smooth_key(const render::Vertex3D& vertex, std::uint32_t group) {

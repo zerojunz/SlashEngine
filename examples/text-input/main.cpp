@@ -1,12 +1,11 @@
-// Text fields, as Godot's LineEdit: main.scene.json is a sign-up form with a name field (a clear
-// button and at most 20 characters), a secret password field and an age field that asks for the
-// number keyboard. The profile system below reads the fields' UI events, as gameplay code does.
+// Text fields: main.scene.json is a sign-up form with a name field (a clear button and at most 20
+// characters), a secret password field and an age field that asks for the number keyboard. The
+// profile system below reads the fields' UI events, as gameplay code does.
 //
 // This program clicks into the name field and types as an agent does over MCP or JSON-RPC:
-// characters with input.inject's "text" events, an input method's composition with "ime"
-// events, editing actions (ui_text_select_all, ui_copy, ui_undo) and keys (Enter, Tab), reading
-// the UI events with events.read and the fields with ui.layout. Then it draws the form into a
-// texture.
+// characters with input.inject's "text" events, an input method's composition with "ime" events,
+// editing actions (ui_text_select_all, ui_copy, ui_undo) and keys (Enter, Tab), reading the UI
+// events with events.read and the fields with ui.layout. Then it draws the form into a texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

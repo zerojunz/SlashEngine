@@ -1,4 +1,4 @@
-// Character cloth, as Unreal's Chaos Cloth on a skeletal mesh (Godot has none): a Cloth3D's
+// Character cloth, as Unreal's Chaos Cloth on a skeletal mesh: a Cloth3D's
 // model section as a Jolt soft body whose skinned constraints carry its points along with the
 // model's skin, each free up to its max distance and kept out of its backstop sphere, with long
 // range attachments to the skinned points (Jolt's SoftBodySharedSettings::Skinned and LRA, the
@@ -105,7 +105,7 @@ std::vector<std::size_t> joined(std::size_t count,
     return parent;
 }
 
-// Godot's soft body stiffness mapping (see create_soft_body), as a compliance.
+// The soft body stiffness mapping (see create_soft_body), as a compliance.
 float compliance(float coefficient) {
     const float clamped = std::clamp(coefficient, 0.0F, 1.0F);
     return 1.0F / std::max(clamped * clamped * clamped * 100000.0F, 0.000001F);

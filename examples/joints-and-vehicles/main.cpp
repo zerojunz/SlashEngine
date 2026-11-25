@@ -1,9 +1,8 @@
-// 3D joints and a car on Jolt, as Godot's: main.scene.json hangs a lamp from a pin and a bell from
-// a cone twist joint, puts a door on a hinge and a drawer on a slider, and parks a car on four
-// wheels.
+// 3D joints and a car on Jolt: main.scene.json hangs a lamp from a pin and a bell from a cone twist
+// joint, puts a door on a hinge and a drawer on a slider, and parks a car on four wheels.
 //
-// The program drives them as an agent would, with component.set: it turns on the door's motor,
-// then gives the car throttle, steering and the brake, a few seconds at a time, and prints where
+// The program drives them as an agent would, with component.set: it turns on the door's motor, then
+// gives the car throttle, steering and the brake, a few seconds at a time, and prints where
 // everything got to.
 
 #include "slash/command/builtin.hpp"

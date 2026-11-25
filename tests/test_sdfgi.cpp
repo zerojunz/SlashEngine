@@ -201,7 +201,7 @@ std::size_t differing(const Image& a, const Image& b, int by) {
 
 } // namespace
 
-TEST_CASE("SDFGI's light round-trips through Godot's RGB9E5") {
+TEST_CASE("SDFGI's light round-trips through RGB9E5") {
     for (const Float3 color : {Float3{0.0F, 0.0F, 0.0F}, Float3{1.0F, 0.5F, 0.25F},
                                Float3{12.0F, 0.01F, 3.0F}, Float3{0.002F, 0.003F, 0.001F}}) {
         CAPTURE(color[0]);
@@ -326,7 +326,7 @@ TEST_CASE("SDFGI's cascades scroll: a moved cascade keeps its cells and makes th
     }
 }
 
-TEST_CASE("SDFGI's settings read project.json's as Godot's") {
+TEST_CASE("SDFGI's settings read project.json's") {
     const render::SdfgiSettings defaults;
     CHECK(defaults.probe_ray_count == render::Sdfgi3D{}.ray_count);
     CHECK(defaults.frames_to_converge == render::Sdfgi3D{}.frames_to_converge);
@@ -341,7 +341,7 @@ TEST_CASE("SDFGI's settings read project.json's as Godot's") {
     CHECK(set.probe_ray_count == 96);
     CHECK(set.frames_to_converge == 10);
     CHECK(set.frames_to_update_lights == 16);
-    // Values Godot doesn't offer, or of the wrong kind, keep their defaults.
+    // Values the settings don't offer, or of the wrong kind, keep their defaults.
     CHECK(read(R"({"field_lighting": {"probe_ray_count": 12,
         "frames_to_converge": "fast", "frames_to_update_lights": 3}})") == defaults);
     CHECK(read(R"({"voxel_lighting": {"quality": "high"}})") == defaults);

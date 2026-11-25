@@ -1,11 +1,11 @@
-// Decals, as Godot 4.6's Decal in its Forward+ renderer.
+// Decals in the clustered renderer.
 //
 // A street in a 320x180 window: a dashed yellow line painted down it, a puddle that is darker and
 // smoother than the asphalt around it, and a sign glowing on the wall behind. Each is a Decal, a
-// box that projects its textures down its -Y onto the meshes inside it: the line an albedo
-// texture, the puddle an albedo and an ORM texture (its roughness low), the sign only an emission
-// texture, turned to face the wall. Games ship PNG files made in an image editor; this example
-// draws its textures in code, so the repository holds no images.
+// box that projects its textures down its -Y onto the meshes inside it: the line an albedo texture,
+// the puddle an albedo and an ORM texture (its roughness low), the sign only an emission texture,
+// turned to face the wall. Games ship PNG files made in an image editor; this example draws its
+// textures in code, so the repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

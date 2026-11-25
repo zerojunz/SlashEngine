@@ -1,6 +1,7 @@
 // A world's sound: the "audio" system plays each SoundPlayer, SoundPlayer2D and
-// SoundPlayer3D through the world's Server, as Godot's AudioStreamPlayerInternal and
-// _update_panning do, and each Video's sound, then mixes the tick's share of samples.
+// SoundPlayer3D through the world's Server, and each Video's sound, then mixes the tick's share
+// of samples.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 
 #include "slash/audio/audio.hpp"
 
@@ -61,8 +62,8 @@ struct PlayerState {
     std::uint32_t plays = 0;
     std::map<std::string, json::Value> parameters; // as last given to its voices
     std::string clip; // the music clip it last said started, until its music stops
-    // The voice animations' audio tracks play their streams on, as Godot's AnimationMixer gives
-    // the player an AudioStreamPolyphonic: beside its own voices, mixed as they are.
+    // The voice animations' audio tracks play their streams on: the player gets a polyphonic
+    // stream beside its own voices, mixed as they are.
     std::optional<Server::PlaybackId> track_voice;
     std::shared_ptr<const Stream> track_stream;
     int track_polyphony = 0; // track_stream's polyphony
@@ -85,7 +86,7 @@ struct TrackStream {
     PolyphonicPlayback::StreamId stream = PolyphonicPlayback::kInvalidId;
 };
 
-// As many streams as Godot's AnimationMixer lets its audio tracks play on one player at once
+// As many streams as animations' audio tracks may play on one player at once
 // (audio_max_polyphony).
 
 using Request = Snapshot::Request;
@@ -95,7 +96,7 @@ constexpr std::string_view kVideoPlayer = "Video";
 // picture is: past this, the video jumped (a seek, a loop) rather than drifted.
 constexpr double kVideoResync = 0.1;
 
-// A Video's sound, as Godot's VideoStreamPlayer mixes its playback's audio into its
+// A Video's sound: its playback mixes its audio into its
 // bus: the audio track decoded and the playback mixing it.
 struct VideoSound {
     std::string id;
@@ -114,7 +115,7 @@ struct VideoSound {
     bool seen = false;
 };
 
-// The parameter interactive music reports back, as Godot's get_parameter does.
+// The parameter interactive music reports back.
 constexpr std::string_view kSwitchToClip = "switch_to_clip";
 
 double level_db(float linear) {
@@ -158,7 +159,7 @@ struct History {
     }
 };
 
-// Godot's VelocityTracker3D, counting ticks: where an entity was over its last four moves, each
+// A velocity tracker, counting ticks: where an entity was over its last four moves, each
 // with the tick it was there, and how fast it went over at most the last fifth of a second.
 struct VelocityTracker {
     struct Position {
@@ -510,7 +511,7 @@ struct Listener {
     bool found = false;
     Vec2 position;
     float rotation = 0.0F;
-    world::Affine2D canvas; // world to screen pixels, as Godot's canvas transform
+    world::Affine2D canvas; // world to screen pixels
     Vec2 scale{1.0F, 1.0F}; // the canvas transform's scale
 };
 
@@ -541,7 +542,7 @@ Listener find_listener(const world::World& world, const world::Tree2D& tree, Vec
     return listener;
 }
 
-// Godot's AudioStreamPlayer2D::_update_panning, for one viewport.
+// Panning and volume for one 2D viewport.
 Frame volume_2d(const world::SoundPlayer2D& player, Vec2 global_pos, const Listener& listener,
                 Vec2 screen_size, float global_panning_strength) {
     Vec2 listener_in_global;
@@ -599,7 +600,7 @@ struct Hearing {
     double tick_seconds = 0.0;
 };
 
-// Godot's Viewport::get_audio_listener_3d, falling back to its camera: the first current
+// The audio listener for a viewport, falling back to its camera: the first current
 // Listener3D by ID, else the first by ID (the first listener in a viewport is current), else
 // the current Camera3D.
 ListenerSpot find_listener_3d(const State& state, const world::World& world,
@@ -639,7 +640,7 @@ ListenerSpot find_listener_3d(const State& state, const world::World& world,
 }
 
 // Moves the velocity trackers of the entities with a T that track doppler on to where they are,
-// as Godot's NOTIFICATION_TRANSFORM_CHANGED does; set_doppler_tracking's reset is a tracker made
+// as a transform change does; set_doppler_tracking's reset is a tracker made
 // anew.
 template <typename T>
 void track(State& state, const world::World& world, const world::Tree3D& tree,
@@ -664,7 +665,7 @@ void track(State& state, const world::World& world, const world::Tree3D& tree,
     }
 }
 
-// A bus by name as Godot's Area3D::get_audio_bus_name gives it: Master when there is no such bus.
+// A bus by name: Master when there is no such bus.
 std::string known_bus(const Server& server, const std::string& name) {
     return server.bus_index(name) >= 0 ? name : std::string("Master");
 }
@@ -677,7 +678,7 @@ float length3(Vec3 v) {
     return std::sqrt(dot3(v, v));
 }
 
-// Godot's Vector3::normalized: zero stays zero.
+// A vector scaled to length 1: zero stays zero.
 Vec3 unit(Vec3 v) {
     const float length_sq = dot3(v, v);
     if (length_sq == 0.0F) {
@@ -691,16 +692,16 @@ Frame scaled(Frame frame, float s) {
     return {frame.left * s, frame.right * s};
 }
 
-// Godot's AudioFrame::lerp.
+// Linear interpolation of a frame.
 Frame lerp(Frame a, Frame b, float t) {
     return {a.left + (t * (b.left - a.left)), a.right + (t * (b.right - a.right))};
 }
 
-// Godot's AudioStreamPlayer3D::_get_attenuation_db: the player's volume at a distance from the
-// listener, in decibels, at most max_db. Godot works it in doubles.
+// The player's volume at a distance from the
+// listener, in decibels, at most max_db. It is worked in doubles.
 float attenuation_db(const world::SoundPlayer3D& player, float distance) {
     constexpr double kCmpEpsilon = 0.00001;
-    // Godot's Math::linear_to_db for a double.
+    // Linear gain to decibels for a double.
     const auto to_db = [](double linear) {
         return std::log(linear) * 8.6858896380650365530225783783321;
     };
@@ -723,7 +724,7 @@ float attenuation_db(const world::SoundPlayer3D& player, float distance) {
     return att;
 }
 
-// Godot's AudioStreamPlayer3D::_calc_output_vol_stereo: each side's volume is the cosine of half
+// Each side's volume is the cosine of half
 // the angle from the sound to that side, ignoring height, scaled so the louder side is at most
 // 1 / (1 - panning_strength) times the other.
 Frame output_vol_stereo(Vec3 source_dir, float panning_strength) {
@@ -737,11 +738,11 @@ Frame output_vol_stereo(Vec3 source_dir, float panning_strength) {
             static_cast<float>(std::sqrt((fcosx + 1.0) / 2.0))};
 }
 
-// Godot's Spcap (Speaker-Placement Correction Amplitude Panning, after Sadek and Kyriakakis,
-// 2004) over the main speakers of 3.1, 5.1 and 7.1, and _calc_output_vol, which lays them out by
+// Speaker-Placement Correction Amplitude Panning (after Sadek and Kyriakakis,
+// 2004) over the main speakers of 3.1, 5.1 and 7.1, laid out by
 // speaker pair: front, center with the LFE at full volume, rear, side.
 Volumes output_vol(Vec3 source_dir, float tightness, SpeakerMode speakers) {
-    // Godot's speaker_directions: front left and right, center, rear left and right, side left
+    // The speaker directions: front left and right, center, rear left and right, side left
     // and right.
     const std::array<Vec3, 7> directions{unit({-1.0F, 0.0F, -1.0F}), unit({1.0F, 0.0F, -1.0F}),
                                          unit({0.0F, 0.0F, -1.0F}),  unit({-1.0F, 0.0F, 1.0F}),
@@ -755,7 +756,7 @@ Volumes output_vol(Vec3 source_dir, float tightness, SpeakerMode speakers) {
     } else if (speakers == SpeakerMode::Surround71) {
         speaker_count = 7;
     }
-    // Godot keeps these as real_t and works the sums in double, as here.
+    // The speaker data are kept as real_t and the sums are worked in double.
     std::array<float, 7> effective_number_of_speakers{};
     for (std::size_t i = 0; i < speaker_count; ++i) {
         for (std::size_t j = 0; j < speaker_count; ++j) {
@@ -799,7 +800,7 @@ Volumes scaled(const Volumes& volumes, float s) {
     return out;
 }
 
-// Godot's AudioStreamPlayer3D::_calc_reverb_vol: the send to an area's reverb bus, from the
+// The send to an area's reverb bus, from the
 // sound's direction or, with uniformity, from the area's nearest point around the listener,
 // spread over the speaker pairs.
 Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area,
@@ -812,8 +813,8 @@ Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area
     const auto channels = static_cast<std::size_t>(std::clamp(channel_count, 1, kMaxChannels));
     const float distance = length3(listener_area_pos);
     const float attenuation = db_to_linear(attenuation_db(player, distance));
-    // The share of the sound from each speaker if all were driven alike. Godot's table stops at
-    // three pairs, reading past its end for 7.1; the fourth follows it, 1 / (2 * pairs).
+    // The share of the sound from each speaker if all were driven alike. The table stops at
+    // three pairs; the fourth follows it, 1 / (2 * pairs).
     constexpr std::array<float, kMaxChannels> kCenterVal{0.5F, 0.25F, 0.16666F, 0.125F};
     const Frame center_frame{kCenterVal.at(channels - 1), kCenterVal.at(channels - 1)};
     Volumes reverb{};
@@ -825,7 +826,7 @@ Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area
         const auto c = static_cast<float>((rev_pos.x * 0.5) + 0.5);
         reverb[0] = {1.0F - c, c}; // the front pair
         if (channels >= 3) {
-            // As Godot's, for the center and rear pairs.
+            // For the center and rear pairs.
             const auto xl =
                 static_cast<float>((dot3(unit({-1.0F, 0.0F, -1.0F}), rev_pos) * 0.5) + 0.5);
             const auto xr =
@@ -834,7 +835,7 @@ Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area
             reverb[2] = {1.0F - xr, 1.0F - xl};
         }
         if (channels >= 4) {
-            reverb[3] = {1.0F - c, c}; // the side pair, as Godot's
+            reverb[3] = {1.0F - c, c}; // the side pair
         }
         for (std::size_t i = 0; i < channels; ++i) {
             reverb.at(i) = lerp(reverb.at(i), center_frame, attenuation);
@@ -851,12 +852,12 @@ Volumes reverb_vol(const world::SoundPlayer3D& player, const world::Zone3D& area
     return reverb;
 }
 
-// Godot's AudioStreamPlayer3D::_get_overriding_area: the first area by ID under the player whose
-// layer is in its area_mask and which overrides the bus or has a reverb bus. Godot takes the
-// areas in the physics server's order; ID order is the same on every run.
+// The first area by ID under the player whose
+// layer is in its area_mask and which overrides the bus or has a reverb bus. ID order is
+// the same on every run.
 entt::entity overriding_area(world::World& world, const world::SoundPlayer3D& player,
                              Vec3 position) {
-    constexpr std::size_t kMaxIntersectAreas = 32; // Godot's MAX_INTERSECT_AREAS
+    constexpr std::size_t kMaxIntersectAreas = 32; // the most areas checked
     const physics3d::QueryFilter filter{.collision_mask = player.zone_mask,
                                         .collide_with_bodies = false,
                                         .collide_with_areas = true,
@@ -878,8 +879,8 @@ float pitch_of(float pitch_scale) {
 // Where a player's voices start and mix this tick, at what volume and pitch.
 void place(State& state, world::World& /*world*/, const Hearing& /*hearing*/,
            const world::SoundPlayer& player, entt::entity /*entity*/, PlayerState& out) {
-    // Godot's AudioStreamPlayer::_get_volume_vector: the mix target picks the speakers in
-    // surround. Godot gives the LFE 1.0 whatever volume_db is (marked to check there), so a
+    // The mix target picks the speakers in
+    // surround. The LFE gets full volume whatever volume_db is, so a
     // muted player still played on it; here it follows the volume, as a 3D player's does.
     const float volume = db_to_linear(player.volume_db);
     out.bus = player.bus;
@@ -899,15 +900,15 @@ void place(State& state, world::World& /*world*/, const Hearing& /*hearing*/,
 void place(State& state, world::World& world, const Hearing& hearing,
            const world::SoundPlayer2D& player, entt::entity entity, PlayerState& out) {
     const Vec2 position = hearing.tree2d->global(entity).position;
-    // Only the front pair, as Godot's.
+    // Only the front pair.
     out.volume = {volume_2d(player, position, hearing.listener2d, hearing.screen,
                             state.settings.panning_strength_2d)};
-    // Godot's AudioStreamPlayer2D::_get_actual_bus: the first area by ID under the player whose
-    // layer is in its area_mask and which overrides the bus, else its own bus. Godot takes the
-    // areas in the physics server's order; ID order is the same on every run.
+    // The first area by ID under the player whose
+    // layer is in its area_mask and which overrides the bus, else its own bus. ID order is the
+    // same on every run.
     out.bus = player.bus;
     if (player.zone_mask != 0) {
-        constexpr std::size_t kMaxIntersectAreas = 32; // Godot's MAX_INTERSECT_AREAS
+        constexpr std::size_t kMaxIntersectAreas = 32; // the most areas checked
         const physics2d::QueryFilter filter{.collision_mask = player.zone_mask,
                                             .collide_with_bodies = false,
                                             .collide_with_areas = true,
@@ -925,7 +926,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
     out.pitch = pitch_of(player.pitch);
 }
 
-// Godot's AudioStreamPlayer3D::_update_panning, for one listener.
+// Panning and volume for one listener.
 void place(State& state, world::World& world, const Hearing& hearing,
            const world::SoundPlayer3D& player, entt::entity entity, PlayerState& out) {
     const float pitch_scale = pitch_of(player.pitch);
@@ -968,7 +969,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
         if (uniform_reverb) {
             total_max = std::max(total_max, length3(listener_area_pos));
         }
-        // As Godot's: an area's reverb reaching past max_distance silences it too.
+        // An area's reverb reaching past max_distance silences it too.
         if (dist > total_max || total_max > player.max_distance) {
             return; // can't be heard; the filter and pitch stay as they were
         }
@@ -1005,7 +1006,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
     }
     output = scaled(output, multiplier);
     out.volume = output;
-    // Godot's bus map: a bus named twice keeps the last volume, in the first one's place.
+    // A bus named twice keeps the last volume, in the first one's place.
     const auto set_bus = [&](const std::string& bus, const Volumes& volume) {
         const auto found = std::ranges::find(out.mix, bus, &BusVolume::bus);
         if (found != out.mix.end()) {
@@ -1015,7 +1016,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
         }
     };
     if (area != nullptr) {
-        // As Godot's: with a reverb bus and no bus override, it plays only through the reverb.
+        // With a reverb bus and no bus override, it plays only through the reverb.
         if (area->bus_override) {
             set_bus(known_bus(*state.server, area->audio_bus_name), output);
         }
@@ -1068,11 +1069,11 @@ void start_voice(State& state, PlayerState& player, const T& component, std::str
         return;
     }
     if (stream->is_monophonic()) {
-        // Godot's play_basic: a monophonic stream starts over.
+        // A monophonic stream starts over.
         stop_all(*state.server, player);
     }
     auto playback = stream->instantiate(state.server->mix_rate(), seed_of(key, ++player.plays));
-    // As Godot's play_basic, a new playback gets every parameter before it starts.
+    // A new playback gets every parameter before it starts.
     for (const auto& [name, value] : component.parameters) {
         playback->set_parameter(name, value);
     }
@@ -1083,7 +1084,7 @@ void start_voice(State& state, PlayerState& player, const T& component, std::str
         state.server->set_highshelf(id, player.highshelf, player.cutoff_hz);
     }
     player.voices.push_back(id);
-    // Godot's ensure_playback_limit.
+    // Voices past the polyphony limit stop, oldest first.
     while (player.voices.size() > static_cast<std::size_t>(std::max(component.max_polyphony, 1))) {
         state.server->stop(player.voices.front());
         player.voices.erase(player.voices.begin());
@@ -1141,7 +1142,7 @@ void reconcile(State& state, world::World& world, const Hearing& hearing, std::s
             player.paused = component.stream_paused;
             play_now = component.autoplay || component.playing;
         } else if (component.stream != player.stream_path) {
-            // As Godot's set_stream: the old stream stops.
+            // The old stream stops.
             stop_all(*state.server, player);
             player.stream_path = component.stream;
             player.error.clear();
@@ -1164,7 +1165,7 @@ void reconcile(State& state, world::World& world, const Hearing& hearing, std::s
                 [&](Server::PlaybackId id) { state.server->set_paused(id, player.paused); });
         }
         if (component.parameters != player.parameters) {
-            // As Godot's AudioStreamPlayerInternal::set: each voice gets a changed parameter.
+            // Each voice gets a changed parameter.
             for (const auto& [name, value] : component.parameters) {
                 const auto was = player.parameters.find(name);
                 if (was != player.parameters.end() && was->second == value) {
@@ -1280,7 +1281,7 @@ void feed_input(State& state, std::size_t frames) {
     const bool on = server.input_active();
     const bool use_device = on && state.input_stream.empty() && state.input_device != nullptr;
     if (use_device && !state.device_tried) {
-        // As Godot's input_start, once each time input turns on.
+        // Once each time input turns on.
         state.device_tried = true;
         if (auto started = state.input_device->start(server.mix_rate()); started) {
             state.device_started = true;
@@ -1381,7 +1382,7 @@ void play_videos(State& state, world::World& world) {
             stop_video(server, video);
             continue;
         }
-        // Godot's pitch scale must be above 0; a video at speed 0 holds its sound as if paused.
+        // The pitch scale must be above 0; a video at speed 0 holds its sound as if paused.
         const float pitch = std::max(component.speed_scale, 0.01F);
         const bool paused = component.paused || component.speed_scale <= 0.0F;
         const float gain = db_to_linear(component.volume_db);
@@ -1463,7 +1464,7 @@ void run(State& state, world::World& world, double tick_seconds) {
     reconcile<world::SoundPlayer>(state, world, hearing, kPlayer, requests);
     reconcile<world::SoundPlayer2D>(state, world, hearing, kPlayer2D, requests);
     reconcile<world::SoundPlayer3D>(state, world, hearing, kPlayer3D, requests);
-    // A player whose entity or component went away stops, as Godot's on NOTIFICATION_PREDELETE.
+    // A player whose entity or component went away stops.
     std::erase_if(state.players, [&](auto& entry) {
         if (!entry.second.seen) {
             stop_all(*state.server, entry.second);
@@ -1508,7 +1509,7 @@ void run(State& state, world::World& world, double tick_seconds) {
         changes.clear();
     }
 
-    // Voices that ended are dropped, as Godot's AudioStreamPlayerInternal::process.
+    // Voices that ended are dropped.
     for (auto& [key, player] : state.players) {
         const auto ended = std::erase_if(player.voices, [&](Server::PlaybackId id) {
             return !state.server->is_active(id) && !state.server->is_paused(id);

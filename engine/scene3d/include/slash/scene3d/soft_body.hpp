@@ -9,8 +9,8 @@
 #include <memory>
 #include <vector>
 
-// Soft bodies' points, for drawing: a SoftBody3D's mesh draws where 3D physics put its points, as
-// Godot's SoftBody3D sends its points to the rendering server each frame. physics3d::install sets
+// Soft bodies' points, for drawing: a SoftBody3D's mesh draws where 3D physics put its points,
+// updated each frame. physics3d::install sets
 // the source, since scene3d doesn't depend on physics3d.
 namespace slash::scene3d {
 
@@ -41,8 +41,8 @@ void set_soft_body_source(world::World& world, SoftBodySource source);
 [[nodiscard]] std::shared_ptr<const SoftBodyPose> soft_body_pose(const world::World& world,
                                                                  entt::entity entity);
 
-// What keeps each SoftBody3D from being made, as Godot's SoftBody3D configuration warnings and
-// its errors for pinned points out of range: a Model3D drawing one primitive mesh is
+// What keeps each SoftBody3D from being made, as configuration warnings and
+// errors for pinned points out of range: a Model3D drawing one primitive mesh is
 // needed, as models aren't simulated yet.
 [[nodiscard]] std::vector<Problem> check_soft_bodies(const world::World& world);
 

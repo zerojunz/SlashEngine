@@ -1,15 +1,15 @@
-// Custom data and occluders on tiles, as Godot's TileSet custom data and occlusion layers.
+// Custom data and occluders on tiles.
 //
 // dungeon.tileset.json has one occlusion layer and three custom data layers: damage (int), kind
 // (string) and speed (float). Its wall tile has an occluder over the whole cell and its pillar a
-// small octagon, so both cast shadows from lights with shadow_enabled. Its lava tile does 10
-// damage and halves the speed; a tile that sets no value in a layer has the type's default.
+// small octagon, so both cast shadows from lights with shadow_enabled. Its lava tile does 10 damage
+// and halves the speed; a tile that sets no value in a layer has the type's default.
 //
-// This program draws the atlas, lays a floor with lava in it, a wall and a pillar on a layer
-// above it, and asks what an agent would ask: what is under a few cells, how lit points beside
-// and behind the wall and the pillar are, and what color they draw. Then it turns the wall
-// layer's occlusion off and asks again. Games ship PNG files made in an image editor; this
-// example draws its texture in code, so the repository holds no images.
+// This program draws the atlas, lays a floor with lava in it, a wall and a pillar on a layer above
+// it, and asks what an agent would ask: what is under a few cells, how lit points beside and behind
+// the wall and the pillar are, and what color they draw. Then it turns the wall layer's occlusion
+// off and asks again. Games ship PNG files made in an image editor; this example draws its texture
+// in code, so the repository holds no images.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

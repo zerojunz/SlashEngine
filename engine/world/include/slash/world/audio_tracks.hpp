@@ -8,10 +8,8 @@
 #include <functional>
 #include <string_view>
 
-// Sound for animations' audio tracks, as Godot's AnimationMixer plays them through an
-// SoundPlayer's AudioStreamPlaybackPolyphonic: engine/audio, which plays sound, sets it on
-// the worlds it installs into, and engine/animation, which doesn't depend on audio, plays tracks
-// through it.
+// Sound for animations' audio tracks: engine/audio, which plays sound, sets it on the worlds it
+// installs into, and engine/animation, which doesn't depend on audio, plays tracks through it.
 namespace slash::world {
 
 // A stream an audio track started: its ID, and the stream's length in seconds (0 if unknown).

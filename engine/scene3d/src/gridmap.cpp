@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/scene3d/gridmap.hpp"
 
 #include "slash/core/text.hpp"
@@ -290,7 +291,7 @@ std::size_t library_bytes(const MeshLibrary& library) {
     return bytes;
 }
 
-// Godot's _ortho_bases, each as its rows.
+// The 24 orthogonal bases, each as its rows.
 constexpr std::array<std::array<float, 9>, kOrientations> kOrthoBases = {{
     {1, 0, 0, 0, 1, 0, 0, 0, 1},    {0, -1, 0, 1, 0, 0, 0, 0, 1},  {-1, 0, 0, 0, -1, 0, 0, 0, 1},
     {0, 1, 0, -1, 0, 0, 0, 0, 1},   {1, 0, 0, 0, 0, -1, 0, 1, 0},  {0, 0, 1, 1, 0, 0, 0, 1, 0},

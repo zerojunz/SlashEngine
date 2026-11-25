@@ -1,5 +1,5 @@
-// Soft bodies on Jolt, as Godot's SoftBody3D: main.scene.json drops a tablecloth onto a table and
-// a ball full of air onto the floor, and hangs a flag from a pole by two pinned points.
+// Soft bodies on Jolt: main.scene.json drops a tablecloth onto a table and a ball full of air onto
+// the floor, and hangs a flag from a pole by two pinned points.
 //
 // The program steps the world as an agent would, reads each soft body's points with
 // physics.soft_body, then moves the pole with component.set: the flag's pinned points follow it.

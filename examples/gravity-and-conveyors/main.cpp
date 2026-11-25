@@ -1,5 +1,4 @@
-// Gravity zones and conveyors, as Godot's Area2D space overrides and StaticBody2D constant
-// velocities. main.scene.json has two halves:
+// Gravity zones and conveyors: main.scene.json has two halves:
 //
 // - A factory: a conveyor belt (a StaticBody2D with constant_linear_velocity) carrying a crate
 //   off its end, and the hero walking against the belt at its speed, so it stays where it is.
@@ -7,9 +6,8 @@
 //   priority that pulls toward the planet's center. Rocks beside and below the planet fall onto
 //   it; a probe outside the pull floats.
 //
-// The hero's controls are a plain C++ system that adds the gravity where the hero is, as Godot's
-// template script adds get_gravity(). Then the program asks physics.gravity what pulls each
-// body, as an agent would, and turns space off.
+// The hero's controls are a plain C++ system that adds the gravity where the hero is. Then the
+// program asks physics.gravity what pulls each body, as an agent would, and turns space off.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"

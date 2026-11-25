@@ -11,17 +11,17 @@
 #include <span>
 #include <vector>
 
-// What every device shares to draw a Forward+ frame's compositor effects
+// What every device shares to draw a clustered frame's compositor effects
 // (slash/render/compositor.hpp): which effects a frame draws at each point, their checks and
 // uniforms, and the CPU twin of a compositor shader's pass, which the software device runs.
 //
-// At a point with effects, each device copies the world drawn so far into a texture of its own
-// (the screen the effect reads) and draws one triangle over the world with the effect's shader,
-// the depth and the prepass's normals bound beside it, then goes on drawing over the result.
+// At a point with effects, each device copies the world drawn so far into a texture of its own (the
+// screen the effect reads) and draws one triangle over the world with the effect's shader, the
+// depth and the prepass's normals bound beside it, then goes on drawing over the result.
 namespace slash::render::detail {
 
-// Whether a scene's frame draws compositor effects: in Forward+, when it is no probe's capture and
-// isn't path traced, and has any.
+// Whether a scene's frame draws compositor effects: in the clustered renderer, when it is no
+// probe's capture and isn't path traced, and has any.
 [[nodiscard]] bool uses_effects(const Scene3D& scene);
 
 // The scene's effects that run at a point, in order.

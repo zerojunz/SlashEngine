@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-// Creatures are built of Godot's primitive meshes placed over creature_measures, as characters
+// Creatures are built of primitive meshes placed over creature_measures, as characters
 // are, so the same recipe gives the same model, bit for bit, everywhere: the library builds with
 // -ffp-contract=off and angles go through slash::cos_sin.
 namespace slash::scene3d {

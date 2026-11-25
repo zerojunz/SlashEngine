@@ -12,15 +12,14 @@
 #include <string_view>
 #include <vector>
 
-// Visual effects as recipes, after Unreal's Niagara systems (Godot has none: its effects are
-// scenes of particles, lights and sounds a script times). A .vfx.json file lays layers on one
-// timeline: each layer is an entity of components (particles, ribbons and trails, mesh
-// particles, flipbooks, decals, lights, sounds, screen flashes, camera shakes, anything a scene
-// holds) that appears at its start, has its fields moved along curves while it lasts and goes
-// at its end, particles first finishing what they emitted. Any value may be an expression over
-// the recipe's parameters (size, color, intensity: whatever it names), which a VisualEffect3D or
-// VisualEffect2D sets. Level of detail drops layers and thins particles with the camera's
-// distance, and a budget caps what one effect may cost.
+// Visual effects as recipes, after Unreal's Niagara systems. A .vfx.json file lays layers on one
+// timeline: each layer is an entity of components (particles, ribbons and trails, mesh particles,
+// flipbooks, decals, lights, sounds, screen flashes, camera shakes, anything a scene holds) that
+// appears at its start, has its fields moved along curves while it lasts and goes at its end,
+// particles first finishing what they emitted. Any value may be an expression over the recipe's
+// parameters (size, color, intensity: whatever it names), which a VisualEffect3D or VisualEffect2D
+// sets. Level of detail drops layers and thins particles with the camera's distance, and a budget
+// caps what one effect may cost.
 namespace slash::world {
 
 inline constexpr std::string_view kVfxSuffix = ".vfx.json";

@@ -1,19 +1,17 @@
 #pragma once
 
 // NPCs that plan, as F.E.A.R.'s goal-oriented action planning (Jeff Orkin, "Three States and a
-// Plan", GDC 2006), which Godot doesn't have. A .npc.json file (a brain) names facts, goals and
-// actions: each action needs some facts, changes some and costs something, and A* finds the
-// cheapest chain of actions from the NPC's facts to its goal's. An NpcAgent component gives an
-// entity a brain and keeps its facts, goal and plan, so saving, undo and replays keep them too;
-// the npc system thinks every think_interval and runs each plan's actions: waiting, walking to an
-// entity (along its NavAgent3D or 2D's path when it has one) or emitting an event that
-// gameplay code answers by setting facts.
-//
-// A brain can extend a shared one (extends), so each NPC keeps its own traits, goals, priorities
-// and routes over a village's common behavior. Facts named hour and day follow the npc clock
+// Plan", GDC 2006). A .npc.json file (a brain) names facts, goals and actions: each action needs
+// some facts, changes some and costs something, and A* finds the cheapest chain of actions from the
+// NPC's facts to its goal's. An NpcAgent component gives an entity a brain and keeps its facts,
+// goal and plan, so saving, undo and replays keep them too; the npc system thinks every
+// think_interval and runs each plan's actions: waiting, walking to an entity (along its NavAgent3D
+// or 2D's path when it has one) or emitting an event that gameplay code answers by setting facts. A
+// brain can extend a shared one (extends), so each NPC keeps its own traits, goals, priorities and
+// routes over a village's common behavior. Facts named hour and day follow the npc clock
 // (project.json's npc settings), so goals can keep daily schedules, and facts named story.<name>
-// are the story's facts, kept in a QuestLog (slash/npc/story.hpp), which quests and dialogue
-// share with the NPCs.
+// are the story's facts, kept in a QuestLog (slash/npc/story.hpp), which quests and dialogue share
+// with the NPCs.
 
 #include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"

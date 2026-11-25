@@ -1,11 +1,11 @@
-// Input actions, as Godot's input map: project.json names what the game does (move_left, jump,
-// move_to) and the keys, mouse buttons, gamepad buttons and sticks that do it, on top of Godot's
-// built-in ui_* actions. The player system below reads actions, never keys, so a player can
-// rebind them and an agent can press them by name.
+// Input actions: project.json names what the game does (move_left, jump, move_to) and the keys,
+// mouse buttons, gamepad buttons and sticks that do it, on top of the built-in ui_* actions. The
+// player system below reads actions, never keys, so a player can rebind them and an agent can press
+// them by name.
 //
 // This program adds that system, then plays the game as an agent does over MCP or JSON-RPC:
-// input.actions shows the bindings, input.inject sends a key, half a stick, a tap and a touch,
-// step runs the ticks they apply at, and input.state and entity.get show what the game saw.
+// input.actions shows the bindings, input.inject sends a key, half a stick, a tap and a touch, step
+// runs the ticks they apply at, and input.state and entity.get show what the game saw.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -112,8 +112,8 @@ int main() {
     call(session, "step", R"({"ticks": 3, "tick_seconds": 0.015625})");
     call(session, "entity.get", R"({"id": "player", "omit_defaults": true})");
 
-    // A touch clicks the left mouse button too, as Godot's emulate_mouse_from_touch, so move_to
-    // works on phones. Let go of the stick in the same call.
+    // A touch clicks the left mouse button too, so move_to works on phones. Let go of the stick in
+    // the same call.
     call(session, "input.inject", R"({"events": [
         {"type": "joypad_motion", "axis": "left_y", "axis_value": 0},
         {"type": "screen_touch", "position": [40, 200], "pressed": true},

@@ -13,20 +13,17 @@
 #include <utility>
 #include <vector>
 
-// What the gui system and the layout share about TextEdits: the state Godot's TextEdit keeps
-// between events (TextEditState), its text shaped into wrapped rows with the geometry Godot works
-// out from them (EditArea, text_edit.cpp: scene/gui/text_edit.cpp's Text class, the line
-// wrapping and viewport functions, get_line_column_at_pos, _get_column_x_offset_for_line,
-// _update_scrollbars, get_minimum_size and NOTIFICATION_DRAW), and the editing itself
-// (text_editor.cpp: gui_input, the caret and selection functions and the undo history).
+// What the gui system and the layout share about TextEdits: the state a TextEdit keeps
+// between events (TextEditState), its text shaped into wrapped rows with the geometry worked out
+// from them (EditArea, text_edit.cpp), and the editing itself (text_editor.cpp).
 namespace slash::ui {
 
-// Godot's TextEdit::SelectionMode.
+// The selection mode.
 enum class SelectionMode : std::uint8_t { None, Shift, Pointer, Word, Line };
-// Godot's TextEdit::EditAction: what the open undo step is gathering.
+// What the open undo step is gathering.
 enum class EditAction : std::uint8_t { None, Typing, Backspace, Delete };
 
-// What a TextArea keeps between events, as Godot's TextEdit members, for its one caret.
+// What a TextArea keeps between events, for its one caret.
 struct TextEditState {
     struct Selection {
         bool active = false;
@@ -91,7 +88,7 @@ struct TextEditState {
     Vec2 drag_accum;
     Vec2 drag_from; // the scroll it started from: horizontal pixels, vertical rows
     Caret caret;
-    // Where text dragged over it would drop, drawn as a second caret (Godot's drag caret).
+    // Where text dragged over it would drop, drawn as a second caret.
     std::optional<Caret> drag_caret;
     SelectionMode selecting_mode = SelectionMode::None;
     text::Direction input_direction = text::Direction::Ltr;
@@ -106,7 +103,7 @@ struct TextEditState {
     // The text as last seen, so a change made from outside is undone as set_text's is.
     bool known = false;
     std::string known_text;
-    // Signals Godot defers to the end of the frame, in the order they were queued:
+    // Signals deferred to the end of the frame, in the order they were queued:
     // "text_changed" and "caret_changed".
     std::vector<std::string> deferred;
 
@@ -126,11 +123,11 @@ struct SelectionRange {
 // The TextEditState the gui system keeps for a TextArea, or nullptr (gui.cpp).
 [[nodiscard]] const TextEditState* text_edit_state(const world::World& world, entt::entity entity);
 
-// A TextArea's lines split at "\n", without "\r", as Godot's TextEdit keeps them.
+// A TextArea's lines split at "\n", without "\r".
 [[nodiscard]] std::vector<std::u32string> split_lines(std::string_view text);
 [[nodiscard]] std::string join_lines(const std::vector<std::u32string>& lines);
 
-// Godot's TextEdit::SearchFlags.
+// The search flags.
 inline constexpr std::uint32_t kSearchMatchCase = 1U;
 inline constexpr std::uint32_t kSearchWholeWords = 2U;
 inline constexpr std::uint32_t kSearchBackwards = 4U;
@@ -144,7 +141,7 @@ inline constexpr std::uint32_t kSearchBackwards = 4U;
                                                std::u32string_view key, std::uint32_t flags,
                                                int from_line, int from_column);
 
-// A TextArea's lines shaped and wrapped for its rect, and where Godot's TextEdit puts things in
+// A TextArea's lines shaped and wrapped for its rect, and where things are in
 // them. Rows are a line's wrapped parts; scroll_vertical counts rows, scroll_horizontal pixels.
 class EditArea {
 public:
@@ -168,7 +165,7 @@ public:
     // Replaces the lines, as Text::clear and insert do.
     void set_lines(std::vector<std::u32string> lines);
     // Where the lines are since mark_lines: for each line then, its line now, or -1 if it was
-    // removed. Lines keep what their gutters show as Godot's Text::Line does: an insertion
+    // removed. Lines keep what their gutters show: an insertion
     // keeps it on its first line (on the second for one new line at a line's start), and a
     // removal on the line it starts in.
     void mark_lines();
@@ -222,9 +219,9 @@ public:
     // set_v_scroll and set_h_scroll: within what the scroll bars allow.
     void set_v_scroll(double value);
     void set_h_scroll(double value);
-    // _update_scrollbars after the text or its state changed, then the line wrapping again if
-    // the vertical scroll bar came or went, until both settle. Godot wraps again only when the
-    // size changes; this wraps to the room the text has whenever it changes.
+    // Updates the scroll bars after the text or its state changed, then the line wrapping again if
+    // the vertical scroll bar came or went, until both settle. It wraps to the room the text has
+    // whenever it changes.
     void refresh();
     [[nodiscard]] std::pair<int, int> next_visible_line_index_offset_from(int line_from,
                                                                           int wrap_index_from,
@@ -241,11 +238,11 @@ public:
 
     // ---- Gutters ----
 
-    // A gutter's width (TextEditView::gutters), a CodeEditor's worked out as Godot's: the main
+    // A gutter's width (TextEditView::gutters), a CodeEditor's worked out: the main
     // gutter is a line high (half as wide with only bookmarks), the line numbers' as wide as
     // their digits and one more '0'.
     [[nodiscard]] int gutter_width(std::size_t gutter) const;
-    // Godot's get_total_gutter_width: the drawn gutters' widths, and 2 between them and the text.
+    // The drawn gutters' widths, and 2 between them and the text.
     [[nodiscard]] int gutters_room() const { return gutters_width_ + gutter_padding_; }
     // Where the text starts: the style's left margin, then the gutters (mirrored when right to
     // left).
@@ -291,7 +288,7 @@ public:
               const Extras& extras, Draw& out, TextEditView& view) const;
 
     // Where one of its scroll bars is in its rect and its range, which starts at 0 and has no
-    // step, as Godot's ScrollBar; the layout draws it and the gui system drags it.
+    // step; the layout draws it and the gui system drags it.
     struct BarPlace {
         Vec2 position;
         Vec2 size;
@@ -308,7 +305,7 @@ public:
 
 private:
     struct LineData;
-    // A scroll bar, as Godot's Range with min 0 and step 0.
+    // A scroll bar, a range with min 0 and step 0.
     struct Bar {
         double value = 0.0;
         double max = 0.0;
@@ -412,7 +409,7 @@ struct TextEditContext {
     const input::Map* map = nullptr;
     double now = 0.0;      // seconds of world time, for triple clicks
     bool focused = false;  // it has focus
-    bool dragging = false; // a drag with data is going on (Godot's drag_action)
+    bool dragging = false; // a drag with data is going on
     bool can_drop = false; // and the TextArea would take it at the event's point
     std::vector<TextEditSignal>* signals = nullptr;
     world::CodeEditor* code = nullptr; // the CodeEditor on its entity, whose lines move with edits

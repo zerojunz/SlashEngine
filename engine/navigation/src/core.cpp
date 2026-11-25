@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "core.hpp"
 
 #include <algorithm>
@@ -55,14 +56,13 @@ bool plane_intersects_segment(Vec3 normal, float d, Vec3 begin, Vec3 end, Vec3& 
     return true;
 }
 
-// Two polygon edges that share an edge key, as Godot's EdgeConnectionPair.
+// Two polygon edges that share an edge key.
 struct EdgeConnectionPair {
     Connection connections[2]; // NOLINT(modernize-avoid-c-arrays)
     int size = 0;
 };
 
-// Godot's HashMap keeps its keys in the order they went in, and the builders walk it so; this
-// does the same.
+// A map that keeps its keys in the order they went in, which the builders walk.
 class PairMap {
 public:
     // The pair for a key, and whether it is new.
@@ -524,7 +524,7 @@ void build_map(Map& map, const MapBuild& build) {
                 continue;
             }
 
-            // Godot divides in double precision here, its 1.0 and 0.0 being doubles.
+            // The division is in double precision here, its 1.0 and 0.0 being doubles.
             const Vec3 self1 = (edge_vector * std::clamp(projected_p1_ratio, 0.0F, 1.0F)) + edge_p1;
             Vec3 other1;
             if (projected_p1_ratio >= 0.0F && projected_p1_ratio <= 1.0F) {
@@ -671,7 +671,7 @@ bool owner_usable(const PathTask& task, const Base* owner) {
         return true;
     }
     if (owner->type == OwnerType::Link) {
-        // Godot looks for the regions a link joins among the link's own polygons, which it never
+        // The regions a link joins are looked for among the link's own polygons, which it never
         // has, so a link is never usable while regions are excluded or included.
         return false;
     }

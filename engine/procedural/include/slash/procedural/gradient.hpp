@@ -9,17 +9,16 @@
 #include <string>
 #include <vector>
 
-// Gradients, as Godot's Gradient resource (scene/resources/gradient.h): colors at offsets from 0
-// to 1, blended linearly, held constant or by cubic curves, in sRGB, linear sRGB or Oklab. Colors
-// are sRGB with straight alpha, as Godot's.
+// Gradients: colors at offsets from 0 to 1, blended linearly, held constant or by cubic curves,
+// in sRGB, linear sRGB or Oklab. Colors are sRGB with straight alpha.
 //
 //   {"points": [{"offset": 0, "color": [0, 0, 0.2, 1]}, {"offset": 1, "color": [1, 0.9, 0.6, 1]}],
 //    "interpolation_mode": "cubic", "interpolation_color_space": "oklab"}
 namespace slash::procedural {
 
-// Godot's Gradient.InterpolationMode.
+// How a gradient blends between points.
 enum class GradientInterpolation : std::uint8_t { Linear, Constant, Cubic };
-// Godot's Gradient.ColorSpace.
+// The color space a gradient blends in.
 enum class GradientColorSpace : std::uint8_t { Srgb, LinearSrgb, Oklab };
 
 struct GradientStop {
@@ -28,13 +27,13 @@ struct GradientStop {
 };
 
 struct Gradient {
-    // Godot's new Gradient: black at 0, white at 1. Kept sorted by offset.
+    // A new Gradient: black at 0, white at 1. Kept sorted by offset.
     std::vector<GradientStop> points{{0.0F, {0.0F, 0.0F, 0.0F, 1.0F}},
                                      {1.0F, {1.0F, 1.0F, 1.0F, 1.0F}}};
     GradientInterpolation interpolation_mode = GradientInterpolation::Linear;
     GradientColorSpace interpolation_color_space = GradientColorSpace::Srgb;
 
-    // The color at an offset, as Godot's get_color_at_offset: the first or last point's color
+    // The color at an offset: the first or last point's color
     // outside them, black with no points. The same bits on every machine.
     [[nodiscard]] Vec4 color_at(float offset) const;
 };
@@ -53,9 +52,8 @@ struct Gradient {
 // The gradient as a gradient object.
 [[nodiscard]] json::Value gradient_to_json(const Gradient& gradient);
 
-// Color conversions as Godot's Color makes them, the same bits on every machine: sRGB to linear
-// and back (Color::srgb_to_linear, linear_to_srgb), and linear sRGB to Oklab and back
-// (ok_color's linear_srgb_to_oklab and oklab_to_linear_srgb). Alpha passes through.
+// Color conversions, the same bits on every machine: sRGB to linear and back, and linear sRGB
+// to Oklab and back. Alpha passes through.
 [[nodiscard]] Vec4 srgb_to_linear(Vec4 color);
 [[nodiscard]] Vec4 linear_to_srgb(Vec4 color);
 [[nodiscard]] Vec4 linear_to_oklab(Vec4 color);

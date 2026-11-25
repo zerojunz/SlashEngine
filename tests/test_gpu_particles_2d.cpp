@@ -191,7 +191,7 @@ std::string first_error(std::string_view text) {
 
 } // namespace
 
-TEST_CASE("process material files are Godot's ParticleProcessMaterial in 2D") {
+TEST_CASE("process material files read as 2D process materials") {
     auto process = canvas::parse_process_material(parse(R"({
         "format": 1,
         "emission_shape": "ring",
@@ -298,7 +298,7 @@ TEST_CASE("process material files are Godot's ParticleProcessMaterial in 2D") {
           "SlashEngine particle process material");
 }
 
-TEST_CASE("a GpuEmitter2D steps its cycle as Godot's particles storage does") {
+TEST_CASE("a GpuEmitter2D steps its cycle") {
     Scene scene;
     const entt::entity fountain =
         scene.create("fountain", R"({"Transform2D": {"position": [10, 20]},
@@ -384,7 +384,7 @@ TEST_CASE("preprocess runs ahead in steps when a GpuEmitter2D starts") {
                                   "GpuEmitter2D": {"preprocess": 0.25, "fixed_fps": 20}})");
     scene.step();
     const canvas::ParticleSteps kept = scene.steps(smoke);
-    // Steps of 1/20 s, the first clearing, up to 0.25 s (and, as Godot's, a last one of what
+    // Steps of 1/20 s, the first clearing, up to 0.25 s (and, a last one of what
     // the float rounding left over); the tick's own 1/60 s isn't a step.
     REQUIRE(kept.steps.size() >= 5);
     CHECK(kept.steps.front().clear);
@@ -394,7 +394,7 @@ TEST_CASE("preprocess runs ahead in steps when a GpuEmitter2D starts") {
     CHECK(kept.steps.back().system_phase == doctest::Approx(0.25));
 }
 
-TEST_CASE("a one_shot GpuEmitter2D stops emitting, finishes and restarts as Godot's") {
+TEST_CASE("a one_shot GpuEmitter2D stops emitting, finishes and restarts") {
     Scene scene;
     const entt::entity burst = scene.create("burst", R"({"Transform2D": {},
                                   "GpuEmitter2D": {"one_shot": true, "lifetime": 0.5,
@@ -442,7 +442,7 @@ TEST_CASE("a one_shot GpuEmitter2D stops emitting, finishes and restarts as Godo
     CHECK(scene.steps(burst).steps.back().emitting);
 
     // A burst set off again as it finishes bursts at once, though the last cycle's phase hasn't
-    // come round (Godot's storage would wait for it, and then stop emitting).
+    // come round (it would wait for it, and then stop emitting).
     const entt::entity pop = scene.create("pop", R"({"Transform2D": {},
                                   "GpuEmitter2D": {"one_shot": true, "lifetime": 0.5,
                                                      "explosiveness": 1, "amount": 4}})");
@@ -1056,7 +1056,7 @@ TEST_CASE("a GpuEmitter2D with trails keeps copies that step 60 times a second")
     CHECK(scene.steps(comet).steps.back().trail_steps == 1);
 
     // Turning trails on starts over with a copy for each section, and the steps' trails span
-    // trail_lifetime of them; fixed_fps 0 steps 60 times a second, as Godot's.
+    // trail_lifetime of them; fixed_fps 0 steps 60 times a second.
     world::GpuEmitter2D& settings = scene.emitter(comet);
     settings.trail_enabled = true;
     settings.fixed_rate = 0;
@@ -1074,7 +1074,7 @@ TEST_CASE("a GpuEmitter2D with trails keeps copies that step 60 times a second")
     CHECK(kept.steps.back().delta == doctest::Approx(1.0 / 24.0));
     CHECK(kept.steps.back().trail_steps == 12);
     CHECK(kept.steps.size() > 1); // the trail's lifetime doesn't start it over
-    // More sections than Godot allows are 128; a new number starts over.
+    // More sections than the limit of 128 are a new number starts over.
     settings.trail_sections = 500;
     scene.step();
     kept = scene.steps(comet);

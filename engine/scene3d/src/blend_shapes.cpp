@@ -20,7 +20,7 @@ std::array<float, 3> unit(const std::array<float, 3>& v) {
     return {v[0] / length, v[1] / length, v[2] / length};
 }
 
-// Godot's skeleton shader skips a shape whose weight is this close to 0.
+// A shape whose weight is this close to 0 is skipped.
 constexpr float kNoWeight = 0.0001F;
 
 } // namespace
@@ -95,8 +95,8 @@ std::map<std::string, float> blend_shape_weights(const Model& model,
             value = found->second;
         }
     }
-    // Godot's mixer: each track moves its value by blend times the way from the start to the
-    // track's value (AnimationMixer::_blend_process, TYPE_BLEND_SHAPE).
+    // Each track moves its value by blend times the way from the start to the
+    // track's value.
     std::map<std::string, float> out = base;
     for (const ClipSample& clip : clips) {
         std::shared_ptr<const Model> source = clip.source;

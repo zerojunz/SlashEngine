@@ -216,7 +216,7 @@ TEST_CASE("character: a recipe builds a rigged humanoid with its points, layers 
     auto model = scene3d::build_character(recipe_of(kKnight), files_reader(kFiles));
     REQUIRE_MESSAGE(model.ok(), model.error().message);
     const scene3d::Model& knight = model.value();
-    // Godot's humanoid bones, skinned, then the points under their bones.
+    // The humanoid bones, skinned, then the points under their bones.
     REQUIRE(knight.skins.size() == 1);
     CHECK(knight.skins[0].joints.size() == 64);
     const auto node = [&](std::string_view name) {
@@ -300,7 +300,7 @@ slash::Vec3 middle_of(const scene3d::Model& model, std::string_view material,
 
 } // namespace
 
-TEST_CASE("character: the rig has fingers, eyes, a jaw and twist bones, turned as Godot's") {
+TEST_CASE("character: the rig has fingers, eyes, a jaw and twist bones, turned") {
     auto model = scene3d::build_character(recipe_of(kKnight), files_reader(kFiles));
     REQUIRE(model.ok());
     const scene3d::Model& knight = model.value();
@@ -309,7 +309,7 @@ TEST_CASE("character: the rig has fingers, eyes, a jaw and twist bones, turned a
         REQUIRE_MESSAGE(found >= 0, name);
         return static_cast<std::size_t>(found);
     };
-    // Every bone of Godot's humanoid profile, in its order, then the twist bones.
+    // Every bone of the humanoid profile, in its order, then the twist bones.
     const auto profile = scene3d::humanoid_profile();
     for (std::size_t i = 0; i < profile.size(); ++i) {
         CHECK(knight.nodes.at(i).name == profile[i].name);
@@ -373,7 +373,7 @@ TEST_CASE("character: the rig has fingers, eyes, a jaw and twist bones, turned a
     const std::vector<world::Affine3D> open = posed(knight, "jaw_open");
     CHECK(middle_of(knight, "tongue", open).y < middle_of(knight, "tongue", rest).y - 0.01F);
     CHECK(rest[index("Jaw")].origin.y == doctest::Approx(open[index("Jaw")].origin.y));
-    // Godot's bone mapper finds every bone by its name, the twist bones aside.
+    // The bone mapper finds every bone by its name, the twist bones aside.
     const scene3d::BoneMap map = scene3d::auto_map_bones(knight);
     for (const std::string_view name :
          {"Hips", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperLeg", "RightLowerLeg",

@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "internal.hpp"
 #include "tree_system.hpp"
 
@@ -31,7 +33,7 @@ namespace {
 constexpr double kEpsilon = 1.0e-9;
 
 // A stretch of the animation that playback passed in one tick, from `from` to `to`, which runs
-// backward when to < from. As in Godot, it passes the keys after where playback was, up to and
+// backward when to < from. It passes the keys after where playback was, up to and
 // including where it got to, and the key at `from` too when with_from is set: when playback
 // starts at the start of the animation.
 struct Span {
@@ -69,7 +71,7 @@ struct Step {
     bool finished = false;
 };
 
-// Moves a player on by one tick, as Godot's AnimationPlayer does: time runs at speed_scale,
+// Moves a player on by one tick: time runs at speed_scale,
 // backward while backwards is set. An animation that doesn't loop stops at its end, and plays
 // again from the start if asked to play from there; a linear loop wraps to the start, passing
 // keys at both; a pingpong loop turns round at each end and flips backwards. Whole loops skipped
@@ -208,7 +210,7 @@ const Animation* find_animation(const AnimationLibrary& library, const std::stri
 }
 
 // Where an animation track's player is in the animation a key started, the track's playback at
-// time: as Godot's AnimationMixer finds it when seeking, the time since the key, held at the end,
+// time: the time since the key, held at the end,
 // round a loop or back and forth.
 double started_position(const Animation& started, double since) {
     const double end = started.length;
@@ -226,8 +228,8 @@ double started_position(const Animation& started, double since) {
 // How deep animation tracks seek players that play players: as deep as any cinematic nests.
 constexpr int kMaxSeekDepth = 8;
 
-// Seeks a player and the players its animation tracks play, as Godot's
-// AnimationPlayer::seek(time, true, true): sets the values its value and bezier tracks have there,
+// Seeks a player and the players its animation tracks play:
+// sets the values its value and bezier tracks have there,
 // and moves each player an animation track started to where it would be.
 Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt::entity entity,
                          double time, std::string_view name, int depth) {
@@ -268,7 +270,7 @@ Result<void> seek_player(world::World& world, detail::LibraryCache& cache, entt:
         stored.time = time;
     }
     // Audio tracks start nothing, but streams playing stop where the seek went back before
-    // their key or past their end, as Godot's update-only seek.
+    // their key or past their end.
     detail::begin_audio(world, entity, detail::Mixer::Player);
     for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
         if (animation.tracks[i].type == TrackType::Audio) {
@@ -444,7 +446,7 @@ struct PlayerState {
         world::Animator player = ecs.get<world::Animator>(entity);
         if (player.library.empty() || player.animation.empty() || !player.playing) {
             // A player that stopped, paused or finished stops its audio tracks' sounds, as
-            // Godot's clears its caches.
+            // its caches are cleared.
             detail::stop_audio(world, entity, detail::Mixer::Player);
         }
         if (player.library.empty() || player.animation.empty()) {
@@ -484,7 +486,7 @@ struct PlayerState {
         };
 
         // Value tracks: continuous ones take their value at the new time, and discrete ones the
-        // value of the last key playback passed, as Godot's update modes do. Bezier tracks are
+        // value of the last key playback passed. Bezier tracks are
         // continuous.
         const std::vector<detail::LibraryCache::Resolved>& resolved =
             detail::LibraryCache::targets(*cached, player.animation, animation, world.components());
@@ -533,7 +535,7 @@ struct PlayerState {
         }
 
         // Animation tracks: the last key playback passed plays its animation on the track's
-        // player, as Godot's animation playback tracks do.
+        // player.
         for (const Track& track : animation.tracks) {
             if (track.type != TrackType::Animation) {
                 continue;
@@ -558,7 +560,7 @@ struct PlayerState {
         }
 
         // Audio tracks: the last key playback passed starts its stream on the track's audio
-        // player, as Godot's do, and streams stop where playback went back before their key or
+        // player, and streams stop where playback went back before their key or
         // past their end offset.
         detail::begin_audio(world, entity, detail::Mixer::Player);
         for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
@@ -658,9 +660,9 @@ void add_asset_types(asset::Assets& assets) {
 void add_systems(world::World& world, asset::Assets& assets) {
     auto state = std::make_shared<PlayerState>(assets);
     auto trees = std::make_shared<detail::TreePlayer>(assets);
-    // A tree's animations from models pose the nodes of the model its entity draws, as Godot's
-    // AnimationGraph drives a Skeleton3D's bones; without one, a player's animation does, playing
-    // or paused, as Godot's AnimationPlayer.
+    // A tree's animations from models pose the nodes of the model its entity draws,
+    // driving a Skeleton3D's bones; without one, a player's animation does, playing
+    // or paused.
     scene3d::set_clip_source(world, [state, trees](const world::World& w, entt::entity entity) {
         if (auto clips = trees->clips(w, entity)) {
             return std::move(*clips);
@@ -708,8 +710,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
         [trees](world::World& w, double tick_seconds) { trees->run(w, tick_seconds); },
         {.doc = "Blends each AnimationGraph's animations into its entity's components.",
          .priority = 910});
-    // IK modifiers turn bones after the animations, as Godot's SkeletonModifier3Ds process after
-    // the AnimationMixer.
+    // IK modifiers turn bones after the animations.
     const scene3d::ModelLoader models =
         [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
         auto found = assets.load<scene3d::Model>(path);

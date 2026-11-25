@@ -1,5 +1,6 @@
-// Godot 4.6's SDFGI on the CPU (sdfgi.hpp): GI::SDFGI's create, update, render_region,
-// update_light, update_probes and store_probes, and the shaders they run, step by step.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// SDFGI on the CPU (sdfgi.hpp): creating, updating, rendering regions, lighting and probes, and the
+// shaders they run, step by step.
 
 #include "sdfgi.hpp"
 
@@ -69,7 +70,7 @@ void for_each(std::size_t count, jobs::Pool* pool, const std::function<void(std:
     }
 }
 
-// The six directions light is split over (aniso_dir in Godot's shaders).
+// The six directions light is split over (aniso_dir in the shaders).
 constexpr std::array<Float3, 6> kAnisoDir{{{1.0F, 0.0F, 0.0F},
                                            {0.0F, 1.0F, 0.0F},
                                            {0.0F, 0.0F, 1.0F},
@@ -107,7 +108,7 @@ struct Grid {
 };
 
 // A texture of a cascade's cells sampled linearly at a point in cells (texel centers at half
-// cells), clamped to its edges, as Godot's linear_sampler reads its 3D textures.
+// cells), clamped to its edges, as a linear sampler reads 3D textures.
 template <typename Texel, typename Read>
 auto sample3(const Grid& grid, const Float3& p, const Read& read) {
     const auto max = static_cast<float>(grid.size - 1);
@@ -139,7 +140,7 @@ auto sample3(const Grid& grid, const Float3& p, const Read& read) {
     return sum;
 }
 
-// The distance field's value at a point in cells: Godot's texture(...).r * 255.0.
+// The distance field's value at a point in cells: texture(...).r * 255.0.
 float sdf_at(const Grid& grid, const SdfgiCascade& cascade, const Float3& p) {
     return sample3<std::array<float, 1>>(grid, p, [&](std::size_t i) {
         return std::array<float, 1>{static_cast<float>(sdfgi_sdf(cascade, i))};
@@ -186,7 +187,7 @@ constexpr std::uint32_t kProbeImageWidth = kOctBorder * kSdfgiProbeAxis * kSdfgi
 constexpr std::uint32_t kProbeImageHeight = kOctBorder * kSdfgiProbeAxis;
 constexpr std::uint32_t kProbes = kSdfgiProbeAxis * kSdfgiProbeAxis * kSdfgiProbeAxis;
 
-// Godot's octahedron_encode (to 0 to 1) and its inverse in sdfgi_integrate.glsl.
+// The octahedron encoding (to 0 to 1) and its inverse.
 std::array<float, 2> octahedron_encode(Float3 n) {
     n = scale(n, 1.0F / (std::abs(n[0]) + std::abs(n[1]) + std::abs(n[2])));
     std::array<float, 2> xy{n[0], n[1]};
@@ -205,7 +206,7 @@ Float3 octahedron_decode(std::array<float, 2> f) {
     return normalize(n);
 }
 
-// The 16 spherical harmonics' basis along a direction, as Godot's SH_ACCUM.
+// The 16 spherical harmonics' basis along a direction.
 std::array<float, kSdfgiShSize> sh_basis(const Float3& d) {
     const Float3 d2 = mul(d, d);
     return {0.282095F,
@@ -226,7 +227,7 @@ std::array<float, kSdfgiShSize> sh_basis(const Float3& d) {
             0.590043F * d[0] * (d2[0] - (3.0F * d2[1]))};
 }
 
-// Godot's hash3 and hashf3 (sdfgi_integrate.glsl), with the engine's sine.
+// The hash3 and hashf3 hashes, with the engine's sine.
 std::array<std::uint32_t, 3> hash3(std::array<std::uint32_t, 3> x) {
     for (std::uint32_t& v : x) {
         v = ((v >> 16U) ^ v) * 0x45d9f3bU;
@@ -240,7 +241,7 @@ float hashf3(const Float3& co) {
     return s - std::floor(s);
 }
 
-// Godot's vogel_hemisphere.
+// Points of a Vogel spiral on a hemisphere.
 Float3 vogel_hemisphere(std::uint32_t index, std::uint32_t count, float offset) {
     const float golden = kPi * (3.0F - std::sqrt(5.0F));
     const float r =
@@ -251,8 +252,8 @@ Float3 vogel_hemisphere(std::uint32_t index, std::uint32_t count, float offset) 
     return {yl.y * cs.x, yl.y * cs.y, yl.x * ((index & 1U) != 0U ? 1.0F : -1.0F)};
 }
 
-// The quantization Godot's textures put light through: 8 bits for the aniso shares, rounded
-// as a GPU's floor(v * 255 + 0.5).
+// The quantization the textures put light through: 8 bits for the aniso shares, rounded as a GPU's
+// floor(v * 255 + 0.5).
 std::uint32_t sdfgi_share(float v) {
     return static_cast<std::uint32_t>(std::floor((std::clamp(v, 0.0F, 1.0F) * 255.0F) + 0.5F));
 }
@@ -261,8 +262,8 @@ std::uint32_t probe_cells(std::uint32_t size) {
     return size / kSdfgiProbeDivisor;
 }
 
-// Which of the occlusion's eight parities a cascade's probe is: its world place's (Godot's
-// probe_world_offset + the probe) parity in x, y and z.
+// Which of the occlusion's eight parities a cascade's probe is: its world place's
+// (probe_world_offset + the probe) parity in x, y and z.
 std::uint32_t probe_parity(const SdfgiCascade& cascade, std::uint32_t size,
                            const std::array<std::int32_t, 3>& probe) {
     const auto occ = static_cast<std::int32_t>(probe_cells(size));
@@ -379,8 +380,8 @@ std::uint32_t fixed_emission(float v) {
         std::floor((std::clamp(v, 0.0F, kMostEmission) * kEmissionUnit) + 0.5F));
 }
 
-// A solid cell's word and emission from its sums: the albedo's average as Godot's 5 bits a
-// channel (the R16 texture _render_sdfgi writes), rounded exactly, and the emission's to 256ths.
+// A solid cell's word and emission from its sums: the albedo's average as 5 bits a channel (an R16
+// texture), rounded exactly, and the emission's to 256ths.
 std::array<std::uint32_t, 2> solid_cell(const CellSum& sum) {
     std::uint32_t word = kSdfgiSolid | (sum.facing << kSdfgiFacingShift);
     Float3 emission{};
@@ -442,9 +443,8 @@ void distance_pass(std::span<std::int32_t> f, std::vector<std::int32_t>& out,
     }
 }
 
-// The squared distance from each cell to the nearest solid one (kFar where none is that near):
-// Godot's jump flood (sdfgi_preprocess.glsl's MODE_JUMPFLOOD passes) finds it nearly, this
-// exactly, a line at a time along x, then y, then z.
+// The squared distance from each cell to the nearest solid one (kFar where none is that near): It
+// is exact, found a line at a time along x, then y, then z.
 std::vector<std::int32_t> squared_distances(const Grid& grid, const SdfgiCascade& cascade,
                                             jobs::Pool* pool) {
     const std::uint32_t n = grid.size;
@@ -494,14 +494,12 @@ std::uint32_t sdf_byte(std::int32_t d2) {
     return std::min(255U, 1 + rounded);
 }
 
-// Makes a cascade's cells and distance field again from the frame's triangles, as render_region
-// renders the cascade's geometry into albedo, emission and facing textures and the preprocess
-// passes make its distance field and solid cell list from them. Godot rasterizes the geometry
-// from three sides and keeps what was drawn last in a cell; this averages what each triangle
-// touching a cell has at the point nearest the cell's center, sampled as a ray meeting it would.
-// With scrolled, the cascade moved by that many cells since its cells were made: the cells it
-// still holds keep theirs, moved, and only those that came in are made, as Godot's scroll renders
-// only the region that came in.
+// Makes a cascade's cells and distance field again from the frame's triangles: the cascade's
+// geometry gives albedo, emission and facing, and the preprocess passes make its distance field and
+// solid cell list from them. It averages what each triangle touching a cell has at the point
+// nearest the cell's center, sampled as a ray meeting it would. With scrolled, the cascade moved by
+// that many cells since its cells were made: the cells it still holds keep theirs, moved, and only
+// those that came in are made.
 void voxelize(SdfgiCascade& cascade, std::uint32_t size, float y_mult, const PathScene& paths,
               const PathTextures& textures, jobs::Pool* pool,
               const std::optional<std::array<std::int32_t, 3>>& scrolled = std::nullopt) {
@@ -860,8 +858,8 @@ void light_cells(SdfgiState& state, std::size_t index, const SdfgiCascadePlan& p
                         float weight = trilinear[0] * trilinear[1] * trilinear[2] *
                                        std::max(0.0F, dot(kAnisoDir.at(k), probe_dir));
                         if (weight > 0.0F && !cascade.occlusion.empty()) {
-                            // How much the probe sees of the cell next to this one on that side
-                            // (a texel's center, clamped to the cascade as Godot's sampler is).
+                            // How much the probe sees of the cell next to this one on that side (a
+                            // texel's center, clamped to the cascade as a sampler does).
                             std::array<std::int64_t, 3> next{};
                             for (std::size_t a = 0; a < 3; ++a) {
                                 next.at(a) = std::clamp<std::int64_t>(
@@ -887,8 +885,8 @@ void light_cells(SdfgiState& state, std::size_t index, const SdfgiCascadePlan& p
                     }
                 }
             }
-            // What the cell gives off (Godot's static light, made by MODE_PROCESS_STATIC from
-            // emission), shared evenly over the sides it faces.
+            // What the cell gives off (its static light, made from emission), shared evenly over
+            // the sides it faces.
             {
                 std::uint32_t sides = 0;
                 for (std::size_t k = 0; k < 6; ++k) {
@@ -1098,8 +1096,8 @@ void integrate(SdfgiState& state, const SdfgiFramePlan& plan, const PathScene& p
                     }
                     light = scale(hit_light, share);
                 } else if (settings.read_sky_light) {
-                    // The sky's light, as meshes' ambient light takes it, where Godot reads
-                    // the background's color or the sky's irradiance.
+                    // The sky's light, as meshes' ambient light takes it, where the background's
+                    // color or the sky's irradiance would do.
                     light = path_environment(paths, textures, ray_dir);
                 }
                 const std::array<float, kSdfgiShSize> basis = sh_basis(ray_dir);
@@ -1169,7 +1167,7 @@ void integrate(SdfgiState& state, const SdfgiFramePlan& plan, const PathScene& p
                     }
                     const std::uint32_t irradiance_texel = sdfgi_rgbe_encode(irradiance);
                     const std::uint32_t radiance_texel = sdfgi_rgbe_encode(radiance);
-                    // The texel, and the border texels Godot copies it to.
+                    // The texel, and the border texels it is copied to.
                     std::array<std::array<std::int32_t, 2>, 4> to{};
                     std::size_t count = 1;
                     to[0] = {lx, ly};
@@ -1215,7 +1213,7 @@ void integrate(SdfgiState& state, const SdfgiFramePlan& plan, const PathScene& p
     }
 }
 
-// Makes a cascade's probe data again: cleared, as Godot's create clears its textures.
+// Makes a cascade's probe data again: cleared.
 void clear_probes(SdfgiCascade& cascade, std::uint32_t history_size) {
     const std::size_t sh_count = std::size_t{kProbes} * kSdfgiShSize;
     cascade.history.assign(sh_count * history_size * 2, 0U);
@@ -1269,8 +1267,8 @@ void scroll_probes(SdfgiCascade& cascade, const std::array<std::int32_t, 3>& pro
 
 void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool* pool) {
     const Grid grid{size};
-    // Godot's OCCLUSION_SIZE: the cells between probes. A region is the 2 * occ cells a side
-    // around one probe, with the probe at its local corner (occ, occ, occ).
+    // The cells between probes. A region is the 2 * occ cells a side around one probe, with the
+    // probe at its local corner (occ, occ, occ).
     const auto occ = static_cast<std::int64_t>(probe_cells(size));
     const std::int64_t span = occ * 2;
     const auto whole = static_cast<std::int64_t>(size);
@@ -1285,8 +1283,8 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
         }
         return sdfgi_facing(cascade.cells[grid.index(x, y, z) * 2]);
     };
-    // Godot's dst_occlusion images are R8: every value is 8 bits, kept here as a whole number
-    // from 0 to 255 so averages round the same everywhere (half up, as (2s + n) / 2n).
+    // The occlusion images are R8: every value is 8 bits, kept here as a whole number from 0 to 255
+    // so averages round the same everywhere (half up, as (2s + n) / 2n).
     std::vector<std::uint32_t> values(grid.cells(), 0U);
     const auto average = [](std::uint32_t sum, std::uint32_t count) {
         return count > 0 ? ((2 * sum) + count) / (2 * count) : 0U;
@@ -1326,8 +1324,8 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
             const auto local_in_grid = [&](const std::array<std::int64_t, 3>& l) {
                 return in_grid(base[0] + l[0], base[1] + l[1], base[2] + l[2]);
             };
-            // Flood out from the probe, a Manhattan distance a step (Godot's group_pos order;
-            // cells of a step read only cells of the step before).
+            // Flood out from the probe, a Manhattan distance a step (cells of a step read only
+            // cells of the step before).
             for (std::int64_t step = 0; step <= (occ - 1) * 3; ++step) {
                 for (std::int64_t az = 0; az < occ; ++az) {
                     for (std::int64_t ay = 0; ay < occ; ++ay) {
@@ -1438,7 +1436,7 @@ void make_sdfgi_occlusion(SdfgiCascade& cascade, std::uint32_t size, jobs::Pool*
                         ++avg;
                     }
                 };
-                // Sides, then edges, then the corner, as Godot reads them.
+                // Sides, then edges, then the corner.
                 if (valid[0]) {
                     take(true, false, false);
                 }
@@ -1620,7 +1618,7 @@ SdfgiFramePlan plan_sdfgi_frame(SdfgiState& state, const Scene3D& scene, const F
     const auto drag_margin = static_cast<std::int32_t>(probe_cells(size) / 2);
     Float3 world = camera;
     world[1] *= plan.y_mult;
-    // A change to what the cascades are made of starts them over (Godot makes its SDFGI again).
+    // A change to what the cascades are made of starts them over.
     const bool remake = state.cascades.size() != settings.cascades ||
                         state.settings.min_cell_size != settings.min_cell_size ||
                         state.settings.y_scale != settings.y_scale ||
@@ -1646,7 +1644,7 @@ SdfgiFramePlan plan_sdfgi_frame(SdfgiState& state, const Scene3D& scene, const F
         }
         state.render_pass = 0;
     } else {
-        // Godot's SDFGI::update: each cascade follows the camera by whole steps.
+        // Each cascade follows the camera by whole steps.
         for (std::size_t c = 0; c < state.cascades.size(); ++c) {
             SdfgiCascade& cascade = state.cascades[c];
             SdfgiCascadePlan& p = plan.cascades[c];
@@ -1816,8 +1814,7 @@ struct GiLight {
     std::array<float, 4> reflection{};
 };
 
-// gi.glsl's sdfgi_process, with vertex the pixel's point relative to the camera (y scaled) as
-// Godot's GI pass has it.
+// gi.glsl's sdfgi_process, with vertex the pixel's point relative to the camera (y scaled).
 GiLight sdfgi_process(const SdfgiState& state, const Cascades& cs, const Float3& camera_scaled,
                       Float3 vertex, Float3 normal, Float3 reflection, float roughness) {
     const Sdfgi3D& settings = state.settings;
@@ -1829,7 +1826,7 @@ GiLight sdfgi_process(const SdfgiState& state, const Cascades& cs, const Float3&
     reflection = normalize(reflection);
     const auto size = static_cast<float>(settings.cascade_size);
     const auto probe_size = static_cast<float>(kSdfgiProbeAxis - 1);
-    // Cascades' places relative to the camera, as Godot's UBO holds them.
+    // Cascades' places relative to the camera.
     const auto position = [&](std::size_t i) { return sub(cs.offsets[i], camera_scaled); };
     const auto to_probe = [&](std::size_t i) {
         return 1.0F / (size * state.cascades[i].cell_size / probe_size);
@@ -1908,7 +1905,7 @@ GiLight sdfgi_process(const SdfgiState& state, const Cascades& cs, const Float3&
         std::array<float, 4> accum{};
         std::size_t i = 0;
         bool found = false;
-        // Godot's loop, with a bound on its steps.
+        // The march loop, with a bound on its steps.
         for (int steps = 0; steps < 4096; ++steps) {
             if (length(ray_pos) >= max_distance || accum[3] > 0.99F) {
                 break;

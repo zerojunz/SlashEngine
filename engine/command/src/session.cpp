@@ -139,7 +139,7 @@ int max_threads(const json::Value& project) {
     return jobs::parse_max_threads(*threading);
 }
 
-// The project's input actions over Godot's ui_* ones, or only those if its "input" doesn't
+// The project's input actions over the built-in ui_* ones, or only those if its "input" doesn't
 // validate.
 input::Map input_map(const json::Value& project) {
     const json::Value* map = project.is_object() ? project.find("input") : nullptr;
@@ -686,8 +686,8 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
 }
 
 Reply Session::keeps_tree(const std::vector<world::TreeProblem>& before, Reply reply) const {
-    // As Godot's add_child refuses a node that has a parent or is an ancestor: an edit that
-    // breaks the Transform2D children's tree fails, unless the tree was already broken there.
+    // An entity that has a parent or is an ancestor can't be added as a child: an edit that breaks
+    // the Transform2D children's tree fails, unless the tree was already broken there.
     for (const world::TreeProblem& problem : world::check_tree(world_)) {
         if (std::ranges::none_of(before, [&](const world::TreeProblem& old) {
                 return old.path == problem.path && old.message == problem.message;

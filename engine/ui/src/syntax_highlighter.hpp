@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/ui/ui.hpp"
@@ -7,11 +8,11 @@
 #include <utility>
 #include <vector>
 
-// Godot's CodeHighlighter (scene/resources/syntax_highlighter.cpp): the colors a TextArea's
+// The code highlighter: the colors a TextArea's
 // lines take, and what is wrong with a SyntaxColors's color regions.
 namespace slash::ui {
 
-// Godot's is_symbol: ASCII punctuation but '_', and tabs and spaces.
+// ASCII punctuation but '_', and tabs and spaces.
 [[nodiscard]] constexpr bool is_symbol(char32_t c) {
     return c != U'_' &&
            ((c >= U'!' && c <= U'/') || (c >= U':' && c <= U'@') || (c >= U'[' && c <= U'`') ||

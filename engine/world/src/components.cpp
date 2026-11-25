@@ -12,7 +12,7 @@ namespace slash::world {
 
 namespace {
 
-// Godot's 20 render layers.
+// The 20 render layers.
 constexpr double kMaxMask = 1048575;
 
 // A member of a struct a component holds, for describe_members.
@@ -306,7 +306,7 @@ void register_physics_components(ComponentRegistry& registry) {
                   {.doc = "Where body_b starts along the groove, in pixels.", .min = 0});
 }
 
-// The 3D physics components, as Godot's on its Jolt module.
+// The 3D physics components.
 void register_physics_3d_components(ComponentRegistry& registry) {
     const FieldMeta layer{.doc = "The physics layers it is in, as bits: layer 1 is 1, layer 2 is "
                                  "2, layer 3 is 4."};
@@ -1837,8 +1837,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("particles", {.doc = "Forces also push Emitter2D."});
 }
 
-// The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FabrikIK3D, CcdIK3D, JacobianIK3D,
-// BoneLookAt3D and BoneCopy3D.
+// The skeleton modifiers: TwoBoneIK3D, FabrikIK3D, CcdIK3D, JacobianIK3D, BoneLookAt3D and
+// BoneCopy3D.
 void register_ik_components(ComponentRegistry& registry) {
     const FieldMeta active{.doc = "Whether it turns bones."};
     const FieldMeta influence{
@@ -2055,8 +2055,7 @@ void register_ik_components(ComponentRegistry& registry) {
                           "parent."});
 }
 
-// The navigation components: Godot's NavigationRegion, NavigationLink, NavigationAgent and
-// NavigationObstacle nodes.
+// The navigation components: NavArea, NavLink, NavAgent and NavObstacle.
 void register_navigation_components(ComponentRegistry& registry) {
     const FieldMeta enabled{.doc = "Whether paths can go through it."};
     const FieldMeta use_edge_connections{
@@ -2306,8 +2305,7 @@ void register_navigation_components(ComponentRegistry& registry) {
 
 } // namespace
 
-// The particles component: Godot's CPUParticles2D.
-// The UI components, as Godot's Control nodes.
+// The particles component: Emitter2D. The UI components.
 void register_ui_components(ComponentRegistry& registry) {
     const FieldMeta anchor{.doc =
                                "Where the edge is anchored in the parent's rect: 0 at its left or "
@@ -3723,7 +3721,7 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe("doppler_tracking", doppler);
 }
 
-// Godot's CSG nodes. Every one ends with CSGShape3D's fields, added by shape().
+// The solid shapes. Every one ends with the common solid fields, added by shape().
 void register_path_components(ComponentRegistry& registry) {
     const FieldMeta progress{.doc = "How far along the curve, wrapped round it with loop or kept "
                                     "on it; the path_follow system writes back where it ends up."};
@@ -4386,7 +4384,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("face_tracker", {.doc = "The face tracker it follows."})
         .describe("target", {.doc = "The entity drawing the face, by ID; \"\" for this one."});
 
-    // Baking into a BakedLighting3D, as Godot's Light3D.
+    // Baking into a BakedLighting3D.
     const FieldMeta indirect_energy{
         .doc = "Times its light in a lightmap's bounces.", .min = 0.0, .max = 16.0};
     const FieldMeta bake_mode{

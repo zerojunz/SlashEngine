@@ -1,11 +1,10 @@
-// Screen-space ambient occlusion for a frame's 3D world, as Godot 4.6's Forward+ renderer does it
-// with Intel's ASSAO (servers/rendering/renderer_rd/shaders/effects/ss_effects_downsample.glsl,
-// ssao.glsl, ssao_importance_map.glsl, ssao_blur.glsl and ssao_interleave.glsl): a prepass's depth
-// is made linear and split into four slices of every other pixel at up to four levels; each slice's
-// occlusion is gathered from its depths and the prepass's normals, blurred along its edges, and the
-// slices are put back together at the frame's size for the meshes' color pass. Godot's compute
-// shaders run as passes that draw one triangle over their target; they load texels and filter in
-// code, so every device draws the same values. Keep it in step with src/ssao.cpp, its CPU twin.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Screen-space ambient occlusion for a frame's 3D world, in the clustered renderer, with Intel's
+// ASSAO: a prepass's depth is made linear and split into four slices of every other pixel at up to
+// four levels; each slice's occlusion is gathered from its depths and the prepass's normals,
+// blurred along its edges, and the slices are put back together at the frame's size for the meshes'
+// color pass. The passes draw one triangle over their target; they load texels and filter in code,
+// so every device draws the same values. Keep it in step with src/ssao.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -60,8 +59,8 @@ static const uint kInterleaveSmart = 13u;
 static const uint kInterleaveHalf = 14u;
 
 cbuffer Ssao : register(b0, space3) {
-    // The pass, Godot's shader quality (one less than the setting, at least 0), the slice and the
-    // depth level.
+    // The pass, the shader quality (one less than the setting, at least 0), the slice and the depth
+    // level.
     uint4 options;
     uint4 frame;   // the frame's width and height, and the depth's at level 0
     uint4 buffers; // the occlusion slices' width and height, and the importance map's
@@ -158,7 +157,7 @@ float4 load_mirrored(Texture2D<float4> image, int2 p, int2 size) {
     return image.Load(int3(mirror_index(p.x, size.x), mirror_index(p.y, size.y), 0));
 }
 
-// A linearly filtered sample with clamped edges, as Godot's default sampler takes it.
+// A linearly filtered sample with clamped edges.
 float4 bilinear(Texture2D<float4> image, float2 uv, int2 size) {
     float2 p = uv * (float2)size - 0.5;
     float2 b = floor(p);
@@ -664,10 +663,9 @@ float interleave_pass(int2 p, uint pass_kind) {
     return dot(values, weights) / weight_sum;
 }
 
-// Direct3D 12 makes a shader for each group of passes, from SSAO_PASS_FIRST to SSAO_PASS_LAST,
-// as Godot's SSAO is a shader per pass (downsample, gather, importance map, blur, interleave):
-// WARP loses the device running one shader with every pass in it. The other backends take one
-// shader for all.
+// Direct3D 12 makes a shader for each group of passes, from SSAO_PASS_FIRST to SSAO_PASS_LAST, as
+// SSAO is a shader per pass (downsample, gather, importance map, blur, interleave): WARP loses the
+// device running one shader with every pass in it. The other backends take one shader for all.
 #ifndef SSAO_PASS_FIRST
 #define SSAO_PASS_FIRST 0
 #define SSAO_PASS_LAST 14
@@ -705,8 +703,8 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
 #endif
 #if SSAO_PASS_LAST >= 12
     if (pass_kind >= kInterleavePlain) {
-        // The occlusion as an 8-bit texture keeps it, as Godot's, though the mesh pass reads it
-        // from a 16-bit float layer of its screen array.
+        // The occlusion as an 8-bit texture keeps it, though the mesh pass reads it from a 16-bit
+        // float layer of its screen array.
         result.x = floor(saturate(interleave_pass(p, pass_kind)) * 255.0 + 0.5) / 255.0;
     }
 #endif

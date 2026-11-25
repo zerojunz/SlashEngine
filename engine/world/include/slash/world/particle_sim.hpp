@@ -14,11 +14,11 @@
 #include <utility>
 #include <vector>
 
-// Simulation stages for particles, after Unreal's Niagara (Godot has none), shared by 2D and 3D:
-// neighbors found by sorting along a Morton curve (no grid), flocking, curl noise, drag, speed
-// limits, collision through a query the caller gives, attributes worked out by Expressions and
-// events. 2D particles are 3D ones at z 0. Built with -ffp-contract=off and with no libm but
-// square roots, so a simulation is the same bits everywhere.
+// Simulation stages for particles, after Unreal's Niagara, shared by 2D and 3D: neighbors found by
+// sorting along a Morton curve (no grid), flocking, curl noise, drag, speed limits, collision
+// through a query the caller gives, attributes worked out by Expressions and events. 2D particles
+// are 3D ones at z 0. Built with -ffp-contract=off and with no libm but square roots, so a
+// simulation is the same bits everywhere.
 namespace slash::world {
 
 // The most attributes a particle carries.

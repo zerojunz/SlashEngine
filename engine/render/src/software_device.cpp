@@ -165,8 +165,9 @@ std::uint8_t to_byte(float value) {
     return static_cast<std::uint8_t>(std::lround(clamp01(value) * 255.0F));
 }
 
-// Where a frame's sky and meshes draw: the frame's target, in bytes, or for Forward+ the world's
-// texture of half floats, which keeps colors past 1 and below 0 as the GPU devices' does.
+// Where a frame's sky and meshes draw: the frame's target, in bytes, or for the clustered renderer
+// the world's texture of half floats, which keeps colors past 1 and below 0 as the GPU devices'
+// does.
 struct WorldTarget {
     Image* bytes = nullptr;
     detail::HdrImage* hdr = nullptr;
@@ -780,15 +781,15 @@ public:
                       target.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
         if (frame_.scene && frame_.scene->path_trace) {
-            // Paths traced through the sky and meshes give linear colors, which Forward+'s post
-            // passes draw over the target.
+            // Paths traced through the sky and meshes give linear colors, which the clustered
+            // renderer's post passes draw over the target.
             const detail::HdrImage world =
                 path_trace(*frame_.scene, frame_.target, target.width, target.height);
             forward_post(frame_.scene->post, world, target);
         } else if (frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus) {
             // The sky and meshes draw linear colors into a texture of half floats cleared to the
-            // clear color, and Forward+'s post passes draw that over the target. With FSR 2 they
-            // draw at the render size, and FSR 2 upscales them to the target's.
+            // clear color, and the clustered renderer's post passes draw that over the target. With
+            // FSR 2 they draw at the render size, and FSR 2 upscales them to the target's.
             const Scene3D& scene = *frame_.scene;
             const bool fsr2 = detail::uses_fsr2(scene);
             const std::array<std::uint32_t, 2> size =
@@ -1859,11 +1860,11 @@ private:
         }
     }
 
-    // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
-    // top to bottom. With SSAO, SSR, TAA or FSR 2, Forward+'s prepass draws the opaque meshes'
-    // depth and normals first, from which the SSAO passes make the occlusion the meshes are
-    // shaded with and the SSR passes their reflections of the frame before, and with TAA or FSR
-    // 2 their motion vectors, with which the TAA pass blends the frame, drawn with its camera
+    // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows top
+    // to bottom. With SSAO, SSR, TAA or FSR 2, the clustered renderer's prepass draws the opaque
+    // meshes' depth and normals first, from which the SSAO passes make the occlusion the meshes are
+    // shaded with and the SSR passes their reflections of the frame before, and with TAA or FSR 2
+    // their motion vectors, with which the TAA pass blends the frame, drawn with its camera
     // jittered, with the target's frames before; FSR 2's camera (fsr2) is jittered by the caller,
     // which gets the motion vectors and upscales the frame.
     std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target,
@@ -1981,7 +1982,7 @@ private:
                 }
             }
         }
-        // Forward+'s reflection probes, read from their atlas's cubes.
+        // The clustered renderer's reflection probes, read from their atlas's cubes.
         const std::vector<detail::MeshProbeUniforms> probes =
             detail::probe_uniforms(scene.reflections);
         if (lights->reflections[0] > 0.0F) {
@@ -2142,14 +2143,15 @@ private:
         std::vector<float> ray_light;
         std::vector<float> sdfgi_light;
         std::vector<float> restir;
-        // Godot's SDFGI, in Forward+ and not in a reflection probe's captures (as Godot's, which
-        // draw them without GI buffers).
+        // SDFGI, in the clustered renderer and not in a reflection probe's captures (which draw
+        // without GI buffers).
         const bool sdfgi = clustered && scene.sdfgi.enabled && !scene.capture;
         const std::optional<detail::RayGI> gi =
             clustered ? detail::ray_gi(scene) : std::optional<detail::RayGI>{};
         const std::vector<detail::RayShadowLight> traced =
             clustered ? detail::ray_shadow_lights(scene) : std::vector<detail::RayShadowLight>{};
-        // ReSTIR for the omni and spot lights, in Forward+ and not in a probe's captures.
+        // ReSTIR for the omni and spot lights, in the clustered renderer and not in a probe's
+        // captures.
         const std::optional<detail::ManyLights> many =
             clustered && !scene.capture && !clusters.lights.empty() ? detail::many_lights(scene)
                                                                     : std::nullopt;
@@ -2157,7 +2159,7 @@ private:
             detail::effects_need_normals(scene)) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
-                // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
+                // FSR 2 works the sky's motion vectors out from the depth.
                 velocity.assign(pixels * 2, fsr2 != nullptr ? detail::kInvalidMotion : 0.0F);
             }
             normals.values.assign(pixels * 4, 0.0F);
@@ -2230,8 +2232,8 @@ private:
                     lights->screen[3] = 1.0F;
                 }
                 if (sdfgi) {
-                    // The cascades follow the camera and are made from the frame's triangles,
-                    // then each pixel takes their probes' light, as Godot's GI buffers.
+                    // The cascades follow the camera and are made from the frame's triangles, then
+                    // each pixel takes their probes' light.
                     detail::SdfgiState& state = sdfgi_state(frame_.target);
                     const detail::Float3 eye{lights->camera[0], lights->camera[1],
                                              lights->camera[2]};
@@ -2558,8 +2560,9 @@ private:
         mix_in(detail::radiance_texture(scene));
     }
 
-    // Traces a path-traced frame's paths into target's sums and returns their average, linear,
-    // as Forward+'s world texture holds it. The sums start over when what the paths see changes.
+    // Traces a path-traced frame's paths into target's sums and returns their average, linear, as
+    // the clustered renderer's world texture holds it. The sums start over when what the paths see
+    // changes.
     detail::HdrImage path_trace(const Scene3D& scene, TextureId target, std::uint32_t width,
                                 std::uint32_t height) {
         const std::vector<detail::PathMesh> meshes = path_meshes();
@@ -3368,7 +3371,7 @@ private:
     std::optional<detail::RadianceKey> radiance_key_;
     detail::CubeImage radiance_;
     detail::CubeImage capture_raw_;       // the faces captured so far
-    detail::DecalAtlasCache decal_atlas_; // Forward+'s decals' textures
+    detail::DecalAtlasCache decal_atlas_; // the clustered renderer's decals' textures
     // Each target's frame before, which SSR reflects.
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
@@ -3386,7 +3389,7 @@ private:
     detail::CpuParticles particles_;
     std::vector<Vertex2D> particle_vertices_;
     // Auto exposure's last measured brightness, for frames of its size and version, as the GPU
-    // devices keep it in a texture with their Forward+ textures.
+    // devices keep it in a texture with their clustered renderer textures.
     struct Brightness {
         std::uint32_t width = 0;
         std::uint32_t height = 0;

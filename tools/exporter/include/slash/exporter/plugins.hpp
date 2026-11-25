@@ -7,16 +7,13 @@
 #include <string_view>
 #include <vector>
 
-// How exports ship a project's plugins (slash/plugin/plugins.hpp), as Godot's export ships each
-// GDExtension's library for the platform:
-//
+// How exports ship a project's plugins (slash/plugin/plugins.hpp):
 //   - A plugin file with "sources" is compiled into the game, on every platform, and entered
 //     through the slash_game_plugins function the export writes.
 //   - Otherwise its library for the platform ships: in the data folder at the path its file
 //     names on Windows and Linux, in the app bundle's Frameworks on macOS and in the APK's
 //     lib/<abi>/ on Android, where games look for it by its file name. iOS and the web load no
 //     libraries, so there it is a static library (.a) linked into the game.
-//
 // The plugin files themselves ship in the data folder, as the game reads them.
 namespace slash::exporter {
 

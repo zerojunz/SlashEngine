@@ -5664,13 +5664,12 @@ inline constexpr char kLightmapLightGlsl[] = R"glsl(#version 460
 
 // A lightmap's light on a GPU that traces rays (RenderDevice::trace_lightmap): the hardware twin of
 // the direct_light, bounce_light and light_probes passes of scene3d's lightmapper
-// (engine/scene3d/src/lightmapper.cpp), which ports Godot 4.6's lm_compute.glsl and holds the
-// steps' reasons. Rays find the nearest triangle as its Bvh::trace does: every triangle comes to
-// the query as a candidate, is tested with lm_compute.glsl's ray_hits_triangle (a front face's
-// distance less the bias, so it wins over a back face in its plane) and kept when nearer than the
-// best so far; front faces are committed, so the query stops looking beyond them. The random
-// numbers and the order light is summed in are the CPU's, so a bake comes out as the CPU's but
-// for rounding.
+// (engine/scene3d/src/lightmapper.cpp), which holds the steps' reasons. Rays find the nearest
+// triangle as its Bvh::trace does: every triangle comes to the query as a candidate, is tested with
+// lm_compute.glsl's ray_hits_triangle (a front face's distance less the bias, so it wins over a
+// back face in its plane) and kept when nearer than the best so far; front faces are committed, so
+// the query stops looking beyond them. The random numbers and the order light is summed in are the
+// CPU's, so a bake comes out as the CPU's but for rounding.
 //
 // Built as three pipelines by kPass: 0 the direct light of a region of a slice's texels, 1 a pass
 // of their bounces, adding to accum, 2 a pass of the light probes' rays, adding to probe_sums.
@@ -5885,9 +5884,9 @@ vec3 environment_color(vec3 ray_dir) {
     vec3 sky_dir = unit(ray_dir);
     float s = atan(sky_dir.x, sky_dir.z);
     float y = clamp(sky_dir.y, -1.0, 1.0);
-    float t = atan)glsl"
-    R"glsl((sqrt((1.0 - y) * (1.0 + y)), y);
-    if (s < 0.0) {
+    float t = atan(sqrt((1.0 - y) * (1.0 + y)), y);
+    if )glsl"
+    R"glsl((s < 0.0) {
         s += kPi * 2.0;
     }
     int w = int(size.w);
@@ -6127,9 +6126,9 @@ vec3 direct_light(vec3 position, vec3 normal, uint index, bool soft_shadowing, i
         uint shadowing_ray_count = max(1u, counts.z / ray_count);
         float shadowing_ray_count_sqrt = sqrt(float(total_ray_count));
         vec3 aux = normal.y < 0.777 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-        vec3 )glsl"
-    R"glsl(tangent = unit(cross(normal, aux));
-        vec3 bitan = unit(cross(normal, tangent));
+        vec3 tangent = unit(cross(normal, aux));
+     )glsl"
+    R"glsl(   vec3 bitan = unit(cross(normal, tangent));
         vec3 light_to_point = light_dir * -1.0;
         vec3 light_aux = light_to_point.y < 0.777 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
         vec3 light_to_point_tan = unit(cross(light_to_point, light_aux));
@@ -6308,9 +6307,9 @@ void bounce_pass(int slice, int x, int y) {
     vec3 position = positions[at].xyz;
     int neighbor_offset = x < int(size.x) - 1 ? 1 : -1;
     float texel_size = length(position - fetch_position(slice, x + neighbor_offset, y).xyz);
-    uint noise = random_seed(step.)glsl"
-    R"glsl(y, uint(x), uint(y));
-    vec3 light_accum = vec3(0.0);
+    uint noise = random_seed(step.y, uint(x), uint(y));
+    vec3 light_accu)glsl"
+    R"glsl(m = vec3(0.0);
     for (uint i = step.y; i < step.z; ++i) {
         vec3 ray_dir = ray_dir_from_normal(normal, noise);
         light_accum = light_accum + indirect_light(position, ray_dir, noise, texel_size);

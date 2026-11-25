@@ -1,10 +1,10 @@
-// 2D physics, as Godot's: main.scene.json has ground and walls (StaticBody2D), a hill whose
-// outline is a concave PolygonCollider2D, a one-way ledge, a crate (RigidBody2D), a lamp
-// swinging on a PinJoint2D, three coins (Zone2D) and the hero (CharacterMover2D).
+// 2D physics: main.scene.json has ground and walls (StaticBody2D), a hill whose outline is a
+// concave PolygonCollider2D, a one-way ledge, a crate (RigidBody2D), a lamp swinging on a
+// PinJoint2D, three coins (Zone2D) and the hero (CharacterMover2D).
 //
-// The hero's controls are plain C++ systems, as a game's would be: gravity, walking right, a
-// jump when a wall is in the way, and coins taken when the hero touches them. Then the program
-// asks the physics commands what is where, as an agent would.
+// The hero's controls are plain C++ systems, as a game's would be: gravity, walking right, a jump
+// when a wall is in the way, and coins taken when the hero touches them. Then the program asks the
+// physics commands what is where, as an agent would.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -34,9 +34,8 @@ constexpr float kWalkSpeed = 90.0F; // pixels per second
 constexpr float kJumpSpeed = 380.0F;
 constexpr float kFlag = 420.0F; // where the hero stops
 
-// Gravity off the floor, walking right to the flag, and a jump when a wall blocks the way, as
-// Godot's CharacterBody2D template script does it. The physics2d system moves the hero by its
-// velocity after this.
+// Gravity off the floor, walking right to the flag, and a jump when a wall blocks the way. The
+// physics2d system moves the hero by its velocity after this.
 void control_hero(world::World& world, double seconds) {
     const entt::entity hero = world.find("hero");
     auto& body = world.ecs().get<world::CharacterMover2D>(hero);
@@ -50,7 +49,7 @@ void control_hero(world::World& world, double seconds) {
     }
 }
 
-// A coin the hero touches is taken, as Godot's get_overlapping_bodies would find it.
+// A coin the hero touches is taken.
 void take_coins(world::World& world, double /*seconds*/) {
     const entt::entity hero = world.find("hero");
     std::vector<entt::entity> taken;

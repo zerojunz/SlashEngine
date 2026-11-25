@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/shader_compiler/shader_compiler.hpp"
 
 #include "slash/render/compositor.hpp"
@@ -150,8 +151,8 @@ bool reads_wind(const render::ShaderSource& source) {
 }
 constexpr std::array<std::string_view, 5> kTypes{"", "float", "float2", "float3", "float4"};
 
-// The globals every wrapper declares before the shader's code: the material's params, Godot's
-// built-ins and the texture() call.
+// The globals every wrapper declares before the shader's code: the material's params, the built-ins
+// and the texture() call.
 std::string declarations(const render::ShaderSource& source) {
     std::string out = "Texture2D<float4> TEXTURE : register(t0, space2);\n"
                       "SamplerState TEXTURE_sampler : register(s0, space2);\n";
@@ -326,9 +327,9 @@ Parts cpu_fragment_parts(const render::ShaderSource& source, const Scan& found) 
     return parts;
 }
 
-// A spatial shader's stages: the Compatibility renderer's, then Forward+'s, lit by clusters, and
-// its prepass's without and with TAA's motion vectors (shaders/mesh_*.hlsl), and the shadow
-// passes' (shaders/shadow.hlsl).
+// A spatial shader's stages: the compatibility renderer's, then the clustered renderer's, lit by
+// clusters, and its prepass's without and with TAA's motion vectors (shaders/mesh_*.hlsl), and the
+// shadow passes' (shaders/shadow.hlsl).
 enum class MeshStage : std::uint8_t { Compatibility, Clustered, NormalRoughness, Motion, Shadow };
 
 // Which backend a stage's code is for, where mesh.hlsl declares storage buffers apart for it.
@@ -344,8 +345,8 @@ struct SpatialBindings {
 
 constexpr SpatialBindings kVertexBindings{
     .uniforms = "b2, space1", .texture_space = "space0", .vertex = true};
-// WebGPU's vertex stages read the texture params in the fragment stage's group, as the
-// WebGPU device lays its groups out (Forward+'s clusters take group 0).
+// WebGPU's vertex stages read the texture params in the fragment stage's group, as the WebGPU
+// device lays its groups out (the clustered renderer's clusters take group 0).
 constexpr SpatialBindings kWgslVertexBindings{
     .uniforms = "b2, space1", .texture_space = "space2", .vertex = true};
 constexpr SpatialBindings kMeshFragmentBindings{.uniforms = "b3, space3",
@@ -356,8 +357,8 @@ constexpr SpatialBindings kCpuFragmentBindings{.uniforms = "b0, space3", .textur
 constexpr SpatialBindings kCpuVertexBindings{
     .uniforms = "b0, space3", .texture_space = "space2", .vertex = true};
 
-// The globals a spatial shader's wrappers declare before its code: the uniform buffer, the
-// texture params, Godot's built-ins and texture().
+// The globals a spatial shader's wrappers declare before its code: the uniform buffer, the texture
+// params, the built-ins and texture().
 std::string spatial_declarations(const render::ShaderSource& source, const Scan& found,
                                  const SpatialBindings& bindings) {
     std::string out = "cbuffer GameMaterial : register(" + std::string(bindings.uniforms) +
@@ -373,7 +374,7 @@ std::string spatial_declarations(const render::ShaderSource& source, const Scan&
                       "    float4x4 game_previous_model;\n"
                       "};\n"
                       "float4 game_texel(float4 texel, bool srgb) {\n"
-                      "    // Godot's approximation of sRGB to linear, as tonemap.hlsl's.\n"
+                      "    // A polynomial approximation of sRGB to linear, as tonemap.hlsl's.\n"
                       "    float3 c = texel.rgb;\n"
                       "    float3 linear_color = c * (c * (c * 0.305306011 + 0.682171111) + "
                       "0.012522878);\n"
@@ -432,7 +433,7 @@ std::string spatial_declarations(const render::ShaderSource& source, const Scan&
         out += "static float3 WIND;\n";
     }
     if (found.light) {
-        // light()'s own, as Godot's: LIGHT, VIEW and NORMAL in the camera's space.
+        // light()'s own: LIGHT, VIEW and NORMAL in the camera's space.
         out += "static float3 LIGHT;\n"
                "static float3 LIGHT_COLOR;\n"
                "static bool LIGHT_IS_DIRECTIONAL;\n"
@@ -453,7 +454,7 @@ std::string spatial_declarations(const render::ShaderSource& source, const Scan&
     return out;
 }
 
-// Sets Godot's matrices and the places they give for a draw with the model.
+// Sets the matrices and the places they give for a draw with the model.
 std::string spatial_matrices(std::string_view model) {
     return "    MODEL_MATRIX = " + std::string(model) +
            ";\n"
@@ -472,10 +473,10 @@ std::string spatial_matrices(std::string_view model) {
            "    NODE_POSITION_VIEW = mul(game_view, float4(NODE_POSITION_WORLD, 1.0)).xyz;\n";
 }
 
-// game_vertex, which mesh.hlsl's and shadow.hlsl's vertex stages and the CPU's module call:
-// Godot's built-ins from a corner of the mesh, in its space (or the world's, with
-// world_vertex_coords), its vertex(), then the corner in the world. The frame before's model and
-// time place it where it was, for the motion prepass.
+// game_vertex, which mesh.hlsl's and shadow.hlsl's vertex stages and the CPU's module call: The
+// built-ins from a corner of the mesh, in its space (or the world's, with world_vertex_coords), its
+// vertex(), then the corner in the world. The frame before's model and time place it where it was,
+// for the motion prepass.
 std::string game_vertex(const render::ShaderSource& source) {
     std::string out =
         "\nstruct GameVertex {\n"
@@ -530,9 +531,9 @@ std::string game_vertex(const render::ShaderSource& source) {
     return out;
 }
 
-// game_surface, which mesh.hlsl's fragment stage and the CPU's module call: Godot's built-ins
-// from a pixel's values in the world, its fragment(), then the surface it gives, the shading
-// normal back in the world (render::cpu_spatial).
+// game_surface, which mesh.hlsl's fragment stage and the CPU's module call: the built-ins from a
+// pixel's values in the world, its fragment(), then the surface it gives, the shading normal back
+// in the world (render::cpu_spatial).
 std::string game_surface(const render::ShaderSource& source, const Scan& found) {
     std::string out = "\nstruct GameSurface {\n"
                       "    float4 albedo;\n"
@@ -574,7 +575,7 @@ std::string game_surface(const render::ShaderSource& source, const Scan& found) 
     }
     out += "    float3 shading = NORMAL;\n";
     if (found.normal_map) {
-        // As Godot's scene shaders bend it, with the unnormalized tangent frame.
+        // Bent with the unnormalized tangent frame.
         out += "    float3 mapped = NORMAL_MAP;\n"
                "    mapped.xy = mapped.xy * 2.0 - 1.0;\n"
                "    mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));\n"
@@ -592,10 +593,9 @@ std::string game_surface(const render::ShaderSource& source, const Scan& found) 
     return out;
 }
 
-// game_light, which mesh.hlsl's add_light calls for each light in place of its own light model,
-// as Godot's LIGHT_CODE_USED, and the CPU's light module: Godot's light() built-ins from the light
-// and the surface in the world, its light(), then the light it sums. ALPHA, which it may change,
-// is game_surface's.
+// game_light, which mesh.hlsl's add_light calls for each light in place of its own light model, and
+// the CPU's light module: the light() built-ins from the light and the surface in the world, its
+// light(), then the light it sums. ALPHA, which it may change, is game_surface's.
 std::string game_light() {
     return "\nvoid game_light(float3 normal, float3 toward, float3 view, float3 color, bool "
            "directional,\n"
@@ -798,10 +798,10 @@ Parts cpu_spatial_light_parts(const render::ShaderSource& source, const Scan& fo
     return parts;
 }
 
-// A compositor shader's globals (render::CompositorUniforms and the screen's textures), Godot's
-// built-ins for it, the texture params after the screen's three textures, and the screen's
-// reads: screen_texture filters the world's texels in code and depth_texture and
-// normal_roughness_texture load the nearest, so every device and the CPU read the same values.
+// A compositor shader's globals (render::CompositorUniforms and the screen's textures), the
+// built-ins for it, the texture params after the screen's three textures, and the screen's reads:
+// screen_texture filters the world's texels in code and depth_texture and normal_roughness_texture
+// load the nearest, so every device and the CPU read the same values.
 std::string compositor_declarations(const render::ShaderSource& source) {
     std::string out = "cbuffer Compositor : register(b0, space3) {\n"
                       "    float4 compositor_constants[32];\n"
@@ -1190,7 +1190,7 @@ void compile_mesh_stage(const render::ShaderSource& source, const Scan& found, M
     if (!errors.empty()) {
         return;
     }
-    // Forward+'s clustered stage reads storage buffers, which Metal and WebGPU number apart.
+    // The clustered renderer's stage reads storage buffers, which Metal and WebGPU number apart.
     const bool apart = which == MeshStage::Clustered && !vertex;
     std::vector<std::uint32_t> msl_spirv;
     if (apart) {

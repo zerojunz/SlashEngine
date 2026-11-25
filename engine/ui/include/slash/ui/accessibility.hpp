@@ -13,8 +13,8 @@
 #include <string_view>
 #include <vector>
 
-// The accessibility tree, as Godot 4.5's controls describe themselves to a screen reader in
-// NOTIFICATION_ACCESSIBILITY_UPDATE: each control's role, name, value, states and the actions it
+// The accessibility tree, as controls describe themselves to a screen reader: each
+// control's role, name, value, states and the actions it
 // takes, in the controls' tree. A platform's accessibility backend hands it to the system's
 // screen reader; agents read it to check a game can be played without seeing it.
 //
@@ -23,8 +23,8 @@
 //   ui::accessibility_action(world, button, "click");
 namespace slash::ui {
 
-// Whether a world's controls serve a screen reader, as Godot's
-// SceneTree::is_accessibility_enabled: Settings::accessibility_support is "always", or "auto"
+// Whether a world's controls serve a screen reader: Settings::accessibility_support is
+// "always", or "auto"
 // while a screen reader is active. Serving one, focus_mode "accessibility" takes focus.
 [[nodiscard]] bool accessibility_enabled(const world::World& world);
 
@@ -35,7 +35,7 @@ struct AccessElement {
     entt::entity entity = entt::null;
     bool menu = false; // an open popup menu (role "menu")
     int item = -1;     // a menu item's index; -1 for the rest
-    // Godot's AccessibilityRole in lower case without ROLE_: "container", "button",
+    // The role in lower case: "container", "button",
     // "check_box", "radio_button", "check_button", "static_text", "text_field",
     // "multiline_text_field", "slider", "scroll_bar", "progress_indicator", "scroll_view",
     // "panel", "video", "menu", "menu_item", "menu_item_check_box" or "menu_item_radio".
@@ -67,7 +67,7 @@ struct AccessElement {
     std::vector<entt::entity> radio_group; // the other buttons in its button_group
 };
 
-// The actions every control takes, as Godot's Control adds them.
+// The actions every control takes.
 inline constexpr std::array<std::string_view, 5> kCommonActions{"focus", "blur", "show_tooltip",
                                                                 "hide_tooltip", "scroll_into_view"};
 
@@ -84,7 +84,7 @@ struct AccessTree {
                                             bool hidden = false);
 
 // Does what a screen reader asks of a control (or of an open popup menu's item, given its
-// index), as the callables Godot's controls add: "click" (a button presses at the next tick, as
+// index): "click" (a button presses at the next tick, as
 // ui::press; an item is picked, as ui::select_item), "focus", "blur", "show_tooltip",
 // "hide_tooltip", "scroll_into_view", "increment" and "decrement" (a Range by its step),
 // "set_value" (a Range's number, or a text field's text), "scroll_up", "scroll_down",
@@ -93,7 +93,7 @@ struct AccessTree {
 Result<void> accessibility_action(world::World& world, entt::entity entity, std::string_view action,
                                   const json::Value& data = {}, int item = -1);
 
-// What a screen reader would struggle with, as Godot's accessibility configuration warnings:
+// What a screen reader would struggle with:
 // a control that can take focus with no name, an accessibility_name holding the control's class
 // name or a control character, and related nodes that aren't controls.
 [[nodiscard]] std::vector<Problem> accessibility_problems(const world::World& world,

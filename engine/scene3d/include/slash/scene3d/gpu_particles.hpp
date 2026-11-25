@@ -18,8 +18,8 @@
 #include <string_view>
 #include <vector>
 
-// GPU particles in 3D, as Godot's GPUParticles3D: the gpu_particles_3d system works out each
-// emitter's steps (render::ParticleStep3D) every tick as Godot's node and particles storage do,
+// GPU particles in 3D: the gpu_particles_3d system works out each
+// emitter's steps (render::ParticleStep3D) every tick
 // and keeps those that can still have made a live particle; renderers run the steps their device
 // hasn't (RenderDevice::process_particles_3d) and draw each draw pass's mesh at every particle
 // (fill_particle_mesh). As GpuEmitter2D's, the steps are kept beside the components by entity ID,
@@ -52,22 +52,22 @@ using ImageLoader =
 using SdfLoader =
     std::function<Result<std::shared_ptr<const render::Gray16>>(const std::string& path)>;
 
-// The most vector fields and SDFs act on one emitter, as Godot's MAX_3D_TEXTURES.
+// The most vector fields and SDFs act on one emitter.
 inline constexpr std::size_t kMaxParticleFields3D = 7;
 
 // Adds the "gpu_particles_3d" system, which steps every GpuEmitter3D's emission each tick after
 // the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
-// end, as Godot's: lifetime times 2 - explosiveness after it started. Each tick it pairs each
+// end: lifetime times 2 - explosiveness after it started. Each tick it pairs each
 // emitter with the GPUParticlesAttractor3Ds and GPUParticlesCollision3Ds visible in the tree
-// whose bounds touch its visibility box and whose cull_mask shares a bit with its layers, as
-// Godot's scene cull does, in the order entities are stored (attractors, then spheres, boxes,
+// whose bounds touch its visibility box and whose cull_mask shares a bit with its layers,
+// in the order entities are stored (attractors, then spheres, boxes,
 // SDFs and height fields), and gives its steps that tick's attractors and colliders in its
 // particles' space: at most 32 of each, 7 vector fields and SDFs together and one height field.
 // It draws each ParticleColliderHeight3D's heights when it moves or changes, or every
 // tick with update_mode "always", after stepping one with follow_camera_enabled after the current
-// Camera3D by the length of its x and z axes, as Godot does. images reads vector fields' textures
+// Camera3D by the length of its x and z axes. images reads vector fields' textures
 // and sdfs SDFs' (through assets in canvas::install); without them, or for a texture that can't be
-// read or cut, a field reads as white and an SDF as 1 everywhere, as Godot's without one. models
+// read or cut, a field reads as white and an SDF as 1 everywhere. models
 // reads the models height fields draw. Called again, it reads with the new loaders.
 void add_gpu_particles_system(world::World& world, ImageLoader images = {}, SdfLoader sdfs = {},
                               ModelLoader models = {});
@@ -93,7 +93,7 @@ struct ParticleSurroundings3D {
 
 // A ParticleFlowField3D's texels: image cut into slices_horizontal by
 // slices_vertical slices, each the image's size over the slices rounded down, left to right then
-// top to bottom, as Godot's Texture3D importer cuts them; each texel's channels over 255.
+// top to bottom; each texel's channels over 255.
 // Refuses slices of no texels and fields of more than render::kMaxParticleFieldTexels3D.
 [[nodiscard]] Result<render::ParticleField3D>
 particle_field(const render::Image& image, int slices_horizontal, int slices_vertical);

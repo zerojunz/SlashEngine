@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "compositor.hpp"
@@ -13,27 +14,25 @@
 #include <string_view>
 #include <vector>
 
-// What every device shares to work out a Forward+ frame's screen-space reflections, as Godot 4.6's
-// SSEffects does: the passes of shaders/ssr.hlsl, the textures they draw, their uniforms, and
-// their CPU twins, which the software device uses. From the prepass's depth (halved first at half
-// size, keeping each 2x2 pixels' nearest) a pyramid of the nearest depths is made (Hi-Z). Each
-// pixel's reflected ray steps across the pyramid's cells, down a level where it might hit and up
-// one where it can't, and where it lands reads the frame before, moved to where it is now; rougher
-// pixels pick blurrier levels of a pyramid of the reflections, which the meshes' color pass puts
-// over the sky's.
+// What every device shares to work out a clustered frame's screen-space reflections: the passes of
+// shaders/ssr.hlsl, the textures they draw, their uniforms, and their CPU twins, which the software
+// device uses. From the prepass's depth (halved first at half size, keeping each 2x2 pixels'
+// nearest) a pyramid of the nearest depths is made (Hi-Z). Each pixel's reflected ray steps across
+// the pyramid's cells, down a level where it might hit and up one where it can't, and where it
+// lands reads the frame before, moved to where it is now; rougher pixels pick blurrier levels of a
+// pyramid of the reflections, which the meshes' color pass puts over the sky's.
 //
-// Godot's compute shaders sample with its hardware samplers and read past the screen's edges as
-// Vulkan does; these passes load texels and filter them in code, and keep every load inside its
-// texture, so every device draws the same values.
+// These passes load texels and filter them in code instead of with hardware samplers, and keep
+// every load inside its texture, so every device draws the same values.
 namespace slash::render::detail {
 
-// Whether a scene's frame draws SSR: in Forward+ only, as Godot's.
+// Whether a scene's frame draws SSR: in the clustered renderer only.
 [[nodiscard]] inline bool uses_ssr(const Scene3D& scene) {
     return scene.method == RenderMethod::ForwardPlus && scene.ssr.enabled;
 }
 
-// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO, SSR and the
-// compositor effects that ask read, and with TAA or FSR 2 its motion vectors.
+// Whether a scene's frame draws the clustered renderer's normal-roughness prepass, which SSAO, SSR
+// and the compositor effects that ask read, and with TAA or FSR 2 its motion vectors.
 [[nodiscard]] inline bool uses_prepass(const Scene3D& scene) {
     return uses_ssao(scene) || uses_ssr(scene) || uses_motion_vectors(scene) ||
            effects_need_normals(scene);
@@ -82,8 +81,8 @@ inline constexpr std::uint32_t kSsrLastFrame = 55;
 inline constexpr std::uint32_t kSsrWorld = 56;
 inline constexpr std::uint32_t kSsrUnbound = 57;
 
-// The texture formats: Hi-Z's floats, the normals' bytes, the reflections' half floats, the
-// filter rows' floats (as Godot's shared memory holds them) and the mip levels' byte.
+// The texture formats: Hi-Z's floats, the normals' bytes, the reflections' half floats, the filter
+// rows' floats and the mip levels' byte.
 enum class SsrFormat : std::uint8_t { R32F, RGBA8, RGBA16F, RGBA32F, R8 };
 [[nodiscard]] SsrFormat ssr_format(std::uint32_t texture);
 // How many channels a texture of the format has.
@@ -106,8 +105,8 @@ struct SsrStep {
 };
 
 // A frame's SSR: the size of each texture it draws (0 x 0 for those it doesn't), its size (the
-// frame's, or half), the levels of its pyramids, and its passes in order, as Godot's
-// ssr_allocate_buffers and screen_space_reflection. The frame before is kept at its size.
+// frame's, or half), the levels of its pyramids, and its passes in order. The frame before is kept
+// at its size.
 struct SsrPlan {
     std::array<PostSize, kSsrTextures> sizes{};
     PostSize size{};
@@ -120,7 +119,7 @@ struct SsrPlan {
 // before (kSsrLastFrame): copied at full size, averaged in 2x2 pixels at half.
 [[nodiscard]] SsrStep ssr_last_frame_step();
 
-// A camera as the passes see it: Godot's corrected projection (rows top to bottom, as a texture
+// A camera as the passes see it: the corrected projection (rows top to bottom, as a texture
 // coordinate's y runs) and the world to the camera's space.
 struct SsrCamera {
     Mat4 projection{};
@@ -128,8 +127,7 @@ struct SsrCamera {
 };
 [[nodiscard]] SsrCamera ssr_camera(const Scene3D& scene);
 
-// The passes' uniforms: b0 in space3. Godot's push constants and scene data for its shaders,
-// gathered.
+// The passes' uniforms: b0 in space3. The push constants and scene data for the shaders, gathered.
 struct SsrUniforms {
     // The pass, the level it draws, flags (kSsrOddWidth and kSsrOddHeight for a source of odd
     // width or height, kSsrOrthogonal) and the levels of the pyramids.

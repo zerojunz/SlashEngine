@@ -17,14 +17,14 @@ class Pool;
 } // namespace slash::jobs
 
 // Ray-traced shadows (RayTracing3D::shadows), as every device that traces rays traces them, and
-// their CPU twin. After Forward+'s prepass, each pixel it drew is put back in the world from its
-// depth through the camera it was drawn with, moved off its surface along its normal, and sends
-// shadow_samples rays toward each light with a ray slot (ray_shadow_slots), to points spread
-// across the light by its size, each pixel's at points of its own; the share of rays nothing
-// stops, through the light's shadow opacity, is the light's visibility there, which the mesh pass
-// reads (add_light in shaders/mesh.hlsl, ray_shadow in mesh.cpp). Random numbers are hashes of
-// the pixel, the light's slot and the sample's number, so a frame is the same on any number of
-// threads.
+// their CPU twin. After the clustered renderer's prepass, each pixel it drew is put back in the
+// world from its depth through the camera it was drawn with, moved off its surface along its
+// normal, and sends shadow_samples rays toward each light with a ray slot (ray_shadow_slots), to
+// points spread across the light by its size, each pixel's at points of its own; the share of rays
+// nothing stops, through the light's shadow opacity, is the light's visibility there, which the
+// mesh pass reads (add_light in shaders/mesh.hlsl, ray_shadow in mesh.cpp). Random numbers are
+// hashes of the pixel, the light's slot and the sample's number, so a frame is the same on any
+// number of threads.
 namespace slash::render::detail {
 
 // A light as its rays go toward it.
@@ -93,8 +93,8 @@ run_ray_shadows(const PathScene& scene, const PathTextures* textures,
                 std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
 
 // Ray-traced ambient occlusion (RayTracing3D::ambient_occlusion), traced in place of the
-// environment's SSAO: whether a frame asks for it (Forward+ with SSAO), and what its rays take
-// from the SSAO.
+// environment's SSAO: whether a frame asks for it (the clustered renderer with SSAO), and what its
+// rays take from the SSAO.
 struct RayOcclusion {
     std::uint32_t samples = 4;
     float radius = 1.0F;    // how far the rays go
@@ -108,18 +108,18 @@ struct RayOcclusion {
 [[nodiscard]] Float3 occlusion_ray(const Float3& normal, std::uint32_t x, std::uint32_t y,
                                    std::uint32_t width, std::uint32_t sample);
 
-// The frame's ray-traced ambient occlusion through scene's triangles (those that cast shadows),
-// as half floats, a value a pixel in rows from the top, as Godot's SSAO makes its occlusion from
-// the obscurance it gathers: 1 less intensity times the share of its rays that something stops
-// within radius (at most 0.98), to the power; 1 where a pixel has no rays. As run_ray_shadows
-// takes depth and normals.
+// The frame's ray-traced ambient occlusion through scene's triangles (those that cast shadows), as
+// half floats, a value a pixel in rows from the top, made from the obscurance it gathers: 1 less
+// intensity times the share of its rays that something stops within radius (at most 0.98), to the
+// power; 1 where a pixel has no rays. As run_ray_shadows takes depth and normals.
 [[nodiscard]] std::vector<float>
 run_ray_occlusion(const PathScene& scene, const PathTextures* textures,
                   const RayOcclusion& occlusion, const RayShadowFrame& frame,
                   std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
 
 // Ray-traced reflections (RayTracing3D::reflections), traced in place of the environment's SSR:
-// whether a frame asks for them (Forward+ with SSR) and how many rays a pixel reflects.
+// whether a frame asks for them (the clustered renderer with SSR) and how many rays a pixel
+// reflects.
 struct RayReflection {
     std::uint32_t samples = 1;
 };
@@ -151,7 +151,7 @@ run_ray_reflections(const PathScene& scene, const PathTextures& textures,
                     std::span<const float> depth, std::span<const float> normals, jobs::Pool* pool);
 
 // Ray-traced global illumination (RayTracing3D::global_illumination): whether a frame asks for it
-// (Forward+) and how many rays a pixel sends.
+// (the clustered renderer) and how many rays a pixel sends.
 struct RayGI {
     std::uint32_t samples = 4;
 };

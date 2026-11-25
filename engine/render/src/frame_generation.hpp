@@ -10,22 +10,22 @@
 #include <vector>
 
 // What every device shares to generate a frame between two drawn ones with AMD's FidelityFX SDK
-// 1.1.4's frame generation, the frame interpolation and optical flow of FSR 3.1, which Godot
-// doesn't have: the passes' sizes and the CPU twin of their shaders, which the software device
-// runs. A frame that asks for it (Scene3D::frame_generation) keeps its prepass's depth and motion
-// vectors, dilated and pushed back to where they were in the frame before (ffxFrameInterpolation-
-// Prepare: prepare_frame_generation). Generating a frame (RenderDevice::generate_frame) then finds
-// how the picture moved since the frame before by blocks of 8 x 8 pixels (the optical flow), lays
-// the game's vectors and the optical flow's over the frame halfway between as vector fields,
-// works out what each of the two frames can't see, blends the two frames moved halfway along the
-// vectors, and fills what neither shows from a pyramid of what was blended.
+// 1.1.4's frame generation, the frame interpolation and optical flow of FSR 3.1: the passes' sizes
+// and the CPU twin of their shaders, which the software device runs. A frame that asks for it
+// (Scene3D::frame_generation) keeps its prepass's depth and motion vectors, dilated and pushed back
+// to where they were in the frame before (ffxFrameInterpolation- Prepare:
+// prepare_frame_generation). Generating a frame (RenderDevice::generate_frame) then finds how the
+// picture moved since the frame before by blocks of 8 x 8 pixels (the optical flow), lays the
+// game's vectors and the optical flow's over the frame halfway between as vector fields, works out
+// what each of the two frames can't see, blends the two frames moved halfway along the vectors, and
+// fills what neither shows from a pyramid of what was blended.
 //
 // It follows AMD's passes line for line, with a few changes so that every device makes the same
-// pixels: the game's vector field writes every primary vector before any secondary one (AMD's
-// pass writes both at once, so a secondary vector stops on whichever primaries got there first),
-// the scene change pass reads its histograms before any group clears them, the pyramids are made
-// a level a pass where AMD's downsampler makes them in one, and textures AMD samples with a
-// sampler are filtered in code.
+// pixels: the game's vector field writes every primary vector before any secondary one (AMD's pass
+// writes both at once, so a secondary vector stops on whichever primaries got there first), the
+// scene change pass reads its histograms before any group clears them, the pyramids are made a
+// level a pass where AMD's downsampler makes them in one, and textures AMD samples with a sampler
+// are filtered in code.
 namespace slash::render::detail {
 
 using Float4 = std::array<float, 4>;

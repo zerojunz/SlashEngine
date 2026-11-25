@@ -344,7 +344,7 @@ void Field::draw(const world::TextField& edit, const EditState& state, bool focu
             at.x = style.margin(0);
         }
         if (clear) {
-            // Godot's line_edit_clear icon: a cross of two strokes 2 pixels wide in 16.
+            // The clear icon: a cross of two strokes 2 pixels wide in 16.
             const float sx = icon.x / kClearIconSize;
             const float sy = icon.y / kClearIconSize;
             for (const float skew : {-1.0F, 1.0F}) {

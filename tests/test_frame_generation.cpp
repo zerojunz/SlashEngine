@@ -306,7 +306,7 @@ TEST_CASE("Frame generation refuses what it can't generate from") {
     CHECK(device->generates_frames());
     CHECK_FALSE(null->generate_frame(TextureId{1}, TextureId{2}).ok());
 
-    // Only Forward+ frames that aren't captures or path traced keep their prepass for it.
+    // Only clustered-renderer frames that aren't captures or path traced keep their prepass for it.
     render::Scene3D scene;
     scene.frame_generation = true;
     CHECK(detail::uses_frame_generation(scene));

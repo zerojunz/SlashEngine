@@ -102,8 +102,8 @@ struct Record {
     json::Value checks;
     // An imported model: the file it was converted from (its name, such as "crate.fbx", and the
     // SHA-256 of its bytes) and the cleanup it was imported with (model.cleanup's options; null
-    // for none), which its next version is imported with too, as Godot's .import files keep a
-    // source's import settings.
+    // for none), which its next version is imported with too, so a source keeps its import
+    // settings.
     std::string source;
     std::string source_sha256;
     json::Value cleanup;

@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -15,9 +16,9 @@
 #include <string_view>
 #include <vector>
 
-// 3D meshes and what a frame sees them from and lights them by, as Godot's Compatibility
-// renderer: a forward pass over a depth buffer, before the frame's 2D draws, that lights each mesh
-// with the frame's lights and a Surface3D (Material3D, in device.hpp).
+// 3D meshes and what a frame sees them from and lights them by, as the compatibility renderer does:
+// a forward pass over a depth buffer, before the frame's 2D draws, that lights each mesh with the
+// frame's lights and a Surface3D (Material3D, in device.hpp).
 //
 //   auto mesh = device->create_mesh(vertices, indices);
 //   render::Scene3D scene{.camera = render::look_at({0, 2, 5}, {0, 0, 0}, {0, 1, 0}),
@@ -27,34 +28,34 @@
 //   device->draw_mesh(mesh, transform, {.albedo = {0.8F, 0.2F, 0.2F, 1.0F}});
 //   device->end_frame();
 //
-// Space is Godot's: Y up, X right, and a camera looks down its -Z. Front faces wind clockwise as
-// seen on the target, as Godot's do. Depth is reversed: projections map the near plane to 1 and
-// the far plane to 0, and nearer pixels win.
+// Space is Y up, X right, and a camera looks down its -Z. Front faces wind clockwise as seen on the
+// target. Depth is reversed: projections map the near plane to 1 and the far plane to 0, and nearer
+// pixels win.
 //
-// A light with shadow set casts shadows, as the Compatibility renderer casts them: each frame
-// draws the meshes into shadow maps first, a directional light's into up to four cascades of one
-// atlas and an omni or spot light's into tiles of another (six for an omni light, a cube's faces),
-// and the forward pass compares each pixel with them, with Godot's biases and filters.
+// A light with shadow set casts shadows: each frame draws the meshes into shadow maps first, a
+// directional light's into up to four cascades of one atlas and an omni or spot light's into tiles
+// of another (six for an omni light, a cube's faces), and the forward pass compares each pixel with
+// them.
 //
 // A scene's sky (Sky3D) draws first, over the whole target, worked out for each pixel's view
-// direction as Godot's sky shaders do; then fog (Fog3D) fades the meshes, and the sky by its sky
-// affect, toward the fog's color with distance.
+// direction; then fog (Fog3D) fades the meshes, and the sky by its sky affect, toward the fog's
+// color with distance.
 namespace slash::render {
 
 // A mesh on the device. NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
 enum class MeshId : std::uint32_t { None = 0 };
 
 // One corner of a mesh, in the mesh's own space: a position, a normal, a tangent and the sign of
-// its binormal (cross(normal, tangent) times w, as Godot's), a texture coordinate from (0, 0) at
-// the texture's top left, and a color.
+// its binormal (cross(normal, tangent) times w), a texture coordinate from (0, 0) at the texture's
+// top left, and a color.
 struct Vertex3D {
     std::array<float, 3> position{};
     std::array<float, 3> normal{0.0F, 1.0F, 0.0F};
     std::array<float, 4> tangent{1.0F, 0.0F, 0.0F, 1.0F};
     std::array<float, 2> uv{};
     std::array<std::uint8_t, 4> rgba{255, 255, 255, 255};
-    // The second texture coordinate, where a lightmap is sampled (LightmapShading), as Godot's
-    // UV2: each triangle its own place in 0..1.
+    // The second texture coordinate, where a lightmap is sampled (LightmapShading): each triangle
+    // its own place in 0..1.
     std::array<float, 2> uv2{};
 };
 
@@ -72,8 +73,8 @@ struct SkinWeights {
     std::array<float, 8> weights{};
 };
 
-// A blend shape's offsets from the rest vertices, as Godot's: one per vertex, or none where it
-// moves no normals or tangents.
+// A blend shape's offsets from the rest vertices: one per vertex, or none where it moves no normals
+// or tangents.
 struct SkinShape {
     std::vector<std::array<float, 3>> positions;
     std::vector<std::array<float, 3>> normals;
@@ -81,7 +82,7 @@ struct SkinShape {
 };
 
 // What a skin moves: rest vertices, their weights (none for a mesh with blend shapes only) and
-// blend shapes, as Godot's skeleton shader takes a surface.
+// blend shapes.
 struct SkinDesc {
     std::span<const Vertex3D> vertices{};   // NOLINT(readability-redundant-member-init)
     std::span<const SkinWeights> weights{}; // NOLINT(readability-redundant-member-init)
@@ -96,15 +97,14 @@ struct SkinJoint {
     std::array<float, 3> z{0.0F, 0.0F, 1.0F};
     std::array<float, 3> origin{};
 };
-// Reads project.json's rendering object's mesh_lod.lod_change.threshold_pixels, as Godot's
-// rendering/mesh_lod/lod_change/threshold_pixels: how many pixels a coarser LOD of a mesh may be
-// off by where it is drawn; 0 draws every mesh in full. What is missing or not a number at or
-// above 0 keeps the default, 1.
+// Reads project.json's rendering object's mesh_lod.lod_change.threshold_pixels: how many pixels a
+// coarser LOD of a mesh may be off by where it is drawn; 0 draws every mesh in full. What is
+// missing or not a number at or above 0 keeps the default, 1.
 [[nodiscard]] float mesh_lod_threshold(const json::Value& rendering);
-// Occlusion culling, as Godot's rendering/occlusion_culling settings: whether the camera's
-// OccluderInstance3Ds hide meshes (use_occlusion_culling), the rays cast per thread into them
-// (occlusion_rays_per_thread, which sizes the depth buffer) and whether the rays move a little
-// each frame (jitter_projection), so thin gaps between occluders show.
+// Occlusion culling settings: whether the camera's Occluder3Ds hide meshes (use_occlusion_culling),
+// the rays cast per thread into them (occlusion_rays_per_thread, which sizes the depth buffer) and
+// whether the rays move a little each frame (jitter_projection), so thin gaps between occluders
+// show.
 struct OcclusionCulling {
     bool enabled = false;
     int rays_per_thread = 512;
@@ -115,9 +115,8 @@ struct OcclusionCulling {
 // Reads project.json's rendering object's occlusion_culling. What is missing or of the wrong type
 // keeps its default.
 [[nodiscard]] OcclusionCulling occlusion_culling(const json::Value& rendering);
-// The most lights a frame's scene may have, Godot's Forward+ limits: directional lights
-// (MAX_DIRECTIONAL_LIGHTS), and omni and spot lights (rendering/limits/cluster_builder/
-// max_clustered_elements).
+// The most lights a frame's scene may have with the clustered renderer: directional lights, and
+// omni and spot lights.
 inline constexpr std::size_t kMaxDirectionalLights3D = 8;
 inline constexpr std::size_t kMaxClusteredLights3D = 512;
 // The lights the Compatibility method lights each pixel with: the first in a scene's list.
@@ -127,35 +126,35 @@ inline constexpr std::size_t kMaxLights3D = 64;
 inline constexpr std::size_t kMaxDirectionalShadows = 4;
 inline constexpr std::size_t kMaxPositionalShadows = 16;
 
-// The bits of a light's cull mask that count: Godot's 20 render layers. Shaders get them as a
-// whole number in a float, which holds it exactly, since bits stored in a float can come back
-// changed (Apple's OpenGL makes the NaN that 0xFFFFFFFF is canonical).
+// The bits of a light's cull mask that count: 20 render layers. Shaders get them as a whole number
+// in a float, which holds it exactly, since bits stored in a float can come back changed (Apple's
+// OpenGL makes the NaN that 0xFFFFFFFF is canonical).
 inline constexpr std::uint32_t kRenderLayers = 0xFFFFFU;
 
-// Which faces a mesh hides, as Godot's cull_mode.
+// Which faces a mesh hides.
 enum class CullMode : std::uint8_t {
-    Back,     // faces seen from behind, Godot's default
+    Back,     // faces seen from behind, the default
     Front,    // faces seen from the front
     Disabled, // none; a face seen from behind is lit as if it faced the camera
 };
 
-// How a mesh's alpha shows, as Godot's transparency.
+// How a mesh's alpha shows.
 enum class Transparency : std::uint8_t {
-    Disabled,     // opaque, Godot's default
+    Disabled,     // opaque, the default
     Alpha,        // blended, after the opaque meshes, without writing depth
     AlphaScissor, // opaque where alpha reaches alpha_scissor_threshold, and not drawn elsewhere
     // Opaque where alpha reaches a threshold hashed from the place on the mesh, and not drawn
-    // elsewhere, so alpha dithers in place: Godot's ALPHA_HASH (Wyman and McGuire's hashed alpha
-    // testing), for hair and fur. alpha_hash_scale sets the grain.
+    // elsewhere, so alpha dithers in place (Wyman and McGuire's hashed alpha testing), for hair and
+    // fur. alpha_hash_scale sets the grain.
     AlphaHash,
 };
 
-// Which channel of a texture a value is read from, as Godot's TextureChannel.
+// Which channel of a texture a value is read from.
 enum class TextureChannel : std::uint8_t { Red, Green, Blue, Alpha, Gray };
 
 enum class LightType : std::uint8_t { Directional, Omni, Spot };
 
-// Which shadow maps a mesh is drawn into, as Godot's GeometryInstance3D.cast_shadow.
+// Which shadow maps a mesh is drawn into.
 enum class ShadowCasting : std::uint8_t {
     Off,         // none
     On,          // every light's whose shadow_caster_mask shares a bit with its layers, culled as
@@ -164,13 +163,13 @@ enum class ShadowCasting : std::uint8_t {
     ShadowsOnly, // the same as On, and it isn't drawn in the frame: it casts but isn't seen
 };
 
-// How a directional light's shadow map covers what the camera sees, as Godot's
-// SunLight3D.directional_shadow_mode: in one piece, or in cascades split by distance.
+// How a directional light's shadow map covers what the camera sees: in one piece, or in cascades
+// split by distance.
 enum class DirectionalShadowMode : std::uint8_t { Orthogonal, Parallel2Splits, Parallel4Splits };
 
-// How soft shadows' edges are, as Godot's soft_shadow_filter_quality in the Compatibility
-// renderer: hard and very low take one sample of the shadow map, low and medium five, high and
-// ultra thirteen. Every sample filters four texels. An omni light's shadow takes one sample.
+// How soft shadows' edges are in the compatibility renderer: hard and very low take one sample of
+// the shadow map, low and medium five, high and ultra thirteen. Every sample filters four texels.
+// An omni light's shadow takes one sample.
 enum class ShadowQuality : std::uint8_t {
     Hard,
     SoftVeryLow,
@@ -185,7 +184,7 @@ inline constexpr std::array<std::string_view, 6> kShadowQualityNames{
 
 struct Image; // in device.hpp
 
-// A light in a frame's scene, with Godot's Light3D parameters and defaults.
+// A light in a frame's scene.
 struct Light3D {
     LightType type = LightType::Directional;
     std::array<float, 3> color{1.0F, 1.0F, 1.0F}; // sRGB
@@ -209,9 +208,9 @@ struct Light3D {
     bool shadow = false;
     float shadow_bias = 0.1F;        // pushes depths away from the light, against acne
     float shadow_normal_bias = 1.0F; // moves pixels along their normals, in shadow map texels
-    // How far a subsurface material's transmittance (Material3D::transmittance) moves the point
-    // it measures into the mesh, along its normal: in world units for an omni or spot light, and a
-    // hundredth of each cascade's depth for a directional light, as Godot's.
+    // How far a subsurface material's transmittance (Material3D::transmittance) moves the point it
+    // measures into the mesh, along its normal: in world units for an omni or spot light, and a
+    // hundredth of each cascade's depth for a directional light.
     float shadow_transmittance_bias = 0.05F;
     float shadow_opacity = 1.0F;           // 0 casts no shadow, 1 a full one
     bool shadow_reverse_cull_face = false; // draws the faces meshes cull, and culls the rest
@@ -227,31 +226,31 @@ struct Light3D {
     float shadow_fade_start = 0.8F;
     float shadow_max_distance = 100.0F;
     float shadow_pancake_size = 20.0F;
-    // Baked into lightmaps (Godot's BAKE_STATIC): meshes with a lightmap (LightmapShading) leave
-    // it out, since theirs holds its light; the rest are lit by it as by any other.
+    // Baked into lightmaps: meshes with a lightmap (LightmapShading) leave it out, since theirs
+    // holds its light; the rest are lit by it as by any other.
     bool baked = false;
-    // How much it lights volumetric fog, as Godot's light_volumetric_fog_energy.
+    // How much it lights volumetric fog.
     float volumetric_fog_energy = 1.0F;
-    // How much it lights what Sdfgi3D bounces, as Godot's light_indirect_energy (0 where its bake
-    // mode is disabled, which SDFGI leaves out).
+    // How much it lights what Sdfgi3D bounces (0 where its bake mode is disabled, which SDFGI
+    // leaves out).
     float indirect_energy = 1.0F;
     // How big it is, which softens its ray-traced shadows (RayTracing3D): an omni or spot light's
-    // radius, as Godot's light_size, or a directional light's angular diameter in degrees, as
-    // light_angular_distance. 0 is a point, whose shadows are hard.
+    // radius, or a directional light's angular diameter in degrees. 0 is a point, whose shadows are
+    // hard.
     float size = 0.0F;
-    // Forward+: the texture an omni or spot light casts, as Godot's light_projector, tinting its
-    // light by the texture's color times its alpha: through a spot light's cone (its top toward
-    // up), or an omni light's dual paraboloid (the top half round its -Z, the bottom half round
-    // +Z). Its texture coordinates move by projector_offset first, wrapping, so it can scroll.
+    // Clustered renderer: the texture an omni or spot light casts, tinting its light by the
+    // texture's color times its alpha: through a spot light's cone (its top toward up), or an omni
+    // light's dual paraboloid (the top half round its -Z, the bottom half round +Z). Its texture
+    // coordinates move by projector_offset first, wrapping, so it can scroll.
     std::shared_ptr<const Image> projector{}; // NOLINT(readability-redundant-member-init)
     std::array<float, 2> projector_offset{};
 
     bool operator==(const Light3D&) const = default;
 };
 
-// The shadow atlases' sizes in texels, powers of two from 256 to 16384, and their filters, as
-// Godot's rendering/lights_and_shadows/directional_shadow and positional_shadow settings. A
-// device draws an atlas at most as large as its largest texture.
+// The shadow atlases' sizes in texels, powers of two from 256 to 16384, and their filters, as the
+// directional_shadow and positional_shadow settings. A device draws an atlas at most as large as
+// its largest texture.
 struct ShadowSettings {
     std::uint32_t directional_size = 4096;
     ShadowQuality directional_quality = ShadowQuality::SoftLow;
@@ -259,7 +258,7 @@ struct ShadowSettings {
     ShadowQuality positional_quality = ShadowQuality::SoftLow;
     // use_physical_light_units: lights shine by their lux and lumens, tinted by their color
     // temperature, and backgrounds and emission by their nits, scaled by the camera's exposure
-    // normalization, as Godot's.
+    // normalization.
     bool use_physical_light_units = false;
 
     bool operator==(const ShadowSettings&) const = default;
@@ -275,39 +274,37 @@ struct ShadowSettings {
 // NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
 enum class TextureId : std::uint32_t;
 
-// How the lit 3D world's colors map to the screen's, as Godot's Environment.tonemap_mode.
+// How the lit 3D world's colors map to the screen's.
 enum class Tonemapper : std::uint8_t { Linear, Reinhard, Filmic, Aces, Agx };
 inline constexpr std::array<std::string_view, 5> kTonemapperNames{"linear", "reinhard", "filmic",
                                                                   "aces", "agx"};
 
-// How glow blends into the lit 3D world, as Godot's Environment.glow_blend_mode with its Forward+
-// renderer: added, screened (never past white), soft light (after tonemapping), replacing it, or
-// mixed in by glow_mix.
+// How glow blends into the lit 3D world with the clustered renderer: added, screened (never past
+// white), soft light (after tonemapping), replacing it, or mixed in by glow_mix.
 enum class GlowBlendMode : std::uint8_t { Additive, Screen, Softlight, Replace, Mix };
 inline constexpr std::array<std::string_view, 5> kGlowBlendModeNames{"additive", "screen",
                                                                      "softlight", "replace", "mix"};
 
-// Glow's levels with Forward+, each half the size of the last, as Godot's RS::MAX_GLOW_LEVELS.
+// Glow's levels with the clustered renderer, each half the size of the last.
 inline constexpr std::size_t kMaxGlowLevels = 7;
 
-// The shape of depth of field's blur, as Godot's RS::DOFBokehShape: a box (two straight passes),
-// a hexagon (a straight pass, then two slanted ones) or a circle (one pass, at half size).
+// The shape of depth of field's blur: a box (two straight passes), a hexagon (a straight pass, then
+// two slanted ones) or a circle (one pass, at half size).
 enum class BokehShape : std::uint8_t { Box, Hexagon, Circle };
 inline constexpr std::array<std::string_view, 3> kBokehShapeNames{"box", "hexagon", "circle"};
-// How many samples depth of field's blur takes, as Godot's RS::DOFBlurQuality: a box or hexagon
-// blurs at half size with 6 or 12 samples a side for very_low and low, and at full size with 12
-// or 24 for medium and high; a circle steps 8, 4, 1 or 0.5 pixels further each sample.
+// How many samples depth of field's blur takes: a box or hexagon blurs at half size with 6 or 12
+// samples a side for very_low and low, and at full size with 12 or 24 for medium and high; a circle
+// steps 8, 4, 1 or 0.5 pixels further each sample.
 enum class BokehQuality : std::uint8_t { VeryLow, Low, Medium, High };
 inline constexpr std::array<std::string_view, 4> kBokehQualityNames{"very_low", "low", "medium",
                                                                     "high"};
 
-// Godot's rendering/camera/depth_of_field settings.
+// Depth of field settings.
 struct DepthOfFieldSettings {
     BokehShape bokeh_shape = BokehShape::Hexagon;
     BokehQuality bokeh_quality = BokehQuality::Low;
     // Moves each pixel's samples along the blur by a random part of a step, which smooths banding
-    // into noise. Godot picks a new seed each frame; here it comes from the game time, so the
-    // same frames come out the same.
+    // into noise. The seed comes from the game time, so the same frames come out the same.
     bool use_jitter = false;
 
     bool operator==(const DepthOfFieldSettings&) const = default;
@@ -317,23 +314,21 @@ struct DepthOfFieldSettings {
 // its default.
 [[nodiscard]] DepthOfFieldSettings depth_of_field_settings_from_json(const json::Value& value);
 
-// How many samples screen-space ambient occlusion takes and how it smooths them, as Godot's
-// RS::EnvironmentSSAOQuality: very_low takes 3 samples in half its slices and blurs plainly,
-// low 5, medium 12, high 12 with depth mipmaps and edges from normals, and ultra 5 to 32 where
-// an importance map asks for them.
+// How many samples screen-space ambient occlusion takes and how it smooths them: very_low takes 3
+// samples in half its slices and blurs plainly, low 5, medium 12, high 12 with depth mipmaps and
+// edges from normals, and ultra 5 to 32 where an importance map asks for them.
 enum class SsaoQuality : std::uint8_t { VeryLow, Low, Medium, High, Ultra };
 inline constexpr std::array<std::string_view, 5> kSsaoQualityNames{"very_low", "low", "medium",
                                                                    "high", "ultra"};
 
-// Godot's rendering/environment/subsurface_scattering/subsurface_scattering_quality: how many
-// samples Forward+'s subsurface scattering blur takes across and down (11, 17 or 25), or none.
+// How many samples the clustered renderer's subsurface scattering blur takes across and down (11,
+// 17 or 25), or none.
 enum class SubsurfaceQuality : std::uint8_t { Disabled, Low, Medium, High };
 inline constexpr std::array<std::string_view, 4> kSubsurfaceQualityNames{"disabled", "low",
                                                                          "medium", "high"};
 
-// Godot's rendering/environment/subsurface_scattering settings: the quality, the blur's width
-// as a share of the screen at full strength (scale), and how much it narrows with distance
-// (depth_scale, from 0 for none to 1).
+// Subsurface scattering settings: the quality, the blur's width as a share of the screen at full
+// strength (scale), and how much it narrows with distance (depth_scale, from 0 for none to 1).
 struct SubsurfaceSettings {
     SubsurfaceQuality quality = SubsurfaceQuality::Low;
     float scale = 0.05F;
@@ -345,7 +340,7 @@ struct SubsurfaceSettings {
 // "depth_scale"}. What is missing or not valid keeps its default.
 [[nodiscard]] SubsurfaceSettings subsurface_settings_from_json(const json::Value& value);
 
-// Godot's rendering/environment/ssao settings.
+// Screen-space ambient occlusion settings.
 struct SsaoSettings {
     SsaoQuality quality = SsaoQuality::Medium;
     // Works at half the resolution in each direction again: a quarter of the frame's, rather
@@ -362,12 +357,11 @@ struct SsaoSettings {
 // "blur_passes", "fadeout_from", "fadeout_to"}. What is missing or not valid keeps its default.
 [[nodiscard]] SsaoSettings ssao_settings_from_json(const json::Value& value);
 
-// Forward+: screen-space ambient occlusion, as Godot's Environment.ssao_* with its Forward+
-// renderer. A prepass draws the opaque meshes' depth and view-space normals, the occlusion of
-// each pixel is worked out from the depths around it by Intel's ASSAO, as Godot's ssao.glsl,
-// blurred along edges and put back together at the frame's size, and the meshes' color pass
-// darkens their ambient light by it (and their direct light, by light_affect). Transparent meshes
-// take none, as in Godot. Compatibility has no SSAO.
+// Clustered renderer: screen-space ambient occlusion. A prepass draws the opaque meshes' depth and
+// view-space normals, the occlusion of each pixel is worked out from the depths around it by
+// Intel's ASSAO, blurred along edges and put back together at the frame's size, and the meshes'
+// color pass darkens their ambient light by it (and their direct light, by light_affect).
+// Transparent meshes take none. The compatibility renderer has no SSAO.
 struct Ssao3D {
     bool enabled = false;
     float radius = 1.0F;     // how far around a pixel occludes it, in world units
@@ -376,8 +370,7 @@ struct Ssao3D {
     float detail = 0.5F;     // how much the pixels right beside a pixel occlude it
     float horizon = 0.06F;   // samples below this angle above the surface don't occlude
     float sharpness = 0.98F; // how much the blur keeps to edges
-    // How much it darkens direct light, from 0 to 1: light_affect times ao_channel_affect, as
-    // Godot 4.6's scene shader mixes the two.
+    // How much it darkens direct light, from 0 to 1: light_affect times ao_channel_affect.
     float light_affect = 0.0F;
     float ao_channel_affect = 0.0F;
     SsaoSettings settings{};
@@ -385,7 +378,7 @@ struct Ssao3D {
     bool operator==(const Ssao3D&) const = default;
 };
 
-// Godot's rendering/environment/screen_space_reflection settings.
+// Screen-space reflection settings.
 struct SsrSettings {
     // Traces at half the frame's resolution in each direction, then resolves the reflections to
     // its size along the depths and normals.
@@ -397,14 +390,13 @@ struct SsrSettings {
 // missing or not valid keeps its default.
 [[nodiscard]] SsrSettings ssr_settings_from_json(const json::Value& value);
 
-// Forward+: screen-space reflections, as Godot 4.6's Environment.ssr_* with its Forward+
-// renderer. From the prepass's depth and normals, each opaque pixel's reflected ray is traced
-// across a pyramid of the frame's nearest depths (Hi-Z) until it hits something on the screen,
-// which is read from the frame before, as it lands now; rougher pixels read blurrier levels of the
-// reflections. The meshes' color pass puts them over the reflections from the sky's radiance.
-// What the ray hits must be on the screen: things off it, or behind what is in front, are not
-// reflected. Transparent meshes take none, and pixels from roughness 0.7 up none either, as in
-// Godot. Compatibility has no SSR.
+// Clustered renderer: screen-space reflections. From the prepass's depth and normals, each opaque
+// pixel's reflected ray is traced across a pyramid of the frame's nearest depths (Hi-Z) until it
+// hits something on the screen, which is read from the frame before, as it lands now; rougher
+// pixels read blurrier levels of the reflections. The meshes' color pass puts them over the
+// reflections from the sky's radiance. What the ray hits must be on the screen: things off it, or
+// behind what is in front, are not reflected. Transparent meshes take none, and pixels from
+// roughness 0.7 up none either. The compatibility renderer has no SSR.
 struct Ssr3D {
     bool enabled = false;
     std::uint32_t max_steps = 64; // how many steps a ray takes at most
@@ -416,37 +408,35 @@ struct Ssr3D {
     bool operator==(const Ssr3D&) const = default;
 };
 
-// What happens to the 3D world's colors after it is lit, as Godot's Environment's tonemap, glow
-// and adjustments.
+// What happens to the 3D world's colors after it is lit: tonemap, glow and adjustments.
 //
-// Forward+ draws the sky and meshes linear into a texture of 16-bit floats the target's size, as
-// Godot's Forward+ renderer does: glow blurs its parts brighter than glow_hdr_threshold into
-// glow_levels textures, the first half the target's size and each next one half the last, and a
-// pass over the target exposes the colors, blends the glow in by glow_blend_mode, tonemaps, then
-// adjusts brightness, contrast and saturation and corrects colors, before the frame's 2D draws go
-// over it.
+// The clustered renderer draws the sky and meshes linear into a texture of 16-bit floats the
+// target's size: glow blurs its parts brighter than glow_hdr_threshold into glow_levels textures,
+// the first half the target's size and each next one half the last, and a pass over the target
+// exposes the colors, blends the glow in by glow_blend_mode, tonemaps, then adjusts brightness,
+// contrast and saturation and corrects colors, before the frame's 2D draws go over it.
 //
-// Compatibility follows Godot's Compatibility renderer. Without glow or adjustments, meshes
-// tonemap as they draw. With either, they draw untonemapped into a texture of the target's size,
-// glow blurs its bright parts into four textures each half the size of the last, and a pass over
-// the target screens the glow in, tonemaps, adjusts and corrects colors. The textures are 8 bits a
-// channel, so glow comes from colors above glow_hdr_threshold only when it is below 1, or from
-// glow_bloom, and glow_levels, glow_strength, glow_mix and glow_blend_mode do nothing.
+// The compatibility renderer works differently. Without glow or adjustments, meshes tonemap as they
+// draw. With either, they draw untonemapped into a texture of the target's size, glow blurs its
+// bright parts into four textures each half the size of the last, and a pass over the target
+// screens the glow in, tonemaps, adjusts and corrects colors. The textures are 8 bits a channel, so
+// glow comes from colors above glow_hdr_threshold only when it is below 1, or from glow_bloom, and
+// glow_levels, glow_strength, glow_mix and glow_blend_mode do nothing.
 struct PostProcess {
     Tonemapper tonemapper = Tonemapper::Linear;
     float exposure = 1.0F; // multiplies the lit colors before they are tonemapped
-    // The color tonemapped to white: with Forward+ at least 1 (2 for AgX), and Compatibility's
-    // AgX ignores it.
+    // The color tonemapped to white: with the clustered renderer at least 1 (2 for AgX), and the
+    // compatibility renderer's AgX ignores it.
     float white = 1.0F;
-    float agx_contrast = 1.25F; // Forward+'s AgX: how steep its curve is, as tonemap_agx_contrast
+    float agx_contrast = 1.25F; // The clustered renderer's AgX: how steep its curve is
     bool glow = false;
     float glow_intensity = 0.3F;
-    // Forward+: how much each level adds, already divided by their sum when the environment
-    // normalizes them. Levels at 0.01 or less are neither blurred nor added.
+    // Clustered renderer: how much each level adds, already divided by their sum when the
+    // environment normalizes them. Levels at 0.01 or less are neither blurred nor added.
     std::array<float, kMaxGlowLevels> glow_levels{0.0F, 0.8F, 0.4F, 0.1F, 0.0F, 0.0F, 0.0F};
-    float glow_strength = 1.0F; // Forward+: multiplies each level as it is blurred
-    float glow_mix = 0.05F;     // Forward+: how much glow replaces the colors in the mix mode
-    GlowBlendMode glow_blend_mode = GlowBlendMode::Screen; // Forward+
+    float glow_strength = 1.0F; // Clustered renderer: multiplies each level as it is blurred
+    float glow_mix = 0.05F;     // Clustered: how much glow replaces the colors in mix mode
+    GlowBlendMode glow_blend_mode = GlowBlendMode::Screen; // Clustered renderer
     float glow_bloom = 0.0F;              // how much of every color glows, from 0 to 1
     float glow_hdr_threshold = 1.0F;      // colors above it glow
     float glow_hdr_scale = 2.0F;          // how far above it they reach full glow
@@ -455,36 +445,33 @@ struct PostProcess {
     float brightness = 1.0F;
     float contrast = 1.0F;
     float saturation = 1.0F;
-    // With adjustments, a lookup texture colors pass through: one texel tall, each channel read
-    // at its own value along x (Godot's 1D LUT, a GradientTexture1D), or as wide as its height
-    // squared, height slices of height texels side by side for blue, x in each red and y green
-    // (a 3D LUT). TextureId{} for none.
+    // With adjustments, a lookup texture colors pass through: one texel tall, each channel read at
+    // its own value along x (a 1D LUT), or as wide as its height squared, height slices of height
+    // texels side by side for blue, x in each red and y green (a 3D LUT). TextureId{} for none.
     TextureId color_correction{};
-    // Forward+: auto exposure, as Godot's CameraAttributes. Each frame's brightness is measured
-    // as Godot's luminance_reduce.glsl does, averaging each pixel's brightest channel in blocks of
-    // 8 x 8, then the blocks' averages, down to one value; it moves auto_exposure_adjust of the way
-    // from the last frame's to the new one and is kept from auto_exposure_min to
-    // auto_exposure_max. The colors are exposed by auto_exposure_scale over it (a brightness
-    // below 0.0001 counts as 0.0001), and so is the glow's first level. A frame whose
-    // auto_exposure_version isn't the last measured one's, or the first at its size, takes its own
-    // brightness as it is, as Godot does when auto exposure starts.
+    // Clustered renderer: auto exposure. Each frame's brightness is measured by averaging each
+    // pixel's brightest channel in blocks of 8 x 8, then the blocks' averages, down to one value;
+    // it moves auto_exposure_adjust of the way from the last frame's to the new one and is kept
+    // from auto_exposure_min to auto_exposure_max. The colors are exposed by auto_exposure_scale
+    // over it (a brightness below 0.0001 counts as 0.0001), and so is the glow's first level. A
+    // frame whose auto_exposure_version isn't the last measured one's, or the first at its size,
+    // takes its own brightness as it is.
     bool auto_exposure = false;
     float auto_exposure_scale = 0.4F;
     float auto_exposure_min = 0.0F;
     float auto_exposure_max = 1.0F;
     float auto_exposure_adjust = 1.0F; // from 0 (stays) to 1 (the new brightness)
     std::uint64_t auto_exposure_version = 0;
-    // Averages the natural logarithms of the brightnesses instead and takes the exponential of
-    // the last (a geometric mean, as Unreal's auto exposure meters in log space), so a few bright
-    // pixels don't darken the frame as much. SlashEngine's own: Godot averages the brightnesses.
+    // Averages the natural logarithms of the brightnesses instead and takes the exponential of the
+    // last (a geometric mean, as Unreal's auto exposure meters in log space), so a few bright
+    // pixels don't darken the frame as much.
     bool auto_exposure_log = false;
-    // Forward+: depth of field, as Godot's CameraAttributes, before auto exposure and glow. Each
-    // pixel's blur size comes from its distance from the camera along its view: past
-    // dof_far_distance it grows to dof_amount times 64 pixels over dof_far_transition, and nearer
-    // than dof_near_distance over dof_near_transition. A negative transition grows it the
-    // physical way instead, as Godot's automatic transition. The world is blurred by the shape and
-    // quality of depth_of_field and blended in by each pixel's blur size, as Godot's
-    // bokeh_dof.glsl.
+    // Clustered renderer: depth of field, before auto exposure and glow. Each pixel's blur size
+    // comes from its distance from the camera along its view: past dof_far_distance it grows to
+    // dof_amount times 64 pixels over dof_far_transition, and nearer than dof_near_distance over
+    // dof_near_transition. A negative transition grows it the physical way instead (an automatic
+    // transition). The world is blurred by the shape and quality of depth_of_field and blended in
+    // by each pixel's blur size.
     bool dof_far = false;
     float dof_far_distance = 10.0F;
     float dof_far_transition = 5.0F;
@@ -498,9 +485,8 @@ struct PostProcess {
     bool operator==(const PostProcess&) const = default;
 };
 
-// What a frame's 3D world shows behind its meshes, as Godot's Environment.background_mode with
-// its Compatibility renderer: nothing but the clear color, or a sky worked out for each pixel's
-// view direction and drawn before the meshes.
+// What a frame's 3D world shows behind its meshes: nothing but the clear color, or a sky worked out
+// for each pixel's view direction and drawn before the meshes.
 enum class SkyKind : std::uint8_t {
     None,       // the clear color, untouched
     Color,      // color: the clear color or background color, fogged as a sky is
@@ -509,7 +495,7 @@ enum class SkyKind : std::uint8_t {
     Panorama,   // a SkyPanorama
 };
 
-// A sky shows the sun of at most this many directional lights, as Godot's Compatibility renderer.
+// A sky shows the sun of at most this many directional lights.
 inline constexpr std::size_t kMaxSkyLights = 4;
 
 // A SunLight3D the sky shows: its sun's place and size in the sky.
@@ -522,8 +508,8 @@ struct SkyLight {
     bool operator==(const SkyLight&) const = default;
 };
 
-// Godot's ProceduralSkyMaterial: a gradient from the horizon up to the sky's top and down to the
-// ground's bottom, with each light's sun on it. Colors are sRGB.
+// A procedural sky: a gradient from the horizon up to the sky's top and down to the ground's
+// bottom, with each light's sun on it. Colors are sRGB.
 struct ProceduralSky {
     std::array<float, 3> sky_top_color{0.385F, 0.454F, 0.55F};
     std::array<float, 3> sky_horizon_color{0.6463F, 0.6558F, 0.6708F};
@@ -543,8 +529,8 @@ struct ProceduralSky {
     bool operator==(const ProceduralSky&) const = default;
 };
 
-// Godot's PhysicalSkyMaterial: Rayleigh and Mie scattering of the first light's sun, after
-// Preetham. Colors are sRGB.
+// A physical sky: Rayleigh and Mie scattering of the first light's sun, after Preetham. Colors are
+// sRGB.
 struct PhysicalSky {
     float rayleigh_coefficient = 2.0F;
     std::array<float, 3> rayleigh_color{0.3F, 0.405F, 0.6F};
@@ -561,8 +547,8 @@ struct PhysicalSky {
     bool operator==(const PhysicalSky&) const = default;
 };
 
-// Godot's PanoramaSkyMaterial: an equirectangular texture all round. Whether it filters is the
-// texture's own sampler's choice.
+// A panorama sky: an equirectangular texture all round. Whether it filters is the texture's own
+// sampler's choice.
 struct PanoramaSky {
     TextureId panorama{};
     float energy_multiplier = 1.0F;
@@ -577,7 +563,7 @@ struct Sky3D {
     ProceduralSky procedural;
     PhysicalSky physical;
     PanoramaSky panorama;
-    float energy = 1.0F; // Godot's background_energy_multiplier
+    float energy = 1.0F; // multiplies the sky's brightness
     // The world to the sky's space, column-major: the inverse of Environment.sky_rotation's turn.
     std::array<float, 16> orientation = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
                                          0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
@@ -589,11 +575,11 @@ struct Sky3D {
     bool operator==(const Sky3D&) const = default;
 };
 
-// Godot's Environment fog in its Compatibility renderer: meshes fade toward light_color with
-// distance (and below height), and so does the sky, by sky_affect.
+// Fog in the compatibility renderer: meshes fade toward light_color with distance (and below
+// height), and so does the sky, by sky_affect.
 struct Fog3D {
     bool enabled = false;
-    bool depth = false; // Godot's FOG_MODE_DEPTH, rather than exponential fog
+    bool depth = false; // depth fog, rather than exponential fog
     std::array<float, 3> light_color{0.518F, 0.553F, 0.608F}; // sRGB
     float light_energy = 1.0F;
     float sun_scatter = 0.0F; // how much directional lights brighten the fog they shine through
@@ -609,9 +595,9 @@ struct Fog3D {
     bool operator==(const Fog3D&) const = default;
 };
 
-// Godot's rendering/environment/volumetric_fog settings: the froxels across (times the frame's
-// width over the mean of its width and height; down, over it) and deep, each from 16 to 512, and
-// whether the fog is blurred across and down before it is gathered.
+// Volumetric fog settings: the froxels across (times the frame's width over the mean of its width
+// and height; down, over it) and deep, each from 16 to 512, and whether the fog is blurred across
+// and down before it is gathered.
 struct VolumetricFogSettings {
     std::uint32_t volume_size = 64;
     std::uint32_t volume_depth = 64;
@@ -623,11 +609,11 @@ struct VolumetricFogSettings {
 // "use_filter"}. What is missing or not valid keeps its default.
 [[nodiscard]] VolumetricFogSettings volumetric_fog_settings_from_json(const json::Value& value);
 
-// The shapes of a FogVolume3D, Godot's RS::FogVolumeShape.
+// The shapes of a FogVolume3D.
 enum class FogVolumeShape : std::uint8_t { Ellipsoid, Cone, Cylinder, Box, World };
 
-// A place where volumetric fog is thicker, thinner or glows, as Godot's FogVolume with its
-// FogVolumeLook (material set) or its default fog material (density 1, white albedo, no fade).
+// A place where volumetric fog is thicker, thinner or glows, with its FogVolumeLook (material set)
+// or its default fog material (density 1, white albedo, no fade).
 struct FogVolume3D {
     // Its place, turn and scale in the world (column-major, as Mat4); a World shape's isn't used.
     std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
@@ -646,18 +632,17 @@ struct FogVolume3D {
 // The most fog volumes a frame fills its fog with; those past it are left out.
 inline constexpr std::size_t kMaxFogVolumes = 32;
 
-// The most levels a VoxelLighting3D's light has: ten for Godot's 512 subdivision, from 512 texels
-// across down to 1.
+// The most levels a VoxelLighting3D's light has: ten for 512 subdivisions, from 512 texels across
+// down to 1.
 inline constexpr std::size_t kMaxVoxelGILevels = 10;
 // The most texels along each axis of a VoxelLighting3D's level 0 a device traces.
 inline constexpr std::uint32_t kMaxVoxelGICells = 1024;
 
-// A VoxelLighting3D a mesh traces cones through for its ambient light and reflections, as Godot's
-// Forward+ renderer pairs a VoxelLighting3D with the meshes it reaches
-// (servers/rendering/renderer_rd/ shaders/environment/gi.glsl): its light, RGBA8 (the light over
-// its dynamic range, and how much of each cell is solid), is a 3D texture of size texels at level 0
-// and half as many along each axis each level after (at least 1), kept in an atlas as each level's
-// z slices side by side.
+// A VoxelLighting3D a mesh traces cones through for its ambient light and reflections. The
+// clustered renderer pairs a VoxelLighting3D with the meshes it reaches: its light, RGBA8 (the
+// light over its dynamic range, and how much of each cell is solid), is a 3D texture of size texels
+// at level 0 and half as many along each axis each level after (at least 1), kept in an atlas as
+// each level's z slices side by side.
 struct VoxelGIProbe {
     // The world to its cells' space, a row each of a 3x4 matrix: a unit a texel of level 0, its
     // box from 0 to size.
@@ -676,18 +661,17 @@ struct VoxelGIProbe {
     bool operator==(const VoxelGIProbe&) const = default;
 };
 
-// The most VoxelGIs whose light volumetric fog takes in, as Godot's MAX_VOXEL_GI_INSTANCES.
+// The most VoxelGIs whose light volumetric fog takes in.
 inline constexpr std::size_t kMaxFogVoxelGIs = 8;
 
-// Forward+: volumetric fog, as Godot 4.6's Environment.volumetric_fog_* with its Forward+
-// renderer. The view to length is cut into froxels (cells of the frustum, deeper further away
-// by detail_spread), each lit by the lights (their volumetric_fog_energy, through their shadows,
-// scattered forward or back by anisotropy) and the ambient light and sky (ambient_inject), and
-// glowing with its emission; with temporal reprojection each is blended with where it was the
-// frame before, jittered across the cell, so the fog is smooth over frames. The froxels are then
-// gathered along each column into how much light the fog in front of a depth adds and lets
-// through, which meshes and the sky (by sky_affect) are seen through. A target's first frame
-// isn't blended with anything, and frames without meshes have none. Compatibility has none.
+// Clustered renderer: volumetric fog. The view to length is cut into froxels (cells of the frustum,
+// deeper further away by detail_spread), each lit by the lights (their volumetric_fog_energy,
+// through their shadows, scattered forward or back by anisotropy) and the ambient light and sky
+// (ambient_inject), and glowing with its emission; with temporal reprojection each is blended with
+// where it was the frame before, jittered across the cell, so the fog is smooth over frames. The
+// froxels are then gathered along each column into how much light the fog in front of a depth adds
+// and lets through, which meshes and the sky (by sky_affect) are seen through. A target's first
+// frame isn't blended with anything, and frames without meshes have none. Compatibility has none.
 struct VolumetricFog3D {
     bool enabled = false;
     float density = 0.05F;
@@ -715,11 +699,11 @@ struct VolumetricFog3D {
     bool operator==(const VolumetricFog3D&) const = default;
 };
 
-// Light a frame's sky gives its meshes, as Godot's radiance map in its Compatibility renderer: one
-// of the sky's materials drawn into a cube map size texels across, then blurred more for each
-// smaller level, which lit meshes take ambient light from (by their normal, the blurriest level)
-// and reflect (by roughness, sharper for smoother surfaces). It is drawn again only when what it
-// is drawn from changes.
+// Light a frame's sky gives its meshes, its radiance map in the compatibility renderer: one of the
+// sky's materials drawn into a cube map size texels across, then blurred more for each smaller
+// level, which lit meshes take ambient light from (by their normal, the blurriest level) and
+// reflect (by roughness, sharper for smoother surfaces). It is drawn again only when what it is
+// drawn from changes.
 struct Radiance3D {
     // Which of the sky's materials (Sky3D's, with its energy, orientation and lights) it is drawn
     // from, or None for no radiance. Usually the sky's own kind; it can differ from it when the
@@ -731,9 +715,8 @@ struct Radiance3D {
     bool ambient = false;
     float ambient_mix = 1.0F;
     bool reflections = false; // lit meshes reflect it
-    // GGX samples its second roughest level blurs with (Godot's
-    // rendering/reflections/sky_reflections/ggx_samples, 1 to kMaxGgxSamples): the levels below
-    // take a half, a quarter and one, the roughest four times as many.
+    // GGX samples its second roughest level blurs with (1 to kMaxGgxSamples): the levels below take
+    // a half, a quarter and one, the roughest four times as many.
     std::uint32_t ggx_samples = 32;
 
     bool operator==(const Radiance3D&) const = default;
@@ -742,13 +725,13 @@ struct Radiance3D {
 // The most cubes a reflection atlas holds: 42 cubes of six faces are the 256 texture layers every
 // GPU and WebGPU take.
 inline constexpr std::uint32_t kMaxReflectionCubes = 42;
-// The level of an atlas cube the roughest surfaces reflect and ambient light is taken from, as
-// Godot's MAX_ROUGHNESS_LOD with its 7 roughness layers.
+// The level of an atlas cube the roughest surfaces reflect and ambient light is taken from, with 7
+// roughness layers.
 inline constexpr float kReflectionMaxLevel = 6.0F;
 
-// Godot's rendering/reflections/reflection_atlas settings: how many texels across each face of a
-// reflection probe's cube is (a power of two from 32 to 2048), and how many probes a frame can
-// reflect at most (1 to kMaxReflectionCubes; Godot takes up to 4096).
+// Reflection atlas settings: how many texels across each face of a reflection probe's cube is (a
+// power of two from 32 to 2048), and how many probes a frame can reflect at most (1 to
+// kMaxReflectionCubes).
 struct ReflectionAtlasSettings {
     std::uint32_t reflection_size = 256;
     std::uint32_t reflection_count = 64;
@@ -758,14 +741,14 @@ struct ReflectionAtlasSettings {
 // Reads project.json's rendering.reflections: {"probe_size", "probe_count"}. What is missing
 // or not valid keeps its default.
 [[nodiscard]] ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& value);
-// project.json's rendering object's reflections.sky_reflections.ggx_samples, as Godot's
-// rendering/reflections/sky_reflections/ggx_samples (Radiance3D::ggx_samples): 1 to 32, else 32.
+// project.json's rendering object's reflections.sky_reflections.ggx_samples
+// (Radiance3D::ggx_samples): 1 to 32, else 32.
 [[nodiscard]] std::uint32_t sky_ggx_samples(const json::Value& rendering);
 // Whether project.json's rendering object asks for high quality VoxelGIs:
 // global_illumination.voxel_gi.quality "high" (Scene3D::voxel_gi_high_quality).
 [[nodiscard]] bool voxel_gi_high_quality(const json::Value& rendering);
-// Godot's rendering/global_illumination/sdfgi settings, which every SDFGI in a frame takes
-// (Sdfgi3D's ray_count, frames_to_converge and frames_to_update_light).
+// SDFGI settings, which every SDFGI in a frame takes (Sdfgi3D's ray_count, frames_to_converge and
+// frames_to_update_light).
 struct SdfgiSettings {
     std::uint32_t probe_ray_count = 8;
     std::uint32_t frames_to_converge = 30;
@@ -778,23 +761,21 @@ struct SdfgiSettings {
 // "frames_to_update_lights" (1, 2, 4, 8 or 16)}. What is missing or not valid keeps its default.
 [[nodiscard]] SdfgiSettings sdfgi_settings_from_json(const json::Value& rendering);
 // Whether project.json's rendering object turns on temporal antialiasing:
-// anti_aliasing.quality.use_taa, as Godot's rendering/anti_aliasing/quality/use_taa
-// (Scene3D::use_taa).
+// anti_aliasing.quality.use_taa (Scene3D::use_taa).
 [[nodiscard]] bool use_taa(const json::Value& rendering);
-// Whether project.json's rendering object turns on frame generation: frame_generation, a frame
-// made between each two drawn ones (RenderDevice::generate_frame), which Godot doesn't have.
+// Whether project.json's rendering object turns on frame generation: frame_generation, a frame made
+// between each two drawn ones (RenderDevice::generate_frame).
 [[nodiscard]] bool frame_generation(const json::Value& rendering);
 
-// How a reflection probe lights what is inside it, as Godot's ReflectionProbe.ambient_mode: not
-// at all, by the blurriest level of its cube along each pixel's normal, or by a color.
+// How a reflection probe lights what is inside it: not at all, by the blurriest level of its cube
+// along each pixel's normal, or by a color.
 enum class ReflectionAmbient : std::uint8_t { Disabled, Environment, Color };
 
-// A reflection probe a frame's meshes reflect, as Godot's ReflectionProbe in its Forward+
-// renderer: a box of the world whose surroundings were drawn into a cube of the frame's reflection
-// atlas, from its origin_offset, by a capture (ProbeCapture). Meshes inside the box reflect the
-// cube in place of the sky's radiance, by roughness, and may take ambient light from it, fading
-// out over blend_distance toward its sides. Where probes overlap, the smallest is taken first and
-// the larger ones fill in what it leaves.
+// A reflection probe a frame's meshes reflect, in the clustered renderer: a box of the world whose
+// surroundings were drawn into a cube of the frame's reflection atlas, from its origin_offset, by a
+// capture (ProbeCapture). Meshes inside the box reflect the cube in place of the sky's radiance, by
+// roughness, and may take ambient light from it, fading out over blend_distance toward its sides.
+// Where probes overlap, the smallest is taken first and the larger ones fill in what it leaves.
 struct ReflectionProbe3D {
     // The probe's place and turn in the world, without scale (column-major, as Mat4).
     std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
@@ -815,27 +796,25 @@ struct ReflectionProbe3D {
     bool operator==(const ReflectionProbe3D&) const = default;
 };
 
-// A frame's reflection probes, in Forward+: those meshes reflect, in the order Godot keeps them
-// (largest first), and the atlas their cubes are in, a texture made with TextureDesc::cubes.
-// Compatibility draws none yet.
+// A frame's reflection probes, in the clustered renderer: those meshes reflect, in the order they
+// are kept (largest first), and the atlas their cubes are in, a texture made with
+// TextureDesc::cubes. The compatibility renderer draws none yet.
 struct Reflections3D {
     TextureId atlas{};
     std::vector<ReflectionProbe3D> probes; // at most the atlas's cubes
-    // What their light is multiplied by, as Godot's exposure normalization: the camera's exposure
-    // over the one they were drawn with.
+    // What their light is multiplied by, an exposure normalization: the camera's exposure over the
+    // one they were drawn with.
     float exposure = 1.0F;
 
     bool operator==(const Reflections3D&) const = default;
 };
 
-// The most decals a frame draws, Godot's rendering/limits/cluster_builder/max_clustered_elements:
-// those past it are left out.
+// The most decals a frame draws: those past it are left out.
 inline constexpr std::size_t kMaxDecals3D = 512;
 
-// How decals' textures are filtered, as Godot's rendering/textures/decals/filter: by the nearest
-// texel or between texels, and with mipmaps, levels of the atlas each half the size of the one
-// before, between which minified decals are filtered too. The anisotropic modes filter as the
-// mipmap ones.
+// How decals' textures are filtered: by the nearest texel or between texels, and with mipmaps,
+// levels of the atlas each half the size of the one before, between which minified decals are
+// filtered too. The anisotropic modes filter as the mipmap ones.
 enum class DecalFilter : std::uint8_t {
     Nearest,
     Linear,
@@ -852,14 +831,14 @@ inline constexpr std::array<std::string_view, 6> kDecalFilterNames{"nearest",
                                                                    "nearest_mipmaps_anisotropic",
                                                                    "linear_mipmaps_anisotropic"};
 
-// A decal, as Godot's Decal in its Forward+ renderer: a box that projects its textures down its
-// -Y onto the surfaces inside it, changing their albedo (by albedo_mix), normal, ambient
-// occlusion, roughness and metallic (an ORM texture's red, green and blue) where the albedo
-// texture's alpha says, and adding emission. It fades toward its top and bottom by upper_fade and
-// lower_fade, where surfaces face away from its up by normal_fade, and with distance_fade from
-// distance_fade_begin to distance_fade_begin + distance_fade_length from the camera. Decals are
-// drawn nearest the camera last (on top), less their sorting_offset. A decal without an albedo or
-// an emission texture draws nothing.
+// A decal, in the clustered renderer: a box that projects its textures down its -Y onto the
+// surfaces inside it, changing their albedo (by albedo_mix), normal, ambient occlusion, roughness
+// and metallic (an ORM texture's red, green and blue) where the albedo texture's alpha says, and
+// adding emission. It fades toward its top and bottom by upper_fade and lower_fade, where surfaces
+// face away from its up by normal_fade, and with distance_fade from distance_fade_begin to
+// distance_fade_begin + distance_fade_length from the camera. Decals are drawn nearest the camera
+// last (on top), less their sorting_offset. A decal without an albedo or an emission texture draws
+// nothing.
 struct Decal3D {
     // Its place, turn and scale in the world (column-major, as Mat4).
     std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
@@ -889,7 +868,7 @@ struct Decal3D {
     bool operator==(const Decal3D&) const = default;
 };
 
-// A frame's decals, in Forward+; Compatibility draws none, as Godot's.
+// A frame's decals, in the clustered renderer; the compatibility renderer draws none.
 struct Decals3D {
     std::vector<Decal3D> decals; // in any order
     DecalFilter filter = DecalFilter::LinearMipmaps;
@@ -902,16 +881,16 @@ struct Decals3D {
 // Fails unless a decal's numbers are usable and its textures are RGBA8 images of 1 to
 // kMaxTextureSize texels across, saying which, after name ("the decal's size is above 0").
 [[nodiscard]] Result<void> check_decal(const Decal3D& decal, std::string_view name = "the decal");
-// Fails unless every decal passes check_decal, the filter is one of Godot's and the atlas of
-// their textures fits in what devices hold (2^25 texels over all its levels, 128 MiB: a texture
-// 2048 texels across and a few smaller ones). Devices refuse frames whose decals fail it.
+// Fails unless every decal passes check_decal, the filter is a known one and the atlas of their
+// textures fits in what devices hold (2^25 texels over all its levels, 128 MiB: a texture 2048
+// texels across and a few smaller ones). Devices refuse frames whose decals fail it.
 [[nodiscard]] Result<void> check_decals(const Decals3D& decals);
 
-// A frame that draws the world into a face of a reflection atlas's cube instead of its target, as
-// Godot draws a ReflectionProbe's sides: linear and unprocessed, as a Forward+ frame's world is
-// before its post passes, with no SSAO, SSR or probes. The frame's target is None and its size
-// the atlas's. After a cube's sixth face, its levels are filtered from it as the sky's radiance
-// is (shaders/radiance.hlsl), for rougher surfaces.
+// A frame that draws the world into a face of a reflection atlas's cube instead of its target, as a
+// reflection probe's sides are drawn: linear and unprocessed, as a clustered frame's world is
+// before its post passes, with no SSAO, SSR or probes. The frame's target is None and its size the
+// atlas's. After a cube's sixth face, its levels are filtered from it as the sky's radiance is
+// (shaders/radiance.hlsl), for rougher surfaces.
 struct ProbeCapture {
     TextureId atlas{};
     std::uint32_t cube = 0;
@@ -922,8 +901,8 @@ struct ProbeCapture {
 };
 
 // A capture's camera for a face of a probe at transform (its place and turn, without scale), drawn
-// from origin_offset: the world to the camera's space, and its projection, which reaches as far
-// as Godot's does (the box's side the face looks at, or max_distance when that is further). A
+// from origin_offset: the world to the camera's space, and its projection, which reaches as far as
+// the probe's box does (the box's side the face looks at, or max_distance when that is further). A
 // cube's faces hold a probe's surroundings mirrored along z, so that each face is seen through a
 // camera that turns without mirroring: the face +z holds what is toward -z.
 [[nodiscard]] std::array<float, 16> probe_face_view(const std::array<float, 16>& transform,
@@ -944,15 +923,14 @@ inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"clustered",
 [[nodiscard]] std::optional<RenderMethod> parse_render_method(std::string_view name);
 
 // A frame's 3D drawn smaller and upscaled to the target with AMD's FidelityFX Super Resolution 2,
-// as Godot's scaling_3d mode "fsr2" (Forward+ only): the meshes are drawn at the target's size
+// in scaling_3d mode "fsr2" (clustered renderer only): the meshes are drawn at the target's size
 // times scale with the camera moved across a render pixel each frame, and FSR 2 rebuilds the
-// target's size from them and the target's frames before, before the post passes. sharpness is
-// Godot's fsr_sharpness: 0 is the sharpest and 2 turns sharpening off. fsr3 rebuilds it with
-// FidelityFX Super Resolution 3.1's upscaler instead, AMD's later passes over the same inputs
-// (scaling_3d mode "fsr3", which Godot doesn't have), and metalfx with Apple's MetalFX temporal
-// scaler (mode "metalfx_temporal"), on a device whose metalfx() has it; it doesn't sharpen.
-// upscaler names a temporal upscaler the game added (render::add_upscaler), which takes the same
-// inputs in their place.
+// target's size from them and the target's frames before, before the post passes. sharpness is the
+// fsr_sharpness: 0 is the sharpest and 2 turns sharpening off. fsr3 rebuilds it with FidelityFX
+// Super Resolution 3.1's upscaler instead, AMD's later passes over the same inputs (scaling_3d mode
+// "fsr3"), and metalfx with Apple's MetalFX temporal scaler (mode "metalfx_temporal"), on a device
+// whose metalfx() has it; it doesn't sharpen. upscaler names a temporal upscaler the game added
+// (render::add_upscaler), which takes the same inputs in their place.
 struct Fsr2Scaling {
     float scale = 0.77F;
     float sharpness = 0.2F;
@@ -964,14 +942,14 @@ struct Fsr2Scaling {
 };
 
 // A frame's 3D path traced instead of rasterized, for a reference still to compare the real-time
-// frame with (Scene3D::path_trace). Each pixel gets samples paths this frame, through random
-// points of it, each bouncing off what it meets up to bounces times (0 for direct light alone):
-// lit at each surface by every light, through ray-traced shadows, and by what the next bounce
-// meets, emitting surfaces and the environment. A target's frames add their samples up while
-// the frame's meshes, lights, sky and camera stay the same, so a still gets less noisy frame by
-// frame (RenderDevice::path_samples), and start over when anything changes. Path tracing stands in
-// for the meshes' lightmaps, light probes, VoxelGIs, reflection probes, SSAO, SSR and shadow maps,
-// leaves out fog, decals and depth of field, and is post-processed as Forward+ post-processes.
+// frame with (Scene3D::path_trace). Each pixel gets samples paths this frame, through random points
+// of it, each bouncing off what it meets up to bounces times (0 for direct light alone): lit at
+// each surface by every light, through ray-traced shadows, and by what the next bounce meets,
+// emitting surfaces and the environment. A target's frames add their samples up while the frame's
+// meshes, lights, sky and camera stay the same, so a still gets less noisy frame by frame
+// (RenderDevice::path_samples), and start over when anything changes. Path tracing stands in for
+// the meshes' lightmaps, light probes, VoxelGIs, reflection probes, SSAO, SSR and shadow maps,
+// leaves out fog, decals and depth of field, and is post-processed as the clustered renderer does.
 // The software device traces paths, and the GPU device on Vulkan where the GPU has ray queries
 // (RenderDevice::ray_tracing); other devices draw the frame as usual.
 inline constexpr std::uint32_t kMaxPathSamples = 4096;
@@ -983,35 +961,33 @@ struct PathTrace3D {
     bool operator==(const PathTrace3D&) const = default;
 };
 
-// Ray-traced effects in Forward+, drawn by devices that trace rays (RenderDevice::ray_tracing)
-// and the raster way by the rest. With shadows, after the prepass draws the opaque meshes' depth
-// and normals, rays from each opaque pixel toward each of the first kMaxRayShadowLights lights
-// with shadow set find what is in the way, through every mesh drawn (but those whose shadows are
-// off or whose layers miss the light's caster mask) and not just what a shadow map sees; a light
-// with a size (Light3D::size) sends shadow_samples rays to points across it, so its shadows are
-// soft, each pixel's at points of its own. The opaque meshes are shaded with what the rays found
-// in place of the light's shadow map, which blended meshes still sample.
-// With ambient_occlusion, the environment's SSAO (Ssao3D, which must be enabled) is traced instead:
-// each opaque pixel sends ambient_occlusion_samples rays over the half of the sphere its normal
-// faces, cosine weighted, up to the SSAO's radius, and the share nothing stops, to the SSAO's
-// power, is its occlusion, which lights it as SSAO's does.
-// With reflections, the environment's SSR (Ssr3D, which must be enabled) is traced instead: each
-// opaque pixel smoother than SSR's roughness cutoff sends reflection_samples rays, reflected about
-// GGX's microfacet normals for its roughness, through every mesh the frame draws; what each meets
-// is lit as a path tracer's bounce (what it gives off, the lights through ray-traced shadows and
-// the environment), and the share that meets something covers the sky's reflections as SSR's do.
-// With global_illumination, each opaque pixel's ambient light is traced:
-// global_illumination_samples rays, cosine weighted over the half of the sphere it faces, bring
-// back what they meet lit as those reflections' (or the environment's light where they meet
-// nothing), averaged and smoothed across neighbors on the same surface. It stands in for the
-// ambient light, the sky's, VoxelGIs' and probes' (but not a lightmap's), so light bounces off what
-// is near.
-// With many_lights (a research spike: the software device draws it, other devices light every
-// light as before), each opaque pixel's omni and spot lights are ReSTIR's (src/restir.hpp): it
-// keeps many_light_samples reservoirs of one light each, drawn from many_light_candidates of its
-// cluster's lights and resampled over last frame's and its neighbors', and traces one shadow ray
-// to each, so every light with shadow set casts ray-traced shadows at a few rays a pixel however
-// many lights there are.
+// Ray-traced effects in the clustered renderer, drawn by devices that trace rays
+// (RenderDevice::ray_tracing) and the raster way by the rest. With shadows, after the prepass draws
+// the opaque meshes' depth and normals, rays from each opaque pixel toward each of the first
+// kMaxRayShadowLights lights with shadow set find what is in the way, through every mesh drawn (but
+// those whose shadows are off or whose layers miss the light's caster mask) and not just what a
+// shadow map sees; a light with a size (Light3D::size) sends shadow_samples rays to points across
+// it, so its shadows are soft, each pixel's at points of its own. The opaque meshes are shaded with
+// what the rays found in place of the light's shadow map, which blended meshes still sample. With
+// ambient_occlusion, the environment's SSAO (Ssao3D, which must be enabled) is traced instead: each
+// opaque pixel sends ambient_occlusion_samples rays over the half of the sphere its normal faces,
+// cosine weighted, up to the SSAO's radius, and the share nothing stops, to the SSAO's power, is
+// its occlusion, which lights it as SSAO's does. With reflections, the environment's SSR (Ssr3D,
+// which must be enabled) is traced instead: each opaque pixel smoother than SSR's roughness cutoff
+// sends reflection_samples rays, reflected about GGX's microfacet normals for its roughness,
+// through every mesh the frame draws; what each meets is lit as a path tracer's bounce (what it
+// gives off, the lights through ray-traced shadows and the environment), and the share that meets
+// something covers the sky's reflections as SSR's do. With global_illumination, each opaque pixel's
+// ambient light is traced: global_illumination_samples rays, cosine weighted over the half of the
+// sphere it faces, bring back what they meet lit as those reflections' (or the environment's light
+// where they meet nothing), averaged and smoothed across neighbors on the same surface. It stands
+// in for the ambient light, the sky's, VoxelGIs' and probes' (but not a lightmap's), so light
+// bounces off what is near. With many_lights (a research spike: the software device draws it, other
+// devices light every light as before), each opaque pixel's omni and spot lights are ReSTIR's
+// (src/restir.hpp): it keeps many_light_samples reservoirs of one light each, drawn from
+// many_light_candidates of its cluster's lights and resampled over last frame's and its neighbors',
+// and traces one shadow ray to each, so every light with shadow set casts ray-traced shadows at a
+// few rays a pixel however many lights there are.
 inline constexpr std::size_t kMaxRayShadowLights = 8;
 inline constexpr std::uint32_t kMaxRayShadowSamples = 64;
 struct RayTracing3D {
@@ -1036,15 +1012,15 @@ struct RayTracing3D {
 // or of the wrong type keeps its default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 
-// Godot 4.6's SDFGI (signed distance field global illumination), its fully dynamic GI, in
-// Forward+ (a research spike: the software device draws it, other devices draw without it).
-// Around the camera, cascades of cascade_size cells a side, each twice as coarse as the one before
-// from min_cell_size, hold the frame's meshes as a distance field with each surface cell's light
-// (lights traced through the field to it, what it gives off, and bounce_feedback of the light
-// probes' light before); a grid of probes in each cascade traces ray_count rays a frame through
-// the fields (the sky where they leave) and keeps history frames of them, and pixels take their
-// ambient light (and, when smooth, reflections) from the probes around them. Heights count
-// y_scale as much (Godot's sdfgi_y_scale: 2, 1.5 or 1), so cascades reach less far up and down.
+// SDFGI (signed distance field global illumination), a fully dynamic GI, in the clustered renderer
+// (a research spike: the software device draws it, other devices draw without it). Around the
+// camera, cascades of cascade_size cells a side, each twice as coarse as the one before from
+// min_cell_size, hold the frame's meshes as a distance field with each surface cell's light (lights
+// traced through the field to it, what it gives off, and bounce_feedback of the light probes' light
+// before); a grid of probes in each cascade traces ray_count rays a frame through the fields (the
+// sky where they leave) and keeps history frames of them, and pixels take their ambient light (and,
+// when smooth, reflections) from the probes around them. Heights count y_scale as much (2, 1.5 or
+// 1), so cascades reach less far up and down.
 struct Sdfgi3D {
     bool enabled = false;
     std::uint32_t cascades = 4; // 1 to 8
@@ -1062,7 +1038,7 @@ struct Sdfgi3D {
     std::uint32_t ray_count = 8;
     std::uint32_t frames_to_converge = 30;
     std::uint32_t frames_to_update_light = 4;
-    // Cells across a cascade: 128 as in Godot; smaller (a multiple of 16) for tests.
+    // Cells across a cascade: 128; smaller (a multiple of 16) for tests.
     std::uint32_t cascade_size = 128;
 
     bool operator==(const Sdfgi3D&) const = default;
@@ -1094,54 +1070,52 @@ struct Scene3D {
     Sdfgi3D sdfgi;
     Reflections3D reflections;
     Decals3D decals;
-    // Gaussian splat clouds blended over the opaque meshes (a research spike: the software
-    // device draws them in Forward+, others draw none; see splats.hpp).
+    // Gaussian splat clouds blended over the opaque meshes (a research spike: the software device
+    // draws them in the clustered renderer, others draw none; see splats.hpp).
     Splats3D splats;
-    // Forward+'s subsurface scattering of meshes with Material3D::subsurface, after the opaque
-    // meshes and before the transparent ones, as Godot's.
+    // The clustered renderer's subsurface scattering of meshes with Material3D::subsurface, after
+    // the opaque meshes and before the transparent ones.
     SubsurfaceSettings subsurface;
-    // How meshes trace their VoxelGIs (Material3D::voxel_gi), as Godot's rendering/
-    // global_illumination/voxel_gi/quality: four cones of 45 degrees for their ambient light, or
-    // with high quality six narrower ones.
+    // How meshes trace their VoxelGIs (Material3D::voxel_gi): four cones of 45 degrees for their
+    // ambient light, or with high quality six narrower ones.
     bool voxel_gi_high_quality = false;
-    // Temporal antialiasing, as Godot's use_taa (Forward+ only): the meshes are drawn with the
-    // camera moved across a pixel by the next of 16 points each frame, and each frame is blended
-    // with the target's frames before it, moved by how far its opaque meshes moved (draw_mesh's
-    // previous transform) and the camera turned. A target's first frame with it is drawn as it is.
+    // Temporal antialiasing (clustered renderer only): the meshes are drawn with the camera moved
+    // across a pixel by the next of 16 points each frame, and each frame is blended with the
+    // target's frames before it, moved by how far its opaque meshes moved (draw_mesh's previous
+    // transform) and the camera turned. A target's first frame with it is drawn as it is.
     bool use_taa = false;
-    // FSR 2 upscaling, which takes TAA's place, as Godot turns TAA off with it. Only a scale under
-    // 1 upscales with it; the canvas renderer scales the frame bilinearly otherwise.
+    // FSR 2 upscaling, which takes TAA's place, so TAA is off with it. Only a scale under 1
+    // upscales with it; the canvas renderer scales the frame bilinearly otherwise.
     std::optional<Fsr2Scaling> fsr2{}; // NOLINT(readability-redundant-member-init)
-    // Frame generation, as AMD's FSR 3 (Forward+ only; Godot has none): the frame keeps its
-    // prepass's depth and motion vectors so RenderDevice::generate_frame can make the frame
-    // halfway between it and the target's frame before.
+    // Frame generation, as AMD's FSR 3 (clustered renderer only): the frame keeps its prepass's
+    // depth and motion vectors so RenderDevice::generate_frame can make the frame halfway between
+    // it and the target's frame before.
     bool frame_generation = false;
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
     // Set for a frame whose 3D is path traced (PathTrace3D).
     std::optional<PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
-    // Ray-traced shadows, in Forward+ (RayTracing3D).
+    // Ray-traced shadows, in the clustered renderer (RayTracing3D).
     RayTracing3D ray_tracing;
-    // Compositor effects drawn over the world at their points of a Forward+ frame, in order
-    // within a point (compositor.hpp), up to kMaxCompositorEffects.
+    // Compositor effects drawn over the world at their points of a clustered frame, in order within
+    // a point (compositor.hpp), up to kMaxCompositorEffects.
     std::vector<CompositorEffect3D> effects;
 
-    // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
+    // The default camera: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();
 };
 
-// Godot's Projection::set_perspective, with reversed depth: fov_y degrees across the target's
-// height, aspect its width over its height, from near to far.
+// A perspective projection with reversed depth: fov_y degrees across the target's height, aspect
+// its width over its height, from near to far.
 [[nodiscard]] std::array<float, 16> perspective(float fov_y, float aspect, float near, float far);
 // An off-center perspective with reversed depth, as an XR runtime gives each eye (OpenXR's XrFovf,
-// which Godot's OpenXR module makes a projection of): the tangents of the angles from the view's
-// center to its left, right, bottom and top edges, left and bottom below zero.
+// which this makes a projection of): the tangents of the angles from the view's center to its left,
+// right, bottom and top edges, left and bottom below zero.
 [[nodiscard]] std::array<float, 16> frustum(float tan_left, float tan_right, float tan_down,
                                             float tan_up, float near, float far);
-// Godot's Projection::set_orthogonal, with reversed depth: size across the target's height.
+// An orthogonal projection with reversed depth: size across the target's height.
 [[nodiscard]] std::array<float, 16> orthogonal(float size, float aspect, float near, float far);
-// The world to the space of a camera at eye looking at target, with up as near its up as it can
-// be: the inverse of Godot's Transform3D::looking_at.
+// The world to the space of a camera at eye looking at target, with up as near its up as it can be.
 [[nodiscard]] std::array<float, 16> look_at(const std::array<float, 3>& eye,
                                             const std::array<float, 3>& target,
                                             const std::array<float, 3>& up);

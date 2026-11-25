@@ -6707,10 +6707,11 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> tint_symbol {
 }
 )wgsl";
 
-inline constexpr char kSdfgiGatherHlsl[] = R"hlsl(// Each pixel's SDFGI light, as Godot 4.6's gi.glsl's sdfgi_process works it out for the GI
-// buffers: one triangle over the screen texture's layers 5 (ambient light and how much it
-// covers) and 6 (reflections and how much), from the prepass's depth and normals and the
-// cascades sdfgi.hlsl keeps. run_sdfgi in src/sdfgi.cpp is its CPU twin; keep them in step.
+inline constexpr char kSdfgiGatherHlsl[] = R"hlsl(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Each pixel's SDFGI light, for the GI buffers: one triangle over the screen texture's layers 5
+// (ambient light and how much it covers) and 6 (reflections and how much), from the prepass's depth
+// and normals and the cascades sdfgi.hlsl keeps. run_sdfgi in src/sdfgi.cpp is its CPU twin; keep
+// them in step.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -6749,6 +6750,7 @@ StructuredBuffer<uint> probe_words : register(t4, space2);
 StructuredBuffer<uint> items : register(t5, space2);
 #endif
 
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // What SDFGI's compute shaders share: the cascades' words as src/sdfgi.hpp lays them out, and the
 // helpers of src/sdfgi.cpp, its CPU twin, line for line. A shader that includes this declares
 // cell_words, field_words, probe_words and items first (read-only or not), and Params.
@@ -6975,7 +6977,7 @@ uint probe_parity(Cascade c, int3 probe) {
     return uint(world.x & 1) | (uint(world.y & 1) << 1u) | (uint(world.z & 1) << 2u);
 }
 
-// Godot's octahedron_encode (to 0 to 1) and its inverse.
+// The octahedral encoding (to 0 to 1) and its inverse.
 float2 octahedron_encode(float3 n) {
     n /= abs(n.x) + abs(n.y) + abs(n.z);
     float2 xy = n.xy;
@@ -7010,10 +7012,10 @@ float3 probe_image_at(uint base, float x, float y) {
     float3 d = rgbe_decode(probe_words[base + y1 * kProbeImageWidth + x1]);
     return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
 }
-// probe_texel: a probe's image along a direction.
-float3 probe_texel(uint base, int3 probe, float3 n) {
 )hlsl"
-R"hlsl(    float2 oct = octahedron_encode(n);
+R"hlsl(// probe_texel: a probe's image along a direction.
+float3 probe_texel(uint base, int3 probe, float3 n) {
+    float2 oct = octahedron_encode(n);
     float x = float((probe.x + probe.z * int(kProbeAxis)) * int(kOctBorder) + 1) +
               oct.x * float(kOctSize);
     float y = float(probe.y * int(kOctBorder) + 1) + oct.y * float(kOctSize);
@@ -7151,7 +7153,7 @@ void probe_light(uint index, float3 cascade_pos, float3 normal, float3 reflectio
     specular = specular_accum;
 }
 
-// A cascade's place relative to the camera, as Godot's UBO holds it, and the scale to probes.
+// A cascade's place relative to the camera, and the scale to probes.
 float3 cascade_position(uint i, float3 camera_scaled) {
     return cascade_at(i).offset - camera_scaled;
 }
@@ -7276,7 +7278,7 @@ Gathered fs_main(float4 position : SV_Position) {
         float4 accum = float4(0.0, 0.0, 0.0, 0.0);
         uint k = 0u;
         bool found = false;
-        // Godot's loop, with a bound on its steps.
+        // The loop, with a bound on its steps.
         [loop] for (int steps = 0;
                     steps < 4096 && length(ray_pos) < max_distance && accum.a <= 0.99; ++steps) {
             if (!found && k >= at && length(ray_pos) < radius[k]) {
@@ -7295,10 +7297,10 @@ Gathered fs_main(float4 position : SV_Position) {
                     fdistance += (fdistance2 - fdistance) * blend2;
                 }
                 accum += light;
-                ray_pos += reflection * fdistance;
-                found = true;
 )hlsl"
-R"hlsl(            }
+R"hlsl(                ray_pos += reflection * fdistance;
+                found = true;
+            }
             ++k;
             if (k == count) {
                 k = 0u;

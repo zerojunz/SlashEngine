@@ -1,6 +1,8 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
-// One tick of an animation tree's nodes, as Godot's AnimationTree processes its AnimationNodes:
+// One tick of an animation tree's nodes:
 // each node works out its inputs' weights and times and passes them on, down to the animations,
 // which the mixer then blends (tree_system.cpp).
 
@@ -19,7 +21,7 @@
 
 namespace slash::animation::detail {
 
-// Godot's AnimationMixer::PlaybackInfo.
+// What a node is played with.
 struct PlaybackInfo {
     double time = 0.0;
     double delta = 0.0;
@@ -31,7 +33,7 @@ struct PlaybackInfo {
     float weight = 0.0F;
 };
 
-// An animation the tree plays this tick, as Godot's AnimationMixer::AnimationInstance: how far in
+// An animation the tree plays this tick: how far in
 // it is and how much each of the tree's tracks counts.
 struct AnimationInstance {
     std::string name; // in the tree: "Walk", or "library/Walk"
@@ -79,7 +81,7 @@ struct TreeContext {
     std::uint64_t seed = 0;
 };
 
-// Processes a tree for one tick of delta seconds, as Godot's AnimationTree::_blend_pre_process;
+// Processes a tree for one tick of delta seconds;
 // started seeks every node to its start, as the first tick after the tree is turned on does.
 [[nodiscard]] TreeTick run_tree(const TreeContext& context, TreeParameters& parameters,
                                 double delta, bool started);

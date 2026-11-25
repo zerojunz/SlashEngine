@@ -1,13 +1,12 @@
-// The microphone, as Godot's AudioStreamMicrophone and AudioServer input calls. project.json turns
-// on audio.input_enabled, and the "voice" player plays audio/mic.audio.json on the muted "Mic" bus,
-// as in Godot's microphone demo, so its effects hear the player without the speakers playing it.
-// A gameplay system in C++ reads the same input with Server::input_frames and lights a lantern
-// for each half second of singing.
+// The microphone. project.json turns on audio.input_enabled, and the "voice" player plays
+// audio/mic.audio.json on the muted "Mic" bus, so its effects hear the player without the speakers
+// playing it. A gameplay system in C++ reads the same input with Server::input_frames and lights a
+// lantern for each half second of singing.
 //
 // Headless there is no microphone, so the input is silent until audio.input plays a sound into it
-// in place of the microphone, as an agent tests a game that listens. This program writes that
-// sound (made without libm, so it is the same everywhere) and adds the lantern system, then plays
-// the game as an agent does over MCP or JSON-RPC.
+// in place of the microphone, as an agent tests a game that listens. This program writes that sound
+// (made without libm, so it is the same everywhere) and adds the lantern system, then plays the
+// game as an agent does over MCP or JSON-RPC.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -51,8 +50,8 @@ std::vector<audio::Frame> song() {
     return out;
 }
 
-// Lights a lantern for each 30 ticks in a row of loud input, as a game reads Godot's
-// AudioServer.get_input_frames each frame. Input records while the voice player keeps it on.
+// Lights a lantern for each 30 ticks in a row of loud input, as a game reads the input frames each
+// frame. Input records while the voice player keeps it on.
 void lanterns(world::World& w, int& loud_ticks, int& lit) {
     audio::Server* server = audio::server(w);
     const std::vector<audio::Frame> frames = server->input_frames(server->input_frames_available());

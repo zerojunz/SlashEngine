@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 // The material shader: runs a material program (engine/render/include/slash/render/material.hpp)
 // for each pixel, then shades it with the frame's 2D lights (canvas.hlsl). Canvas materials
 // compile from node graphs to a few instructions, so they need no shader compiler at run time.
@@ -57,9 +58,9 @@ float4 sample_slot(uint slot, float2 uv) {
     return texture3.SampleLevel(sampler3, uv, 0.0);
 }
 
-// Godot's MSDF text: coverage from the median distance of the field's three channels, sharp at
-// any scale. uv_dx and uv_dy are how the texture coordinate changes across one pixel. Keep it in
-// step with distance_field_coverage in src/device.cpp.
+// MSDF text: coverage from the median distance of the field's three channels, sharp at any scale.
+// uv_dx and uv_dy are how the texture coordinate changes across one pixel. Keep it in step with
+// distance_field_coverage in src/device.cpp.
 float field_coverage(float4 t, float2 uv_dx, float2 uv_dy) {
     float2 dest_size = 1.0 / max(abs(uv_dx) + abs(uv_dy), float2(1.0e-8, 1.0e-8));
     float px_size = max(0.5 * dot(field.x * texel.xy, dest_size), 1.0);

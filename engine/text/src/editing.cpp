@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/core/text.hpp"
 #include "slash/text/text.hpp"
 
@@ -11,9 +13,7 @@
 #include <utility>
 #include <vector>
 
-// Carets, selections and clicks over a shaped line, as Godot's TextServer does them
-// (servers/text/text_server.cpp: shaped_text_get_carets, shaped_text_get_selection,
-// shaped_text_hit_test_position, shaped_text_get_word_breaks and the character positions), and
+// Carets, selections and clicks over a shaped line, word breaks and the character positions, and
 // character breaks as Unicode's UAX #29 extended grapheme clusters, without the Prepend rule.
 namespace slash::text {
 namespace {
@@ -102,7 +102,7 @@ Break break_of(char32_t c) {
     }
 }
 
-// Godot's is_whitespace (core/string/char_utils.h).
+// Whether a character is whitespace.
 bool is_whitespace(char32_t c) {
     return c == U' ' || c == 0xA0U || c == 0x1680U || (c >= 0x2000U && c <= 0x200AU) ||
            c == 0x202FU || c == 0x205FU || c == 0x3000U || c == 0x2028U || c == 0x2029U ||

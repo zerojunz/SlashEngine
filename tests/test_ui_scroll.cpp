@@ -23,10 +23,9 @@
 #include <utility>
 #include <vector>
 
-// Scroll bars, scroll containers and clipping, as Godot's ScrollBar, ScrollBox and
-// Widget.clip_children (scene/gui/scroll_bar.cpp and scroll_container.cpp). The sizes and
-// values expected here follow those files and Godot's default theme: scroll bars with no arrow
-// icons and a grabber at least 8 pixels long.
+// Scroll bars, scroll containers and clipping (ScrollBox and Widget.clip_children). The sizes
+// and values expected here follow the default theme: scroll bars with no arrow icons and a
+// grabber at least 8 pixels long.
 
 namespace asset = slash::asset;
 namespace command = slash::command;

@@ -23,10 +23,9 @@
 #include <utility>
 #include <vector>
 
-// Tooltips and drag and drop, as Godot's Viewport (scene/main/viewport.cpp: _gui_show_tooltip,
-// _gui_input_event, _perform_drop), Widget (get_drag_data, can_drop_data, drop_data,
-// set_drag_preview, force_drag) and the text fields' own drag and drop (scene/gui/line_edit.cpp
-// and text_edit.cpp). The sizes expected here follow those files and Godot's default theme.
+// Tooltips and drag and drop in the viewport, widgets (get_drag_data, can_drop_data, drop_data,
+// set_drag_preview, force_drag) and the text fields' own drag and drop. The sizes expected here
+// follow the default theme.
 
 namespace asset = slash::asset;
 namespace command = slash::command;
@@ -40,7 +39,7 @@ using slash::Vec2;
 namespace {
 
 constexpr double kTick = 1.0 / 60.0;
-// Ticks of rest before a tooltip shows: Godot's default 0.5 seconds.
+// Ticks of rest before a tooltip shows: the default 0.5 seconds.
 constexpr int kRest = 30;
 // The box font at 20 pixels: 12 pixels a letter, 5 a space; a text field's text starts 4 pixels
 // in.
@@ -378,7 +377,7 @@ TEST_CASE("a tooltip that would leave the viewport shows on the other side of th
     gui.box("corner", {300, 250, 100, 50}, R"("tooltip_text": "Corner")");
     gui.send(move(390, 290));
     gui.steps(kRest);
-    // Left of and above the pointer by the offset, as Godot flips it.
+    // Left of and above the pointer by the offset.
     CHECK(gui.tooltip_rect() == "[292,256,88,24]");
     // Too wide for either side, it hugs the viewport's right edge.
     gui.set("corner", R"({"Widget": {"tooltip_text": "A tooltip far too long to fit"}})");

@@ -1,8 +1,9 @@
-// Volumetric fog's passes, as Godot 4.6's volumetric_fog_process.glsl runs them for its Forward+
-// renderer, a thread a froxel (a column of them, gathering): each froxel's light and density
-// (Density), the blur across (FilterX) and down (FilterY), and the light the fog in front of each
-// froxel adds and how much it lets through (Integrate). Its CPU twin is src/volumetric_fog.cpp,
-// which this follows line for line; a change to one goes in the other.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// Volumetric fog's passes, for the clustered renderer, a thread a froxel (a column of them,
+// gathering): each froxel's light and density (Density), the blur across (FilterX) and down
+// (FilterY), and the light the fog in front of each froxel adds and how much it lets through
+// (Integrate). Its CPU twin is src/volumetric_fog.cpp, which this follows line for line; a change
+// to one goes in the other.
 //
 // The volume is a storage buffer of a float4 a froxel, in rows across, then down, then slices
 // deeper, read from source and written to target: the density pass reads the frame before's
@@ -45,7 +46,7 @@ struct Light {
 // frame's items.
 struct Volume {
     float4 to_local[4]; // the world to the volume's space, a column each
-    float4 position;   // its place in the world, then its shape (Godot's RS::FogVolumeShape)
+    float4 position;   // its place in the world, then its shape
     float4 size;       // its size (twice the froxels for a world shape), then 1 for a FogVolumeLook
     int4 corner;       // the first froxel it fills
     int4 corner_end;   // past the last froxel it fills
@@ -270,10 +271,10 @@ uint range_mask(uint word, uint first, uint end) {
     return below_high & ~below_low;
 }
 
-// What the fog volumes add to a froxel at id, whose point is world, as Godot's volumetric_fog.glsl
-// adds each into its density, light and emissive maps: the density in 1024ths, then the scattering
-// and emission, each a channel's units as Godot packs them into 11, 11 and 10 bits, held there.
-// The k-th float4 of the index-th VoxelLighting3D in fog_items.
+// What the fog volumes add to a froxel at id, whose point is world, as each is added into its
+// density, light and emissive maps: the density in 1024ths, then the scattering and emission, each
+// a channel's units, packed into 11, 11 and 10 bits, held there. The k-th float4 of the index-th
+// VoxelLighting3D in fog_items.
 float4 voxel_gi_item(uint index, uint k) {
     return fog_items[(items.x * kFogVolumeItems) + (index * kFogVoxelGIItems) + k];
 }
@@ -388,7 +389,7 @@ VolumeSums fog_volumes(uint3 id, float3 world) {
             float3 q = abs(local_pos) - half_size;
             sdf = length(max(q, (float3)0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
         }
-        // Godot's default material doesn't read the distance, so its cells outside are culled.
+        // The default material doesn't read the distance, so its cells outside are culled.
         float cull_mask = 1.0;
         if (shape <= 3u && !material) {
             cull_mask = 1.0 - smooth(-0.1, 0.0, sdf);

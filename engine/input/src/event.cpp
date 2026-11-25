@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 
@@ -11,12 +12,11 @@
 #include <utility>
 #include <vector>
 
-// Input events as Godot's InputEvent subclasses (core/input/input_event.cpp), read from and
-// written to JSON with Godot's property names.
+// Input events, read from and written to JSON by property name.
 namespace slash::input {
 namespace {
 
-// Godot's key names (core/os/keyboard.cpp), in the order of the Key enum.
+// The key names, in the order of the Key enum.
 constexpr std::array<std::string_view, 150> kKeyNames{{
     "",
     "Escape",
@@ -370,8 +370,8 @@ std::uint8_t modifier_bits(const Modifiers& modifiers) {
                                      (modifiers.alt ? 4U : 0U) | (modifiers.meta ? 8U : 0U));
 }
 
-// Godot's modifier rule: a press must hold at least the binding's modifiers, and an exact match
-// exactly them.
+// The modifier rule: a press must hold at least the binding's modifiers, and an exact match exactly
+// them.
 bool modifiers_match(const Event& binding, const Event& event, bool exact) {
     const std::uint8_t wanted = modifier_bits(binding.modifiers);
     const std::uint8_t held = modifier_bits(event.modifiers);

@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/audio/audio.hpp"
 
 #include <algorithm>
@@ -21,7 +23,7 @@ float next_random(std::uint32_t& state) {
     return static_cast<float>(state >> 8U) / 16777216.0F;
 }
 
-// Godot's AudioStreamPlaybackResampled: a stream mixes at its own rate into a small buffer, which
+// A resampled playback: a stream mixes at its own rate into a small buffer, which
 // cubic interpolation reads at the server's rate times the pitch scale.
 class Resampled : public Playback {
 public:
@@ -80,7 +82,7 @@ protected:
         for (int k = 0; k < kCubicHistory; ++k) {
             internal_[static_cast<std::size_t>(k)] = {};
         }
-        // As Godot's, this first fill doesn't mark where the stream ends; the next one does.
+        // This first fill doesn't mark where the stream ends; the next one does.
         static_cast<void>(mix_internal(internal_.data() + kCubicHistory, kInternalLen));
         mix_offset_ = 0;
     }
@@ -102,7 +104,7 @@ private:
     int mix_rate_;
 };
 
-// Godot's AudioStreamPlaybackWAV, over samples already decoded to floats.
+// A playback of samples already decoded to floats.
 class PcmPlayback final : public Resampled {
 public:
     PcmPlayback(std::shared_ptr<const Sound> sound, const StreamFile& settings, int mix_rate)
@@ -138,13 +140,13 @@ private:
         offset_ = static_cast<std::int64_t>(seconds * sound_->mix_rate);
     }
 
-    // Godot's decode_samples: reads frames from offset_, stepping by increment.
+    // Reads frames from offset_, stepping by increment.
     void decode(Frame* dst, std::int8_t increment, std::int32_t amount) {
         const float* data = sound_->samples.data();
         const bool stereo = sound_->channels == 2;
         while (amount > 0) {
             --amount;
-            // Godot pads its data, so the loop end may read one frame past it.
+            // The data is padded, so the loop end may read one frame past it.
             if (offset_ >= 0 && offset_ < sound_->frames) {
                 const std::int64_t pos = stereo ? offset_ * 2 : offset_;
                 dst->left = data[pos];
@@ -237,7 +239,7 @@ private:
     bool active_ = false;
 };
 
-// Godot's AudioStreamPlaybackOggVorbis and AudioStreamPlaybackMP3: a compressed sound decoded as
+// A playback of a compressed sound (Ogg Vorbis or MP3): decoded as
 // it plays, looping back to loop_offset at its end or after beat_count beats.
 class DecoderPlayback final : public Resampled {
 public:
@@ -321,7 +323,7 @@ private:
                 static_cast<int>(settings_.beat_count * sound_->mix_rate * 60 / settings_.bpm);
         }
         while (todo > 0 && active_) {
-            // Up to the end of the beats, then one frame at a time as Godot reads.
+            // Up to the end of the beats, then one frame at a time.
             int want = todo;
             if (beat_loop) {
                 want = std::clamp(beat_length_frames - static_cast<int>(frames_mixed_), 1, todo);
@@ -383,8 +385,8 @@ private:
     bool active_ = false;
 };
 
-// Godot's AudioStreamGeneratorPlayback: the frames a game pushes, in a ring as Godot's RingBuffer
-// keeps them (one slot always empty), resampled from the generator's rate.
+// A generator playback: the frames a game pushes, in a ring buffer
+// that keeps them (one slot always empty), resampled from the generator's rate.
 class GeneratorPlaybackImpl final : public Resampled, public GeneratorPlayback {
 public:
     GeneratorPlaybackImpl(float rate, std::size_t size, int mix_rate)
@@ -473,7 +475,7 @@ private:
     bool active_ = false;
 };
 
-// Godot's AudioStreamPlaybackMicrophone: what the server's input records, at the mix rate, played
+// A microphone playback: what the server's input records, at the mix rate, played
 // once 50 ms of it waits. Starting turns input on, which fails while it isn't enabled; stopping
 // lets it go.
 class MicrophonePlayback final : public Resampled {
@@ -503,12 +505,12 @@ protected:
     int mix_internal(Frame* buffer, int frames) override {
         std::fill(buffer, buffer + frames, Frame{});
         if (!active_) {
-            // Input didn't turn on, so the voice ends rather than playing silence as Godot's.
+            // Input didn't turn on, so the voice ends rather than playing silence.
             return 0;
         }
         const std::uint64_t recorded = server_->input_recorded();
         const auto length = static_cast<std::uint64_t>(server_->input_buffer_length_frames());
-        // Godot's playback_delay: 50 ms, or half the buffer if that is less.
+        // 50 ms of delay, or half the buffer if that is less.
         const auto delay = std::min<std::uint64_t>(
             static_cast<std::uint64_t>(50 * server_->mix_rate() / 1000), length / 2);
         if (cursor_ && (*cursor_ > recorded || *cursor_ + length < recorded)) {
@@ -521,7 +523,7 @@ protected:
             }
             cursor_ = recorded - delay;
         }
-        // Frames not recorded yet stay silent, and the delay grows by them, as Godot's.
+        // Frames not recorded yet stay silent, and the delay grows by them.
         for (int i = 0; i < frames && *cursor_ < recorded; ++i) {
             buffer[i] = server_->input_frame((*cursor_)++);
         }
@@ -543,7 +545,7 @@ private:
     bool active_ = false;
 };
 
-// Godot's AudioStreamPlaybackPolyphonic: a slot per stream it can play, each mixed into the
+// A polyphonic playback: a slot per stream it can play, each mixed into the
 // output at its volume, which ramps down to silence over the mix a stop asks for.
 class PolyphonicPlaybackImpl final : public Playback, public PolyphonicPlayback {
 public:
@@ -582,7 +584,7 @@ public:
             if (!slot.active) {
                 continue;
             }
-            // As Godot's, a new volume applies at once; only a stop ramps, to silence.
+            // A new volume applies at once; only a stop ramps, to silence.
             const float volume_db = slot.volume_db;
             float next_volume = db_to_linear(volume_db);
             slot.prev_volume_db = volume_db;
@@ -695,7 +697,7 @@ private:
         bool finish_request = false;
     };
 
-    // The slot an ID names while it plays, as Godot's _find_stream.
+    // The slot an ID names while it plays.
     [[nodiscard]] std::optional<std::size_t> slot_of(StreamId id) const {
         const auto bits = static_cast<std::uint64_t>(id);
         const std::uint64_t index = bits >> kIndexShift;
@@ -718,7 +720,7 @@ private:
     bool active_ = false;
 };
 
-// Godot's AudioStreamPlaybackRandomizer: the stream it picked, at a random pitch and volume.
+// A randomizer playback: the stream it picked, at a random pitch and volume.
 class RandomizerPlayback final : public Playback {
 public:
     RandomizerPlayback(std::unique_ptr<Playback> playing, float pitch_scale, float volume_scale)
@@ -782,7 +784,7 @@ private:
     StreamFile settings_;
 };
 
-// Godot's AudioStreamRandomizer. The stream it played last is kept here, as Godot keeps it on
+// A randomizer stream. The stream it played last is kept here, on
 // the resource, so every player of one randomizer avoids repeats together.
 class RandomizerStream final : public Stream {
 public:
@@ -812,7 +814,7 @@ public:
             break;
         }
         last_ = picked != nullptr ? picked : last_;
-        // Pitch is multiplicative, so it is picked on a log scale, as Godot does.
+        // Pitch is multiplicative, so it is picked on a log scale.
         const float range_from = std::log(1.0F / random_pitch_scale_);
         const float range_to = std::log(random_pitch_scale_);
         const float pitch_scale =
@@ -882,8 +884,8 @@ private:
     mutable const Stream* last_ = nullptr;
 };
 
-// Godot's AudioStreamGenerator. Its buffer holds a power of two frames, the smallest above
-// buffer_length seconds, as Godot's.
+// A generator stream. Its buffer holds a power of two frames, the smallest above
+// buffer_length seconds.
 class GeneratorStream final : public Stream {
 public:
     explicit GeneratorStream(const StreamFile& settings)
@@ -907,7 +909,7 @@ private:
     float buffer_length_;
 };
 
-// Godot's AudioStreamPolyphonic.
+// A polyphonic stream.
 class PolyphonicStream final : public Stream {
 public:
     explicit PolyphonicStream(int polyphony) : polyphony_(polyphony) {}
@@ -924,7 +926,7 @@ private:
     int polyphony_;
 };
 
-// Godot's AudioStreamMicrophone.
+// A microphone stream.
 class MicrophoneStream final : public Stream {
 public:
     [[nodiscard]] std::unique_ptr<Playback> instantiate(int mix_rate,

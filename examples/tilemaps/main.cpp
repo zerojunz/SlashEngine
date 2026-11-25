@@ -1,9 +1,8 @@
-// Tile maps, as Godot's TileSet and TileLayer2D: ground.tileset.json cuts ground.png into 16x16
-// tiles and names the terrains they connect, and the TileLayer2D in main.scene.json holds its
-// cells as rows of legend keys.
+// Tile maps: ground.tileset.json cuts ground.png into 16x16 tiles and names the terrains they
+// connect, and the TileLayer2D in main.scene.json holds its cells as rows of legend keys.
 //
-// This program draws the atlas from the tile set's own peering, paints an island with a pond as
-// an agent would, reads the cells back, then draws the layer into a texture.
+// This program draws the atlas from the tile set's own peering, paints an island with a pond as an
+// agent would, reads the cells back, then draws the layer into a texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/canvas/tilemap.hpp"

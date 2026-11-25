@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/math.hpp"
@@ -13,14 +14,14 @@
 #include <string_view>
 #include <vector>
 
-// Meshes gameplay code builds while a game runs, as Godot's SurfaceTool and ArrayMesh: set a
+// Meshes gameplay code builds while a game runs: set a
 // vertex's attributes, add it, add indices if you like, then commit the surface into a Model
-// (Godot's ArrayMesh, one surface per commit) and make it an asset any Model3D can draw:
+// (one surface per commit) and make it an asset any Model3D can draw:
 //
 //   scene3d::SurfaceTool tool;
 //   tool.set_uv({0, 0});
 //   tool.add_vertex({0, 0, 0});
-//   ... // triangles, front faces clockwise as Godot's
+//   ... // triangles, front faces clockwise
 //   tool.generate_normals();
 //   scene3d::Model mesh;
 //   tool.commit(mesh);
@@ -30,13 +31,13 @@
 // The results are the same bits on every machine.
 namespace slash::scene3d {
 
-// Godot's SurfaceTool for triangles.
+// A surface builder for triangles.
 class SurfaceTool {
 public:
-    // The attributes the next add_vertex takes, as Godot's set_* calls. Colors are sRGB 0 to 1.
+    // The attributes the next add_vertex takes. Colors are sRGB 0 to 1.
     void set_color(Vec4 color) { color_ = color; }
     void set_normal(Vec3 normal) { normal_ = normal; }
-    // xyz and the sign of the binormal in w, as Godot's Plane tangent.
+    // xyz and the sign of the binormal in w.
     void set_tangent(Vec4 tangent) { tangent_ = tangent; }
     void set_uv(Vec2 uv) { uv_ = uv; }
     void set_uv2(Vec2 uv) { uv2_ = uv; }
@@ -44,7 +45,7 @@ public:
     // vertex's triangle's own normal.
     static constexpr std::uint32_t kFlat = std::numeric_limits<std::uint32_t>::max();
     void set_smooth_group(std::uint32_t group) { smooth_group_ = group; }
-    // The material the surface is drawn with; left unset, Godot's default.
+    // The material the surface is drawn with; left unset, the default.
     void set_material(const world::Surface3D& material) { material_ = material; }
 
     // A vertex at a position with the attributes set so far.
@@ -53,21 +54,21 @@ public:
     // vertices are a triangle.
     void add_index(std::uint32_t index) { indices_.push_back(index); }
 
-    // Godot's index: equal vertices become one, and the triangles index them.
+    // Equal vertices become one, and the triangles index them.
     void index();
-    // Godot's deindex: each triangle's corners become vertices of their own.
+    // Each triangle's corners become vertices of their own.
     void deindex();
-    // Godot's generate_normals: each triangle's face normal, summed at positions its smooth
+    // Each triangle's face normal, summed at positions its smooth
     // group shares and normalized. flip turns them over, for counter-clockwise triangles.
     void generate_normals(bool flip = false);
-    // Godot's generate_tangents: MikkTSpace's tangents from the normals and texture
+    // MikkTSpace's tangents from the normals and texture
     // coordinates, as models' importers make them.
     void generate_tangents();
 
     [[nodiscard]] std::size_t vertex_count() const { return vertices_.size(); }
     [[nodiscard]] const std::vector<std::uint32_t>& indices() const { return indices_; }
 
-    // Godot's commit: adds the surface to the model's one mesh (made if it has none, with a part
+    // Adds the surface to the model's one mesh (made if it has none, with a part
     // placing it at the origin), with its material, and clears the tool. Fails, changing
     // nothing, on a vertex count not a whole number of triangles, an index past the vertices or
     // more vertices than a mesh takes.
@@ -93,7 +94,7 @@ private:
 };
 
 // Makes a mesh gameplay code built an asset at "made:<name>" in the assets the world's modules
-// load from (canvas::install attaches them), as Godot's ArrayMesh: a Model3D's mesh, a
+// load from (canvas::install attaches them): a Model3D's mesh, a
 // particle emitter's or anything else that names a model can name the path. Making it again
 // with the same name changes it in place, and renderers draw the new one. Returns the path, or
 // fails when the world has no assets or name isn't letters, digits and "_-./".

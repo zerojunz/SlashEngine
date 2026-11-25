@@ -31,7 +31,8 @@ agent. Every change is judged against these goals:
 - **Open source only.** The engine is Apache 2.0 and every dependency is under a permissive
   license.
 
-Where a design choice is open, the default is to follow Godot's approach, adapted for agents.
+Where a design choice is open, the default is to follow the approach of the MIT-licensed engine
+much of the code is ported from (see `THIRD_PARTY.md`), adapted for agents.
 Gameplay code is plain C++; there is no embedded scripting language.
 
 ## Set up and build
@@ -131,8 +132,8 @@ Most changes add something an agent will use, so check these when you design it:
   any GPL, LGPL or AGPL notice in the repo's own files.
 - Never copy code from closed engines (including Unreal Engine) or their docs. Godot is MIT, so its
   ideas and code may be borrowed with attribution in `THIRD_PARTY.md`.
-- Console SDKs are closed and under NDA, so no console code goes in this repo. As with Godot,
-  console ports come from licensed third parties.
+- Console SDKs are closed and under NDA, so no console code goes in this repo. Console
+  ports come from licensed third parties.
 
 ## Pull requests
 

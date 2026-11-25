@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
@@ -10,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-// The icons of Godot's default theme (scene/theme/icons/*.svg), drawn here from the same shapes:
+// The icons of the default theme, drawn here from the same shapes:
 // rounded rects, circles, rings, a check mark and stroked lines, each in one color. Pixels are
 // covered by 8x8 samples each, with only exactly rounded math, so every machine draws them alike.
 namespace slash::ui {

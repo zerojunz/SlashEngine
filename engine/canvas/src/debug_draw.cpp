@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/canvas/debug_draw.hpp"
 
 #include "slash/physics2d/physics2d.hpp"
@@ -33,7 +34,7 @@ float length(Vec2 v) {
     return std::sqrt((v.x * v.x) + (v.y * v.y));
 }
 
-// Colors as Godot's Color methods make them.
+// Color helpers.
 Vec4 opaque(Vec4 color) {
     return {color.x, color.y, color.z, 1.0F};
 }
@@ -102,7 +103,7 @@ public:
         }
     }
 
-    // A line one pixel wide, as Godot's thin lines.
+    // A line one pixel wide.
     void hairline(Vec2 a, Vec2 b, Vec4 color) {
         const Vec2 along = b - a;
         const float span = length(along);

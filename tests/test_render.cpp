@@ -451,7 +451,7 @@ TEST_CASE("the software and GPU devices run every material op as run_program doe
     }
 }
 
-TEST_CASE("blend modes combine colors as Godot's do") {
+TEST_CASE("blend modes combine colors") {
     for (const auto& device : drawing_devices()) {
         CAPTURE(slash::render::backend_name(device->backend()));
         auto target = device->create_texture(target_desc(2));
@@ -482,7 +482,7 @@ TEST_CASE("blend modes combine colors as Godot's do") {
     }
 }
 
-TEST_CASE("blend modes have Godot's names") {
+TEST_CASE("blend modes have their names") {
     using slash::render::parse_blend_mode;
     CHECK(slash::render::blend_mode_name(BlendMode::PremulAlpha) == "premul_alpha");
     CHECK(parse_blend_mode("add") == BlendMode::Add);
@@ -702,7 +702,7 @@ TEST_CASE("the software and GPU devices draw, blend, sample and read back pixels
 
 // Direct3D 12 compiles the HLSL when it first needs a shader, with Windows' own compiler, so a
 // shader that SPIR-V and MSL were made from could still fail there. CI runs this on Windows.
-TEST_CASE("distance_field_coverage reads a multichannel distance field as Godot does") {
+TEST_CASE("distance_field_coverage reads a multichannel distance field") {
     const DistanceField field{.pixel_range = 4.0F, .outline = 0.0F};
     // The median of red, green and blue is the distance: 0.5 is the edge, half covered.
     CHECK(distance_field_coverage({0.6F, 0.5F, 0.4F, 0.0F}, field, 1.0F) == doctest::Approx(0.5F));
@@ -788,7 +788,7 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
                           (compiled.ok() ? std::string() : compiled.error().message));
         }
     }
-    // Forward+'s mesh shader has only a fragment stage.
+    // the clustered renderer's mesh shader has only a fragment stage.
     const auto clustered = slash::render::detail::compile_hlsl(
         slash::render::detail::joined(shaders::kMeshClusteredHlsl), "fs_main", "ps_5_1");
     CHECK_MESSAGE(clustered.ok(), "mesh_clustered fs_main: ",
@@ -863,7 +863,7 @@ TEST_CASE("the opengl driver draws with OpenGL 3.3, and opengl_es with OpenGL ES
     }
 }
 
-TEST_CASE("a GPU driver falls back to OpenGL where its backend doesn't work, as Godot's") {
+TEST_CASE("a GPU driver falls back to OpenGL where its backend doesn't work") {
     using slash::render::choose_driver;
     // A backend this system never has.
 #ifdef __APPLE__
@@ -959,7 +959,7 @@ TEST_CASE("the software device covers the pixels a GPU does") {
     }
 }
 
-TEST_CASE("V-Sync modes have Godot's names") {
+TEST_CASE("V-Sync modes have their names") {
     for (const VsyncMode mode :
          {VsyncMode::Disabled, VsyncMode::Enabled, VsyncMode::Adaptive, VsyncMode::Mailbox}) {
         CHECK(slash::render::parse_vsync_mode(slash::render::vsync_mode_name(mode)) == mode);

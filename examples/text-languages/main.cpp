@@ -1,11 +1,11 @@
-// Text in every language, as Godot's: main.scene.json is a title menu in Arabic, laid out right
-// to left by the menu's layout_direction, with a Hebrew greeting and an exit sign in Japanese and
-// in Chinese. fonts/ui.font.json is Roboto with fallback fonts for the characters Roboto lacks,
-// and the project's theme makes it every control's font.
+// Text in every language: main.scene.json is a title menu in Arabic, laid out right to left by the
+// menu's layout_direction, with a Hebrew greeting and an exit sign in Japanese and in Chinese.
+// fonts/ui.font.json is Roboto with fallback fonts for the characters Roboto lacks, and the
+// project's theme makes it every control's font.
 //
-// This program writes the fonts, checks the menu with ui.layout, prints which font drew each
-// label, measures text with text.measure, lays the menu out left to right for comparison, then
-// draws it into a texture.
+// This program writes the fonts, checks the menu with ui.layout, prints which font drew each label,
+// measures text with text.measure, lays the menu out left to right for comparison, then draws it
+// into a texture.
 
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/builtin.hpp"

@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #include "slash/audio/audio.hpp"
 #include "slash/core/text.hpp"
 
@@ -181,9 +183,9 @@ Result<Sound> decode_sound(std::string_view data, std::string_view path) {
         ma_decoder_uninit(&decoder);
         return invalid();
     }
-    // Godot plays mono and stereo; more channels are mixed down to two. Integer samples are read
-    // as 32-bit integers, which every integer size converts to exactly, then scaled as Godot's
-    // importer does (an 8-bit 192 is 0.5), rather than by miniaudio's float conversion.
+    // Mono and stereo play as they are; more channels are mixed down to two. Integer samples
+    // are read as 32-bit integers, which every integer size converts to exactly, then scaled
+    // (an 8-bit 192 is 0.5), rather than by miniaudio's float conversion.
     const bool integer = format != ma_format_f32;
     ma_decoder_uninit(&decoder);
     channels = std::min<ma_uint32>(channels, 2);
@@ -197,7 +199,7 @@ Result<Sound> decode_sound(std::string_view data, std::string_view path) {
         length = 0;
     }
     if (sound.format == Sound::Format::Wav) {
-        // As Godot imports WAV files: every sample decoded now.
+        // Every sample is decoded now.
         constexpr ma_uint64 kChunk = 4096;
         constexpr float kIntegerScale = 1.0F / 2147483648.0F;
         std::vector<float> samples;
@@ -728,7 +730,7 @@ Result<StreamFile> parse_stream_file(const json::Value& doc) {
     if (const json::Value* end = doc.find("loop_end"); end != nullptr) {
         out.loop_end = end->as_int();
     }
-    // As Godot's, a playlist loops unless told not to.
+    // A playlist loops unless told not to.
     out.loop = out.kind == StreamFile::Kind::Playlist;
     if (const json::Value* loop = doc.find("loop"); loop != nullptr) {
         out.loop = loop->as_bool();

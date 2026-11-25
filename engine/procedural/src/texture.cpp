@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/procedural/texture.hpp"
 
 #include "json_fields.hpp"
@@ -265,7 +266,7 @@ std::vector<std::uint8_t> seamless_image(std::vector<std::uint8_t> source, int w
     return dest;
 }
 
-// Image::_set_color_at_ofs for RGBA8: truncated, as Godot's set_pixel stores it.
+// A color stored as RGBA8: truncated.
 std::uint8_t set_byte(float value) {
     return static_cast<std::uint8_t>(std::clamp(static_cast<double>(value) * 255.0, 0.0, 255.0));
 }

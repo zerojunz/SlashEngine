@@ -3568,7 +3568,8 @@ fn fs_main(@location(0u) v_85 : vec2<f32>, @location(1u) v_86 : vec4<f32>, @loca
 };
 
 inline constexpr const char* kFsrEasuHlsl[] = {
-R"slash(// What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
+R"slash(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
 // (light.hpp). The material shader (material.hlsl) includes it, and so does each of a game's own
 // shaders, which the shader tools wrap around the game's fragment() and vertex() functions. Keep
 // the lighting in step with shade in src/light.cpp and the software device.
@@ -3699,7 +3700,7 @@ float shadow_amount(Light light, float2 position) {
     return hidden / float(2 * taps + 1);
 }
 
-// Godot's 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
+// 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
 float3 light_normal(float3 light_vec, float3 normal, float3 base, float3 light_color,
                     float4 shine, bool shine_used) {
     float n_dot_l = max(0.0, dot(normal, light_vec));
@@ -3852,9 +3853,9 @@ static const float E = 2.71828182845904523536;
 // FidelityFX Super Resolution 1's first pass, edge-adaptive spatial upsampling (EASU): each pixel
 // of the output from the 12 texels of the render around it, with a Lanczos-like kernel stretched
 // along the edges it finds. Ported from the 32-bit path of AMD's ffx_fsr1.h (FsrEasuF), with the
-// gathers as texel reads; the "fsr" upscaler (src/upscaler.cpp) draws it as a canvas shader over
 )slash",
-R"slash(// a target of the output size, with TEXTURE the render, filtered nearest.
+R"slash(// gathers as texel reads; the "fsr" upscaler (src/upscaler.cpp) draws it as a canvas shader over
+// a target of the output size, with TEXTURE the render, filtered nearest.
 //
 // Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.
 //
@@ -6793,7 +6794,8 @@ fn fs_main(@location(0u) v_55 : vec2<f32>, @location(1u) v_56 : vec4<f32>, @loca
 };
 
 inline constexpr const char* kFsrRcasHlsl[] = {
-R"slash(// What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
+R"slash(// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+// What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
 // (light.hpp). The material shader (material.hlsl) includes it, and so does each of a game's own
 // shaders, which the shader tools wrap around the game's fragment() and vertex() functions. Keep
 // the lighting in step with shade in src/light.cpp and the software device.
@@ -6924,7 +6926,7 @@ float shadow_amount(Light light, float2 position) {
     return hidden / float(2 * taps + 1);
 }
 
-// Godot's 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
+// 2D normal lighting: Lambert, plus Blinn-Phong with a specular map.
 float3 light_normal(float3 light_vec, float3 normal, float3 base, float3 light_color,
                     float4 shine, bool shine_used) {
     float n_dot_l = max(0.0, dot(normal, light_vec));
@@ -7078,9 +7080,9 @@ static const float E = 2.71828182845904523536;
 // FidelityFX Super Resolution 1's second pass, robust contrast-adaptive sharpening (RCAS): each
 // pixel sharpened against the four around it, as far as they allow without clipping. Ported from
 // the 32-bit path of AMD's ffx_fsr1.h (FsrRcasF, alpha passed through, no denoising); the "fsr"
-// upscaler (src/upscaler.cpp) draws it as a canvas shader over the screen, with TEXTURE the
 )slash",
-R"slash(// EASU pass's output at the screen's size, filtered nearest, and the param sharpness
+R"slash(// upscaler (src/upscaler.cpp) draws it as a canvas shader over the screen, with TEXTURE the
+// EASU pass's output at the screen's size, filtered nearest, and the param sharpness
 // 2^-fsr_sharpness (FsrRcasCon): 1 is the sharpest.
 //
 // Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.

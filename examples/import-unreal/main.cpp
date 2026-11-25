@@ -3,21 +3,20 @@
 // unreal/ holds "Crate Run", a small Unreal Engine 5 game: its .uproject file, config files with
 // its settings and legacy input mappings, and a C++ class. Unreal's .umap and .uasset files are
 // binary and only Unreal reads them, so the import runs the project's own Unreal Editor in the
-// background (as Godot runs Blender for .blend files), with a Python script that exports each
-// level's actors and components, the Enhanced Input assets, the meshes, override materials and
-// animation sequences as glTF and the sounds as WAV. This example runs a stand-in for the editor
-// that copies unreal/FakeExport, which holds what the script writes for this project, so it runs
-// where Unreal isn't installed.
+// background, with a Python script that exports each level's actors and components, the Enhanced
+// Input assets, the meshes, override materials and animation sequences as glTF and the sounds as
+// WAV. This example runs a stand-in for the editor that copies unreal/FakeExport, which holds what
+// the script writes for this project, so it runs where Unreal isn't installed.
 //
-// One call converts it. Its level becomes a .scene.json file beside the .umap, in Godot's axes and
-// meters: meshes as MeshInstance3D entities over the exported glTF files (with the collision Unreal
-// gives them, and a copy drawn with a component's override material), the hero's skeletal mesh
-// playing its animation sequence, the guard's Animation Blueprint's sequences as an AnimationTree's
-// states, the landscape as an HTerrain, lights, the sky, fog, the camera on the player's spring
-// arm, physics bodies, trigger and blocking volumes, Niagara systems as Godot's particle
+// One call converts it. Its level becomes a .scene.json file beside the .umap, in SlashEngine's
+// axes and meters: meshes as Model3D entities over the exported glTF files (with the collision
+// Unreal gives them, and a copy drawn with a component's override material), the hero's skeletal
+// mesh playing its animation sequence, the guard's Animation Blueprint's sequences as an
+// AnimationGraph's states, the landscape as a Terrain3D, lights, the sky, fog, the camera on the
+// player's spring arm, physics bodies, trigger and blocking volumes, Niagara systems as particle
 // emitters, and sounds; its settings and both input systems become project.json; each C++ class
-// becomes a C++ skeleton with its properties as a component the level's actors fill in, as
-// Unity's scripts do; and each Blueprint and C++ class becomes a storyboard task to port it, since
+// becomes a C++ skeleton with its properties as a component the level's actors fill in, as Unity's
+// scripts do; and each Blueprint and C++ class becomes a storyboard task to port it, since
 // SlashEngine games are plain C++. The report lists what didn't convert, and why. The glTF files,
 // the landscape's heights and the sound are made in code here, so the repository holds no binary
 // files.
@@ -62,7 +61,7 @@ void write_file(const std::string& path, const std::string& contents) {
     }
 }
 
-// A box's surface, its faces wound clockwise from outside, as Godot's front faces are.
+// A box's surface, its faces wound clockwise from outside.
 scene3d::ModelSurface box(std::array<float, 3> low, std::array<float, 3> high) {
     scene3d::ModelSurface surface;
     const auto corner = [&](std::size_t c) {

@@ -1,6 +1,6 @@
-// ENetMultiplayerPeer and the parts of ENetConnection and ENetPacketPeer it uses, ported from
-// Godot 4.5's modules/enet (MIT). Godot's own ENet fork adds IPv6; this one is upstream ENet,
-// which Godot also builds against, so it is IPv4 as Godot is then.
+// The ENet multiplayer peer and the parts of ENetConnection and ENetPacketPeer it uses. This is
+// upstream ENet, so it is IPv4 only.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "slash/net/enet.hpp"
 
 #if SLASH_NET_ENET
@@ -195,7 +195,7 @@ Result<void> ENetPeer::create_client(std::string_view address, int port, int cha
     remote.port = static_cast<enet_uint16>(port);
 
     s.unique_id = generate_unique_id();
-    // The client picks its ID and sends it with the connection, as Godot's does.
+    // The client picks its ID and sends it with the connection.
     ::ENetPeer* server = enet_host_connect(
         s.host, &remote,
         channel_count > 0 ? static_cast<std::size_t>(channel_count + kSystemChannels)
@@ -350,8 +350,8 @@ void ENetPeer::poll() {
                 if (is_refusing_new_connections() ||
                     // A client joined with an invalid ID, probably trying to exploit us.
                     event.data < 2 || event.data > 0x7FFFFFFFU || s.peers.contains(id)) {
-                    // Godot resets the peer, which upstream ENet doesn't tell the client
-                    // about; disconnecting it does, so it stops waiting at once.
+                    // Resetting the peer wouldn't tell the client in upstream ENet;
+                    // disconnecting it does, so it stops waiting at once.
                     enet_peer_disconnect_now(event.peer, 0);
                 } else {
                     s.peers[id] = event.peer;

@@ -1,10 +1,10 @@
-// Particle collision in 3D, as Godot's GPUParticlesCollision3D nodes: in main.scene.json a fountain
-// of sparks falls onto a floor (a collision box) and bounces, as its process material's rigid
-// collision_mode says, and rain falls round an umbrella (a collision sphere) that hides each drop
-// it touches, as hide_on_contact says, so the ground under it stays dry.
+// Particle collision in 3D: in main.scene.json a fountain of sparks falls onto a floor (a collision
+// box) and bounces, as its process material's rigid collision_mode says, and rain falls round an
+// umbrella (a collision sphere) that hides each drop it touches, as hide_on_contact says, so the
+// ground under it stays dry.
 //
-// This program checks what the colliders did with particles.eval and by counting particles, as
-// an agent would, with no screenshot.
+// This program checks what the colliders did with particles.eval and by counting particles, as an
+// agent would, with no screenshot.
 
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/command/builtin.hpp"
@@ -106,8 +106,8 @@ int main() {
     count_sparks(session);
     count_rain(session);
 
-    // A collider acts only on emitters whose layers share a bit with its cull_mask, as Godot's:
-    // with the umbrella on layer 2 only, the rain falls through it, and only the floor hides it.
+    // A collider acts only on emitters whose layers share a bit with its layer_filter: with the
+    // umbrella on layer 2 only, the rain falls through it, and only the floor hides it.
     call(session, "component.set",
          R"({"id": "umbrella", "components": {"ParticleColliderSphere3D": {"cull_mask": 2}}})");
     call(session, "step", R"({"ticks": 60})");

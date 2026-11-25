@@ -304,6 +304,6 @@ inline constexpr int kRayShadowsHlslSlots[][2] = {{1, -1}, {2, 0}, {3, 1}, {5, -
 inline constexpr std::uint32_t kRayShadowsHlslSamplers = 2;
 
 // The FNV-1a hash of the GLSL it was made from.
-inline constexpr std::uint64_t kRayShadowsHlslFrom = 0x6ed87beb5f206eebULL;
+inline constexpr std::uint64_t kRayShadowsHlslFrom = 0xc7b40e971d4c34b2ULL;
 
 } // namespace slash::render::shaders

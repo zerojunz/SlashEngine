@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/render/device.hpp"
@@ -8,22 +9,22 @@
 #include <span>
 #include <vector>
 
-// What every device shares to scatter light under the surface of a Forward+ frame's opaque meshes,
-// as Godot 4.6's subsurface scattering does: which frames and materials take part, the uniforms
-// of shaders/subsurface.hlsl, and the CPU twin of its two passes, which the software device runs.
+// What every device shares to scatter light under the surface of a clustered frame's opaque meshes:
+// which frames and materials take part, the uniforms of shaders/subsurface.hlsl, and the CPU twin
+// of its two passes, which the software device runs.
 //
 // After the opaque meshes, the meshes with Material3D::subsurface draw again, where they are seen,
 // with mesh_subsurface.hlsl into a texture of half floats: each pixel's emitted, diffuse and
 // ambient light, and its strength in alpha (below 0 for skin). The blur across reads it into a
-// second such texture, and the blur down reads that and gives each pixel the change to its
-// diffuse light, which is added to the frame's world: the light Godot keeps apart from the
-// specular and adds back.
+// second such texture, and the blur down reads that and gives each pixel the change to its diffuse
+// light, which is added to the frame's world: the light kept apart from the specular and added
+// back.
 namespace slash::render::detail {
 
 using Float4 = std::array<float, 4>;
 
-// Whether a scene's frame scatters light under its meshes' surface: in Forward+, with a quality
-// other than disabled, when it is no probe's capture and isn't path traced.
+// Whether a scene's frame scatters light under its meshes' surface: in the clustered renderer, with
+// a quality other than disabled, when it is no probe's capture and isn't path traced.
 [[nodiscard]] bool uses_subsurface(const Scene3D& scene);
 
 // Whether a material draws in the subsurface pass: a lit, opaque Surface3D with a
@@ -38,7 +39,7 @@ using Float4 = std::array<float, 4>;
 struct SubsurfaceUniforms {
     // The frame's width and height, 1 for the pass down, 1 for an orthogonal camera.
     std::array<std::uint32_t, 4> size{};
-    // Godot's unit_size, the scale, the depth scale and the kernel's samples.
+    // The unit size, the scale, the depth scale and the kernel's samples.
     Float4 params{};
     // The projection's m10, m11, m14 and m15, from which a depth is made linear.
     Float4 projection{};

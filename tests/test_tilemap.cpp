@@ -217,7 +217,7 @@ TEST_CASE("tile set files are checked, with every mistake located") {
     CHECK(canvas::tile_region(s, {2, 1}) == std::array<int, 4>{1 + (2 * 19), 2 + 28, 16, 24});
     CHECK(canvas::tile_text(sides.value(), {.source = "s", .atlas = {2, 1}}) == "s:2,1");
 
-    // A source's normal and specular maps, as a Godot CanvasTexture's.
+    // A source's normal and specular maps.
     auto lit = canvas::parse_tileset(parse(R"({"format": 1, "sources": {"s": {
         "texture": "s.png", "normal_texture": "s_n.png", "specular_texture": "s_s.png",
         "specular_color": [1, 0.5, 0.25, 1], "specular_shininess": 0.5}}})"));
@@ -329,7 +329,7 @@ TEST_CASE("a layer's cells are rows of legend keys, and encode in canonical form
     CHECK(back.value() == wide);
 }
 
-TEST_CASE("painting terrain picks the tiles whose edges connect, as Godot does") {
+TEST_CASE("painting terrain picks the tiles whose edges connect") {
     const canvas::TileSet set = ground();
     const int grass = set.terrain("grass");
     const int water = set.terrain("water");
@@ -429,7 +429,7 @@ canvas::Neighbor opposite(canvas::Neighbor direction) {
 
 } // namespace
 
-TEST_CASE("cells of every tile shape and layout sit where Godot's TileSet puts them") {
+TEST_CASE("cells of every tile shape and layout sit where the tile set puts them") {
     using canvas::TileLayout;
     using canvas::TileOffsetAxis;
     using canvas::TileShape;
@@ -512,7 +512,7 @@ TEST_CASE("cells of every tile shape and layout sit where Godot's TileSet puts t
     }
 }
 
-TEST_CASE("each tile shape has its own sides and corners, as Godot's terrain peering bits") {
+TEST_CASE("each tile shape has its own sides and corners, as terrain peering bits") {
     using canvas::Neighbor;
     using canvas::PeeringKind;
     using canvas::TileLayout;
@@ -542,7 +542,7 @@ TEST_CASE("each tile shape has its own sides and corners, as Godot's terrain pee
     CHECK(kinds(columns) == "n ne se s sw nw | nne e sse ssw w nnw");
     CHECK(kinds(bricks) == kinds(rows));
 
-    // Godot's bits go clockwise from the right side; each shape uses the ones it has.
+    // The bits go clockwise from the right side; each shape uses the ones it has.
     const auto bit = [](const canvas::TileSet& set, int godot) {
         const auto direction = canvas::godot_neighbor(set.shape, set.offset_axis, godot);
         return direction
@@ -563,7 +563,7 @@ TEST_CASE("each tile shape has its own sides and corners, as Godot's terrain pee
     CHECK(bit(square, 16) == "-");
     CHECK(bit(square, -1) == "-");
 
-    // The cells across, from Godot's get_neighbor_cell.
+    // The cells across.
     CHECK(canvas::neighbor_cell(iso, {0, 1}, Neighbor::SE) == Vec2i{1, 2});
     CHECK(canvas::neighbor_cell(iso, {0, 1}, Neighbor::N) == Vec2i{0, -1});
     CHECK(canvas::neighbor_cell(iso, {0, 1}, Neighbor::E) == Vec2i{1, 1});
@@ -1081,7 +1081,7 @@ TEST_CASE("cells name a tile's alternative and turns after the tile") {
     CHECK(decoded.value() == cells);
 }
 
-TEST_CASE("a tile's collision turns with its cell, as Godot's tile physics turns it") {
+TEST_CASE("a tile's collision turns with its cell") {
     const auto set = solid();
     const auto polygon = [&](std::string_view text) {
         auto found = canvas::find_tile(set, text);
@@ -1096,7 +1096,7 @@ TEST_CASE("a tile's collision turns with its cell, as Godot's tile physics turns
     // Transposed, then flipped: the ledge stands along the tile's left side, then its right.
     CHECK(polygon("ledge:t") == "-8,-8 -8,8 -4,8 -4,-8");
     CHECK(polygon("ledge:ht") == "8,-8 8,8 4,8 4,-8");
-    // The alternative has its own polygon, which its own flip_h doesn't flip, as in Godot.
+    // The alternative has its own polygon, which its own flip_h doesn't flip.
     CHECK(polygon("block:1") == "-8,8 8,-8 8,8");
     CHECK(polygon("block:1:h") == "8,8 -8,-8 -8,8");
 
@@ -1115,7 +1115,7 @@ TEST_CASE("a tile's collision turns with its cell, as Godot's tile physics turns
     CHECK(points_text(shapes[1].points) == "48,16 64,16 64,20 48,20");
 }
 
-TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
+TEST_CASE("turned and alternative tiles draw") {
     // An 8x8 tile in four colors: red top left, green top right, blue bottom left, white
     // bottom right. Each cell below is 8x8 too, so each quarter is a 4x4 square.
     const Rgba red{255, 0, 0, 255};
@@ -1169,8 +1169,8 @@ TEST_CASE("turned and alternative tiles draw as Godot's draw_tile draws them") {
     }
 }
 
-TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, as Godot's") {
-    // Godot's compute_transformed_tile_dest_rect: the tile turned by its alternative, moved by
+TEST_CASE("a tile's texture origin moves its texture, and turns with the cell") {
+    // The tile turned by its alternative, moved by
     // its texture origin, then turned by the cell around the cell's center.
     auto set = canvas::parse_tileset(parse(R"({"format": 1, "tile_size": [8, 4],
         "sources": {"a": {"texture": "a.png", "tiles": {"0,0": {"texture_origin": [2, -3],
@@ -1242,7 +1242,7 @@ TEST_CASE("a tile's texture origin moves its texture, and turns with the cell, a
     }
 }
 
-TEST_CASE("animated tiles and tiles larger than one cell, as Godot's TileSetAtlasSource") {
+TEST_CASE("animated tiles and tiles larger than one cell") {
     CHECK(first_error(R"({"format": 1, "sources": {"a": {"texture": "a.png",
           "tiles": {"0,0": {"size_in_atlas": [2, 1]}, "1,0": {}}}}})") ==
           "/sources/a/tiles/1,0: it covers the texture's cell 1,0, as the tile \"0,0\" does; a "
@@ -1584,7 +1584,7 @@ TEST_CASE("tile sets give tiles occluders and custom data, all checked") {
     CHECK_FALSE(walls->occlusion[1].closed);
     CHECK(walls->occlusion[1].cull == canvas::TileCull::Disabled);
 
-    // A tile's value in a layer, or the default of the layer's type, as Godot's get_custom_data.
+    // A tile's value in a layer, or the default of the layer's type.
     const canvas::TileRef lava{.source = "main", .atlas = {1, 0}};
     CHECK(set.custom_data_layer("kind") == 1);
     CHECK(set.custom_data_layer("speed") == -1);
@@ -1596,7 +1596,7 @@ TEST_CASE("tile sets give tiles occluders and custom data, all checked") {
     CHECK(set.custom_data(wall, "push") == parse("[0, 0]"));
     CHECK(set.custom_data(wall, "tint") == parse("[0, 0, 0, 1]"));
     CHECK(set.custom_data(wall, "deadly") == json::Value(false));
-    // An alternative has values of its own, as in Godot, and the defaults for the rest.
+    // An alternative has values of its own, and the defaults for the rest.
     const canvas::TileRef flipped{.source = "main", .atlas = {0, 0}, .alternative = 1};
     CHECK(set.custom_data(flipped, "damage") == json::Value(3));
     CHECK(set.custom_data(flipped, "kind") == json::Value(""));
@@ -1675,12 +1675,12 @@ TEST_CASE("a tile's occluders turn with its cell, and a mirrored one culls the o
     tile = plain;
     tile.transpose = true;
     CHECK(turned(tile) == "0,0 0,4 2,4 counter_clockwise");
-    // An alternative has occluders of its own, as in Godot: this one has none.
+    // An alternative has occluders of its own: this one has none.
     CHECK(canvas::tile_occluders(set, {.source = "a", .atlas = {0, 0}, .alternative = 1}).empty());
     CHECK(canvas::tile_occluders(set, {.source = "a", .atlas = {3, 0}}).empty());
 }
 
-TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in its cells") {
+TEST_CASE("tiles' occluders cast shadows in their cells") {
     // A sun shining down the screen over a white floor. The wall at cell (1, 0) shadows the
     // cells below it; the fence at (3, 0) is on an occlusion layer whose light mask the sun
     // doesn't shadow, until the sun's shadow_item_cull_mask takes it in.
@@ -1758,8 +1758,8 @@ TEST_CASE("tile sets give tiles navigation outlines, checked and turned with the
     };
     const canvas::TileRef plain{.source = "a", .atlas = {0, 0}};
     CHECK(turned(plain) == "0: -8,-8 8,-8 8,0 | 1: -8,0 8,0 8,8 -8,8");
-    // A turn that mirrors the points reverses them, so outlines wind as written, as Godot's
-    // TileData::get_navigation_polygon keeps their winding order.
+    // A turn that mirrors the points reverses them, so outlines wind as written:
+    // their winding order is kept.
     canvas::TileRef tile = plain;
     tile.flip_h = true;
     CHECK(turned(tile) == "0: -8,0 -8,-8 8,-8 | 1: 8,8 -8,8 -8,0 8,0");
@@ -1768,7 +1768,7 @@ TEST_CASE("tile sets give tiles navigation outlines, checked and turned with the
     tile = plain;
     tile.transpose = true;
     CHECK(turned(tile) == "0: 0,8 -8,8 -8,-8 | 1: 8,-8 8,8 0,8 0,-8");
-    // An alternative has outlines of its own, as in Godot; the second has none.
+    // An alternative has outlines of its own; the second has none.
     CHECK(turned({.source = "a", .atlas = {0, 0}, .alternative = 1}) == "0: 0,0 4,0 4,4");
     CHECK(turned({.source = "a", .atlas = {0, 0}, .alternative = 2}).empty());
 

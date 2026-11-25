@@ -1,3 +1,5 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
+
 #pragma once
 
 #include "slash/core/json.hpp"
@@ -20,10 +22,10 @@
 #include <variant>
 #include <vector>
 
-// XR, as Godot's XRServer: the interfaces that talk to headsets, the trackers they keep up to date
+// XR: the interfaces that talk to headsets, the trackers they keep up to date
 // (the head, controllers, anchors) and the XR nodes placed by them. XROrigin3D is where the
 // player's play space is in the world; XRCamera3D, XRController3D and XRAnchor3D under it follow
-// a tracker's pose, as Godot's XRNode3D does. Interfaces are added to a world's server and the
+// a tracker's pose. Interfaces are added to a world's server and the
 // `xr` system has each initialized one update its trackers once a tick.
 //
 //   xr::install(world, settings);
@@ -31,7 +33,7 @@
 //   if (xr::is_button_pressed(world, right_hand, "trigger_click")) { ... }
 namespace slash::xr {
 
-// Godot's XRServer::TrackerType, as bits so a mask can name several.
+// The type of a tracker, as bits so a mask can name several.
 enum class TrackerType : std::uint8_t {
     Head = 1,
     Controller = 2,
@@ -46,16 +48,16 @@ inline constexpr std::uint32_t kAnyTracker = 0xFF;
 [[nodiscard]] std::string_view tracker_type_name(TrackerType type);
 [[nodiscard]] std::optional<TrackerType> tracker_type_named(std::string_view name);
 
-// Godot's XRPositionalTracker::TrackerHand.
+// Which hand a tracker is on.
 enum class Hand : std::uint8_t { Unknown, Left, Right };
 [[nodiscard]] std::string_view hand_name(Hand hand); // "unknown", "left" or "right"
 [[nodiscard]] std::optional<Hand> hand_named(std::string_view name);
 
-// Godot's XRPose::TrackingConfidence.
+// How sure a pose is.
 enum class Confidence : std::uint8_t { None, Low, High };
 [[nodiscard]] std::string_view confidence_name(Confidence confidence); // "none", "low", "high"
 
-// Where a tracked thing is, as Godot's XRPose: in the play space, in meters before the world
+// Where a tracked thing is: in the play space, in meters before the world
 // scale.
 struct Pose {
     std::string name;
@@ -68,10 +70,10 @@ struct Pose {
     friend bool operator==(const Pose&, const Pose&) = default;
 };
 
-// An input's value, as the Variant a Godot tracker keeps: a button, a trigger or a thumbstick.
+// An input's value, as the variant a tracker keeps: a button, a trigger or a thumbstick.
 using Input = std::variant<bool, float, Vec2>;
 
-// Something the interfaces track, as Godot's XRPositionalTracker: its poses and, for a
+// Something the interfaces track: its poses and, for a
 // controller, its inputs by action name.
 struct Tracker {
     TrackerType type = TrackerType::Head;
@@ -82,12 +84,12 @@ struct Tracker {
     Hand hand = Hand::Unknown;
     std::map<std::string, Pose, std::less<>> poses;
     std::map<std::string, Input, std::less<>> inputs;
-    // A face tracker's weight for each face shape (slash/xr/face.hpp), as Godot's XRFaceTracker's
-    // blend shapes: kFaceShapeCount of them once set_face_blend_shapes has been called.
+    // A face tracker's weight for each face shape (slash/xr/face.hpp),
+    // its blend shapes: kFaceShapeCount of them once set_face_blend_shapes has been called.
     std::vector<float> blend_shapes{}; // NOLINT(readability-redundant-member-init)
 };
 
-// Godot's XRInterface::Capabilities.
+// What an interface can do.
 enum Capability : std::uint8_t {
     kMono = 1,
     kStereo = 2,
@@ -97,17 +99,17 @@ enum Capability : std::uint8_t {
     kExternal = 32,
 };
 
-// Godot's XRInterface::PlayAreaMode.
+// How the play area is set up.
 enum class PlayArea : std::uint8_t { Unknown, ThreeDof, Sitting, Roomscale, Stage };
 [[nodiscard]] std::string_view play_area_name(PlayArea mode);
 [[nodiscard]] std::optional<PlayArea> play_area_named(std::string_view name);
 
-// Godot's XRInterface::EnvironmentBlendMode.
+// How the headset blends with the world.
 enum class BlendMode : std::uint8_t { Opaque, Additive, AlphaBlend };
 [[nodiscard]] std::string_view blend_mode_name(BlendMode mode); // "opaque", "additive", "alpha"
 [[nodiscard]] std::optional<BlendMode> blend_mode_named(std::string_view name);
 
-// Godot's XRInterface::TrackingStatus.
+// The tracking status of an interface.
 enum class TrackingStatus : std::uint8_t {
     Normal,
     ExcessiveMotion,
@@ -128,7 +130,7 @@ struct Fov {
     friend bool operator==(const Fov&, const Fov&) = default;
 };
 
-// Something that talks to a headset, as Godot's XRInterface. Interfaces update the server's
+// Something that talks to a headset. Interfaces update the server's
 // trackers in process(), which the xr system calls once a tick while they are initialized.
 class Interface {
 public:
@@ -142,7 +144,7 @@ public:
     [[nodiscard]] virtual std::string_view name() const = 0;
     [[nodiscard]] virtual std::uint32_t capabilities() const = 0;
     [[nodiscard]] virtual bool is_initialized() const = 0;
-    // Starts it; the first interface initialized becomes the primary one, as Godot's do.
+    // Starts it; the first interface initialized becomes the primary one.
     virtual Result<void> initialize(world::World& world) = 0;
     virtual void uninitialize(world::World& world) = 0;
     // Puts an initialized interface's trackers back as they started, for replays; the server's
@@ -152,13 +154,13 @@ public:
     // Updates the trackers. Called by the xr system once a tick.
     virtual void process(world::World& world) = 0;
     // The headset's place in the play space with the world scale and reference frame applied, as
-    // Godot's get_camera_transform.
+    // The camera's transform.
     [[nodiscard]] virtual world::Affine3D camera_transform(const world::World& world) const = 0;
-    // The views it draws, as Godot's get_view_count: 2 for a headset's eyes.
+    // The views it draws: 2 for a headset's eyes.
     [[nodiscard]] virtual std::uint32_t view_count() const { return 1; }
-    // Each view's image size in pixels, as Godot's get_render_target_size.
+    // Each view's image size in pixels.
     [[nodiscard]] virtual Vec2i render_target_size() const { return {}; }
-    // Where a view is, as Godot's get_transform_for_view: cam_transform (the world origin) times
+    // Where a view is: cam_transform (the world origin) times
     // the reference frame times the view's place in the play space, its position times the
     // world scale.
     [[nodiscard]] virtual world::Affine3D
@@ -167,7 +169,7 @@ public:
         (void)view;
         return cam_transform * camera_transform(world);
     }
-    // A view's field of view, which Godot's get_projection_for_view makes its projection of.
+    // A view's field of view, which its projection is made of.
     [[nodiscard]] virtual Fov fov_for_view(std::uint32_t /*view*/) const { return {}; }
     [[nodiscard]] virtual PlayArea play_area_mode() const { return PlayArea::Unknown; }
     [[nodiscard]] virtual bool supports_play_area_mode(PlayArea mode) const {
@@ -176,8 +178,8 @@ public:
     virtual bool set_play_area_mode(world::World& /*world*/, PlayArea mode) {
         return mode == PlayArea::Unknown;
     }
-    // The play area's corners on the floor, in the world's space around the origin, as Godot's
-    // get_play_area; none when the headset doesn't know them.
+    // The play area's corners on the floor, in the world's space around the origin;
+    // none when the headset doesn't know them.
     [[nodiscard]] virtual std::vector<Vec3> play_area(const world::World& /*world*/) const {
         return {};
     }
@@ -194,7 +196,7 @@ public:
     }
 };
 
-// project.json's "xr", as Godot's xr/openxr and xr/shaders settings.
+// project.json's "xr": the OpenXR and shader settings.
 struct Settings {
     bool enabled = false;                      // start the headset's interface when the game does
     std::string form_factor = "head_mounted";  // or "handheld"
@@ -216,7 +218,7 @@ struct Settings {
 void install(world::World& world, const Settings& settings = {});
 [[nodiscard]] const Settings& settings(const world::World& world);
 
-// The server, as Godot's XRServer.
+// The server.
 [[nodiscard]] float world_scale(const world::World& world);
 void set_world_scale(world::World& world, float scale);
 // The current XROrigin3D's place in the world, as of the last tick.
@@ -224,9 +226,9 @@ void set_world_scale(world::World& world, float scale);
 // What center_on_hmd set: the play space's turn and shift before the world scale's.
 [[nodiscard]] world::Affine3D reference_frame(const world::World& world);
 void clear_reference_frame(world::World& world);
-// Godot's XRServer::RotationMode.
+// How the origin follows a reset of the headset's rotation.
 enum class RotationMode : std::uint8_t { ResetFullRotation, ResetButKeepTilt, DontResetRotation };
-// Makes where the headset is now the play space's center, as Godot's center_on_hmd; nothing in
+// Makes where the headset is now the play space's center; nothing in
 // the stage play area, which is the room's own.
 void center_on_hmd(world::World& world, RotationMode rotation_mode, bool keep_height);
 // The primary interface's camera_transform; the identity with none.
@@ -250,7 +252,7 @@ void remove_tracker(world::World& world, std::string_view name);
 
 // What interfaces call to update a tracker, as XRPositionalTracker's set_pose, invalidate_pose,
 // set_input and set_tracker_profile. Each tells the XR nodes following the tracker at the end of
-// the xr system's run, as Godot's tracker signals do.
+// the xr system's run.
 void set_pose(world::World& world, std::string_view tracker, std::string_view name,
               const world::Affine3D& transform, Vec3 linear_velocity, Vec3 angular_velocity,
               Confidence confidence);
@@ -262,12 +264,12 @@ void set_profile(world::World& world, std::string_view tracker, std::string_view
 void set_face_blend_shapes(world::World& world, std::string_view tracker,
                            std::span<const float> weights);
 
-// The pose's transform with the world scale and reference frame applied, as Godot's
-// XRPose::get_adjusted_transform: where its XR node goes under the XROrigin3D.
+// The pose's transform with the world scale and reference frame applied:
+// where its XR node goes under the XROrigin3D.
 [[nodiscard]] world::Affine3D adjusted_transform(const world::World& world, const Pose& pose);
 
 // What a frame of the primary interface sees: each view's place in the world (from the world
-// origin) and field of view, as Godot's viewport asks an XR interface; none without an
+// origin) and field of view, as a viewport asks an XR interface; none without an
 // initialized primary interface.
 struct View {
     world::Affine3D transform;
@@ -282,13 +284,12 @@ struct NodeBinding {
 };
 [[nodiscard]] std::optional<NodeBinding> binding(const world::World& world, entt::entity node);
 
-// What gameplay code asks an XR node (XRCamera3D, XRController3D or XRAnchor3D), as Godot's
-// XRNode3D and XRController3D.
+// What gameplay code asks an XR node (XRCamera3D, XRController3D or XRAnchor3D).
 [[nodiscard]] bool has_tracking_data(const world::World& world, entt::entity node);
 [[nodiscard]] const Pose* pose_of(const world::World& world, entt::entity node);
 [[nodiscard]] std::optional<Input> get_input(const world::World& world, entt::entity node,
                                              std::string_view name);
-// The input as Godot converts it: a button is pressed when its value isn't zero; a button is 1
+// The input as it is converted: a button is pressed when its value isn't zero; a button is 1
 // or 0 as a float, and a float is (value, 0) as a Vector2.
 [[nodiscard]] bool is_button_pressed(const world::World& world, entt::entity node,
                                      std::string_view name);
@@ -299,8 +300,8 @@ struct NodeBinding {
 void trigger_haptic_pulse(world::World& world, entt::entity node, std::string_view action_name,
                           double frequency, double amplitude, double duration, double delay);
 
-// What a screen would show as a warning about a world's XR nodes, as Godot's configuration
-// warnings: XR nodes outside an XROrigin3D, without a tracker or pose, an XRCamera3D without a
+// What a screen would show as a warning about a world's XR nodes:
+// XR nodes outside an XROrigin3D, without a tracker or pose, an XRCamera3D without a
 // Camera3D and an XROrigin3D without an XRCamera3D.
 struct Problem {
     entt::entity entity = entt::null;

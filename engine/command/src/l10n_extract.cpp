@@ -1,7 +1,6 @@
-// l10n.extract: the messages a game shows, as Godot's POT generator collects them
-// (editor/translations/pot_generator.cpp, with the scene parser of
-// editor/translations/packed_scene_translation_parser_plugin.cpp), written as a POT file and added
-// to the project's translation files so no text is missed.
+// l10n.extract: the messages a game shows, written as a POT file and added to the project's
+// translation files so no text is missed.
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "l10n_extract.hpp"
 
 #include "slash/command/cpp_outline.hpp"
@@ -32,7 +31,7 @@ namespace {
 
 using Key = std::pair<std::string, std::string>; // context, message
 
-// Components whose "text" a control shows, as Godot's parser takes Label's and BaseButton's.
+// Components whose "text" a control shows.
 constexpr std::array<std::string_view, 5> kTextComponents = {"Label", "Button", "CheckBox",
                                                              "ToggleSwitch", "MenuButton"};
 // Components whose "items" are a list's options or a menu's items.
@@ -74,7 +73,7 @@ std::string text_of(const json::Value* value) {
 }
 
 // A document's messages: each control's text, placeholders, tooltip and items, as their
-// auto_translate_mode lets them translate (Godot's Node::can_auto_translate).
+// auto_translate_mode lets them translate.
 void collect_document(const json::Value& document, const std::string& file, Collector& out) {
     const json::Value* entities = member(&document, "entities");
     json::Value prefab; // a prefab file is one entity's components

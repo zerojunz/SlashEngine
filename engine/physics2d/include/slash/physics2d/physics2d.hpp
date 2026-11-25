@@ -17,14 +17,13 @@
 #include <string_view>
 #include <vector>
 
-// 2D physics on Box2D v3, as Godot's 2D physics. The components are in slash/world/components.hpp:
-// StaticBody2D, MovingBody2D, RigidBody2D, CharacterMover2D and Zone2D make an entity a body or
-// an area, Collider2D and PolygonCollider2D give it shapes, and PinJoint2D,
-// SpringJoint2D and TrackJoint2D join two bodies.
+// 2D physics on Box2D v3. The components are in slash/world/components.hpp: StaticBody2D,
+// MovingBody2D, RigidBody2D, CharacterMover2D and Zone2D make an entity a body or an area,
+// Collider2D and PolygonCollider2D give it shapes, and PinJoint2D, SpringJoint2D and TrackJoint2D
+// join two bodies.
 //
-// A TileLayer2D is solid where its tiles have collision polygons, as Godot's tile physics:
-// canvas::install hands this module the polygons (set_tile_shape_source), since tile sets are
-// the canvas module's.
+// A TileLayer2D is solid where its tiles have collision polygons: canvas::install hands this module
+// the polygons (set_tile_shape_source), since tile sets are the canvas module's.
 //
 // The "physics2d" system keeps a Box2D world in step with the components: each tick it creates,
 // changes and removes bodies to match them, moves character bodies, steps the world and writes
@@ -36,7 +35,7 @@
 // the same order everywhere, so a scene simulates the same on every machine.
 namespace slash::physics2d {
 
-// The project's physics_2d settings, as Godot's physics/2d project settings.
+// The project's physics_2d settings.
 struct Settings {
     float gravity = 980.0F; // pixels per second squared
     Vec2 gravity_vector{0.0F, 1.0F};
@@ -60,7 +59,7 @@ struct Settings {
     // The speed, in pixels per second, a hit needs to count for breaking and damage.
     float hit_event_threshold = 64.0F;
     // Whether resting bodies sleep, once they move slower than sleep_velocity_threshold pixels a
-    // second for half a second, as Godot's physics/2d/sleep_threshold_linear.
+    // second for half a second.
     bool allow_sleep = true;
     float sleep_velocity_threshold = 3.2F;
     // Whether fast bodies are swept against static ones so they don't tunnel, whether the
@@ -103,18 +102,17 @@ struct RayHit {
     std::string surface;
 };
 
-// The first thing a ray from from to to hits, as Godot's intersect_ray. Shapes the ray starts
-// inside are not hit.
+// The first thing a ray from from to to hits. Shapes the ray starts inside are not hit.
 [[nodiscard]] std::optional<RayHit> raycast(world::World& world, Vec2 from, Vec2 to,
                                             const QueryFilter& filter = {});
 
-// Entities whose shapes contain a point, as Godot's intersect_point, sorted by ID.
+// Entities whose shapes contain a point, sorted by ID.
 [[nodiscard]] std::vector<entt::entity> overlap_point(world::World& world, Vec2 point,
                                                       const QueryFilter& filter = {},
                                                       std::size_t max_results = 32);
 
-// Entities whose shapes overlap a shape placed at position and rotation, as Godot's
-// intersect_shape, sorted by ID. The shape's own position and rotation apply too.
+// Entities whose shapes overlap a shape placed at position and rotation, sorted by ID. The shape's
+// own position and rotation apply too.
 [[nodiscard]] std::vector<entt::entity>
 overlap_shape(world::World& world, const world::Collider2D& shape, Vec2 position, float rotation,
               const QueryFilter& filter = {}, std::size_t max_results = 32);
@@ -128,10 +126,9 @@ struct Contacts {
 };
 [[nodiscard]] Contacts contacts(world::World& world, entt::entity entity);
 
-// The gravity on a body and the damping that slows it, as Godot's get_gravity and the body's
-// total damping: from the areas whose space overrides reach it, highest priority first, then
-// the project's physics_2d settings. A rigid body's gravity_scale and own damping are in them;
-// a character body uses the gravity in its own velocity.
+// The gravity on a body and the damping that slows it: from the areas whose space overrides reach
+// it, highest priority first, then the project's physics_2d settings. A rigid body's gravity_scale
+// and own damping are in them; a character body uses the gravity in its own velocity.
 struct Gravity {
     Vec2 gravity;                      // pixels per second squared
     float linear_damp = 0.0F;          // per second
@@ -165,10 +162,10 @@ void set_tile_shape_source(world::World& world, TileShapeSource source);
 // The shapes a layer has, as the source gives them; nullptr if it has none or there's no source.
 [[nodiscard]] TileShapes tile_shapes(const world::World& world, entt::entity layer);
 
-// Pushes a rigid body at the next physics step, as Godot's apply_impulse: impulse in
-// kilogram-pixels per second, at offset pixels from its position.
+// Pushes a rigid body at the next physics step: impulse in kilogram-pixels per second, at offset
+// pixels from its position.
 void apply_impulse(world::World& world, entt::entity entity, Vec2 impulse, Vec2 offset = {});
-// Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
+// Turns a rigid body at the next physics step.
 void apply_torque_impulse(world::World& world, entt::entity entity, float impulse);
 
 // What damage did to a Destructible2D: how much its health went down (after its profile's

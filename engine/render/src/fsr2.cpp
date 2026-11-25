@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #include "fsr2.hpp"
 
 #include "forward_post.hpp"
@@ -12,7 +13,7 @@
 #include <limits>
 #include <numbers>
 
-// The CPU twin of shaders/fsr2*.hlsl, AMD's FidelityFX Super Resolution 2.2 as Godot 4.6 runs it.
+// The CPU twin of shaders/fsr2*.hlsl, AMD's FidelityFX Super Resolution 2.2.
 // Each function follows the one of the same name in AMD's code, line for line where it can, and
 // libm's functions are slash's, so every machine draws the same pixels. Keep the two in step.
 //
@@ -1255,7 +1256,7 @@ Fsr2Uniforms fsr2_uniforms(const Fsr2Frame& frame) {
     const float a = p[10];
     const float b = p[14];
     u.view_depth = {ortho ? b : -a, ortho ? -a : b, 1.0F / p[0], 1.0F / p[5]};
-    // FsrRcasCon on Godot's sharpness, which turns sharpening off at 0.
+    // FsrRcasCon on the sharpness, which turns sharpening off at 0.
     const float sharpness = std::clamp(1.0F - (frame.sharpness / 2.0F), 0.0F, 1.0F);
     const float con = sharpness > 1e-6F
                           ? slash::exp(-((-2.0F * sharpness) + 2.0F) * std::numbers::ln2_v<float>)
@@ -1269,8 +1270,8 @@ Fsr2Uniforms fsr2_uniforms(const Fsr2Frame& frame) {
 }
 
 std::array<Float4, 4> reprojection(const Mat4& view_projection, const Mat4& previous) {
-    // Godot's (correction * prev_proj) * prev_transform.affine_inverse() * cur_transform *
-    // (correction * cur_proj).inverse(), worked out in doubles.
+    // The reprojection: (correction * prev_proj) * prev_transform.affine_inverse() * cur_transform
+    // * (correction * cur_proj).inverse(), worked out in doubles.
     std::array<Float4, 4> out{};
     const std::array<double, 16> to_world = inverse_matrix(view_projection);
     for (std::size_t column = 0; column < 4; ++column) {
@@ -1339,8 +1340,8 @@ void Fsr2Clock::advance(std::uint32_t target_phases) {
 
 namespace {
 
-// LoadInputMotionVector with Godot's FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS: a pixel
-// the prepass drew no motion vector for (the sky) gets one from its depth.
+// LoadInputMotionVector with the invalid-motion-vector derivation: a pixel the prepass drew no
+// motion vector for (the sky) gets one from its depth.
 std::vector<float> load_motion(const Fsr2Uniforms& uniforms, const Constants& k,
                                const Fsr2Inputs& inputs) {
     const Plane depth{.size = k.render, .channels = 1, .data = inputs.depth};

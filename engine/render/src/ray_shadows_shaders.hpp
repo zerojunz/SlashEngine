@@ -1509,18 +1509,18 @@ alignas(4) inline constexpr unsigned char kRayShadowsSpirv[] = {
 inline constexpr char kRayShadowsGlsl[] = R"glsl(#version 460
 #extension GL_EXT_ray_query : require
 
-// Ray-traced shadows on a GPU that traces rays (RenderDevice::ray_tracing), after Forward+'s
-// prepass: the hardware twin of run_ray_shadows in src/ray_shadows.cpp, which the software device
-// runs and which holds the steps' reasons. Each pixel the prepass drew is put back in the world
-// from its depth, moved off its surface along its normal, and sends samples rays toward each light
-// with a ray slot, to points spread over the light's size, through the frame's acceleration
-// structure. The share of rays that nothing stops, through the light's shadow opacity, is the
-// light's visibility there: lights 0 to 3 in low's channels and 4 to 7 in high's, which the mesh
-// pass reads from the screen texture's layers 2 and 3 (add_light in mesh.hlsl). With ray-traced
-// ambient occlusion (options.y), each pixel also sends occlusion.z rays over the half of the sphere
-// its normal faces, up to occlusion.x; 1 less occlusion.w times the share something stops, to the
-// power occlusion.y, goes in occlusion_image's red, which the screen texture's layer 0 takes as
-// SSAO's (run_ray_occlusion).
+// Ray-traced shadows on a GPU that traces rays (RenderDevice::ray_tracing), after the clustered
+// renderer's prepass: the hardware twin of run_ray_shadows in src/ray_shadows.cpp, which the
+// software device runs and which holds the steps' reasons. Each pixel the prepass drew is put back
+// in the world from its depth, moved off its surface along its normal, and sends samples rays
+// toward each light with a ray slot, to points spread over the light's size, through the frame's
+// acceleration structure. The share of rays that nothing stops, through the light's shadow opacity,
+// is the light's visibility there: lights 0 to 3 in low's channels and 4 to 7 in high's, which the
+// mesh pass reads from the screen texture's layers 2 and 3 (add_light in mesh.hlsl). With
+// ray-traced ambient occlusion (options.y), each pixel also sends occlusion.z rays over the half of
+// the sphere its normal faces, up to occlusion.x; 1 less occlusion.w times the share something
+// stops, to the power occlusion.y, goes in occlusion_image's red, which the screen texture's layer
+// 0 takes as SSAO's (run_ray_occlusion).
 //
 // GLSL rather than HLSL, as glslang's HLSL has no ray queries; cmake/compile_ray_shaders.cmake
 // compiles it into ray_shadows_shaders.hpp.
@@ -1676,8 +1676,8 @@ void main() {
                     }
                     distance = 3.402823466e38;
                 } else {
-                    vec3 target = )glsl"
-    R"glsl(light.place.xyz;
+                    )glsl"
+    R"glsl(vec3 target = light.place.xyz;
                     vec3 to = target - origin;
                     float reach = length(to);
                     if (!(reach > 0.0)) {

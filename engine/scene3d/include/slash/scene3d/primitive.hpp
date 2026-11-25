@@ -1,3 +1,4 @@
+// Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
 #include "slash/core/result.hpp"
@@ -16,10 +17,8 @@ namespace slash::world {
 class World;
 }
 
-// Godot's primitive meshes, made as scene/resources/3d/primitive_meshes.cpp makes them: the same
-// corners in the same order, with the same normals, tangents and texture coordinates, so a
-// texture wraps a box or a sphere here as it does in Godot. Angles go through slash::cos_sin, so
-// a mesh is the same bits on every platform.
+// Primitive meshes, with fixed corner order, normals, tangents and texture coordinates. Angles go
+// through slash::cos_sin, so a mesh is the same bits on every platform.
 namespace slash::scene3d {
 
 // A mesh's corners and its triangles, every three indices one, for RenderDevice::create_mesh.
@@ -52,7 +51,7 @@ inline constexpr std::array<std::string_view, 8> kPrimitiveNames = {
 [[nodiscard]] Result<std::optional<Primitive>> primitive_of(const world::World& world,
                                                             entt::entity entity);
 
-// Fails for settings Godot refuses to make a mesh of: a torus whose radii are equal.
+// Fails for settings that can't make a mesh: a torus whose radii are equal.
 [[nodiscard]] Result<void> check_primitive(const Primitive& primitive);
 
 // The mesh a primitive makes; fails as check_primitive does.
