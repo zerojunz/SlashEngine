@@ -5525,7 +5525,7 @@ private:
             style["texture"] = sprite->texture;
             if (!sprite->whole) {
                 style["region"] = json::Array{sprite->region[0], sprite->region[1],
-                                                   sprite->region[2], sprite->region[3]};
+                                              sprite->region[2], sprite->region[3]};
             }
             if (look.type == 1 || look.type == 2) {
                 // Unity's borders are left, bottom, right and top.

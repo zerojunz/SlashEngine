@@ -107,7 +107,8 @@ json::Value outline_style(Vec4 color) {
 
 json::Value name_style(Vec4 color) {
     json::Value style;
-    style["background_color"] = json::Array{color.x * 0.35F, color.y * 0.35F, color.z * 0.35F, 0.9F};
+    style["background_color"] =
+        json::Array{color.x * 0.35F, color.y * 0.35F, color.z * 0.35F, 0.9F};
     style["content_margin"] = 2;
     return style;
 }

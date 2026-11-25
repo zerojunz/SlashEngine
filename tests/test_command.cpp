@@ -1505,8 +1505,8 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     const std::string_view scaling =
         R"("frame_generation": {"enabled": false}, "scaling": {"sharpness": 0.2, "mode": "bilinear", "scale": 1.0})";
     CHECK(engine.ok("display.list") ==
-          parse(R"({"displays": [], "max_fps": 0, "vsync": "enabled", )" +
-                std::string(scaling) + "}"));
+          parse(R"({"displays": [], "max_fps": 0, "vsync": "enabled", )" + std::string(scaling) +
+                "}"));
     CHECK(engine.ok("display.set", R"({"vsync": "mailbox", "max_fps": 120})") ==
           parse(R"({"max_fps": 120, "vsync": "mailbox", )" + std::string(scaling) + "}"));
     CHECK(loop.value().max_fps() == 120);
@@ -1514,7 +1514,8 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     CHECK(engine.ok("display.set", R"({"max_fps": 0})") ==
           parse(R"({"max_fps": 0, "vsync": "mailbox", )" + std::string(scaling) + "}"));
     // The params' old names still work.
-    CHECK(engine.ok("display.set", R"({"vsync_mode": "enabled", "scaling": {"fsr_sharpness": 0.2}})") ==
+    CHECK(engine.ok("display.set",
+                    R"({"vsync_mode": "enabled", "scaling": {"fsr_sharpness": 0.2}})") ==
           parse(R"({"max_fps": 0, "vsync": "enabled", )" + std::string(scaling) + "}"));
     CHECK(renderer->vsync() == slash::render::VsyncMode::Enabled);
     CHECK(engine.ok("display.set", R"({"vsync": "mailbox", "vsync_mode": "disabled"})")
@@ -1523,8 +1524,7 @@ TEST_CASE("a running game lists displays, changes V-Sync and the frame cap, and 
     command::Reply bad =
         engine.fails("display.set", R"({"max_fps": 1001})", command::code::kInvalidParams);
     CHECK(contains(bad.message, "/max_fps"));
-    bad =
-        engine.fails("display.set", R"({"vsync": "adaptiv"})", command::code::kInvalidParams);
+    bad = engine.fails("display.set", R"({"vsync": "adaptiv"})", command::code::kInvalidParams);
     CHECK(contains(bad.message, "/vsync"));
     CHECK(loop.value().max_fps() == 0);
     // Neither changes the world, so there is nothing to undo.
