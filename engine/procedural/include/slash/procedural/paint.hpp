@@ -59,8 +59,9 @@ inline constexpr std::array<std::string_view, 7> kPaintChannels{
 inline constexpr std::array<std::string_view, 8> kPaintOutputs{
     "albedo", "orm", "normal", "roughness", "metallic", "ao", "height", "emission"};
 // The maps a mask reads by name.
-inline constexpr std::array<std::string_view, 9> kPaintMaps{
-    "ao", "curvature", "thickness", "sky", "height", "world_normal", "position", "noise", "alpha"};
+inline constexpr std::array<std::string_view, 11> kPaintMaps{
+    "ao",       "curvature", "thickness", "sky",    "height", "world_normal",
+    "position", "noise",     "alpha",     "facing", "streaks"};
 
 // Whether a document is a paint stack ("type": "paint").
 [[nodiscard]] bool is_paint_stack(const json::Value& doc);
@@ -111,6 +112,8 @@ struct PaintSurface {
     std::vector<std::int32_t> material;
     std::vector<std::string> part_names;
     std::vector<std::string> material_names;
+    // Named points masks reach by name ("point": "hinge"): a model's nodes, in its units.
+    std::map<std::string, std::array<float, 3>, std::less<>> points;
 };
 
 // A sprite's surface: its colors, its alpha, its normal map's normals when given, and its
@@ -134,6 +137,13 @@ struct CompiledPaint {
 [[nodiscard]] Result<CompiledPaint>
 compile_paint(const json::Value& resolved, const PaintSurface& surface, const GraphReader& reader,
               const json::Object& overrides = {}, jobs::Pool* pool = nullptr);
+
+// How many variants a stack's "variants" makes, 0 for none.
+[[nodiscard]] int paint_variant_count(const json::Value& resolved);
+
+// A resolved stack as variant n (1 to the count) of it: each parameter in "variants"' ranges
+// drawn by the variants' seed and n, the same on every machine, and its noise seeded anew.
+[[nodiscard]] json::Value paint_variant(const json::Value& resolved, int n);
 
 // Measures of one baked texture over the surface's counted texels, each from 0 to 1: its mean
 // luminance (value), each channel's mean (r, g, b, a), the darkest and brightest luminance

@@ -53,7 +53,16 @@ struct GraphReader {
     // Asked before image: an image as floats, for paths a caller makes itself (a paint stack's
     // masks and mesh maps); nullopt sends the path on to image.
     std::function<std::optional<render::GraphImage>(std::string_view path)> graph_image;
+    // Text drawn with the project's fonts (an image node's or a decal's "text" settings): on a
+    // width x height image when they are not 0, else on one just its size.
+    std::function<Result<render::Image>(const json::Value& text, std::uint32_t width,
+                                        std::uint32_t height)>
+        text_image;
 };
+
+// The settings of text a graph's image node or a paint stack's decal draws: "text", "font",
+// "size", "color", "at" (an image node's center, 0 to 1) and "language".
+[[nodiscard]] json::Value text_stamp_schema();
 
 // One output of a compiled graph: its name, the slot holding it and how it becomes RGBA8.
 struct GraphOutput {

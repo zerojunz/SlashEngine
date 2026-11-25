@@ -2996,7 +2996,7 @@ the same either way.
 
 | Ops | What they make |
 | --- | --- |
-| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, FastNoiseLite noise (with domain warp and `seamless`), a `gradient_2d` gradient, shapes and bricks in cells, bands, an image file |
+| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, FastNoiseLite noise (with domain warp and `seamless`), a `gradient_2d` gradient, shapes and bricks in cells, bands, an image file (`path`) or a [text stamp](#text-stamps) (`text`) |
 | `levels`, `invert`, `clamp`, `gradient_map`, `hsv`, `grayscale`, `threshold`, `posterize`, `swizzle`, `remap` | Color and value adjustments |
 | `blur`, `sharpen`, `warp`, `transform`, `edge_detect` | Filters and moves |
 | `normal_from_height`, `ao_from_height`, `curvature_from_height` | Maps from a height's red |
@@ -3051,6 +3051,8 @@ textures and a material, [`paint.edit`](commands.md#paintedit) changes it by lay
 | `outputs` | array | The textures to bake (default: `albedo`, `orm` on a model, `normal`, and `height` and `emission` when a layer paints them) |
 | `height_normal` | number | How strongly painted height bends the normal (default 2) |
 | `material` | string | The `.standard_material.json` `paint.bake` writes (default: next to the stack) |
+| `seed` | integer | Added to every noise's seed: the same stack, worn anew (default 0) |
+| `variants` | object | Stacks [`paint.bake`](commands.md#paintbake) draws from this one: `count`, `seed`, and `ranges`, parameters by name each `[low, high]` (numbers, or two colors) |
 | `expect` | object | Ranges for [`texture.check`](commands.md#texturecheck): `"<output>.<measure>"` or `"mask.<layer>"` (the mask's mean) |
 
 Channels are `albedo`, `roughness`, `metallic`, `ao`, `height`, `normal` and `emission`; outputs
@@ -3061,23 +3063,77 @@ A layer has a `name` (unique), and any of:
 - **`fill`**: values by channel, each a number, a color or a parameter.
 - **`graph`**: a texture graph (a path or a document) whose outputs named after channels fill
   them, with `parameters` and `repeat` (how many times it tiles across the texture).
-- **`decals`**: images projected onto the model, each with `image`, `at`, `direction`, `up`,
-  `size`, `depth` and `rotation`; on a sprite, `at` is in pixels.
+- **`decals`**: images projected onto the model, each with `image` or `text`, `at`,
+  `direction`, `up`, `size`, `depth` and `rotation`; on a sprite, `at` is in pixels. `text` is a
+  [text stamp](#text-stamps).
 - **`strokes`**: `points` (in the model's units, or a sprite's pixels) with `size`, `hardness`
   and `erase`, painted into the mask.
 - **`mask`**: one term or a list of them. A term reads a `map` (`ao`, `curvature`, `thickness`,
   `sky`, `height`, `world_normal` and `position` with an `axis`, `noise` with `scale`, `seed` and
-  `octaves`, or `alpha`), a `part` or `material` name, or a `graph` output, then shapes it with
+  `octaves`, `facing`, `streaks`, or `alpha`), a `part` or `material` name, a `point`, a `group`
+  of terms, or a `graph` output, then shapes it with
   `range`, `above`, `below`, `softness`, `breakup` (`amount`, `scale`, `seed`) and `invert`. Each
   term after the first joins the ones before it by its `op`: `multiply` (default), `add`,
   `subtract`, `max` or `min`.
 - **`blend`** (a mode, or modes by channel), **`opacity`**, **`channels`** (the ones it paints)
   and **`enabled`**.
+- **`weather`**: in place of the above, ages what's below (see [Weathering](#weathering)).
+
+The newer terms:
+
+- `facing` is how far a face turns toward `direction` (default up): 1 facing it, 0.5 side on, 0
+  turned away.
+- `streaks` are runs along `direction` (default down) on the faces that stand, none on faces
+  turned along it: noise `length` times longer than wide (default 8), with `scale`, `seed` and
+  `octaves`.
+- `point` is 1 at a place, falling smoothly to 0 at `radius` (default a tenth of the model's
+  size): a name (a part's center, or a node's origin in the model's rest pose) or `[x, y, z]`
+  (a sprite's `[x, y]` pixel). A name that isn't there names the nearest.
+- `group` is a list of terms joined as a mask of its own, read as one term, so `op` can join
+  whole masks.
+
+On a sprite, `direction`'s y runs up the screen.
 
 Fill wins over a graph or decals for the same channel. With `extends`, objects merge as a JSON
 Merge Patch and layers merge by name: a layer of the same name is changed in place and the others
 go on top. On a sprite, `curvature` is the outline's edge (1 at the edge, 0.5 `edge_width` pixels
 in), `alpha` is its alpha, and `ao`, `sky` and `thickness` read 1.
+
+#### Weathering
+
+A layer with `weather` stands for four layers, each a material under a mask grown by its amount
+times `age`, kept inside the layer's own `mask` and `opacity`; at age 0 none shows:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `age` | 0.5 | 0 new to 1 old; a number, `"$name"` or `"=..."` |
+| `rain` | 1 | Dark streaks down the faces that stand, along `gravity`, under open sky |
+| `rust` | 0 | Rust on the edges and in the crevices, with runs below |
+| `dust` | 1 | Dust on the faces turned up, under open sky, more on the side the `wind` comes from |
+| `moss` | 0 | Moss in the shade and on the tops, in patches |
+| `gravity` | `[0, -1, 0]` | The way rain runs |
+| `wind` | | The way the wind blows, as `[x, y, z]` |
+
+Each part's mask is the layer's name and the part's, so `paint.bake` returns `rain.rain`,
+`rain.dust` and so on for a layer named `rain`, and `expect` can hold them.
+[examples/weathering](../../examples/weathering/) ages a market stall.
+
+#### Text stamps
+
+A decal's or an `image` node's `text` draws words with the project's fonts, shaped by HarfBuzz,
+so any script and a translated string draw as well:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `text` | | What it says; a line break starts a line |
+| `font` | the engine's | A font file, project path |
+| `size` | 48 | The font's size in pixels |
+| `color` | white | RGB or RGBA, 0 to 1 |
+| `at` | `[0.5, 0.5]` | `image` node: its center, 0 to 1 across and down |
+| `language` | | BCP 47; picks fonts and glyphs |
+
+A decal's image is the words' own box; an `image` node's is the graph's size, clear round the
+words.
 
 ## Scatter rules
 

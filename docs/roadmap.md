@@ -1432,8 +1432,10 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Layer stacks: `.paint.json` layers, masks over mesh maps and part names, strokes
               and decals as data, smart materials, and `paint.edit`, `paint.bake` and
               `paint.preview`, on models and sprites
-        - [ ] Weathering, wear from damage, text and logo stamps, seeded variants, drafts from a
-              prompt and Blender shader node import
+        - [x] Weathering (`weather` layers: rain, rust, dust and moss by one `age`), `facing`,
+              `streaks`, named `point` and `group` mask terms, text and logo stamps, stack
+              seeds and seeded `variants`
+        - [ ] Wear from damage, drafts from a prompt and Blender shader node import
 24. [x] Watching agents work (2026-11-22): the person sees what any agent is doing, at any time,
         whichever vendor's agent it is:
         - [x] A work journal every session writes (`.slash/work/`), sessions that serve themselves

@@ -747,10 +747,15 @@ or `<stack>.standard_material.json`). The mesh maps its masks read bake first, a
 `texel_density` (texels per unit of the model). When nothing would change it writes nothing and
 returns `"unchanged": true`.
 
+With `variant`, it bakes the stack's [`variants`](scene-format.md#layer-stacks) instead: one by
+number, or `"all"`, each as `<stack>_v<n>_<output>.png` with its own material, and returns them in
+`variants`, each with the `parameters` it drew.
+
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `path` | string | | A `.paint.json` file that paints a model or sprite |
 | `parameters` | object | | Values for the stack's parameters, for this bake |
+| `variant` | integer or `"all"` | | A variant to bake, from 1, or all of them |
 
 Needs: `edit` and `filesystem`. From [examples/layer-stacks](../../examples/layer-stacks/):
 

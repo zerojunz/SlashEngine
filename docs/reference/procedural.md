@@ -64,6 +64,15 @@ stack needs with `model.bake_maps`' code and cache, write the textures and a mat
 `texture.check` holds stacks to their `expect` too. `examples/layer-stacks` paints a worn crate and
 a 2D shield.
 
+A `weather` layer expands (`weather_layers`) into its rain, rust, dust and moss layers before it
+compiles, each an ordinary layer whose mask reads `facing`, `streaks`, the mesh maps and noise
+with thresholds moved by `amount * age`. `point` terms read `PaintSurface::points` (part centers,
+then node origins, filled by `paint.cpp`'s `prepare`). `paint_variant` draws a variant's
+parameters with splitmix64 over a hash of the name, the variants' seed and its number, so a
+variant is the same everywhere. Text stamps come in through `GraphReader::text_image`, which the
+commands set to draw with the UI's fonts (`draw_text_stamp` in `procedural.cpp`);
+`examples/weathering` ages a market stall.
+
 Gameplay code makes textures and meshes while a game runs: `asset::Assets::put` keeps a value at a
 `made:<name>` path (`asset::is_made_path`) until `drop`, bumping its version when put again so
 renderers upload it again, and never reloads it; `canvas::install` attaches a world's assets

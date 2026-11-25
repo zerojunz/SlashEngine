@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "type": "paint",
+  "model": "props/stall.obj",
+  "size": 256,
+  "parameters": {"paint": [0.16, 0.42, 0.55], "age": 0.6},
+  "variants": {"count": 3, "seed": 4,
+               "ranges": {"paint": [[0.16, 0.42, 0.55], [0.62, 0.2, 0.14]], "age": [0.3, 0.9]}},
+  "layers": [
+    {"name": "wood", "fill": {"albedo": [0.42, 0.28, 0.16], "roughness": 0.75}},
+    {"name": "grain", "fill": {"albedo": [0.34, 0.21, 0.11]},
+     "mask": {"map": "noise", "scale": 30, "seed": 5, "above": 0.55, "softness": 0.1}},
+    {"name": "painted", "fill": {"albedo": "$paint", "roughness": 0.5},
+     "mask": {"part": "counter"}},
+    {"name": "canvas", "fill": {"albedo": [0.82, 0.78, 0.68], "roughness": 0.9},
+     "mask": {"part": "awning"}},
+    {"name": "iron", "fill": {"albedo": [0.3, 0.3, 0.32], "metallic": 1, "roughness": 0.4},
+     "mask": {"part": "hinge_l"}},
+    {"name": "hinge_rust", "fill": {"albedo": [0.42, 0.2, 0.09], "roughness": 0.9},
+     "mask": [{"point": "hinge_l", "radius": 0.25},
+              {"map": "noise", "scale": 40, "seed": 3, "above": 0.4, "softness": 0.1}],
+     "opacity": "=age"},
+    {"name": "sign", "fill": {"roughness": 0.6},
+     "decals": [{"text": {"text": "FRESH FISH", "size": 40, "color": [0.95, 0.92, 0.8]},
+                 "at": [0, 1.7, 0.445], "size": 1.1, "depth": 0.1}]},
+    {"name": "rain", "weather": {"age": "$age", "rain": 1, "dust": 1, "rust": 0.5,
+                                 "moss": 0.3, "wind": [1, 0, 0]}}
+  ],
+  "expect": {"mask.painted": [0.1, 0.5], "mask.rain.dust": [0.01, 0.5],
+             "mask.rain.rain": [0.01, 0.6]}
+}

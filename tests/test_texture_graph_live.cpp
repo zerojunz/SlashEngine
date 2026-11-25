@@ -125,7 +125,7 @@ std::string matches(const render::Image& got, const render::Image& want) {
 }
 
 render::Image baked(const Files& files, std::string_view path, const json::Object& overrides) {
-    const procedural::GraphReader reader{.text = read_from(files), .image = {}, .graph_image = {}};
+    const procedural::GraphReader reader{.text = read_from(files), .image = {}, .graph_image = {}, .text_image = {}};
     auto compiled =
         procedural::compile_texture_graph(parse(files.at(std::string(path))), reader, overrides);
     REQUIRE_MESSAGE(compiled.ok(), (compiled.ok() ? "" : compiled.error().message));
@@ -135,7 +135,7 @@ render::Image baked(const Files& files, std::string_view path, const json::Objec
 }
 
 std::string live_error(std::string_view graph, render::ShaderType type) {
-    const procedural::GraphReader reader{.text = {}, .image = {}, .graph_image = {}};
+    const procedural::GraphReader reader{.text = {}, .image = {}, .graph_image = {}, .text_image = {}};
     auto made = procedural::texture_graph_shader(parse(graph), reader, type);
     return made.ok() ? "(made)" : made.error().message;
 }
@@ -191,7 +191,7 @@ TEST_CASE("live texture graphs give spatial shaders their outputs by name") {
       "outputs": [{"name": "albedo", "node": "color"}, {"name": "normal", "node": "normal"},
                   {"name": "height", "node": "height", "as": "gray"}]
     })";
-    const procedural::GraphReader reader{.text = {}, .image = {}, .graph_image = {}};
+    const procedural::GraphReader reader{.text = {}, .image = {}, .graph_image = {}, .text_image = {}};
     auto code = procedural::texture_graph_shader(parse(graph), reader, render::ShaderType::Spatial);
     REQUIRE_MESSAGE(code.ok(), (code.ok() ? "" : code.error().message));
     CHECK(code.value().find("ALBEDO = tg_linear") != std::string::npos);
