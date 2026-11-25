@@ -1,6 +1,6 @@
 # Alpha hash
 
-Godot's alpha hash transparency, which it draws hair cards, eyelashes and leaves with: each pixel
+Alpha hash transparency draws hair cards, eyelashes and leaves: each pixel
 is drawn whole or not at all, where its alpha reaches a threshold from noise fixed to the mesh,
 so a card fades out by how many of its pixels it keeps, with no sorting, and casts a shadow
 dithered the same way. [main.scene.json](main.scene.json) has an unshaded yellow card of alpha
@@ -22,5 +22,5 @@ frame.capture {"points":[[20,24],[23,24],[26,24],[29,24],[32,24],[35,24],[38,24]
 - `component.set` makes it `"alpha_scissor"` instead, whose threshold is 0.5 everywhere, and all
   nine are yellow: a scissor keeps all of a card or none of it, where a hash keeps a share.
 
-`alpha_hash_scale` sets the dither's grain. The noise is a hash of whole numbers where Godot's
-uses sines, so every device keeps the same pixels.
+`alpha_hash_scale` sets the dither's grain. The noise is a hash of whole numbers, so every device
+keeps the same pixels.

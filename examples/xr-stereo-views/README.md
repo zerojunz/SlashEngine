@@ -1,6 +1,6 @@
 # XR stereo views
 
-What each eye of a headset sees, as Godot draws an `XRCamera3D`'s views.
+What each eye of a headset sees through an `XRCamera3D`.
 [main.scene.json](main.scene.json) is an `XROrigin3D` with an `XRCamera3D` head, a thin red post
 40 cm in front of it and a wide green post 8 m away. [project.json](project.json) enables XR, so
 a session starts the test headset, whose eyes are 0.064 m apart and see 50 degrees out, 40 in

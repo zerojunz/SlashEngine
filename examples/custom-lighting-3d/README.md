@@ -1,8 +1,8 @@
 # Custom lighting 3D
 
-A spatial shader's `light()`, as Godot's: it lights a mesh once for each light, in place of the
-engine's light model. [main.scene.json](main.scene.json) has two red balls under a sun and an
-orange lamp:
+A spatial shader's `light()`: it lights a mesh once for each light, in place of the engine's
+light model. [main.scene.json](main.scene.json) has two red balls under a sun and an orange
+lamp:
 
 - the [toon](toon.material.json) ball is cel-shaded by [shaders/toon.hlsl](shaders/toon.hlsl),
   whose `light()` cuts each light's diffuse light into `steps` flat bands, adds a sharp highlight

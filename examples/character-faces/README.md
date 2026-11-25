@@ -1,6 +1,6 @@
 # Character faces
 
-Faces as recipes, after Unreal's MetaHuman Creator (Godot has none). A face is sculpted from 46
+Faces as recipes, after Unreal's MetaHuman Creator. A face is sculpted from 46
 named controls (each -1 to 1, 0 for an average adult's), carves at its 27 landmarks, blends of
 other faces and a style, and the same sculpt draws both a character's 3D head and its 2D
 cut-out's side-on profile.

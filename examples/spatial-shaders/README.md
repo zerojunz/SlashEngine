@@ -1,6 +1,6 @@
 # Spatial shaders
 
-A game's own 3D shaders, as Godot's `shader_type spatial`. A `.material.json` file with
+A game's own 3D shaders. A `.material.json` file with
 `"shader_type": "spatial"` names an `.hlsl` file whose `vertex()` moves a mesh's corners and whose
 `fragment()` gives its surface, and a `Model3D`'s `material` draws it. [main.scene.json](main.scene.json) has three:
 
@@ -28,8 +28,8 @@ the wind moves a slat over it, two points on the ground swap between a slat's sh
 sun as the shadow leans, and `component.set` on the crystal's `material_params` recolors it.
 
 - The engine lights the surface `fragment()` gives with every light, shadow, reflection and
-  post effect, as it lights a `Surface3D`. Godot's built-ins are in view space.
-- `render_mode` is Godot's render mode line: `blend_*`, `cull_*`, `unshaded`, `fog_disabled`,
+  post effect, as it lights a `Surface3D`. The built-ins are in view space.
+- `render_mode` is the render mode line: `blend_*`, `cull_*`, `unshaded`, `fog_disabled`,
   `shadows_disabled` and `world_vertex_coords`.
 - `vertex()` runs in the shadow pass and in the motion prepass too, so shadows, TAA and FSR 2
   follow what it moves.

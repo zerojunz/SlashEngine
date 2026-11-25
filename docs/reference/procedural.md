@@ -4,64 +4,62 @@ Procedural generation: noise, textures, scatter rules and PCG graphs.
 
 Status: current · Updated: 2026-11-22
 
-`engine/procedural` is Godot's noise module and procedural texture resources. `procedural::Noise`
-(`slash/procedural/noise.hpp`) is Godot's `FastNoiseLite` resource on Auburn's FastNoiseLite
-(header-only, MIT): settings by Godot's names and defaults, sampled as Godot samples them (offset,
-then domain warp, then noise), the same bits everywhere since FastNoiseLite calls libm only for
-square roots and the module builds with `-ffp-contract=off`. Gameplay code samples it while a game
-runs. `procedural::Gradient` (`gradient.hpp`) is Godot's `Gradient`, with its sRGB, linear and
-Oklab blending through `slash::exp` and `ln`. A `.texture.json` file (`texture.hpp`;
-`$cli schema texture`) is a `noise` texture (`Noise::_get_image` and
-`_generate_seamless_image`, the color ramp and `bump_map_to_normal_map` ported line for line from
-Godot), or a `gradient_1d` or `gradient_2d` texture, made into pixels as it loads: `canvas::add_asset_types`
-and `ui::add_asset_types` register it as a texture, and code that reads texture files itself
-(scene3d's material, terrain and vector field checks) goes through `procedural::decode_texture`
-and `is_texture_path`, so any texture field takes one. Exports ship the file and validate it.
-`texture.generate` (`engine/command/src/procedural.cpp`) makes one from a file or inline settings
-and measures it (channels' range, and `wrap`, which says whether it tiles), returns pixels and
-writes a PNG. `examples/procedural-textures` tunes water that tiles. A `.texture.json` file of
-`"type": "graph"` is a texture graph (`slash/procedural/texture_graph.hpp`, `src/texture_graph.cpp`):
-nodes over parameters, `extends` and named outputs, checked and compiled into a
-`render::TextureGraphProgram` of passes over shared slots (`compile_texture_graph`).
-`RenderDevice::bake_texture_graph` runs it: the GPU and WebGPU devices dispatch
-`shaders/texture_graph.hlsl` per pass (with `fast_noise_lite.hlsl`, FastNoiseLite's HLSL, its
-tables in group memory), and every other device (and Direct3D 12, and any device inside a frame)
-runs the CPU twin, `render::run_texture_graph` (`engine/render/src/texture_graph.cpp`, on the job
-pool, built with `-ffp-contract=off`). A change to an op goes in both, and
-`tests/test_texture_graph_gpu.cpp` holds every device to the twin over every op.
-`examples/texture-graphs` tunes a brick wall. `texture.inspect`, `texture.edit` and
-`texture.check` (`engine/command/src/texture_tools.cpp`) work on graphs as text:
-`procedural::describe_texture_graph` says what reads each parameter and what each output needs,
-an edit is a JSON Merge Patch that returns each output measured (`measure`: luminance, channels,
-contrast and whether it tiles), and the check holds each graph to its `expect` ranges and the
-storyboard's palettes and budgets (`storyboard::check_textures`); `test.run` and
-`slash-cli project validate` run it. `examples/texture-graph-tools` tunes the wall to a budget.
-A material's `shader` can name a graph, which then draws live:
-`procedural::texture_graph_shader` (`src/texture_graph_shader.cpp`) writes a shader with a
-function per pass, each `shaders/texture_graph_ops.hlsl` included with the pass's op, size and
-inputs as macros (`texture_graph.hlsl`, the compute pass, includes it once for every op; both
-share `texture_graph_common.hlsl`, and fast_noise_lite.hlsl reads its tables where they are with
-`FNL_STATIC_TABLES`), and the shader tools' compiler has the three files built in. Settings that
-material params (and `time`, as `TIME`) move are found by compiling the graph again with each
-moved, and must follow in a straight line. `examples/live-texture-graphs` flows lava.
+Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
 
-Gameplay code makes textures and meshes while a game runs, as Godot's `ImageTexture` and
-`ArrayMesh`: `asset::Assets::put` keeps a value at a `made:<name>` path (`asset::is_made_path`)
-until `drop`, bumping its version when put again so renderers upload it again, and never reloads
-it; `canvas::install` attaches a world's assets (`asset::attach`, `asset::assets_of`), so
-`procedural::make_texture` and `scene3d::make_mesh` reach them from a system. `scene3d::SurfaceTool`
-(`src/surface_tool.cpp`) is Godot's for triangles (`generate_normals` with smooth groups, MikkTSpace
-`generate_tangents`, `index`, `commit` into a `Model`). Validators skip `made:` paths (only the
-running game has them). `examples/runtime-meshes` grows hills from noise.
+`engine/procedural` is noise and procedural textures. `procedural::Noise`
+(`slash/procedural/noise.hpp`) is a noise resource on Auburn's FastNoiseLite (header-only, MIT):
+sampled by offset, then domain warp, then noise, the same bits everywhere since FastNoiseLite calls
+libm only for square roots and the module builds with `-ffp-contract=off`. Gameplay code samples it
+while a game runs. `procedural::Gradient` (`gradient.hpp`) is a color ramp with sRGB, linear and
+Oklab blending through `slash::exp` and `ln`. A `.texture.json` file (`texture.hpp`; `$cli schema
+texture`) is a `noise` texture (with a color ramp, seamless generation and bump maps to normal
+maps), or a `gradient_1d` or `gradient_2d` texture, made into pixels as it loads:
+`canvas::add_asset_types` and `ui::add_asset_types` register it as a texture, and code that reads
+texture files itself (scene3d's material, terrain and vector field checks) goes through
+`procedural::decode_texture` and `is_texture_path`, so any texture field takes one. Exports ship the
+file and validate it. `texture.generate` (`engine/command/src/procedural.cpp`) makes one from a file
+or inline settings and measures it (channels' range, and `wrap`, which says whether it tiles),
+returns pixels and writes a PNG. `examples/procedural-textures` tunes water that tiles. A
+`.texture.json` file of `"type": "graph"` is a texture graph (`slash/procedural/texture_graph.hpp`,
+`src/texture_graph.cpp`): nodes over parameters, `extends` and named outputs, checked and compiled
+into a `render::TextureGraphProgram` of passes over shared slots (`compile_texture_graph`).
+`RenderDevice::bake_texture_graph` runs it: the GPU and WebGPU devices dispatch
+`shaders/texture_graph.hlsl` per pass (with `fast_noise_lite.hlsl`, FastNoiseLite's HLSL, its tables
+in group memory), and every other device (and Direct3D 12, and any device inside a frame) runs the
+CPU twin, `render::run_texture_graph` (`engine/render/src/texture_graph.cpp`, on the job pool, built
+with `-ffp-contract=off`). A change to an op goes in both, and `tests/test_texture_graph_gpu.cpp`
+holds every device to the twin over every op. `examples/texture-graphs` tunes a brick wall.
+`texture.inspect`, `texture.edit` and `texture.check` (`engine/command/src/texture_tools.cpp`) work
+on graphs as text: `procedural::describe_texture_graph` says what reads each parameter and what each
+output needs, an edit is a JSON Merge Patch that returns each output measured (`measure`: luminance,
+channels, contrast and whether it tiles), and the check holds each graph to its `expect` ranges and
+the storyboard's palettes and budgets (`storyboard::check_textures`); `test.run` and `slash-cli
+project validate` run it. `examples/texture-graph-tools` tunes the wall to a budget. A material's
+`shader` can name a graph, which then draws live: `procedural::texture_graph_shader`
+(`src/texture_graph_shader.cpp`) writes a shader with a function per pass, each
+`shaders/texture_graph_ops.hlsl` included with the pass's op, size and inputs as macros
+(`texture_graph.hlsl`, the compute pass, includes it once for every op; both share
+`texture_graph_common.hlsl`, and fast_noise_lite.hlsl reads its tables where they are with
+`FNL_STATIC_TABLES`), and the shader tools' compiler has the three files built in. Settings that
+material params (and `time`, as `TIME`) move are found by compiling the graph again with each moved,
+and must follow in a straight line. `examples/live-texture-graphs` flows lava.
+
+Gameplay code makes textures and meshes while a game runs: `asset::Assets::put` keeps a value at a
+`made:<name>` path (`asset::is_made_path`) until `drop`, bumping its version when put again so
+renderers upload it again, and never reloads it; `canvas::install` attaches a world's assets
+(`asset::attach`, `asset::assets_of`), so `procedural::make_texture` and `scene3d::make_mesh` reach
+them from a system. `scene3d::SurfaceTool` (`src/surface_tool.cpp`) builds triangles
+(`generate_normals` with smooth groups, MikkTSpace `generate_tangents`, `index`, `commit` into a
+`Model`). Validators skip `made:` paths (only the running game has them). `examples/runtime-meshes`
+grows hills from noise.
 
 Scatter rules are `.scatter.json` files (`scatter.hpp`; `$cli schema scatter`), layers of what to
-place over terrains, meshes, tile maps and areas, as Unreal's PCG and Godot's MultiMesh *Populate
-Surface*: `procedural::scatter` picks a triangle by area and a point in it as Godot's
-`Face3::get_random_point_inside`, keeps it by area, slope, height, noise and spacing (from its own
-places and the layers it `avoid`s), and turns and scales it as `MultiMeshEditor::_populate`, with a
-seeded PCG32 so places repeat everywhere. `scatter.run` (`engine/command/src/scatter.cpp`) reads
-the ground as `navigation::world_geometry` (3D) or tile map cells (2D) and puts each layer under
-`into` as entities extending a prefab or drawing a mesh, or as one `ModelInstances3D`, Godot's
+place over terrains, meshes, tile maps and areas, like Unreal's PCG: `procedural::scatter` picks a
+triangle by area and a point in it, keeps it by area, slope, height, noise and spacing (from its own
+places and the layers it `avoid`s), and turns and scales it, with a seeded PCG32 so places repeat
+everywhere. `scatter.run` (`engine/command/src/scatter.cpp`) reads the ground as
+`navigation::world_geometry` (3D) or tile map cells (2D) and puts each layer under `into` as
+entities extending a prefab or drawing a mesh, or as one `ModelInstances3D`
 (`Renderer::add_multimesh` draws its model at each instance), replacing what `into` held.
 `examples/scatter-rules` grows a forest.
 
@@ -87,8 +85,8 @@ terrain with `paint_terrain` in turn or setting its tile, and `terrain.generate`
 FastNoiseLite's values (`TerrainNoise::values`) in place of Terrain3D's Perlin noise before its
 curve, island and erosion. Both take a noise texture's `.texture.json` file or inline settings
 (`read_noise_source` and `sample_noise_source` in `engine/command/src/procedural.cpp`, sampled
-and normalized as Godot's `Noise::_get_image`), so the noise an agent tuned with
-`texture.generate` makes the map. `examples/noise-maps` makes an archipelago and dunes.
+and normalized), so the noise an agent tuned with `texture.generate` makes the map.
+`examples/noise-maps` makes an archipelago and dunes.
 
 Procedural content from other tools comes in as those files. The Godot importer writes each
 `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` as a `.texture.json` file

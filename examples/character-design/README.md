@@ -1,6 +1,6 @@
 # Character design
 
-A cast of characters made as recipes, after Unreal's MetaHuman Creator (Godot has none), in 3D
+A cast of characters made as recipes, after Unreal's MetaHuman Creator, in 3D
 and in 2D. A `.character.json` file gives a body's measures, a face, hair, clothing in layers and
 props: [hero.character.json](characters/hero.character.json) is a player in a shirt, trousers,
 boots and a cape that hangs as cloth, with a sword ([sword.model.json](props/sword.model.json))

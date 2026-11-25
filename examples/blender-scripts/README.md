@@ -5,7 +5,7 @@ number of boards, can be made by a Blender script. The built-in `blender` genera
 artist's own Blender in the background, as `.blend` files are imported (see
 [blend-models](../blend-models/)): it starts from an empty scene, runs the script with its
 `params` and `seed`, and exports what the script leaves in the scene as a `.glb` file with
-Godot's glTF options. Blender is GPL, so it only ever runs as a program of its own, and running it
+default glTF options. Blender is GPL, so it only ever runs as a program of its own, and running it
 needs the `build` capability.
 
 [game/tools/shelf.py](game/tools/shelf.py) builds a bookshelf from its width, depth, height and

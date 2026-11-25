@@ -1,11 +1,11 @@
 # 3D particles
 
-Particles in 3D, as Godot 4.6's `Emitter3D`. In [main.scene.json](main.scene.json), a
-fountain sprays small spheres that arc up and fall back, a fire's quads always face the camera
-and burn from yellow to a dark red as they rise, and snow made of little boxes drifts down
-through the whole view, already falling when the scene opens. [calls.jsonl](calls.jsonl) checks
-them with `particles.eval`, draws the scene with `frame.capture`, turns the fountain off and adds
-an emitter with nothing to draw; [results.jsonl](results.jsonl) holds the replies.
+Particles in 3D. In [main.scene.json](main.scene.json), a fountain sprays small spheres that arc
+up and fall back, a fire's quads always face the camera and burn from yellow to a dark red as
+they rise, and snow made of little boxes drifts down through the whole view, already falling when
+the scene opens. [calls.jsonl](calls.jsonl) checks them with `particles.eval`, draws the scene
+with `frame.capture`, turns the fountain off and adds an emitter with nothing to draw;
+[results.jsonl](results.jsonl) holds the replies.
 
 ```text
 particles.eval {"id":"fountain","list":true,"max_results":2}

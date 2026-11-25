@@ -12,7 +12,7 @@ places them:
 {"name": "lamp", "model": "props/lantern.model.json", "position": [0, 2.05, 0.3]}
 ```
 
-Each model part is a node of the stall, as Godot instances a scene under a node: the crate's
+Each model part is a node of the stall, an instanced scene under a node: the crate's
 nodes go under `crate`, `crate2` and `crate3`, and the lantern's under `lamp`. Names that would
 clash are numbered (`box2`, `lid2`), and the crates share one copy of their materials. Edit the
 crate file and the stall reloads with it, in a running game or at the next command.

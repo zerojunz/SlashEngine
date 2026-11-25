@@ -17,11 +17,10 @@ frame.capture {"collisions":true,"points":[[360,204],[360,236],[480,300],[240,26
   | mouse 360, 204: crate
 ```
 
-- `frame.capture`'s `"collisions": true` draws every `Collider2D` and
-  `PolygonCollider2D` over the world as Godot's Visible Collision Shapes does: shapes fill with
-  `Color(0.0, 0.6, 0.7, 0.42)` and have an opaque outline, polygons have a red one, the one-way
-  ledge has an arrow down its +y in the inverted color, and the disabled gate is gray. `drawn`
-  counts the `shapes`.
+- `frame.capture`'s `"collisions": true` draws every `Collider2D` and `PolygonCollider2D` over
+  the world: shapes fill with `Color(0.0, 0.6, 0.7, 0.42)` and have an opaque outline, polygons
+  have a red one, the one-way ledge has an arrow down its +y in the inverted color, and the
+  disabled gate is gray. `drawn` counts the `shapes`.
 - Shapes are placed as 2D physics places them, so what is drawn is what collides.
 - In `slash-cli run`, F3 shows and hides the panel. The host hands each window event to
   `Overlay::handle` first (`SdlReader::set_filter`), so the game never sees F3 or clicks on the

@@ -1,7 +1,7 @@
 # Break effects
 
-What damage leaves and whom it reaches, after Chaos Destruction's break events driving Niagara
-(Godot has no destruction). A profile's `effects` say what each hit and each break leaves:
+What damage leaves and whom it reaches, after Chaos Destruction's break events driving Niagara.
+A profile's `effects` say what each hit and each break leaves:
 `debris` and `dust` (one-shot particles), a `decal` and a `sound`, made as entities named for
 the body (`crate_debris`, `crate_decal`, ...) that go when their `lifetime` runs out. Every
 material has its own, so [profiles/flesh.damage.json](profiles/flesh.damage.json) names only

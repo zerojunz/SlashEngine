@@ -1,8 +1,8 @@
 # Texture forms
 
-Exports ship textures in the forms each platform's GPUs sample, as Godot imports a texture once
-for each platform. [main.cpp](main.cpp) makes a project in code with a sprite, a small spark and
-a UI icon, and a `project.json` that compresses textures except those in `ui/`:
+Exports ship textures in the forms each platform's GPUs sample. [main.cpp](main.cpp) makes a project
+in code with a sprite, a small spark and a UI icon, and a `project.json` that compresses textures
+except those in `ui/`:
 
 ```json
 "rendering": {"textures": {"compress_mode": "vram_compressed", "paths": {"ui/": "lossless"}}}

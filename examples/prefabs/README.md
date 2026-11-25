@@ -1,7 +1,7 @@
 # Prefabs
 
-Entities that extend a `.prefab.json` file and override some of its fields, like Godot's
-inherited scenes. [scenes/level.scene.json](scenes/level.scene.json) has a coin made from
+Entities that extend a `.prefab.json` file and override some of its fields.
+[scenes/level.scene.json](scenes/level.scene.json) has a coin made from
 [prefabs/coin.prefab.json](prefabs/coin.prefab.json); [calls.jsonl](calls.jsonl) adds another,
 saves the player as a prefab and makes a second player from it. [results.jsonl](results.jsonl)
 holds the responses, line for line.

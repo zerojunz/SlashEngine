@@ -1,7 +1,7 @@
 # Hair and fur
 
 Grooms grown over models and simulated in the one physics step, after Unreal's Groom and its
-Chaos-driven strand simulation (Godot has none), in 3D and in 2D. A `.groom.json` file says how
+Chaos-driven strand simulation, in 3D and in 2D. A `.groom.json` file says how
 strands grow, how they draw and how they move: [long.groom.json](long.groom.json) is long hair
 drawn as thin strands, [fur.groom.json](fur.groom.json) short fur drawn as shells, and
 [mane.groom.json](mane.groom.json) a 2D mane in pixels.

@@ -1,12 +1,11 @@
 # FSR 3 3D
 
-A card drawn at half the window's size and rebuilt at full size by the upscaler of AMD's
-FidelityFX Super Resolution 3.1 (FidelityFX SDK 1.1.4). This is the scaling mode `fsr3`, which
-Godot doesn't have: it takes what Godot 4.6's `fsr2` takes, from the same jittered Forward+ frame.
-[main.scene.json](main.scene.json) is the cream card of [fsr2-3d](../fsr2-3d/), turned 0.5
-radians, seen through a `Camera3D` in a 160x90 window against a dark blue background.
-[project.json](project.json) sets `rendering.scaling` to `fsr3` at a `scale` of `0.5`, so the 3D
-world draws at 80x45.
+A card drawn at half the window's size and rebuilt at full size by the upscaler of AMD's FidelityFX
+Super Resolution 3.1 (FidelityFX SDK 1.1.4). This is the scaling mode `fsr3`. It takes what `fsr2`
+takes, from the same jittered clustered renderer frame. [main.scene.json](main.scene.json) is the
+cream card of [fsr2-3d](../fsr2-3d/), turned 0.5 radians, seen through a `Camera3D` in a 160x90
+window against a dark blue background. [project.json](project.json) sets `rendering.scaling` to
+`fsr3` at a `scale` of `0.5`, so the 3D world draws at 80x45.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -36,11 +35,11 @@ frame.capture {"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/rebuilt.
   around it, so on the edges the cream fades over the next frames instead of at once
   (`shots/recolored_settled.png`, 31 frames later).
 
-Captures keep FSR 3's history between them, as a running game's frames do. FSR 3 needs what
-FSR 2 needs: Forward+, a `scale` below `1`, and a device that draws Forward+, so the canvas and
-controls draw at the window's size, and Godot's Compatibility renderer and the OpenGL drivers
-scale the world with `bilinear` instead. The sky's motion vectors are worked out from the depth,
-as FSR 2's are, and TAA is off while FSR 3 runs.
+Captures keep FSR 3's history between them, as a running game's frames do. FSR 3 needs what FSR
+2 needs: the clustered renderer, a `scale` below `1`, and a device that draws the clustered
+renderer, so the canvas and controls draw at the window's size, and the compatibility renderer
+and the OpenGL drivers scale the world with `bilinear` instead. The sky's motion vectors are
+worked out from the depth, as FSR 2's are, and TAA is off while FSR 3 runs.
 
 In place of FSR 2's depth clip and locks, FSR 3 measures how much each pixel's shading changed,
 counts the frames each render pixel has gathered, and keeps four frames of luma to tell a flicker

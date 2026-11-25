@@ -1,15 +1,14 @@
 # SDFGI 3D
 
-A room's light bouncing off its walls with nothing baked, by Godot 4.6's SDFGI, which
-SlashEngine has as a research spike on the CPU ([docs](../../docs/reference/sdfgi.md)).
+A room's light bouncing off its walls with nothing baked, by SDF-based global illumination, a
+research spike on the CPU ([docs](../../docs/reference/sdfgi.md)).
 [main.scene.json](main.scene.json) is the room of [ray-traced-gi-3d](../ray-traced-gi-3d/): no
 ceiling, a white floor and back wall, a red wall on the left, a green wall on the right and a white
 block, lit by a sun from above the right wall and a dim blue ambient light, seen through a
-`Camera3D` in a 320x180 window. Its `Environment3D` turns SDFGI on with one cascade of
-0.15-meter cells, 19.2 meters across, around the camera, with `field_lighting_use_occlusion` on so probes
+`Camera3D` in a 320x180 window. Its `Environment3D` turns SDFGI on with one cascade of 0.15-meter
+cells, 19.2 meters across, around the camera, with `field_lighting_use_occlusion` on so probes
 outside the walls don't light the room through them, and [project.json](project.json)'s
-`rendering.field_lighting` has each probe trace 16 rays a frame and average 20 frames,
-as Godot's project settings of those names.
+`rendering.field_lighting` has each probe trace 16 rays a frame and average 20 frames.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:

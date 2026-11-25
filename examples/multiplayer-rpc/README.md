@@ -1,9 +1,9 @@
 # Multiplayer and remote procedure calls
 
-Three worlds in one program play one game over ENet, each with its world's multiplayer, as
-Godot's `SceneMultiplayer` ([docs/reference/networking.md](../../docs/reference/networking.md)).
-[main.cpp](main.cpp) gives each world a player entity per client and a door, calls
-`net::install` and registers the same remote procedures on every peer:
+Three worlds in one program play one game over ENet, each with its world's multiplayer
+([docs/reference/networking.md](../../docs/reference/networking.md)). [main.cpp](main.cpp) gives
+each world a player entity per client and a door, calls `net::install` and registers the same remote
+procedures on every peer:
 
 - `chat`: any peer may call it, and it runs where it is called too (`call_local`).
 - `move`: only an entity's authority may call it, unreliably on channel 1, as positions are sent

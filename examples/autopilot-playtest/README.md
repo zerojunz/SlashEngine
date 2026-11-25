@@ -30,8 +30,8 @@ finding: HUD text hud.coins shows 4/3: more than its stated maximum (hud_fractio
 finished yes, exit code 2, report in report
 ```
 
-- The hello says `"engine": "godot"`: SlashEngine's scenes follow Godot's, so Autopilot plays it
-  with what it knows of Godot games. Answers are in Autopilot's frame, as the Godot addon's: in
+- The hello says `"engine": "godot"`, so Autopilot plays it with what it knows of Godot games.
+  Answers are in Autopilot's frame, as the Godot addon's: in
   2D, x stays X and y (down the screen) is -Z.
 - `context` names the player (the body the camera follows, else an entity named `player`, else
   a character body), whether the game is 2D or 3D and the keys project.json binds. `ui` lists the

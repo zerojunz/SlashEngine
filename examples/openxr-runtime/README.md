@@ -1,6 +1,6 @@
 # OpenXR runtime
 
-A headset's own OpenXR runtime driving a session, as Godot's `OpenXRInterface` runs one.
+A headset's own OpenXR runtime driving a session.
 [project.json](project.json) enables XR, so a session starts on the test headset;
 [calls.jsonl](calls.jsonl) switches to the machine's OpenXR runtime over JSON-RPC (MCP tool
 `xr_set`), and [results.jsonl](results.jsonl) holds the replies. The runtime here is the engine's
@@ -22,7 +22,7 @@ xr.state {"trackers": ["right_hand"]}
 - The session goes from ready to focused at the first tick (`session_begun`,
   `session_focussed`), and the controller's interaction profile reaches its node as
   `profile_changed`.
-- Godot's action map binds the runtime's paths to the tracker's inputs: `trigger` is 0.9 and
+- The action map binds the runtime's paths to the tracker's inputs: `trigger` is 0.9 and
   `ax_button` the A button. The aim pose places the `XRController3D`.
 - When the runtime stops the session, `session_stopping` and `instance_exiting` follow, and
   `interface` `"test"` goes back to the test headset.

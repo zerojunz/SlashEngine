@@ -1,12 +1,11 @@
 # Humanoid retargeting
 
 Characters rigged in different tools name and turn their bones differently, so an animation made
-for one doesn't play on another. Godot fixes this on import: a `BoneMap` names which bone of the
+for one doesn't play on another. Retargeting fixes this: a bone map names which bone of the
 model is each bone of its `SkeletonProfileHumanoid`, the bones take the profile's names, and each
 bone's rest is turned to lie as the profile's does, with the skin and animations turned to match
 (the "Overwrite Axis" rest fixer). `model.retarget` does the same to a model file and writes the
-result as a `.glb`, guessing the bone map from the bones' names and places as Godot's
-`BoneMapper` does.
+result as a `.glb`, guessing the bone map from the bones' names and places.
 
 [main.cpp](main.cpp) makes two rigged humanoids in code and writes them as `.glb` files:
 

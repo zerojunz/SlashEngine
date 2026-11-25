@@ -1,7 +1,7 @@
 # Virtualized geometry (research)
 
-A research feature with no commitment to ship ([roadmap](../roadmap.md#research)). Godot has no
-counterpart. It follows the approach Brian Karis described for Unreal's Nanite in "Nanite: A Deep
+A research feature with no commitment to ship ([roadmap](../roadmap.md#research)).
+It follows the approach Brian Karis described for Unreal's Nanite in "Nanite: A Deep
 Dive" (SIGGRAPH 2021) and builds on meshoptimizer's cluster LOD builder (`demo/clusterlod.h` in
 its MIT source). Read here what it does now, and what it does not do yet.
 
@@ -36,8 +36,8 @@ and the far end coarse, where an LOD switches the whole mesh.
 
 Some choices differ from meshoptimizer's demo defaults:
 
-- **Open edges are locked**, as Godot's importer locks the border when it makes LODs. A surface's
-  rim stays where it is at every depth, so pieces of a kit still meet.
+- **Open edges are locked**. A surface's rim stays where it is at every depth, so pieces of a kit
+  still meet.
 - **Only the simplifier's regular mode is used.** Its permissive mode and its sloppy fallback
   can cross hard edges and leave holes that a cut cannot hide.
 - **Folds are removed.** On very jagged surfaces the simplifier can leave a triangle folded back

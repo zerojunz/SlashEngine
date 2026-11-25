@@ -1,11 +1,11 @@
 # Particles
 
-Particles, as Godot's `CPUParticles2D`. In [main.scene.json](main.scene.json), a fountain sprays
-dots that shrink and fade as they fall, a one-shot burst of sparks goes off once in every
-direction, smoke rises from a sphere and was already going when the scene opened, and a portal's
-particles orbit in the entity's own coordinates. [main.cpp](main.cpp) makes the dot texture,
-checks the particles with `particles.eval`, hears the sparks finish and sets them off again, then
-draws the scene into a texture. [expected.txt](expected.txt) holds its output.
+Particles. In [main.scene.json](main.scene.json), a fountain sprays dots that shrink and fade as
+they fall, a one-shot burst of sparks goes off once in every direction, smoke rises from a sphere
+and was already going when the scene opened, and a portal's particles orbit in the entity's own
+coordinates. [main.cpp](main.cpp) makes the dot texture, checks the particles with
+`particles.eval`, hears the sparks finish and sets them off again, then draws the scene into a
+texture. [expected.txt](expected.txt) holds its output.
 
 ```text
 particles.eval {"id":"sparks","list":true,"max_results":2}

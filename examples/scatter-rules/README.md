@@ -1,7 +1,7 @@
 # Scatter rules
 
 A forest grown over a field and a hill by [scatter rules](../../docs/reference/scene-format.md#scatter-rules),
-as Unreal's PCG graphs and Godot's MultiMesh *Populate Surface* place things.
+as Unreal's PCG graphs place things.
 
 [forest.scatter.json](forest.scatter.json) has two layers:
 

@@ -1,11 +1,10 @@
 # Ragdoll
 
-The waving arm of [skinned-meshes](../skinned-meshes/), on a pedestal, with a ragdoll as Godot
-4.6's `BoneSimulation3D` and `SimulatedBone3D`. [main.scene.json](main.scene.json) puts a
-simulator in the arm's `Transform3D` children, and two physical bones in the simulator's: a
-capsule over the upper arm and one over the forearm, held to it at the elbow by a cone joint
-whose x axis `joint_rotation` turns along the forearm, so it swings up to 2.4 radians from
-straight:
+The waving arm of [skinned-meshes](../skinned-meshes/), on a pedestal, with a ragdoll.
+[main.scene.json](main.scene.json) puts a simulator in the arm's `Transform3D` children, and two
+physical bones in the simulator's: a capsule over the upper arm and one over the forearm, held
+to it at the elbow by a cone joint whose x axis `joint_rotation` turns along the forearm, so it
+swings up to 2.4 radians from straight:
 
 ```json
 "forearm": {"components": {

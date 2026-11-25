@@ -1,11 +1,10 @@
 # FSR 2 3D
 
-A card drawn at half the window's size and rebuilt at full size by AMD's FidelityFX Super
-Resolution 2.2, as Godot 4.6's `scaling_3d` mode `fsr2` in its Forward+ renderer.
-[main.scene.json](main.scene.json) is the cream card of [taa-3d](../taa-3d/), turned 0.5 radians,
-seen through a `Camera3D` in a 160x90 window against a dark blue background.
-[project.json](project.json) sets `rendering.scaling` to `fsr2` at a `scale` of `0.5`, as Godot's
-project settings, so the 3D world draws at 80x45.
+A card drawn at half the window's size and rebuilt at full size by AMD's FidelityFX Super Resolution
+2.2, the `scaling_3d` mode `fsr2` in the clustered renderer. [main.scene.json](main.scene.json) is
+the cream card of [taa-3d](../taa-3d/), turned 0.5 radians, seen through a `Camera3D` in a 160x90
+window against a dark blue background. [project.json](project.json) sets `rendering.scaling` to
+`fsr2` at a `scale` of `0.5`, so the 3D world draws at 80x45.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -31,19 +30,18 @@ frame.capture {"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/rebuilt.
   for how far each of the card's pixels moved, and FSR 2 reads the frames before from where they
   were, so the edges stay smooth in the first frame after the turn (`shots/turned.png`).
 - 15 more frames settle the turned card's edges in `shots/settled.png`.
-- The `batch` puts a night sky behind the card, a `SkyGradient` with a `moon`: a
-  `SunLight3D` whose disc is 4 degrees across, up and to the left. After 16 frames its
-  edges are smooth (`shots/moon.png`): the sky is drawn through the same jittered camera as the
-  meshes, as Godot's.
+- The `batch` puts a night sky behind the card, a `SkyGradient` with a `moon`: a `SunLight3D`
+  whose disc is 4 degrees across, up and to the left. After 16 frames its edges are smooth
+  (`shots/moon.png`): the sky is drawn through the same jittered camera as the meshes.
 - `component.set` turns the camera 0.03 radians to the left, and the moon moves about three
   pixels right. No mesh drew over the sky, so the prepass leaves its motion vectors unset there,
-  and FSR 2 works them out from the depth and the camera of the frame before, as Godot's. The
-  frames before are read from where the moon was, so its edge stays one step from the sky to its
-  white in the first frame after the turn, with no trail where it was (`shots/moon_turned.png`).
+  and FSR 2 works them out from the depth and the camera of the frame before. The frames before
+  are read from where the moon was, so its edge stays one step from the sky to its white in the
+  first frame after the turn, with no trail where it was (`shots/moon_turned.png`).
 
 Captures keep FSR 2's history between them, as a running game's frames do. FSR 2 scales only the
-3D world, in Forward+, at a `scale` below `1`: the canvas and controls draw at the window's size,
-and Godot's Compatibility renderer (`"renderer": "compatibility"`, and always with the
+3D world, in the clustered renderer, at a `scale` below `1`: the canvas and controls draw at the
+window's size, and the compatibility renderer (`"renderer": "compatibility"`, and always with the
 OpenGL drivers) scales the world with `bilinear` instead. TAA is off while FSR 2 runs, since it
-does TAA's job too. As in Godot, FSR 2 has no reactive mask, so transparent meshes, which write
-no depth, can trail for a frame or two.
+does TAA's job too. FSR 2 has no reactive mask, so transparent meshes, which write no depth, can
+trail for a frame or two.

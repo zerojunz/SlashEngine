@@ -377,8 +377,8 @@ With a scene, the entity becomes the scene's root and the scene's other entities
 
 ### entity.destroy
 
-Destroys an entity and its components, and the entities in its `Transform2D`, `Control` or
-`ScreenLayer` `children`, theirs too, as Godot frees a node's children, and those its instanced
+Destroys an entity and its components, and the entities in its `Transform2D`, `Widget` or
+`ScreenLayer` `children`, theirs too, and those its instanced
 scene brought.
 They are listed as `descendants`, and leave the `children` lists of the parents that stay.
 Destroying one entity an instanced scene brought saves as `null` for it.
@@ -437,16 +437,15 @@ An unknown ID fails with `-32001` (not found):
 ### entity.place
 
 Places 3D entities with constraints instead of exact coordinates, as agents assemble a level of
-library assets: at a point or along a path, dropped onto what is below, and moved aside from
-what is in the way. Each entity is dropped as Godot's editor snaps a node to the floor (Snap
-Object to Floor): a ray from a meter above the bottom of its bounds, straight down at most 500
-meters, puts the bottom of its bounds on the first surface it meets, which can be another prop.
-Then, when its bounds overlap anything but what it stands on, it is moved to the nearest spot
-that is free, trying rings of spots around where it was asked to go, each half its size further
-out (16 rings), dropping it again at each. Surfaces and what is in the way are what a
-[navigation bake](#navigationbake) reads: meshes, CSG roots, grid maps, terrains and static and
-animatable bodies' shapes, kept apart by their bounding boxes. Entities are placed in order,
-each kept apart from those before it; an entity's children move with it. Each one's
+library assets: at a point or along a path, dropped onto what is below, and moved aside from what is
+in the way. Each entity is dropped onto the floor: a ray from a meter above the bottom of its
+bounds, straight down at most 500 meters, puts the bottom of its bounds on the first surface it
+meets, which can be another prop. Then, when its bounds overlap anything but what it stands on, it
+is moved to the nearest spot that is free, trying rings of spots around where it was asked to go,
+each half its size further out (16 rings), dropping it again at each. Surfaces and what is in the
+way are what a [navigation bake](#navigationbake) reads: meshes, CSG roots, grid maps, terrains and
+static and animatable bodies' shapes, kept apart by their bounding boxes. Entities are placed in
+order, each kept apart from those before it; an entity's children move with it. Each one's
 `Transform3D` position (and, with `rotate`, rotation) is set in its parent's space.
 
 | Param | Type | Default | Meaning |
@@ -712,7 +711,7 @@ JSON `path` and `message`:
 ### scatter.run
 
 Places what [scatter rules](scene-format.md#scatter-rules) ask for over the ground, as Unreal's PCG
-graphs and Godot's MultiMesh *Populate Surface* do: trees over a terrain, rocks between them,
+graphs do: trees over a terrain, rocks between them,
 flowers on a tile map's grass. Each layer's places go under the `into` entity, which is made if it
 is missing: a `"multimesh"` layer as one [`ModelInstances3D`](scene-format.md#multimeshinstance3d)
 `<into>_<layer>`, an `"entities"` layer as entities `<into>_<layer>_<n>` that extend its prefab or
@@ -727,7 +726,7 @@ they look right; the run is one undo step.
 
 Give `path` or `rules`, not both. The 3D ground is what navigation bakes read under each layer's
 `on` entities (meshes, CSG, terrains, grid maps, static bodies' shapes), placed in the world;
-what `into` held before isn't ground. In 2D it is the cells of the `on` TileMapLayers. Places are
+what `into` held before isn't ground. In 2D it is the cells of the `on` `TileLayer2D`s. Places are
 written in `into`'s space. Returns each layer's count placed; a layer that placed fewer than it
 wanted adds `wanted` and `rejected`, how many tries each rule threw away (`outside`, `slope`,
 `height`, `noise`, `spacing`), or `problem` when it had no ground at all. Needs: `edit`. From
@@ -1339,13 +1338,13 @@ Needs: `read`.
 {"length":0.5,"loop":"linear","tracks":{"Sprite2D/frame":[0,1,2,3],"Sprite2D/offset/y":[0,-2,-4,-2]}}
 ```
 
-`tracks` holds one value per time for each value track, keyed by path, or for a track with a
-target by its target, `:` and its path, as Godot's `Node:property` (`sword:Transform2D/rotation`).
-Numbers are rounded to four decimals. A discrete track gives the value of the last key at or before each time. An
-unknown animation or track path fails with the closest name, and a time past the animation's
-length fails with its `path`, `/times/<n>`. Event tracks are left out; read them in the file.
-[Node tracks](scene-format.md#node-tracks) go under `nodes`, by node, then property, one
-`[x, y, z]` per time, rotations as Euler angles:
+`tracks` holds one value per time for each value track, keyed by path, or for a track with a target
+by its target, `:` and its path (`sword:Transform2D/rotation`). Numbers are rounded to
+four decimals. A discrete track gives the value of the last key at or before each time. An unknown
+animation or track path fails with the closest name, and a time past the animation's length fails
+with its `path`, `/times/<n>`. Event tracks are left out; read them in the file. [Node
+tracks](scene-format.md#node-tracks) go under `nodes`, by node, then property, one `[x, y, z]` per
+time, rotations as Euler angles:
 
 ```json
 {"length":1,"loop":"linear","tracks":{},"nodes":{"Elbow":{"rotation":[[0,0,0],[0,0,0.6],[0,0,1.2]]}}}
@@ -1398,12 +1397,12 @@ Needs: `edit`, `filesystem`. Undo puts the library back as it was.
 
 ### animation.seek
 
-Moves an entity's `Animator` to a time or a [marker](scene-format.md#cinematics) and sets
-what its tracks set there at once, as Godot's `AnimationPlayer.seek(time, true, true)`: the values
-of its value and bezier tracks, and for each animation track the animation its last key at or
-before the time started, on the track's target, moved to where it would be and set in turn.
-Event tracks wait for playback, and `playing` stays as it was. Use it to check a cutscene's
-shot, then `frame.capture` it. It records one undo step.
+Moves an entity's `Animator` to a time or a [marker](scene-format.md#cinematics) and sets what its
+tracks set there at once: the values of its value and bezier tracks, and
+for each animation track the animation its last key at or before the time started, on the track's
+target, moved to where it would be and set in turn. Event tracks wait for playback, and `playing`
+stays as it was. Use it to check a cutscene's shot, then `frame.capture` it. It records one undo
+step.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1454,7 +1453,7 @@ empty or doesn't load, fails at `/id`.
 
 ### animation.set_parameters
 
-Sets parameters of an entity's `AnimationGraph`, as Godot's `set("parameters/...")`, and returns
+Sets parameters of an entity's `AnimationGraph`, and returns
 those that changed. Each value is checked against its node first, so a bad one changes nothing:
 a number for an amount or a scale, a OneShot `request` of `"none"`, `"fire"`, `"abort"` or
 `"fade_out"`, a Transition `transition_request` naming one of its inputs, a state machine's
@@ -1512,7 +1511,7 @@ Give `path` or `id`. Needs: `read`.
 ```
 
 - Each mesh lists the material of each of its surfaces, by index into `materials`, or `-1` for
-  Godot's default material, and counts their vertices and triangles.
+  the default material, and counts their vertices and triangles.
   `lods`, for a mesh whose surfaces have [LODs](scene-format.md#mesh-lods), counts its
   triangles at each coarser LOD, a surface with fewer counted at its coarsest.
   `blend_shapes`, for a mesh with [blend shapes](scene-format.md#blend-shapes), gives each
@@ -1552,11 +1551,11 @@ it, and things on it, without drawing it:
   its surfaces use.
 - Each part is the node placing a mesh, with the `center` and `size` of what it draws at rest, in
   the model's space, and its triangles.
-- `points` are the model's attachment points, as Godot's `Marker3D` in an imported scene: nodes
-  that place no mesh, have no children and are no skin's joint, such as a glTF file's empty nodes
-  or a [recipe's points](scene-format.md#model-recipes). Each has its `position` and `rotation`
-  (left out when zero) at rest in the model's space, and the `part` above it that it moves with.
-  A [`BoneSocket3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
+- `points` are the model's attachment points in an imported scene: nodes that place no mesh, have
+  no children and are no skin's joint, such as a glTF file's empty nodes or a [recipe's
+  points](scene-format.md#model-recipes). Each has its `position` and `rotation` (left out when
+  zero) at rest in the model's space, and the `part` above it that it moves with. A
+  [`BoneSocket3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
   `Skeleton3D` turns a part by its name.
 - `animations` are the names of its animations, for a model with any.
 - `blend_shapes` are the names of its meshes' [blend shapes](scene-format.md#blend-shapes), for
@@ -1569,11 +1568,11 @@ A model that doesn't load is an error at `/path` (or `/id`) saying why, as
 
 ### model.cleanup
 
-Makes a generated or imported [model](scene-format.md#models) game-ready, as an artist's last
-pass before it goes into a game, and writes it as one `.glb` file holding its buffer and images, as
-Godot's glTF export writes one. The steps run in this order:
+Makes a generated or imported [model](scene-format.md#models) game-ready, as an artist's last pass
+before it goes into a game, and writes it as one `.glb` file holding its buffer and images. The
+steps run in this order:
 
-1. `up` turns the axis the file calls up to y, Godot's up.
+1. `up` turns the axis the file calls up to y.
 2. `delight` takes the light baked into its albedo textures out of them, as Unity's
    De-Lighting tool does for scans: each texel the surfaces cover is placed on the model, the sky
    each place sees is traced against the model (16 rays, as far as half its size), the ambient
@@ -1582,18 +1581,16 @@ Godot's glTF export writes one. The steps run in this order:
    surfaces all facing one way, is left alone; an image another of a material's slots samples is
    kept, and the albedo gets a copy.
 3. `triangles` simplifies each surface to its share of the budget with meshoptimizer's
-   simplifier, as Godot's importer simplifies LODs, then makes the result's
-   [LODs](scene-format.md#mesh-lods).
+   simplifier, then makes the result's [LODs](scene-format.md#mesh-lods).
 4. `scale`, or `height`, sizes it.
 5. `pivot` moves it so its origin is at that point of its box.
 6. With `uvs`, each surface whose vertices all share one texture coordinate (none, in effect) is
    unwrapped with xatlas, as lightmap UVs are.
-7. `collision` makes what it collides as from the triangles it draws, as Godot's mesh import
-   "Generate > Physics" shape types: `"trimesh"` the triangles, `"convex"` one convex hull of at
-   most 32 corners, `"decompose"` convex hulls from V-HACD 4, as Godot's
-   `Mesh::convex_decompose` makes them (Godot's defaults: about 10000 voxels, 32 corners a hull),
-   the same hulls on every platform. It replaces the [collision](scene-format.md#model-collision)
-   the model had; without it, that collision is turned, sized and moved with the model.
+7. `collision` makes what it collides as from the triangles it draws, as one of these shape types:
+   `"trimesh"` the triangles, `"convex"` one convex hull of at most 32 corners, `"decompose"` convex
+   hulls from V-HACD 4, the same hulls on every platform. It replaces the
+   [collision](scene-format.md#model-collision) the model had; without it, that collision is turned,
+   sized and moved with the model.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1633,13 +1630,13 @@ the direction the light it took out came from, in the result's space, when it fo
 
 ### model.retarget
 
-[Retargets](scene-format.md#retargeting) a rigged humanoid to Godot's `SkeletonProfileHumanoid`,
-as Godot's importer does with a `BoneMap` and its default options, and writes it as one `.glb`
-file with its skins and animations: the nodes above the skeleton fold into it, the mapped bones
-take the profile's names, and their rests turn to lie as the profile's do, with the skin and
-animations turned to match, so the model looks and moves as it did and animations of every
-retargeted humanoid play on it. The bone map is guessed from the bones' names and places, as
-Godot's `BoneMapper` guesses it; `bone_map` changes it.
+[Retargets](scene-format.md#retargeting) a rigged humanoid to the engine's humanoid skeleton profile
+with a bone map and its default options, and writes it as one `.glb` file with its skins and
+animations: the nodes above the skeleton fold into it, the mapped bones take the profile's
+names, and their rests turn to lie as the profile's do, with the skin and animations turned to
+match, so the model looks and moves as it did and animations of every retargeted humanoid play
+on it. The bone map is guessed from the bones' names and places;
+`bone_map` changes it.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1717,13 +1714,12 @@ Needs: `read`.
 {"aabb":{"max":[1.8,2.5,1.7],"min":[-1.8,-1.2,-1.7]},"surfaces":[{"material":{"albedo_color":[0.9,0.85,0.7,1]},"triangles":32},{"material":{"albedo_color":[0.45,0.3,0.2,1]},"triangles":34},{"triangles":36},{"material":{"albedo_color":[0.7,0.2,0.15,1]},"triangles":14}],"triangles":116,"vertices":196,"volume":15.6585}
 ```
 
-- `aabb` and `volume` (cubic meters) are in the root's own space, as Godot's `get_aabb`; an
-  empty result has a zero box and volume. A subtraction that cut nothing leaves the volume as
-  it was.
+- `aabb` and `volume` (cubic meters) are in the root's own space; an empty result has a zero box
+  and volume. A subtraction that cut nothing leaves the volume as it was.
 - `surfaces` are in the order their materials first appear. Each has its triangles and the
   `material` it draws with: the `Surface3D` fields that differ from the defaults, or
-  `model` and `model_material` for a `SolidMesh3D` model's own material, or neither for Godot's
-  default material.
+  `model` and `model_material` for a `SolidMesh3D` model's own material, or neither for the default
+  material.
 - `problems` are there only when a shape under the root couldn't be made or the result is empty,
   each with its entity's `id`, the `path` of the bad field and a `message`, as
   [`scene validate`](cli.md#scene-validate) reports them.
@@ -1733,7 +1729,7 @@ with no CSG shape.
 
 ### path.get
 
-Returns a [`Spline2D`'s or `Spline3D`'s](scene-format.md#paths) curve, baked as Godot bakes it: its
+Returns a [`Spline2D`'s or `Spline3D`'s](scene-format.md#paths) curve, baked into points: its
 length, the position and rotation at offsets along it and the point of it nearest to another,
 so an agent can place things along a route without a follower.
 
@@ -1759,7 +1755,7 @@ Needs: `read`.
 - `points` is how many points the path has and `baked_points` how many it was baked into.
 - Each sample has its `offset` and `position`. A `Spline2D`'s `rotation` is the angle in radians
   of the way it goes, as a `SplineFollower2D` that `rotates` turns. A `Spline3D`'s is the Euler angles
-  of Godot's `sample_baked_with_rotation` with the tilt, as a `Transform3D`'s `rotation`, with
+  with the tilt, as a `Transform3D`'s `rotation`, with
   its `up` vector and `tilt`.
 - `closest` has the nearest point's `offset` along the curve and its `position`.
 
@@ -1769,8 +1765,8 @@ coordinates at `/closest_to`.
 ### blockmap.set
 
 Places one item of a [`BlockMap3D`'s](scene-format.md#grid-maps) mesh library in cells, turned by
-an orientation, or erases them with `null`, as Godot's `set_cell_item`. Writes the map in
-canonical form and returns how many cells changed.
+an orientation, or erases them with `null`. Writes the map in canonical form and returns how many
+cells changed.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1778,7 +1774,7 @@ canonical form and returns how many cells changed.
 | `cells` | array of `[x, y, z]` | | The cells, up to 4096. Give `cells` or `box` |
 | `box` | `[x, y, z, width, height, depth]` | | Every cell in it, up to 65536 |
 | `item` | string or `null` | required | An item of the library, or `null` to erase |
-| `orientation` | integer | `0` | One of Godot's 24 orthogonal indices, `0` to `23`: `16`, `10` and `22` turn the item 90, 180 and 270 degrees about y |
+| `orientation` | integer | `0` | One of the 24 orthogonal orientations by index, `0` to `23`: `16`, `10` and `22` turn the item 90, 180 and 270 degrees about y |
 
 Needs: `edit`. Walling off a room, from [examples/gridmap](../../examples/gridmap/):
 
@@ -1875,13 +1871,13 @@ Needs: `edit`, `filesystem`. The same seed makes the same heights on every machi
 {"files":["terrain/land.height.png"],"heights":[-6,26.6482],"id":"land"}
 ```
 
-With `noise`, the generator samples a [FastNoiseLite](scene-format.md#noise) a cell apart, as
-Godot's `Noise.get_image` does, in place of Terrain3D's Perlin noise: normalized over the map, so
-heights fill `base_height` to `base_height + height_range`, unless the file's `normalize` is
-off (then `-1` to `1` maps to the range), and turned over when its `invert` is on. Tune the noise
-with [`texture.generate`](#texturegenerate) and use the same file here. `scale`, `roughness`
-and `octaves` then do nothing, `seed` replaces the noise's seed and `offset` adds to its; the
-curve, the island and erosion shape it as before.
+With `noise`, the generator samples a [FastNoiseLite](scene-format.md#noise) a cell apart, in
+place of Terrain3D's Perlin noise: normalized over the map, so heights fill `base_height` to
+`base_height + height_range`, unless the file's `normalize` is off (then `-1` to `1` maps to the
+range), and turned over when its `invert` is on. Tune the noise with
+[`texture.generate`](#texturegenerate) and use the same file here. `scale`, `roughness` and
+`octaves` then do nothing, `seed` replaces the noise's seed and `offset` adds to its; the curve,
+the island and erosion shape it as before.
 
 ```json
 {"id": "land", "noise": "terrain/dunes.texture.json", "base_height": 0, "height_range": 12, "island_weight": 1}
@@ -2008,8 +2004,8 @@ Needs: `read`.
 ### tilemap.paint
 
 Paints a terrain on cells and picks tiles for them and the terrain cells around them so their
-edges connect, as Godot's terrain painting does. `null` erases the cells and fixes up their
-neighbors. Returns how many cells changed.
+edges connect. `null` erases the cells and fixes up their neighbors. Returns how many cells
+changed.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2059,12 +2055,12 @@ Needs: `edit`. From [examples/noise-maps](../../examples/noise-maps/):
 {"bands":[121,167],"changed":288,"id":"sea"}
 ```
 
-Cells' noise is sampled at their columns and rows, as Godot's `Noise.get_image` samples pixels,
-normalized over the rect and turned over by a file's `normalize` and `invert` as its texture
-is; inline settings are normalized. Only the last band may leave out `below`, taking the rest;
-cells above every band's `below` keep what they have. `null` erases. The same noise always
-fills the same cells, so a seed makes a map again. Bands out of order, a band with neither a
-terrain nor a tile, and an unknown terrain or tile fail with the band's path.
+Cells' noise is sampled at their columns and rows, normalized over the
+rect and turned over by a file's `normalize` and `invert` as its texture is; inline settings are
+normalized. Only the last band may leave out `below`, taking the rest; cells above every band's
+`below` keep what they have. `null` erases. The same noise always fills the same cells, so a
+seed makes a map again. Bands out of order, a band with neither a terrain nor a tile, and an
+unknown terrain or tile fail with the band's path.
 
 ### tilemap.set
 
@@ -2090,9 +2086,9 @@ Needs: `edit`.
 
 An unknown tile or source fails with the closest name, and an unknown alternative with the ones
 the tile has. Turns are `h` (flip left to right), `v` (top to bottom) and `t` (swap the axes),
-each at most once and in that order, as Godot's cell transform flags; see
-[turned cells](scene-format.md#alternative-tiles-and-turned-cells). The tile's collision polygons
-turn with it.
+each at most once and in that order; see [turned
+cells](scene-format.md#alternative-tiles-and-turned-cells). The tile's collision polygons turn
+with it.
 
 ### tilemap.get
 
@@ -2135,8 +2131,8 @@ A tile set with no custom data layers gives no `data`.
 
 ### tilemap.convert
 
-Turns cells into the points at their centers, or points into the cells they are in, as Godot's
-`map_to_local` and `local_to_map` through the layer's `Transform2D` (and its parents'). Points
+Turns cells into the points at their centers, or points into the cells they are in,
+through the layer's `Transform2D` (and its parents'). Points
 are in the canvas the layer draws in: the world's, unless the layer is in a `ScreenLayer`. Cells
 need not hold a tile. For squares the answer is plain arithmetic; for diamonds and hexagons this
 is how an agent finds where a cell is drawn or which cell a click landed in
@@ -2163,8 +2159,8 @@ The two points lie either side of the slanted edge between two hexagons of
 
 ## Physics
 
-Questions about the scene's [2D physics](scene-format.md#2d-physics) bodies and areas, as
-Godot's `PhysicsDirectSpaceState2D` queries. They see the world as the last step left it, plus
+Questions about the scene's [2D physics](scene-format.md#2d-physics) bodies and areas.
+They see the world as the last step left it, plus
 any bodies added, moved or removed since. The examples are the scene of
 [examples/physics-2d](../../examples/physics-2d/) after six seconds, with the hero standing at
 (420.3, 189) on the hill.
@@ -2173,7 +2169,7 @@ The same commands ask [3D physics](scene-format.md#3d-physics) when given points
 numbers (`[x, y, z]`), a `Collider3D` shape or an entity with a 3D body; their answers then
 have three-number points, normals and gravity, in meters.
 
-`physics.raycast` and `physics.overlap` take the same filter, as Godot's query parameters:
+`physics.raycast` and `physics.overlap` take the same filter:
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2279,8 +2275,7 @@ when `position` has three numbers, `rotation` is an array, or the shape is one o
 
 Returns what touches an entity after the last step. For a body, `bodies` lists the bodies
 touching it (for a `CharacterMover2D`, what its last move hit and the floor it stands on) and
-`areas` the areas it is in; for an area, what is in it. As Godot's `get_colliding_bodies`,
-`get_overlapping_bodies` and `get_overlapping_areas`.
+`areas` the areas it is in; for an area, what is in it.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2301,11 +2296,11 @@ An entity with no body or area returns empty lists.
 ### physics.gravity
 
 Returns the gravity and damping each body gets after the last step, from the
-[areas](scene-format.md#gravity-and-damping-zones) it is in and the project's settings, as
-Godot's `get_gravity`. A rigid body's `gravity_scale` and its own damping are applied. `areas`
-lists the areas that set them, highest priority first, and is left out when none do. A
-`CharacterMover2D` or `CharacterMover3D` gets the gravity its gameplay code should add to its
-velocity. A 3D body's gravity is `[x, y, z]` in meters per second squared.
+[areas](scene-format.md#gravity-and-damping-zones) it is in and the project's settings. A rigid
+body's `gravity_scale` and its own damping are applied. `areas` lists the areas that set them,
+highest priority first, and is left out when none do. A `CharacterMover2D` or `CharacterMover3D`
+gets the gravity its gameplay code should add to its velocity. A 3D body's gravity is `[x, y,
+z]` in meters per second squared.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2327,13 +2322,13 @@ An unknown ID, or an entity with no body or with an `Zone2D`, is an error at its
 
 ### physics.soft_body
 
-Returns where a [soft body](scene-format.md#soft-bodies)'s points are after the last step, as
-Godot's `SoftBody3D::get_point_transform`: how many there are (one for each vertex of its mesh),
-whether it sleeps, their `bounds` `[x, y, z, w, h, d]` in meters and, with `at`, the place of
-each vertex asked for, keyed by its index. Before the first step they are where the mesh and the
-entity's `Transform3D` put them. A [`Cloth3D`](scene-format.md#character-cloth)'s points are
-its section's welded vertices in the world; a `Cloth2D`'s are its sheet's, row by row from the
-top, with `bounds` `[x, y, w, h]` in pixels and each place `[x, y]`.
+Returns where a [soft body](scene-format.md#soft-bodies)'s points are after the last step: how
+many there are (one for each vertex of its mesh), whether it sleeps, their `bounds` `[x, y, z,
+w, h, d]` in meters and, with `at`, the place of each vertex asked for, keyed by its index.
+Before the first step they are where the mesh and the entity's `Transform3D` put them. A
+[`Cloth3D`](scene-format.md#character-cloth)'s points are its section's welded vertices in the
+world; a `Cloth2D`'s are its sheet's, row by row from the top, with `bounds` `[x, y, w, h]` in
+pixels and each place `[x, y]`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2655,13 +2650,12 @@ player 150 meters down the road, in the middle and east cells:
 
 ## Navigation
 
-Questions about the world's [navigation maps](scene-format.md#navigation), as Godot's
-`NavigationServer2D` and `NavigationServer3D` queries. Points of two numbers ask the 2D map, in
-pixels, and points of three the 3D one, in meters. Each command first rebuilds a map whose
-regions or links changed since the last step. Numbers are rounded to four decimals. The examples
-are the scene of [examples/navigation](../../examples/navigation/): a house of two rooms joined
-the long way round by a corridor and the short way by a hatch, a link that costs one and a half
-times as much to cross as to walk.
+Questions about the world's [navigation maps](scene-format.md#navigation). Points of two numbers ask
+the 2D map, in pixels, and points of three the 3D one, in meters. Each command first rebuilds a map
+whose regions or links changed since the last step. Numbers are rounded to four decimals. The
+examples are the scene of [examples/navigation](../../examples/navigation/): a house of two rooms
+joined the long way round by a corridor and the short way by a hatch, a link that costs one and a
+half times as much to cross as to walk.
 
 ### wind.sample
 
@@ -2681,9 +2675,9 @@ other.
 
 ### navigation.path
 
-Returns a path over the map from `from` to `to`, as Godot's `query_path`, and its length. It
-starts at the point of the map closest to `from` and ends at the closest it reaches to `to`, so
-a target off the map, or cut off from `from`, still gets a path; it is empty when the map is.
+Returns a path over the map from `from` to `to`, and its length. It starts at the point of the
+map closest to `from` and ends at the closest it reaches to `to`, so a target off the map, or
+cut off from `from`, still gets a path; it is empty when the map is.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2691,9 +2685,9 @@ a target off the map, or cut off from `from`, still gets a path; it is empty whe
 | `to` | `[x, y]` or `[x, y, z]` | required | Where it goes, with as many numbers as `from` |
 | `navigation_layers` | integer | `1` | The regions and links it may use, as bits |
 | `postprocessing` | string | `"corridorfunnel"` | `"corridorfunnel"` pulls it tight, `"edgecentered"` goes through the middle of each edge, `"none"` keeps where the search first touched each polygon |
-| `simplify_epsilon` | number | | Simplify the path, dropping points closer than this to the line, as Godot's `simplify_path` |
+| `simplify_epsilon` | number | | Simplify the path, dropping points closer than this to the line |
 | `excluded_regions` | string array | `[]` | Region entities it may not use |
-| `included_regions` | string array | `[]` | The only region entities it may use, when not empty; either leaves links out, as Godot's |
+| `included_regions` | string array | `[]` | The only region entities it may use, when not empty; either leaves links out |
 | `max_polygons` | integer | `4096` | Stop the search after this many polygons; `0` for no limit |
 | `max_distance` | number | `0` | Stop the search this far from `from`; `0` for no limit |
 | `return_max_length` | number | `0` | Cut the path to this length; `0` for no limit |
@@ -2721,10 +2715,9 @@ With the hatch moved off layer 1, the long way round:
 
 ### navigation.closest
 
-Returns the point of the map closest to a point and the region it is on, as Godot's
-`map_get_closest_point` and `map_get_closest_point_owner`; in 3D also its polygon's normal,
-which is not normalized, as Godot's. Regions that aren't enabled count. `point` is `null` when
-the map is empty.
+Returns the point of the map closest to a point and the region it is on; in 3D also its
+polygon's normal, which is not normalized. Regions that aren't enabled count. `point` is `null`
+when the map is empty.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2742,9 +2735,9 @@ Needs: `read`. A point above the hatch's middle, between the rooms:
 
 ### navigation.random
 
-Returns a random point of the map's regions on `navigation_layers`, as Godot's
-`map_get_random_point`: in a random polygon of a random region, or, with `uniformly`, anywhere
-with the same chance. The same seed picks the same point on every machine.
+Returns a random point of the map's regions on `navigation_layers`: in a random polygon of a
+random region, or, with `uniformly`, anywhere with the same chance. The same seed picks the same
+point on every machine.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2765,12 +2758,12 @@ Needs: `read`.
 
 ### navigation.map
 
-Returns what each map is made of: its `iteration_id` (which goes up each time it is rebuilt, as
-Godot's), its `regions`, `links` and `polygons` (a link's counts as one), `edge_connections`
-(edges of different regions joined, shared or within the map's `edge_connection_margin`),
-`free_edges` (edges joined to nothing), `merge_errors` (edges three or more polygons share, left
-out when none do) and `errors`: the regions left out, each with its entity's `id` and a
-`message` saying why.
+Returns what each map is made of: its `iteration_id` (which goes up each time it is rebuilt),
+its `regions`, `links` and `polygons` (a link's counts as one), `edge_connections` (edges of
+different regions joined, shared or within the map's `edge_connection_margin`), `free_edges`
+(edges joined to nothing), `merge_errors` (edges three or more polygons share, left out when
+none do) and `errors`: the regions left out, each with its entity's `id` and a `message` saying
+why.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2788,12 +2781,12 @@ Needs: `read`.
 
 ### navigation.agent
 
-Returns how a [`NavAgent2D` or `NavAgent3D`](scene-format.md#agents) is doing, as
-Godot's `NavigationAgent` getters: its `next_position`, whether its `navigation_finished`, it
-`target_reached` and its target is `target_reachable`, the straight `distance_to_target`, and its
-`path` with the `path_index` of the point it is going to. An agent with `avoidance_enabled` also
-returns the [`safe_velocity`](scene-format.md#avoidance) avoidance gave it last tick. Asking
-brings the path up to date first, as `get_next_path_position` does.
+Returns how a [`NavAgent2D` or `NavAgent3D`](scene-format.md#agents) is doing: its `next_position`,
+whether its `navigation_finished`, it `target_reached` and its target is `target_reachable`, the
+straight `distance_to_target`, and its `path` with the `path_index` of the point it is going to. An
+agent with `avoidance_enabled` also returns the [`safe_velocity`](scene-format.md#avoidance)
+avoidance gave it last tick. Asking brings the path up to date first, as `get_next_path_position`
+does.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -2821,18 +2814,16 @@ An unknown ID fails at `/id` with a "did you mean", and an entity with no agent 
 ### navigation.bake
 
 Bakes a [region's](scene-format.md#regions) `.navmesh.json` or `.navmesh2d.json` file from the
-geometry under it, as Godot's `bake_navigation_mesh` and `bake_navigation_polygon`, with the
-[settings](scene-format.md#baking) in the file (Godot's defaults for a file that isn't there
-yet). It replaces the file's `vertices` and `polygons`, keeping everything else as written, and
-returns how many it wrote, how many obstructions a 2D bake cut out, how many
-`obstacle_outlines` of [obstacles](scene-format.md#avoidance) with `affect_navigation_mesh` it
-cut out, and `warnings` when there are any: settings that don't fit whole cells, meshes or tile
-sets that didn't load and a region with nothing under it to bake. A 2D bake takes the
-[tile map layers](scene-format.md#tile-navigation) under the region too: their tiles'
-navigation outlines and collision polygons. A bake that comes out the same reports `"unchanged": true` and records no undo
-step. Undo puts the file back as it was, removing it if the bake made it, and redo writes the
-bake again; both fail if the file changed since. The map takes the new file at the next command
-or tick.
+geometry under it, with the [settings](scene-format.md#baking) in the file. It replaces the file's
+`vertices` and `polygons`, keeping everything else as written, and returns how many it wrote, how
+many obstructions a 2D bake cut out, how many `obstacle_outlines` of
+[obstacles](scene-format.md#avoidance) with `affect_navigation_mesh` it cut out, and `warnings` when
+there are any: settings that don't fit whole cells, meshes or tile sets that didn't load and a
+region with nothing under it to bake. A 2D bake takes the [tile map
+layers](scene-format.md#tile-navigation) under the region too: their tiles' navigation outlines and
+collision polygons. A bake that comes out the same reports `"unchanged": true` and records no undo
+step. Undo puts the file back as it was, removing it if the bake made it, and redo writes the bake
+again; both fail if the file changed since. The map takes the new file at the next command or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3349,15 +3340,15 @@ of its copies are live, the `length` in pixels from it through them and where it
 
 ### particles.bake_sdf
 
-Bakes a [`ParticleColliderSdf3D`'s](scene-format.md#sdf-and-height-field-collision-3d)
-signed distance field, as Godot's Bake SDF: the visible `Model3D`s on layers of its
-`bake_mask` under its parent (the whole world for a root), with the CSG roots and `BlockMap3D`s
-there, whose triangles touch its box, at its `resolution` and `thickness`. It writes a `.sdf.png`
-file and sets the collider's `texture` to it, `slices_horizontal` to 1 and `slices_vertical` to
-the cells' depth. It returns the file, how many meshes and triangles it measured, the cells
-along each axis and `problems` when there are any: models that don't load, which it leaves out.
-A bake that comes out the same reports `"unchanged": true` and records no undo step. Undo puts
-the file back as it was, removing it if the bake made it, and sets the fields back.
+Bakes a [`ParticleColliderSdf3D`'s](scene-format.md#sdf-and-height-field-collision-3d) signed
+distance field: the visible `Model3D`s on layers of its `bake_mask` under its parent (the whole
+world for a root), with the CSG roots and `BlockMap3D`s there, whose triangles touch its box, at
+its `resolution` and `thickness`. It writes a `.sdf.png` file and sets the collider's `texture`
+to it, `slices_horizontal` to 1 and `slices_vertical` to the cells' depth. It returns the file,
+how many meshes and triangles it measured, the cells along each axis and `problems` when there
+are any: models that don't load, which it leaves out. A bake that comes out the same reports
+`"unchanged": true` and records no undo step. Undo puts the file back as it was, removing it if
+the bake made it, and sets the fields back.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3377,8 +3368,8 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The statue of
 
 An unknown ID fails at `/id` with a "did you mean"; an entity with no `ParticleColliderSdf3D`
 fails at `/id`. A file that doesn't end in `.sdf.png` fails at `/file` (or `/id`, for its
-`texture`). A box no triangle touches fails, as Godot's bake does, and so does a resolution that
-isn't one or a field of more than 2097152 cells.
+`texture`). A box no triangle touches fails, and so does a resolution that isn't one or a field
+of more than 2097152 cells.
 
 ### light.sample
 
@@ -3515,20 +3506,20 @@ mean". [examples/lighting-check](../../examples/lighting-check/) fixes a courtya
 ### lightmap.bake
 
 Bakes a [`BakedLighting3D`'s](scene-format.md#baked-lightmaps) light and [light
-probes](scene-format.md#light-probes), as Godot's LightmapGI bake: the
-`Model3D`s whose `lighting_mode` is `"static"` under its parent (the whole world for a root),
-lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
-shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light and the probes'
-on the CPU, or with `"device": "gpu"` on a GPU that traces rays (Vulkan with ray queries, Metal
-on a Mac whose GPU supports ray tracing, or Direct3D 12 with DXR 1.1, as Godot's LightmapperRD traces on the GPU: the same light but for rounding), then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
-sets the BakedLighting3D's `light_data` to the file. It returns the files, how many meshes and lights
-it baked, how many `probes`, the size of a slice, how many slices, with `device` the one that
-traced it (`"cpu"` where no GPU traces rays) and `problems` when there are any: models or textures that
-don't load, meshes with no entity ID and model parts with a skin, which it leaves out. A bake that comes out the same
-reports `"unchanged": true` and records no undo step. Undo puts both files back as they were,
-removing them if the bake made them, and sets `light_data` back; redo writes the bake again.
-Meshes draw with the new lightmap, and moving meshes with the new probes, at the next command or
-tick.
+probes](scene-format.md#light-probes): the `Model3D`s whose `lighting_mode` is `"static"` under its
+parent (the whole world for a root), lit by the lights there whose `light_bake_mode` isn't
+`"disabled"` and by its environment, with shadows and bounces. It unwraps the meshes into lightmap
+UVs, traces their light and the probes' on the CPU, or with `"device": "gpu"` on a GPU that traces
+rays (Vulkan with ray queries, Metal on a Mac whose GPU supports ray tracing, or Direct3D 12 with
+DXR 1.1: the same light but for rounding), then writes a `.lightmap.json` file and its texels in an
+`.hdr` file beside it, and sets the BakedLighting3D's `light_data` to the file. It returns the
+files, how many meshes and lights it baked, how many `probes`, the size of a slice, how many slices,
+with `device` the one that traced it (`"cpu"` where no GPU traces rays) and `problems` when there
+are any: models or textures that don't load, meshes with no entity ID and model parts with a skin,
+which it leaves out. A bake that comes out the same reports `"unchanged": true` and records no undo
+step. Undo puts both files back as they were, removing them if the bake made them, and sets
+`light_data` back; redo writes the bake again. Meshes draw with the new lightmap, and moving meshes
+with the new probes, at the next command or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3552,16 +3543,16 @@ file that doesn't end in `.lightmap.json` fails at `/file` (or `/id`, for its `l
 
 ### voxel_lighting.bake
 
-Bakes a [`VoxelLighting3D`'s](scene-format.md#voxelgi) cells, as Godot's VoxelGI bake: the
-`Model3D`s whose `lighting_mode` is `"static"` under its parent (the whole world for a root)
-that touch its box, voxelized at its `subdiv` with their albedo, emission and normals. It writes
-a `.voxellight.json` file and sets the VoxelLighting3D's `data` to it. Lights aren't baked: the renderer
-injects them into the cells as the game runs. It returns the file, how many meshes it voxelized,
-how many `cells` it made, the cells along each axis (`size`), the octree's `levels`, and
-`problems` when there are any: models or textures that don't load, which it leaves out. A bake
-that comes out the same reports `"unchanged": true` and records no undo step. Undo puts the file
-back as it was, removing it if the bake made it, and sets `data` back; redo writes the bake
-again. Meshes draw with the new cells at the next command or tick.
+Bakes a [`VoxelLighting3D`'s](scene-format.md#voxelgi) cells: the `Model3D`s whose `lighting_mode`
+is `"static"` under its parent (the whole world for a root) that touch its box, voxelized at its
+`subdiv` with their albedo, emission and normals. It writes a `.voxellight.json` file and sets the
+VoxelLighting3D's `data` to it. Lights aren't baked: the renderer injects them into the cells as the
+game runs. It returns the file, how many meshes it voxelized, how many `cells` it made, the cells
+along each axis (`size`), the octree's `levels`, and `problems` when there are any: models or
+textures that don't load, which it leaves out. A bake that comes out the same reports `"unchanged":
+true` and records no undo step. Undo puts the file back as it was, removing it if the bake made it,
+and sets `data` back; redo writes the bake again. Meshes draw with the new cells at the next command
+or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3584,16 +3575,15 @@ file that doesn't end in `.voxellight.json` fails at `/file` (or `/id`, for its 
 
 ### occluder.bake
 
-Bakes an [`Occluder3D`'s](scene-format.md#occlusion-culling) shape from the scene's
-meshes, as Godot's Bake Occluders: every visible `Model3D` whose `layers` share a bit with
-its `bake_mask` and whose material isn't transparent (the entity's `Surface3D`, else
-each model surface's own), placed in the occluder's space, each surface simplified with
-meshoptimizer until it would stray `bake_simplification_distance` meters, then duplicate corners
-and triangles merged. It sets the occluder's `shape` to `"array"` with the `vertices` and
-`indices` it made, and returns how many `vertices` and `triangles` that is, and `problems` when
-there are any: models that don't load, which it leaves out. A bake that comes out the same
-reports `"unchanged": true` and records no undo step. Culling uses the new shape at the next
-command or tick.
+Bakes an [`Occluder3D`'s](scene-format.md#occlusion-culling) shape from the scene's meshes:
+every visible `Model3D` whose `layers` share a bit with its `bake_mask` and whose material isn't
+transparent (the entity's `Surface3D`, else each model surface's own), placed in the occluder's
+space, each surface simplified with meshoptimizer until it would stray
+`bake_simplification_distance` meters, then duplicate corners and triangles merged. It sets the
+occluder's `shape` to `"array"` with the `vertices` and `indices` it made, and returns how many
+`vertices` and `triangles` that is, and `problems` when there are any: models that don't load,
+which it leaves out. A bake that comes out the same reports `"unchanged": true` and records no
+undo step. Culling uses the new shape at the next command or tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3611,9 +3601,9 @@ Needs: `edit`. Takes `dry_run`. The tower of
 {"triangles":12,"vertices":8}
 ```
 
-An unknown ID fails at `/id` with a "did you mean"; an entity with no `Occluder3D` fails
-at `/id`. With nothing to bake (no visible, opaque mesh on a `bake_mask` layer) it fails with
-`-32002` and changes nothing, as Godot's bake reports no meshes.
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `Occluder3D` fails at
+`/id`. With nothing to bake (no visible, opaque mesh on a `bake_mask` layer) it fails with
+`-32002` and changes nothing.
 
 ## UI and text
 
@@ -3656,12 +3646,11 @@ the sign on a smaller window:
   `system_glyphs` characters drawn from fonts installed on the machine (other machines may lack
   them), and `font_error` says why its font didn't load, in which case the built-in font drew
   it.
-- A `Button`, `CheckBox`, `ToggleSwitch`, `Dropdown`, `MenuButton` or `ImageButton` has
-  `draw_mode`: `"normal"`,
-  `"hover"`, `"pressed"`, `"hover_pressed"` or `"disabled"`, as Godot's. A toggle button that is
-  on (a check box that is checked) draws `"pressed"`, and `"hover_pressed"` while hovered; a
-  button its shortcut just pressed draws `"hover_pressed"` for 0.2 seconds. The control with focus has `"focused": true`, and the one under the mouse
-  `"hovered": true`.
+- A `Button`, `CheckBox`, `ToggleSwitch`, `Dropdown`, `MenuButton` or `ImageButton` has `draw_mode`:
+  `"normal"`, `"hover"`, `"pressed"`, `"hover_pressed"` or `"disabled"`. A toggle button that is on
+  (a check box that is checked) draws `"pressed"`, and `"hover_pressed"` while hovered; a button its
+  shortcut just pressed draws `"hover_pressed"` for 0.2 seconds. The control with focus has
+  `"focused": true`, and the one under the mouse `"hovered": true`.
 - `popups` lists the popup menus open, the last on top: `id`, the `PopupList`, `Dropdown` or
   `MenuButton` it belongs to, `rect` in the viewport, `items` (each with its `text`, `rect` in
   the viewport and `"selectable": false` for a separator or a disabled item), `focused_item`
@@ -3744,7 +3733,7 @@ the sign on a smaller window:
   `TextField` on its entity, a menu item's `checkable` that isn't `none`, `check` or `radio`, a
   `PopupList` on a control entity, an `Dropdown`'s `selected` past its options, a
   `tooltip_text` on a control the pointer passes by, a `drag_preview` that isn't a control with
-  no parent and a `DragAndDrop` on an entity with no `Control`. Each has
+  no parent and a `DragAndDrop` on an entity with no `Widget`. Each has
   the
   control's `id`, the JSON Pointer `path` of the value in the entity and a `message`:
 
@@ -3752,13 +3741,13 @@ the sign on a smaller window:
 {"id":"hint","message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/components/Widget/theme_override_colors/font_colour"}
 ```
 
-An ID that names no entity, or an entity with no `Control` or other UI component, is an error at
+An ID that names no entity, or an entity with no `Widget` or other UI component, is an error at
 its place in `ids`.
 
 ### ui.theme
 
 Returns the theme items a control uses, each with its value and where it comes from: its
-`theme_override_*` fields, a [theme](scene-format.md#themes) file, or Godot's default theme.
+`theme_override_*` fields, a [theme](scene-format.md#themes) file, or the default theme.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3904,9 +3893,9 @@ other controls, send the mouse events with [`input.inject`](#inputinject).
 
 ### ui.tooltip
 
-Shows a control's [tooltip](scene-format.md#tooltips-and-drag-and-drop) now, below the middle
-of the control, as Godot's `Viewport::show_tooltip`: its `tooltip_text`, or the first parent's up
-to one that stops the mouse. `"show": false` hides the tooltip shown instead.
+Shows a control's [tooltip](scene-format.md#tooltips-and-drag-and-drop) now, below the middle of
+the control: its `tooltip_text`, or the first parent's up to one that stops the mouse. `"show":
+false` hides the tooltip shown instead.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3928,9 +3917,9 @@ rect. Mouse motion and presses hide it as they would hide one the pointer showed
 
 ### ui.focus
 
-Gives a control focus, as Godot's `grab_focus`, and shows it: `ui_accept` (Enter or Space)
-presses a focused button, a focused `TextField` starts editing, and `ui_up`, `ui_down`,
-`ui_left`, `ui_right`, Tab and Shift+Tab move focus on from it. `null` takes focus away.
+Gives a control focus, and shows it: `ui_accept` (Enter or Space) presses a focused button, a
+focused `TextField` starts editing, and `ui_up`, `ui_down`, `ui_left`, `ui_right`, Tab and
+Shift+Tab move focus on from it. `null` takes focus away.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3954,14 +3943,13 @@ take focus, and that is an error. [`ui.layout`](#uilayout) marks the control wit
 ### ui.accessibility
 
 Returns what a screen reader gets: the [accessibility tree](scene-format.md#accessibility) of the
-controls, as Godot 4.5's controls fill it. Each element has its `role`, and where it has them its
-`name`, `description`, `value`, `placeholder`, `tooltip`, `live`, `popup` (`list` or `menu`),
-`checked`, `range` (`[value, min, max, step]`), `color`, `selection` (`[from, to]` in
-characters), `rect` (`[x, y, w, h]` on screen), `selected`, `focused`, `flags`, `actions` (besides
-`focus`, `blur`, `show_tooltip`, `hide_tooltip` and `scroll_into_view`, which every control
-takes), the related controls (`controls`, `described_by`, `labeled_by`, `flow_to`,
-`radio_group`) and `children`. An open popup menu is a `menu` element with an element per item
-(`item` is its index).
+controls that fill it. Each element has its `role`, and where it has them its `name`,
+`description`, `value`, `placeholder`, `tooltip`, `live`, `popup` (`list` or `menu`), `checked`,
+`range` (`[value, min, max, step]`), `color`, `selection` (`[from, to]` in characters), `rect`
+(`[x, y, w, h]` on screen), `selected`, `focused`, `flags`, `actions` (besides `focus`, `blur`,
+`show_tooltip`, `hide_tooltip` and `scroll_into_view`, which every control takes), the related
+controls (`controls`, `described_by`, `labeled_by`, `flow_to`, `radio_group`) and `children`. An
+open popup menu is a `menu` element with an element per item (`item` is its index).
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -3987,7 +3975,7 @@ those of the controls returned.
 
 ### ui.accessibility_action
 
-Does what a screen reader asks of a control, as the actions Godot's controls add: `click`
+Does what a screen reader asks of a control, with these actions: `click`
 presses a button at the next tick (as [`ui.press`](#uipress)) or, with `item`, picks an open
 popup menu's item (as [`ui.select`](#uiselect)); `focus` and `blur` give and take focus;
 `show_tooltip` and `hide_tooltip`; `scroll_into_view` scrolls the `ScrollBox` it is in to
@@ -4018,10 +4006,10 @@ error that says why.
 
 ### ui.search
 
-Finds text in a [`TextArea`](scene-format.md#searching-and-highlighting-code), as Godot's
-`TextEdit::search`: the next place it occurs from a position (the caret unless told), going
-round past the end to the start, or with `backwards` from the position back, round past the
-start. With `all`, every place it occurs, in order from the start.
+Finds text in a [`TextArea`](scene-format.md#searching-and-highlighting-code): the next place it
+occurs from a position (the caret unless told), going round past the end to the start, or with
+`backwards` from the position back, round past the start. With `all`, every place it occurs, in
+order from the start.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4050,9 +4038,9 @@ unless `match_case`, for Latin, Greek and Cyrillic letters.
 
 ### ui.clipboard
 
-Returns the clipboard [text fields](scene-format.md#text-fields) cut, copy and paste with, as
-Godot's `DisplayServer.clipboard_get`; `text` sets it first. Headless runs and tests have the
-session's own clipboard; a game running in a window shares the system's.
+Returns the clipboard [text fields](scene-format.md#text-fields) cut, copy and paste with;
+`text` sets it first. Headless runs and tests have the session's own clipboard; a game running
+in a window shares the system's.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4112,7 +4100,7 @@ doesn't load is an error at `/font`, and a `language` that isn't a BCP 47 tag at
 
 ## Input
 
-Input follows Godot: events from keys, the mouse, touches and gamepads press
+Events from keys, the mouse, touches and gamepads press
 [actions](project-format.md#input-actions) that gameplay code asks about. Events wait in a queue
 and apply at the start of the next tick, so `input.inject` then `step` plays out the same way
 every run. The examples here are from [examples/input-actions](../../examples/input-actions/).
@@ -4149,7 +4137,7 @@ runs. Each event has a `type`:
 | `screen_drag` | `index`, `position`, `relative` | A finger moved |
 | `joypad_button` | `button`, `pressed` | A gamepad button pressed or released |
 | `joypad_motion` | `axis`, `axis_value` | A stick or trigger moved: sticks from -1 to 1 with y down, triggers from 0 to 1. `0` lets go |
-| `action` | `action`, `pressed`, `strength` | An action pressed or released by name, with a `strength` from 0 to 1 (default 1), as Godot's `Input.action_press` |
+| `action` | `action`, `pressed`, `strength` | An action pressed or released by name, with a `strength` from 0 to 1 (default 1) |
 | `text` | `text` | Types text into the [text field](scene-format.md#text-fields) being edited: one key press per character, with the character in `unicode` and no key, as an input method or on-screen keyboard sends it |
 | `ime` | `text`, `selection` | What an input method (for Japanese, Chinese or Korean) is composing, shown at the caret: `selection` is `[start, length]` in characters of the part being converted. `""` ends the composition; a `text` event commits the result |
 
@@ -4164,8 +4152,7 @@ an event's type doesn't have are errors, and so are misspelled names, with the c
   it. To hold a key, inject the press, `step` as long as it is held, then inject the release.
 - A touch also clicks the left mouse button, unless `project.json` turns
   `pointer.mouse_from_touch` off.
-- A motion right after another from the same mouse, finger or stick merges into it, as Godot's
-  accumulated input.
+- A motion right after another from the same mouse, finger or stick merges into it.
 - In a running game, events apply at the next tick of the game loop.
 
 ### input.state
@@ -4199,12 +4186,12 @@ Needs: `read`. After a tap of Space, half a stick up and letting go of D:
 
 ### input.actions
 
-Returns input actions with their deadzone and the events bound to each: Godot's `ui_*` actions
+Returns input actions with their deadzone and the events bound to each: the built-in `ui_*` actions
 and `project.json`'s `input`, as the game uses them.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `names` | array of strings | all but Godot's [text editing actions](project-format.md#input-actions) | Only these actions |
+| `names` | array of strings | all but the [text editing actions](project-format.md#input-actions) | Only these actions |
 
 Needs: `read`.
 
@@ -4221,7 +4208,7 @@ an options menu, shows its bindings as they are now.
 
 ## Audio
 
-Sound follows Godot's AudioServer: [players](scene-format.md#audio) mix into the buses of the
+[Players](scene-format.md#audio) mix into the buses of the
 project's [bus layout](scene-format.md#bus-layouts), each with its volume and
 [effects](scene-format.md#effects), and every bus sends to Master, which plays on the speakers.
 Sessions mix sound as they step but play it nowhere, so an agent hears a game by measuring it:
@@ -4273,10 +4260,10 @@ Needs: `read`. With the footsteps playing:
 - `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
   `SoundPlayer2D` or `SoundPlayer3D` its fade with distance and its pan from the
   listener.
-- An `SoundPlayer3D` ([3D sound](scene-format.md#3d-sound)) also lists `pitch_scale`, the
-  pitch it plays at after the Doppler effect, and `filter_db`, the gain its high shelf takes off
-  for distance and its emission angle (as Godot's filter, the highest frequencies lose twice that). An `Zone3D` with a reverb bus adds
-  `"sends": [{"bus", "volume"}]`, the buses it mixes into beside `bus`.
+- An `SoundPlayer3D` ([3D sound](scene-format.md#3d-sound)) also lists `pitch_scale`, the pitch it
+  plays at after the Doppler effect, and `filter_db`, the gain its high shelf takes off for distance
+  and its emission angle. An `Zone3D` with a reverb bus adds `"sends": [{"bus", "volume"}]`, the
+  buses it mixes into beside `bus`.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
   load, such as a missing or corrupt file.
 - A `Video` whose file has sound ([sound in videos](scene-format.md#sound-in-videos))
@@ -4402,14 +4389,12 @@ an error too, since only a file loops.
 
 ### audio.play
 
-Plays an `SoundPlayer`, `SoundPlayer2D` or `SoundPlayer3D` at the next tick, as
-Godot's `play()`: with
+Plays an `SoundPlayer`, `SoundPlayer2D` or `SoundPlayer3D` at the next tick: with
 `max_polyphony` 1 it starts over, with more another voice joins, up to that many. Music,
-generators, polyphonic streams and microphones always start over, as Godot's monophonic streams
-do. With
-`stream`, it plays that sound or `.audio.json` file on a player whose stream is
-[polyphonic](scene-format.md#generators-and-polyphonic-streams) instead, as Godot's
-`play_stream`, starting the player first if it isn't playing.
+generators, polyphonic streams and microphones always start over. With `stream`, it plays that
+sound or `.audio.json` file on a player whose stream is
+[polyphonic](scene-format.md#generators-and-polyphonic-streams) instead, starting the player
+first if it isn't playing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4448,9 +4433,8 @@ the player's `polyphony` is playing, the new stream is dropped with a warning in
 
 ### audio.stop
 
-Stops an `SoundPlayer`, `SoundPlayer2D` or `SoundPlayer3D` at the next tick, as
-Godot's `stop()`,
-fading every voice out over one mix step so it doesn't click.
+Stops an `SoundPlayer`, `SoundPlayer2D` or `SoundPlayer3D` at the next tick, fading every
+voice out over one mix step so it doesn't click.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4460,7 +4444,7 @@ Needs: `run`. Like `audio.play`, it returns `{"tick": ...}` and a failed `batch`
 
 ### audio.set_bus
 
-Changes a bus while the game runs, as Godot's `AudioServer` setters, e.g. from an options menu:
+Changes a bus while the game runs, e.g. from an options menu:
 its volume, mute, solo, effect bypass, or whether one of its effects is on. The
 [bus layout file](scene-format.md#bus-layouts) is unchanged, and a reload of it starts the buses
 over from the file.
@@ -4492,10 +4476,9 @@ name or effect index that doesn't exist is an error, and so are `effect` without
 
 ### audio.spectrum
 
-Reads a bus's [`spectrum_analyzer`](scene-format.md#effects) effect, as Godot's
-`get_magnitude_for_frequency_range`: how loud each frequency range was in the newest window it
-analyzed, so an agent can tell a hum from a hiss, or check a filter, without listening. The
-examples here and under `audio.record` are from
+Reads a bus's [`spectrum_analyzer`](scene-format.md#effects) effect: how loud each frequency
+range was in the newest window it analyzed, so an agent can tell a hum from a hiss, or check a
+filter, without listening. The examples here and under `audio.record` are from
 [examples/audio-areas-and-analysis](../../examples/audio-areas-and-analysis/).
 
 | Param | Type | Default | Meaning |
@@ -4531,10 +4514,9 @@ reads 0 until that much sound has played through it. A bus with no `spectrum_ana
 
 ### audio.record
 
-Starts or stops a bus's [`record`](scene-format.md#effects) effect, as Godot's
-`set_recording_active`, and writes what it recorded to a `.wav` file in the effect's `format`.
-Unlike `audio.capture`, which keeps the last 10 seconds of every bus, a recording keeps
-everything from its start to its stop.
+Starts or stops a bus's [`record`](scene-format.md#effects) effect, and writes what it recorded
+to a `.wav` file in the effect's `format`. Unlike `audio.capture`, which keeps the last 10
+seconds of every bus, a recording keeps everything from its start to its stop.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4886,12 +4868,11 @@ images or a frame of another size is an error at its `/frames/<i>`. Nothing is w
 
 ## Localization
 
-Translations, as Godot's TranslationServer: `project.json`'s
-[`localization`](project-format.md#localization) lists CSV and gettext `.po` and
-`.mo` files, and controls show their text in the game's locale as their
-`Widget.auto_translate_mode` says (see [scene-format.md](scene-format.md#translated-text)). Games start
-in the player's locale; sessions start in the project's `test` locale, else its fallback, so they
-repeat on every machine. The examples here are from
+Translations: `project.json`'s [`localization`](project-format.md#localization) lists CSV and
+gettext `.po` and `.mo` files, and controls show their text in the game's locale as their
+`Widget.auto_translate_mode` says (see [scene-format.md](scene-format.md#translated-text)). Games
+start in the player's locale; sessions start in the project's `test` locale, else its fallback, so
+they repeat on every machine. The examples here are from
 [examples/localization](../../examples/localization/), a title menu in French, Arabic and Polish.
 
 ### l10n.state
@@ -4917,7 +4898,7 @@ Needs: `read`. In Polish:
 
 A message takes the translation of the locale that matches best and has it (`fr` answers
 `fr_CA`), then the fallback's, else comes back as written: Polish has no "Options". `tr` is
-pseudolocalized when the project's settings say so, as Godot's `tr`; plural lookups never are.
+pseudolocalized when the project's settings say so; plural lookups never are.
 
 ### l10n.set_locale
 
@@ -4927,7 +4908,7 @@ left), and the game gets a `translation_changed` event with `{"locale"}` at the 
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `locale` | string, required | | Such as `fr`, `pt_BR` or `zh-Hant`; standardized as Godot's `standardize_locale` |
+| `locale` | string, required | | Such as `fr`, `pt_BR` or `zh-Hant`; standardized |
 
 Needs: `run`.
 
@@ -4945,19 +4926,19 @@ three letters fails with `-32602` at `/locale`.
 
 ### l10n.extract
 
-Collects the messages the game shows, as Godot's Generate POT does with its scene parser: each
-control's `text` (`Label`, `Button`, `CheckBox`, `ToggleSwitch`, `MenuButton`), `TextField` and
-`TextArea` placeholders, `tooltip_text` and the `items` of option buttons, menu buttons and popups
-in every scene and prefab, then the string literals passed to `l10n::tr` (and its context) and
-`tr_n` (and its plural and context) in the C++ files under `project.json`'s `gameplay.sources`.
-Controls that `auto_translate_mode` keeps as written are left out, as they would show; the open
-scene is read as it is now. Each message (by context and text) comes once, in the order found:
-files in path order, and in a scene, entities in ID order.
+Collects the messages the game shows: each control's `text` (`Label`, `Button`, `CheckBox`,
+`ToggleSwitch`, `MenuButton`), `TextField` and `TextArea` placeholders, `tooltip_text` and the
+`items` of option buttons, menu buttons and popups in every scene and prefab, then the string
+literals passed to `l10n::tr` (and its context) and `tr_n` (and its plural and context) in the C++
+files under `project.json`'s `gameplay.sources`. Controls that `auto_translate_mode` keeps as
+written are left out, as they would show; the open scene is read as it is now. Each message (by
+context and text) comes once, in the order found: files in path order, and in a scene, entities in
+ID order.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `list` | boolean | false | Return each message (`message`, `context`, `plural`) with `where` it is: a scene or prefab, or a source file and line |
-| `pot` | string | none | A `.pot` file to write every message to, as Godot's POT generator writes one: the files, then each message with `#:` lines saying where |
+| `pot` | string | none | A `.pot` file to write every message to: the files, then each message with `#:` lines saying where |
 | `add_to` | array of up to 64 | none | Translation files `project.json` lists to add the messages they lack to, untranslated: a CSV row (its `?context` and `?plural` columns filled), or a `.po` entry with as many `msgstr[n]` as its plural rule has forms |
 
 Needs: `read`, `edit` and `filesystem`. Returns `messages`, the count, and `added`, each file's
@@ -4975,9 +4956,8 @@ it does; a `.mo` file is compiled, so add to its `.po` file instead.
 
 ### l10n.check
 
-Checks the translations against the game, as an agent would before a release, since Godot
-leaves this to a play in each language. Errors are what shows wrong; warnings are what shows in
-the fallback or as written.
+Checks the translations against the game, as an agent would before a release, without a play in each
+language. Errors are what shows wrong; warnings are what shows in the fallback or as written.
 
 - `file` (error): what in a listed translation file didn't load, by line.
 - `placeholders` (error): a translation whose `sprintf` conversions (`%d`, `%.2f`, `%s`) aren't
@@ -5024,8 +5004,8 @@ plural form, none empty, the source's placeholders as [`l10n.check`](#l10ncheck)
 and none of the glossary's words to `avoid`; drafts that fail are `rejected`, with why.
 
 The drafts go into the first listed `.po` or CSV file that has the locale, or `file`. A `.po`
-file marks each one `#, fuzzy`, gettext's mark for a translation to review, which Godot and the
-game leave out until the mark is taken off; drafts waiting there aren't drafted again. A CSV
+file marks each one `#, fuzzy`, gettext's mark for a translation to review, which the
+game leaves out until the mark is taken off; drafts waiting there aren't drafted again. A CSV
 file has no such mark, so drafts go in as translations, filling the locale's empty cell or
 adding a row, and plural messages are `skipped` (they need a `.po` file). The file is staged
 with undo.
@@ -5189,7 +5169,7 @@ Outside a session, as in an exported game, there is no test backend, and `servic
 
 ## Network
 
-A session's world has a multiplayer, as Godot's `SceneMultiplayer`
+A session's world has a multiplayer
 ([networking](networking.md)): offline at first, a server alone, until `net.host` or `net.join`
 puts it on the network. Each `step` polls it, so a session takes in what arrived, runs remote
 calls, spawns and synchronizes only as it steps; sessions in other processes, or a running game
@@ -5199,8 +5179,8 @@ multiplayer keeps tracking the entities put back, so they aren't despawned and s
 
 ### net.host
 
-Puts the world's multiplayer on the network as its server, peer 1, as Godot's `create_server`.
-A multiplayer already on the network is closed first.
+Puts the world's multiplayer on the network as its server, peer 1. A multiplayer already on the
+network is closed first.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -5222,9 +5202,9 @@ Needs: `run`, `network`.
 
 ### net.join
 
-Connects the world's multiplayer to a server, as Godot's `create_client`. It is `connecting`
-until steps have polled the server's answer; `net.state` then says `connected`. A multiplayer
-already on the network is closed first.
+Connects the world's multiplayer to a server. It is `connecting` until steps have polled the
+server's answer; `net.state` then says `connected`. A multiplayer already on the network is
+closed first.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -5271,10 +5251,9 @@ Needs: `read`. On a player after the server spawned a bullet:
 
 ### net.rpc
 
-Calls a remote procedure the game's code registered with `add_rpc` on an entity, as Godot's
-`rpc` and `rpc_id`: on every peer, one peer or every peer but one, and here too if the procedure
-calls locally. The other peers run it when their steps take it in. A dry run checks the entity
-and the procedure and sends nothing.
+Calls a remote procedure the game's code registered with `add_rpc` on an entity: on every peer,
+one peer or every peer but one, and here too if the procedure calls locally. The other peers run
+it when their steps take it in. A dry run checks the entity and the procedure and sends nothing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -5302,8 +5281,8 @@ procedure only its authority may call, fails with the reason.
 
 ### net.close
 
-Closes the connection and goes back offline, as Godot's `close`; with `peer`, a server drops that
-peer instead, as `disconnect_peer`.
+Closes the connection and goes back offline; with `peer`, a server drops that peer instead, as
+`disconnect_peer`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -5326,7 +5305,7 @@ with these commands.
 
 ## XR
 
-A session's world has an XR server, as Godot's `XRServer` ([XR](scene-format.md#xr)), with a
+A session's world has an XR server ([XR](scene-format.md#xr)), with a
 test headset in place of a real one: a head and two hand controllers that `xr.set` moves and
 presses as a player would. It starts when project.json's
 [`xr.openxr.enabled`](project-format.md#xr) is set, or when `xr.set` starts it; `xr.set`'s
@@ -5375,12 +5354,12 @@ anchor the headset found. Returns the tick the server has the changes at.
 | `interface` | `"test"` or `"openxr"` | | Switches to the test headset or to the machine's OpenXR runtime, which then moves the trackers as a headset does. Only on its own; a runtime that can't start says why at `/interface` |
 | `initialize` | boolean | | Starts or stops the test headset, which adds or takes away its trackers |
 | `trackers` | object | | Changes by tracker name: `type`, `hand`, `profile`, `position`, `rotation`, `tracking`, `poses` (by name, each with `position`, `rotation`, `linear_velocity`, `angular_velocity`, `tracking` and `confidence`), `inputs` (by action name: a boolean button, a number trigger or an `[x, y]` thumbstick), `blend_shapes` (a face tracker's weights by face shape name, Unified Expressions' or ARKit's; see [Face tracking](scene-format.md#face-tracking)) and `remove` |
-| `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | The play area the headset tracks in, as Godot's `XRInterface` |
+| `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | The play area the headset tracks in |
 | `play_area_size` | `[x, z]` | `[2, 2]` | Meters |
 | `environment_blend_mode` | `"opaque"`, `"additive"` or `"alpha"` | | How the picture blends with the world: `opaque` for VR, the others for AR |
 | `ipd` | number, 0 to 0.2 | `0.064` | Meters between the eyes |
 | `render_target_size` | `[width, height]`, 1 to 4096 | `[1024, 1024]` | Each view's image, in pixels |
-| `center_on_hmd` | `"reset_full_rotation"`, `"reset_but_keep_tilt"` or `"dont_reset_rotation"` | | Makes where the head is now the play space's center, as Godot's `center_on_hmd`; nothing on a stage |
+| `center_on_hmd` | `"reset_full_rotation"`, `"reset_but_keep_tilt"` or `"dont_reset_rotation"` | | Makes where the head is now the play space's center; nothing on a stage |
 | `keep_height` | boolean | `true` | With `center_on_hmd`: leaves the head's height alone |
 
 Needs: `run`.
@@ -6645,10 +6624,10 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `image` | boolean | `false` | Return the image as a base64 PNG in `png` |
 | `path` | string | | A `.png` file to write, relative to the project |
 | `time` | number | the tick's | Seconds of game time for materials' `time` nodes and [animated tiles](scene-format.md#animated-and-large-tiles) |
-| `collisions` | boolean | `false` | Draw every `Collider2D` and `PolygonCollider2D` over the world, as Godot's Visible Collision Shapes |
+| `collisions` | boolean | `false` | Draw every `Collider2D` and `PolygonCollider2D` over the world |
 | `frames` | integer, 1 to 120 | `1` | Draw the frame this many times and return the last, for [temporal antialiasing](project-format.md#temporal-antialiasing), which builds up over frames |
 | `path_trace` | object | | Path trace the 3D world instead of drawing it live: `samples` paths a pixel (1 to 4096, default 16) and `bounces` after the first surface (0 to 32, default 4) |
-| `xr_view` | integer | | Draw what this view of the [XR](scene-format.md#xr) headset sees instead (`0` the left eye, `1` the right), at its render target size, as Godot draws an `XRCamera3D`'s views; points and the region are that image's pixels |
+| `xr_view` | integer | | Draw what this view of the [XR](scene-format.md#xr) headset sees instead (`0` the left eye, `1` the right), at its render target size; points and the region are that image's pixels |
 
 Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 
@@ -6794,12 +6773,11 @@ closest one.
 ### canvas.convert
 
 Turns points between window pixels and the world, through the current
-[`Camera2D`](scene-format.md#2d-camera), as Godot's `get_global_mouse_position`: where a click
-lands in the level, or where a thing in the level shows in the window. With an `id`, uses the
-canvas that entity draws in instead: its
+[`Camera2D`](scene-format.md#2d-camera): where a click lands in the level, or where a thing in
+the level shows in the window. With an `id`, uses the canvas that entity draws in instead: its
 [`ScreenLayer`](scene-format.md#canvas-layers-and-parallax)'s, or the window itself for a
-control in no layer. Nothing changes.
-[examples/canvas-layers](../../examples/canvas-layers/) calls it.
+control in no layer. Nothing changes. [examples/canvas-layers](../../examples/canvas-layers/)
+calls it.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -6969,8 +6947,8 @@ to what the allocator handed out but not exactly it, and they vary by platform.
 | `cpu_particles_2d`, `cpu_particles_3d`, `gpu_particles_2d`, `gpu_particles_3d` | Each emitter's particles, or the steps GPU particles replay |
 | `text` | The glyph atlas pages text draws from |
 | `csg` | The meshes CSG roots keep (`meshes`) and their `triangles` |
-| `gridmap` | The octant meshes and shapes GridMaps keep (`gridmaps`, `octants`, `cells` and `triangles`) |
-| `terrain` | The heights and range maps HTerrains keep (`terrains` and `cells`) |
+| `gridmap` | The octant meshes and shapes `BlockMap3D`s keep (`gridmaps`, `octants`, `cells` and `triangles`) |
+| `terrain` | The heights and range maps `Terrain3D`s keep (`terrains` and `cells`) |
 | `model_collision` | The collision shapes kept for models that collide (`models` and `shapes`) |
 
 A part that grows from one report to the next while the game keeps doing the same thing is the
@@ -7777,21 +7755,20 @@ parent's, or a new `script`, or both, and runs it again with the parent's seed.
 
 #### Tileable materials
 
-`"type": "material"` makes a Godot `Surface3D` that tiles, for walls, floors and roads,
-as a [material file](scene-format.md#material-files) that [model recipes](scene-format.md#model-recipes)
+`"type": "material"` makes a `Surface3D` that tiles, for walls, floors and roads, as a
+[material file](scene-format.md#material-files) that [model recipes](scene-format.md#model-recipes)
 share. Its image is generated with the prompt and words asking for a seamless texture, square at
-`width` (or taken from the library as `image`, which must be an image), then measured: how much
-the pixels on its opposite edges differ where it wraps, against how much neighbouring pixels
-inside it differ (`seam`, about 1 or less for an image that tiles without a seam). Above 1.5 it
-is made to tile, from four copies of it moved by half its width and height, blended so each
-counts for nothing at its own seams, and kept as a version of the image. A normal map (its
-brightness taken as height, OpenGL's convention as Godot's) and a roughness map (darker places
-rougher) are worked out from it, wrapping round its edges so they tile with it, with integer math
-only, so they are the same bytes everywhere. The material file names the three as
-`albedo_texture`, `normal_texture` and `roughness_texture`; the library keeps them as images whose
-`parent` is the source, and the material as an asset of type `material` whose textures are
-library references and whose `uses` lists them. `height`, `seconds`, `review` and the music params
-don't apply.
+`width` (or taken from the library as `image`, which must be an image), then measured: how much the
+pixels on its opposite edges differ where it wraps, against how much neighbouring pixels inside it
+differ (`seam`, about 1 or less for an image that tiles without a seam). Above 1.5 it is made to
+tile, from four copies of it moved by half its width and height, blended so each counts for nothing
+at its own seams, and kept as a version of the image. A normal map (its brightness taken as height,
+OpenGL's convention) and a roughness map (darker places rougher) are worked out from it, wrapping
+round its edges so they tile with it, with integer math only, so they are the same bytes everywhere.
+The material file names the three as `albedo_texture`, `normal_texture` and `roughness_texture`; the
+library keeps them as images whose `parent` is the source, and the material as an asset of type
+`material` whose textures are library references and whose `uses` lists them. `height`, `seconds`,
+`review` and the music params don't apply.
 
 The reply has the material's `id`, its `image`, the `seam` of its albedo and, when the image was
 made to tile, the `image_seam` it had; `maps` gives each texture's ID. With `path` (a
@@ -7876,18 +7853,18 @@ The picnic set made of the bench's deeper version, made of the long bench instea
 
 #### Rigging a figure
 
-`rig` makes a rigged version of a `.glb` model of a figure: a generator that rigs (`meshy-rig`,
-see [generators](providers.md#generators), or `test`) gives it a skeleton and skins it, then the
-library retargets the skeleton to Godot's `SkeletonProfileHumanoid` as
-[`model.retarget`](#modelretarget) does, with `fix_silhouette` (so the figure stands in the
-profile's T-pose at rest), before keeping it, so every animation of a retargeted humanoid plays on
-it. A skeleton whose bones already have the profile's names maps by name, and others by Godot's
-guesses. The figure is sent as it is: only `prompt`, `generator`, `seed`, `description`, `tags`
-and `path` go with `rig`. The version keeps the parent's
-[checks](scene-format.md#model-checks), and its description is the parent's (less a closing
-period) followed by "; rigged as a humanoid". The reply's `rig` says how many profile bones
-`mapped`, which bones the profile needs are `missing`, the skeleton's `unmapped` bones when there
-are any, and its `motion_scale`. A model that isn't a `.glb` file, or is rigged already, is refused.
+`rig` makes a rigged version of a `.glb` model of a figure: a generator that rigs (`meshy-rig`, see
+[generators](providers.md#generators), or `test`) gives it a skeleton and skins it, then the library
+retargets the skeleton to the humanoid skeleton profile as [`model.retarget`](#modelretarget) does,
+with `fix_silhouette` (so the figure stands in the profile's T-pose at rest), before keeping it, so
+every animation of a retargeted humanoid plays on it. A skeleton whose bones already have the
+profile's names maps by name, and others by guesses from their names and places. The figure is sent
+as it is: only `prompt`, `generator`, `seed`, `description`, `tags` and `path` go with `rig`. The
+version keeps the parent's [checks](scene-format.md#model-checks), and its description is the
+parent's (less a closing period) followed by "; rigged as a humanoid". The reply's `rig` says how
+many profile bones `mapped`, which bones the profile needs are `missing`, the skeleton's `unmapped`
+bones when there are any, and its `motion_scale`. A model that isn't a `.glb` file, or is rigged
+already, is refused.
 
 ```json
 {"id": "4df1e210524b", "rig": "humanoid", "generator": "test", "path": "characters/knight.glb"}
@@ -8063,8 +8040,8 @@ through the artist's own Blender, with the `build` capability; see
 [`Model3D`](scene-format.md#models) loads it and kept as the self-contained `.glb` file
 [`model.cleanup`](#modelcleanup) writes, cleaned up first with `cleanup`'s options (a storyboard
 triangle budget covering the file's path applies unless `triangles` is given). The record keeps
-the file's name as `source`, the SHA-256 of its bytes as `source_sha256` and the `cleanup`, as
-Godot's `.import` files keep a source's hash and import settings; `library.json` keeps the hash
+the file's name as `source`, the SHA-256 of its bytes as `source_sha256` and the `cleanup`;
+`library.json` keeps the hash
 beside the file's path. When the file changes, [`asset.check`](#assetcheck) says so, and adding
 it again keeps a new version, imported with the last one's cleanup, description, tags, license
 and author unless the call gives others. The reply adds `source`, `cleanup` (what the cleanup did,

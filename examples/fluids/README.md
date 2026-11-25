@@ -1,8 +1,8 @@
 # Fluids
 
-Liquids and smoke as particles with no grid, after Niagara Fluids' particle simulations (Godot
-has none). A `.fluid.json` recipe (`slash-cli schema fluid`) says what a fluid is; a `Fluid3D` or
-`Fluid2D` steps one, and `FluidEmitter3D`/`2D` and `FluidSink3D`/`2D` pour into and drain it.
+Liquids and smoke as particles with no grid, after Niagara Fluids' particle simulations. A
+`.fluid.json` recipe (`slash-cli schema fluid`) says what a fluid is; a `Fluid3D` or `Fluid2D` steps
+one, and `FluidEmitter3D`/`2D` and `FluidSink3D`/`2D` pour into and drain it.
 
 - [liquids/water.fluid.json](liquids/water.fluid.json) is water: position-based fluids (a
   density constraint each particle keeps with its neighbors, XSPH viscosity, cohesion for

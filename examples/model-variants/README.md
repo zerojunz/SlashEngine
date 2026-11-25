@@ -1,8 +1,7 @@
 # Model variants
 
 One recipe, [props/crate.model.json](props/crate.model.json), makes three crates: as written, a
-burnt one and a big one. Its `variants` are named forms of it, each changing what it names, as
-Godot's inherited scenes override their nodes:
+burnt one and a big one. Its `variants` are named forms of it, each changing what it names:
 
 ```json
 "variants": {

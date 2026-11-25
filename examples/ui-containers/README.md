@@ -1,15 +1,14 @@
 # UI containers and themes
 
-Containers, themes and the controls that draw boxes and textures, as Godot's.
-[main.scene.json](main.scene.json) is an inventory screen: a `CenterBox` keeps a
-`PanelBox` in the middle of the window, and in it a `StackBox` stacks a title, a
-`ProgressBar`, a `GridBox` of item slots holding `Picture` icons, a `FlowBox` of
-tags and a hint. The first slot's tooltip, a `NineSlice` holding a `MarginBox`, is
-`top_level`, so it sits in the corner of the window rather than in the slot.
-[ui/game.theme.json](ui/game.theme.json), the project's theme, styles all of it.
-[main.cpp](main.cpp) writes the two textures, checks the screen with `ui.layout` and `ui.theme`,
-changes the bar and the grid, catches a misspelled style override, then draws the screen into a
-texture. [expected.txt](expected.txt) holds its output.
+Containers, themes and the controls that draw boxes and textures.
+[main.scene.json](main.scene.json) is an inventory screen: a `CenterBox` keeps a `PanelBox` in
+the middle of the window, and in it a `StackBox` stacks a title, a `ProgressBar`, a `GridBox` of
+item slots holding `Picture` icons, a `FlowBox` of tags and a hint. The first slot's tooltip, a
+`NineSlice` holding a `MarginBox`, is `top_level`, so it sits in the corner of the window rather
+than in the slot. [ui/game.theme.json](ui/game.theme.json), the project's theme, styles all of
+it. [main.cpp](main.cpp) writes the two textures, checks the screen with `ui.layout` and
+`ui.theme`, changes the bar and the grid, catches a misspelled style override, then draws the
+screen into a texture. [expected.txt](expected.txt) holds its output.
 
 ```text
 ui.theme {"id":"slot_0","items":["styles"]}
@@ -31,15 +30,15 @@ ui.theme {"id":"slot_0","items":["styles"]}
 - A theme is a `.theme.json` file of items by control type: colors, constants, fonts, font sizes
   and style boxes (`$cli schema theme`). A control uses its `theme_override_*` items, then the
   themes in its own and its parents' `Widget.theme`, then the project's `ui.theme`, then
-  Godot's default theme. `ui.theme` says which one each item came from.
-- A `top_level` control is placed in the window by its own anchors and offsets, as Godot's: the
-  slot's container leaves the tooltip out and goes on placing the gem, and the tooltip takes none
-  of the slot's transform, tint, `z_index` or clip. It draws after the rest of the screen.
+  the default theme. `ui.theme` says which one each item came from.
+- A `top_level` control is placed in the window by its own anchors and offsets: the slot's
+  container leaves the tooltip out and goes on placing the gem, and the tooltip takes none of the
+  slot's transform, tint, `z_index` or clip. It draws after the rest of the screen.
 - A type with a `base_type` is a variation: controls whose `theme_type_variation` names it use
   its items first. The title is a `Header`, a bigger, gold `Label`; the slots are `Slot`s, smaller
   panels than the frame's.
-- Style boxes are Godot's: `flat` ones are rects with `corner_radius`, `border_width` and a
-  `shadow_size`, drawn with smooth edges as Godot's `StyleBoxFlat` draws them; `texture` ones cut
+- Style boxes: `flat` ones are rects with `corner_radius`, `border_width` and a
+  `shadow_size`, drawn with smooth edges; `texture` ones cut
   a texture into nine parts; `empty` ones draw nothing. `content_margin` is the room a container
   leaves around its children. A style box set with `theme_styles` replaces the theme's.
 - `ProgressBar` fills as far as its `value` between `min_value` and `max_value`, with its

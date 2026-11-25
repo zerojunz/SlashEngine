@@ -1,8 +1,8 @@
 # Render scale
 
 The world drawn at a lower resolution and scaled up to the window, while controls draw at the
-window's own size, as Godot's `rendering/scaling_3d` settings. A game that is slow to draw (lots
-of lights, particles or shaders) draws fewer pixels and keeps its UI sharp.
+window's own size. A game that is slow to draw (lots of lights, particles or shaders) draws
+fewer pixels and keeps its UI sharp.
 
 [project.json](project.json) draws this game's world at half size and scales it up with AMD's
 FidelityFX Super Resolution 1:
@@ -29,9 +29,9 @@ for a running game, and samples pixels across the planet's edge and the health b
   an SDK package's glue code, where the vendor's GPU runs them. Temporal ones take the depth and
   motion vectors of the 3D world instead, as [temporal-upscaler](../temporal-upscaler/) shows.
 - `metalfx_spatial` is Apple's MetalFX spatial scaler, on Metal with macOS 13 or iOS 16. Here, on
-  the CPU, it falls back to `fsr` as Godot's does, and `frame.capture` says so.
-  Godot's `fsr2` scales only the 3D world, from jittered frames, as
-  [fsr2-3d](../fsr2-3d/) shows; a world with no 3D in it scales with `bilinear` instead.
+  the CPU, it falls back to `fsr`, and `frame.capture` says so. `fsr2` scales only the 3D
+  world, from jittered frames, as [fsr2-3d](../fsr2-3d/) shows; a world with no 3D in it scales
+  with `bilinear` instead.
 
 The planet's PNG is made by the program, so the example has no binary file, and every frame is
 drawn on the CPU, so the output is the same on every machine.

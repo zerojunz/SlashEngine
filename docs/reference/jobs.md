@@ -4,7 +4,9 @@ The job system.
 
 Status: current · Updated: 2026-11-20
 
-`engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group
+Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
+
+`engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is a worker thread pool: tasks, group
 tasks and `parallel_for`, on `threading.max_threads` worker threads (project.json; -1 is one per
 core, and the web has none). A system added with `.threaded = true` declares the component names
 (or other shared state) it `reads` and `writes`; neighbouring threaded systems that don't clash

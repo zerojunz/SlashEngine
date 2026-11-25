@@ -1,11 +1,10 @@
 # Tile data and occluders
 
-Custom data and occluders on tiles, as Godot's TileSet custom data and occlusion layers.
-[dungeon.tileset.json](dungeon.tileset.json) has an occlusion layer and three custom data layers.
-Its wall and pillar cast shadows; its lava does damage and slows. [main.scene.json](main.scene.json)
-has a floor layer, a layer of walls above it and a torch. [main.cpp](main.cpp) draws the atlas,
-then makes the calls an agent would make over MCP or JSON-RPC; [expected.txt](expected.txt)
-holds the replies.
+Custom data and occluders on tiles. [dungeon.tileset.json](dungeon.tileset.json) has an occlusion
+layer and three custom data layers. Its wall and pillar cast shadows; its lava does damage and
+slows. [main.scene.json](main.scene.json) has a floor layer, a layer of walls above it and a torch.
+[main.cpp](main.cpp) draws the atlas, then makes the calls an agent would make over MCP or JSON-RPC;
+[expected.txt](expected.txt) holds the replies.
 
 ```text
 tilemap.get {"cells":[[2,3],[5,3]],"id":"ground"}
@@ -13,10 +12,9 @@ tilemap.get {"cells":[[2,3],[5,3]],"id":"ground"}
 ```
 
 - `custom_data_layers` names each value a tile can have and its type: `bool`, `int`, `float`,
-  `string`, `vector2`, `vector2i` or `color`. A tile's or an alternative's `custom_data` sets
-  values by layer name; a value it doesn't set is the type's default, as Godot's
-  `get_custom_data` returns. `slash-cli scene validate` checks each value against its layer's
-  type and suggests the closest layer name for a misspelled one.
+  `string`, `vector2`, `vector2i` or `color`. A tile's or an alternative's `custom_data` sets values
+  by layer name; a value it doesn't set is the type's default. `slash-cli scene validate` checks
+  each value against its layer's type and suggests the closest layer name for a misspelled one.
 - `tilemap.get` with `cells` returns each cell's tile and its value in every layer, so gameplay
   questions such as "does this cell hurt?" take one call. In C++, `TileSet::custom_data` answers
   the same.
@@ -25,5 +23,5 @@ tilemap.get {"cells":[[2,3],[5,3]],"id":"ground"}
   `shadow_enabled` whose `shadow_layers` shares a bit with that mask, as a
   `Occluder2D` does. An occluder is `closed` unless set otherwise, and its `cull_mode`
   shadows from one side only; turned cells turn their occluders.
-- `TileLayer2D`'s `occlusion_enabled` turns a layer's occluders off, as Godot's does; a hidden
-  layer casts no shadows either.
+- `TileLayer2D`'s `occlusion_enabled` turns a layer's occluders off; a hidden layer casts no
+  shadows either.

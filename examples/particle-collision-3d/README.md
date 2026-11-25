@@ -1,12 +1,11 @@
 # Particle collision in 3D
 
-`GpuEmitter3D`s' particles collide with spheres and boxes, as Godot 4.6's
-`ParticleColliderSphere3D` and `ParticleColliderBox3D` nodes. In
-[main.scene.json](main.scene.json) a fountain of sparks falls onto a floor, a collision box, and
-bounces; rain falls round an umbrella, a collision sphere, which hides each drop it touches, so
-the ground under it stays dry. [main.cpp](main.cpp) steps the world, checks the sparks with
-`particles.eval` and counts where the sparks and the rain are, then takes the umbrella off the
-rain's layer. [expected.txt](expected.txt) holds its output.
+`GpuEmitter3D`s' particles collide with spheres and boxes. In [main.scene.json](main.scene.json)
+a fountain of sparks falls onto a floor, a collision box, and bounces; rain falls round an
+umbrella, a collision sphere, which hides each drop it touches, so the ground under it stays
+dry. [main.cpp](main.cpp) steps the world, checks the sparks with `particles.eval` and counts
+where the sparks and the rain are, then takes the umbrella off the rain's layer.
+[expected.txt](expected.txt) holds its output.
 
 - What a particle does on touching a collider is its process material's `collision_mode`:
   `rigid` pushes it out and bounces it off by `collision_bounce` (the share of its speed into
@@ -17,5 +16,5 @@ rain's layer. [expected.txt](expected.txt) holds its output.
   (times its own scale with `collision_use_scale`), here 5 centimeters for the sparks.
 - Each tick the `gpu_particles_3d` system pairs each emitter with the colliders visible in the
   tree whose bounds touch its visibility box and whose `layer_filter` shares a bit with its
-  `layers`, at most 32, as Godot's scene cull pairs them; every device then collides the
-  particles by Godot's formulas, the same on each.
+  `layers`, at most 32; every device then collides the particles by the same formulas, the same
+  on each.

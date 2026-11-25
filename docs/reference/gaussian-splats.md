@@ -1,10 +1,9 @@
 # Gaussian splats: captured scenery (research)
 
-A research feature with no commitment to ship ([roadmap](../roadmap.md)). Godot has nothing like
-it; it follows Kerbl, Kopanas, Leimkühler and Drettakis's *3D Gaussian Splatting for Real-Time
-Radiance Field Rendering* (SIGGRAPH 2023), the way photos of a real place are turned into
-scenery that looks like the photos. Only the software device draws it for now. Read here what it
-does now, and what it does not do yet.
+A research feature with no commitment to ship ([roadmap](../roadmap.md)). It follows Kerbl, Kopanas,
+Leimkühler and Drettakis's *3D Gaussian Splatting for Real-Time Radiance Field Rendering* (SIGGRAPH
+2023), the way photos of a real place are turned into scenery that looks like the photos. Only the
+software device draws it for now. Read here what it does now, and what it does not do yet.
 
 Status: current · Updated: 2026-11-20
 
@@ -27,12 +26,12 @@ entity's `Transform3D`:
 ```
 
 Trainers work in their cameras' axes, often with y down, so a capture usually needs a turn half
-way round x to stand up in Godot's y-up space. The file loads as an asset, so editing or
+way round x to stand up in the engine's y-up space. The file loads as an asset, so editing or
 replacing it reloads the cloud.
 
-In Forward+, after the opaque meshes (and subsurface scattering) and before the transparent
-ones, the software device blends each frame's clouds over the world as the trainer's rasterizer
-does:
+In the clustered renderer, after the opaque meshes (and subsurface scattering) and before the
+transparent ones, the software device blends each frame's clouds over the world as the trainer's
+rasterizer does:
 
 1. **Project.** Each splat's covariance is turned and scaled by its cloud's transform, then
    projected to the screen through the Jacobian of the frame's view projection (Zwicker et al.'s
@@ -40,7 +39,7 @@ does:
    comes from the whole projection, so orthogonal cameras and TAA's and FSR 2's jitter work.
 2. **Color.** Its spherical harmonics are evaluated toward the camera, in the cloud's own space,
    up to `sh_degree`, and 0.5 added, as the trainer's colors; they are sRGB, so they are made
-   linear for Forward+'s world.
+   linear for the clustered renderer's world.
 3. **Sort.** Splats are sorted by their distance along the view, nearest first (ties by cloud,
    then splat), and put in the tiles of 16 pixels their three standard deviations reach.
 4. **Blend.** Each pixel blends its tile's splats front to back, each by its opacity times its
@@ -61,7 +60,7 @@ post, turns its shine off and fades it.
 
 - **Only the software device.** GPU devices, and the OpenGL and WebGPU devices, draw no splats;
   they need a compute sort and a tiled blend of their own.
-- **Forward+ only.** Compatibility frames draw none.
+- **Clustered renderer only.** Compatibility renderer frames draw none.
 - **Captured light only.** Splats show the light they were captured in: the scene's lights,
   shadows, fog, GI and reflections don't change them, and they cast no shadows.
 - **Not in the depth buffer.** They write no depth, so SSAO, SSR, depth of field, decals and

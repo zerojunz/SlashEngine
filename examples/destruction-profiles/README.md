@@ -1,7 +1,7 @@
 # Destruction profiles
 
-How things take damage and break, written down once per kind of thing. Godot has no
-destruction, so this follows Unreal's Chaos Destruction: a `.damage.json` profile names a
+How things take damage and break, written down once per kind of thing. This
+follows Unreal's Chaos Destruction: a `.damage.json` profile names a
 material, whose defaults fill in what the file leaves out, its health, what resists which kind of
 damage, the damage states that change its looks, how it breaks and whether its pieces stand
 linked. A `Destructible3D` or `Destructible2D` names a profile.

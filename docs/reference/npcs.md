@@ -5,7 +5,7 @@ NPC brains, planning, quests, dialogue and fauna.
 Status: current · Updated: 2026-11-20
 
 `engine/npc` is NPCs that plan, as F.E.A.R.'s goal-oriented action planning (Jeff Orkin's "Three
-States and a Plan"; Godot has none). A `.npc.json` brain (`$cli schema npc`; `slash/npc/npc.hpp`,
+States and a Plan"). A `.npc.json` brain (`$cli schema npc`; `slash/npc/npc.hpp`,
 `src/brain.cpp`) names facts (whole numbers, booleans as 0 and 1), goals with a priority and
 `when` and `want` conditions, and actions with `needs`, `effects` (a value, or `"+1"` to add), a
 cost and a `do` (`wait`, `go_to` an entity, `emit` an event). `plan` is A* over the facts' values,

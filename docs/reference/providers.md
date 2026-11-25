@@ -242,10 +242,10 @@ figure's height in meters (`height_meters`, from the size the library measured) 
 asks how the task is going every 5 seconds, and fetches the rigged `.glb` from the address the
 finished task names, without the key, since that address is signed. A task still running after
 `timeout_seconds` is an error, and a failed one reports Meshy's message. Meshy rigs textured
-figures of humanoids standing and facing +z, which is the way Godot's humanoid profile faces. The
+figures of humanoids standing and facing +z, which is the way the humanoid profile faces. The
 `test` generator's rigs are placed by a standing figure's average proportions
 (`scene3d::rig_humanoid`): good enough to try animations on, not to ship. Either way the library
-retargets the rig to Godot's humanoid skeleton before keeping it (see
+retargets the rig to the humanoid skeleton before keeping it (see
 [`asset.refine`](commands.md#rigging-a-figure)).
 
 `asset.generate` uses the one generator that makes the type asked for, or the one its `generator`

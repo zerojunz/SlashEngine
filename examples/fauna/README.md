@@ -1,6 +1,6 @@
 # Fauna
 
-Animals as recipes, after Unreal's Mutable and its animal AI (Godot has none), in 3D and in 2D.
+Animals as recipes, after Unreal's Mutable and its animal AI, in 3D and in 2D.
 A `.creature.json` file gives a body plan, its measures, a look, parts and a behavior:
 [deer.creature.json](fauna/deer.creature.json) is a spotted deer with antlers that keeps with its
 herd and is wary of people, and [wolf.creature.json](fauna/wolf.creature.json) a wolf that hunts

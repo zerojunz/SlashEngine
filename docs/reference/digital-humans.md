@@ -24,34 +24,33 @@ A believable close-up character is several systems working together:
 
 ## What SlashEngine has
 
-- Skinned meshes, skeletons and model animations, as Godot's importer and `Skeleton3D`
+- Skinned meshes, skeletons and model animations
   ([scene-format.md](scene-format.md)).
-- Godot's humanoid skeleton profile, bone mapping and retargeting (`model.retarget`), and rigging
+- A humanoid skeleton profile, bone mapping and retargeting (`model.retarget`), and rigging
   of unrigged figures (`asset.refine`'s `rig`).
-- Godot's IK modifiers, ragdolls and bone attachments.
+- IK modifiers, ragdolls and bone sockets.
 - Animation trees with blend spaces and state machines.
 - Mesh LODs and virtualized geometry ([virtualized-geometry.md](virtualized-geometry.md)).
-- `Surface3D`'s base lighting model with Godot's rim, clearcoat, anisotropy, and
+- `Surface3D`'s base lighting model with rim, clearcoat, anisotropy, and
   subsurface scattering and transmittance.
 
-## What is missing, in the order Godot would suggest
+## What was missing, in order
 
-Godot has no digital human system either, but it has the parts below, so they come first and
-follow Godot's design:
+The engine had no digital human system, but it had the parts below, so they came first:
 
-1. **Blend shapes** (done: [scene-format.md](scene-format.md#blend-shapes)). glTF morph targets loaded as Godot's mesh blend shapes, a
-   `Model3D` field per shape (`blend_shapes/<name>`), animation tracks for them, and
-   blending on the CPU before skinning, as Godot's skeleton shader does. This is useful well
-   beyond humans, for faces, cloth, and any shape change an artist animates.
+1. **Blend shapes** (done: [scene-format.md](scene-format.md#blend-shapes)). glTF morph targets
+   loaded, a `Model3D` field per shape (`blend_shapes/<name>`), animation tracks for them, and
+   blending on the CPU before skinning. This is useful well beyond humans, for faces, cloth, and any
+   shape change an artist animates.
 2. **Subsurface scattering and transmittance** (done:
-   [scene-format.md](scene-format.md#subsurface-scattering)), as Godot's `StandardMaterial3D`
-   `subsurf_scatter_*` and `subsurf_scatter_transmittance_*` fields, with its screen-space
-   blur in Forward+. Their textures remain.
-3. **Hair and eye shading**: Godot's `StandardMaterial3D` `anisotropy`, `rim` and `clearcoat`
-   fields and alpha hash, which Godot uses for hair cards and eyes (done:
+   [scene-format.md](scene-format.md#subsurface-scattering)), with `Surface3D`'s
+   `subsurf_scatter_*` and `subsurf_scatter_transmittance_*` fields, with its screen-space blur
+   in the clustered renderer. Their textures remain.
+3. **Hair and eye shading**: `Surface3D`'s `anisotropy`, `rim` and `clearcoat`
+   fields and alpha hash, used for hair cards and eyes (done:
    [scene-format.md](scene-format.md#standardmaterial3d)). The fields' textures remain.
-4. **Face capture data** (done: [scene-format.md](scene-format.md#face-tracking)): Godot's
-   `XRFaceTracker` and `XRFace3D`, which drive a face's blend shapes named in ARKit's,
+4. **Face capture data** (done: [scene-format.md](scene-format.md#face-tracking)): face trackers,
+   which drive a face's blend shapes named in ARKit's,
    Unified Expressions', SRanipal's or Meta's standard live, and
    [`animation.import_face_capture`](commands.md#animationimport_face_capture), which reads a
    Live Link Face recording into an animation, so a recorded performance drives a face.
@@ -63,5 +62,5 @@ expression shapes, skin maps and marks, all made in code with no scanned heads.
 
 ## Recommendation
 
-The note recommended starting with blend shapes, as they follow Godot directly, every later step
+The note recommended starting with blend shapes, as every later step
 needs them, and games that never show a human still use them. That is the order the work took.

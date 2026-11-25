@@ -12,8 +12,8 @@ agent would:
 3. It misspells a field. The build fails with the error's file and line (the message is the
    compiler's own), and the code that was in keeps running.
 
-- Gameplay code is plain C++ against the engine's headers, as Godot's scripts are; no scripting
-  language. Exports link it into the game; the tools load it as a library (macOS and Linux).
+- Gameplay code is plain C++ against the engine's headers; no scripting language. Exports link
+  it into the game; the tools load it as a library (macOS and Linux).
 - Keep gameplay state in registered components: rebuilding keeps each field the new code still
   has and reports in `dropped` any value it could not keep.
 - `slash-cli build` does the same from a shell.

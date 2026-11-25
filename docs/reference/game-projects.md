@@ -41,40 +41,40 @@ Android (on an emulator) and iOS (in the Simulator) on every PR, cross-exports W
 compositors there), and `slash-cli init` writes
 the per-platform workflow into new games.
 
-App icons come from one square image, `project.json`'s `icon` (Godot's
-`application/config/icon`), or the engine's own drawn in code (`runtime::default_icon`).
-`tools/exporter/src/icons.cpp` resizes it with `render::resize_image` (Lanczos, as Godot's) into
-each platform's files: an `.icns` (macOS, an opaque icon drawn into Apple's rounded square), an
-`.ico` resource (Windows), an adaptive icon (Android, `android.icon_foreground` and
-`icon_background` in presets), an asset catalog compiled with `actool` (iOS, flattened onto
-`ios.icon_background`) and a favicon (web). A preset's `icon` replaces the project's;
-`check_icons` backs exports and `$cli project validate`. Windowed games and `slash-cli run` show
-it with `Platform::set_icon`. `examples/app-icons` prints every platform's files.
+App icons come from one square image, `project.json`'s `icon`, or the engine's own drawn in code
+(`runtime::default_icon`). `tools/exporter/src/icons.cpp` resizes it with `render::resize_image`
+(Lanczos) into each platform's files: an `.icns` (macOS, an opaque icon drawn into Apple's
+rounded square), an `.ico` resource (Windows), an adaptive icon (Android,
+`android.icon_foreground` and `icon_background` in presets), an asset catalog compiled with
+`actool` (iOS, flattened onto `ios.icon_background`) and a favicon (web). A preset's `icon`
+replaces the project's; `check_icons` backs exports and `$cli project validate`. Windowed games
+and `slash-cli run` show it with `Platform::set_icon`. `examples/app-icons` prints every
+platform's files.
 
-Closed vendor SDKs (ads, stores, Steamworks) come in as SDK packages, as Godot's Android and
-iOS plugins: a folder with an `sdk.json` (`$cli schema sdk`; `tools/exporter/src/sdk.cpp`) naming
-per platform the libraries, frameworks, defines, files, Info.plist, entitlement and Android
-manifest entries and `.jar` files, with the vendor's binaries downloaded by URL and SHA-256 into
-`~/.slash/sdks` or found at a local path, and API keys as environment variables.
-`project.json`'s `sdks` lists them and a preset's `sdks` picks which it links. Exports build each
-package's own CMake project with the game's compilers, write `slash_game_sdk()` calls into
-`<build>/sdks.cmake` for `export/CMakeLists.txt`, ship shared libraries where each platform's
-loader looks and define `SLASH_SDK_<NAME>` for the game's code. Android packages also list
-`.aar` files and library folders, and Maven coordinates that `$cli sdk lock` resolves without
-Gradle (`src/maven.cpp`, POMs read with `src/xml.cpp`) and pins by SHA-256 in `sdk.lock.json`;
-Android exports merge the libraries' manifests, resources, code and native libraries into the
-APK (`src/android_library.cpp`). `$cli sdk add`, `sdk check` and `sdk lock` (and the `sdk.add`,
-`sdk.check` and `sdk.lock` commands) add, check and lock packages; `examples/sdk-package` has a
-stand-in SDK built from source, which CI links into every platform's export. A package's glue
-code (`sources`, compiled into the game; `java` on Android) implements `engine/services`'
-backends, and its `register` function and `backends` (Java or Objective-C classes, made through
-`slash/services/bridges.hpp`: `src/android.cpp` over JNI, `src/apple.mm` over the Objective-C
-runtime) go into the `<build>/sdk_register.cpp` exports write, which the game calls at start.
+Closed vendor SDKs (ads, stores, Steamworks) come in as SDK packages: a folder with an `sdk.json`
+(`$cli schema sdk`; `tools/exporter/src/sdk.cpp`) naming per platform the libraries, frameworks,
+defines, files, Info.plist, entitlement and Android manifest entries and `.jar` files, with the
+vendor's binaries downloaded by URL and SHA-256 into `~/.slash/sdks` or found at a local path,
+and API keys as environment variables. `project.json`'s `sdks` lists them and a preset's `sdks`
+picks which it links. Exports build each package's own CMake project with the game's compilers,
+write `slash_game_sdk()` calls into `<build>/sdks.cmake` for `export/CMakeLists.txt`, ship shared
+libraries where each platform's loader looks and define `SLASH_SDK_<NAME>` for the game's code.
+Android packages also list `.aar` files and library folders, and Maven coordinates that `$cli sdk
+lock` resolves without Gradle (`src/maven.cpp`, POMs read with `src/xml.cpp`) and pins by SHA-256
+in `sdk.lock.json`; Android exports merge the libraries' manifests, resources, code and native
+libraries into the APK (`src/android_library.cpp`). `$cli sdk add`, `sdk check` and `sdk lock`
+(and the `sdk.add`, `sdk.check` and `sdk.lock` commands) add, check and lock packages;
+`examples/sdk-package` has a stand-in SDK built from source, which CI links into every platform's
+export. A package's glue code (`sources`, compiled into the game; `java` on Android) implements
+`engine/services`' backends, and its `register` function and `backends` (Java or Objective-C
+classes, made through `slash/services/bridges.hpp`: `src/android.cpp` over JNI, `src/apple.mm`
+over the Objective-C runtime) go into the `<build>/sdk_register.cpp` exports write, which the
+game calls at start.
 
-Textures ship in the forms `project.json`'s `rendering.textures` asks for, as Godot's
-`compress/mode`: as their files (`lossless`, the default), BC7 or ASTC 4x4 blocks for each
-platform's GPUs (`vram_compressed`) or RGBA8 (`vram_uncompressed`), each a KTX2 file beside where
-the texture was (`render::texture_form_path`). `tools/exporter/src/forms.cpp` makes them once with
+Textures ship in the forms `project.json`'s `rendering.textures` asks for: as their files
+(`lossless`, the default), BC7 or ASTC 4x4 blocks for each platform's GPUs (`vram_compressed`) or
+RGBA8 (`vram_uncompressed`), each a KTX2 file beside where the texture was
+(`render::texture_form_path`). `tools/exporter/src/forms.cpp` makes them once with
 `slash::texture_encoder` (bc7enc_rdo, astc-encoder) into the asset library's `forms/` cache;
 `texture.forms` makes and reports them, and games read the form their GPU samples through
 `canvas::with_texture_forms`.
@@ -83,10 +83,9 @@ The export code is the `tools/exporter` library, shared by slash-cli and slash-m
 registers `export.run`, the one command that needs the `build` capability; a running game leaves
 it out because an export would stall its loop.
 
-Presets live in `export_presets.json` (`$cli schema presets`), like Godot's
-`export_presets.cfg`: a platform, an output folder, a debug flag, signing settings and, for Linux,
-the CPU architecture. A preset
-named after a platform replaces that platform's defaults. Secrets never go in the file:
+Presets live in `export_presets.json` (`$cli schema presets`): a platform, an output folder, a
+debug flag, signing settings and, for Linux, the CPU architecture. A preset named after a platform
+replaces that platform's defaults. Secrets never go in the file:
 
 | Variable | Used for |
 | --- | --- |

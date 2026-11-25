@@ -1,13 +1,12 @@
 # Frame generation 3D
 
-A frame made between two drawn ones by the frame interpolation of AMD's FidelityFX Super
-Resolution 3.1 (FidelityFX SDK 1.1.4), which Godot doesn't have. [main.cpp](main.cpp) draws six
-Forward+ frames into a 48x16 render target on the software device: a white card six pixels wide
-slides right six pixels a frame, in front of a blue post. Each frame sets
-`Scene3D::frame_generation`, so its prepass draws the meshes' motion vectors and keeps them with
-its depth, and after each frame `RenderDevice::generate_frame` writes the frame halfway between it
-and the frame before into a second target. It prints the middle row of each: `#` is the card,
-`|` the post, `.` the background.
+A frame made between two drawn ones by the frame interpolation of AMD's FidelityFX Super Resolution
+3.1 (FidelityFX SDK 1.1.4). [main.cpp](main.cpp) draws six frames of the clustered renderer into a
+48x16 render target on the software device: a white card six pixels wide slides right six pixels a
+frame, in front of a blue post. Each frame sets `Scene3D::frame_generation`, so its prepass draws
+the meshes' motion vectors and keeps them with its depth, and after each frame
+`RenderDevice::generate_frame` writes the frame halfway between it and the frame before into a
+second target. It prints the middle row of each: `#` is the card, `|` the post, `.` the background.
 
 ```text
 first frame generated as drawn: yes

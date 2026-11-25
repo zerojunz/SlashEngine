@@ -1,6 +1,6 @@
 # WebSocket peers
 
-WebSocket on one machine, as Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`
+WebSocket on one machine
 ([docs/reference/networking.md](../../docs/reference/networking.md)). [main.cpp](main.cpp)
 polls each peer itself, as a game's multiplayer does once a tick:
 

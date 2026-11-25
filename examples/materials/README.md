@@ -1,8 +1,8 @@
 # Materials
 
-Materials color a sprite's pixels, as Godot's canvas shaders do, written as a node graph in a
-`.material.json` file. [main.scene.json](main.scene.json) has three sprites, each with its own
-material: [hit_flash](hit_flash.material.json) mixes the hero toward white by a `flash` param,
+Materials color a sprite's pixels, written as a node graph in a `.material.json` file.
+[main.scene.json](main.scene.json) has three sprites, each with its own material:
+[hit_flash](hit_flash.material.json) mixes the hero toward white by a `flash` param,
 [water](water.material.json) scrolls a second, repeating texture over the pond with the time,
 and [glow](glow.material.json) only sets the blend mode, so the spark adds its light.
 [main.cpp](main.cpp) writes the textures, checks colors with `material.eval` as an agent would,
@@ -16,7 +16,7 @@ then draws the scene into a texture.
 - `"params"` are what each sprite sets in `Sprite2D`'s `material_params`; one material serves
   every sprite. Number params can have a `min` and `max`. Texture params name a file, which can
   `repeat` past its edges.
-- `"blend"` is Godot's blend mode: `mix`, `add`, `sub`, `mul` or `premul_alpha`.
+- `"blend"` is the blend mode: `mix`, `add`, `sub`, `mul` or `premul_alpha`.
 - `material.eval` returns the colors a material draws at texture coordinates, computed on the CPU
   as the GPU computes them, so an agent checks a material without a screenshot. Given an entity,
   it uses the sprite's texture, params and modulate; `params` and `time` try other values.

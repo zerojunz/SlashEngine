@@ -8,6 +8,8 @@ you are running.
 
 Status: current · Updated: 2026-11-22
 
+Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
+
 ## Shape
 
 ```json
@@ -81,11 +83,11 @@ A reference must name an entity that exists in the same scene.
 | `Transform2D` | `position` | `Vec2` | `[0, 0]` | Position in pixels, as [x, y], in its [parent's](#parent-transforms) space; y points down |
 | | `rotation` | `float` | `0` | Rotation in radians; positive turns clockwise |
 | | `scale` | `Vec2` | `[1, 1]` | Scale factor on each axis |
-| | `skew` | `float` | `0` | Radians its y axis leans from square to its x axis, -1.569 to 1.569 (under 89.9 degrees), as Godot's `skew` |
-| | `top_level` | `bool` | `false` | Placed in the world rather than its parent's space, and drawn after the rest without its parent's tint or `z_index`, as Godot's `top_level` ([parent transforms](#parent-transforms)) |
+| | `skew` | `float` | `0` | Radians its y axis leans from square to its x axis, -1.569 to 1.569 (under 89.9 degrees) |
+| | `top_level` | `bool` | `false` | Placed in the world rather than its parent's space, and drawn after the rest without its parent's tint or `sort_order` ([parent transforms](#parent-transforms)) |
 | | `children` | Array of entity references | `[]` | Entities with a `Transform2D` placed in its space, in drawing order; each has one parent ([parent transforms](#parent-transforms)) |
 | `Transform3D` | `position` | `Vec3` | `[0, 0, 0]` | Position in meters, as [x, y, z], in its parent's space; y points up ([3D nodes](#3d-nodes)) |
-| | `rotation` | `Vec3` | `[0, 0, 0]` | Radians about x, y and z, turned z first, then x, then y, as Godot's default rotation order |
+| | `rotation` | `Vec3` | `[0, 0, 0]` | Radians about x, y and z, turned z first, then x, then y |
 | | `scale` | `Vec3` | `[1, 1, 1]` | Scale factor on each axis |
 | | `visible` | `bool` | `true` | `false` hides it and every entity under it |
 | | `top_level` | `bool` | `false` | Placed in the world rather than its parent's space; a hidden parent still hides it |
@@ -100,12 +102,12 @@ A reference must name an entity that exists in the same scene.
 | | `region` | `Vec4` | `[0, 0, 0, 0]` | Part of the texture to use, as [x, y, width, height] in pixels, before splitting it into frames; a zero size uses the whole texture |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Color the texture and its children are multiplied by, as [r, g, b, a] from 0 to 1 |
 | | `z_index` | `int` | `0` | Higher draws on top, -4096 to 4096, added to its parents'; equal values draw in tree order: the roots in the order the entities were made, each followed by its children |
-| | `sort_order_relative` | `bool` | `true` | Add `z_index` to its parents'; `false` makes it the whole of it, as Godot's |
+| | `sort_order_relative` | `bool` | `true` | Add `z_index` to its parents'; `false` makes it the whole of it |
 | | `visible` | `bool` | `true` | Draw it and its children |
 | | `texture_filter` | `std::string` | `"inherit"` | `"linear"`, `"nearest"` (sharp pixel art) or `"inherit"`, which uses the project's `rendering.texture_filter` |
 | | `material` | `std::string` | `""` | Project path of a [`.material.json`](#materials) file, which colors the sprite's pixels; `""` draws the texture as it is |
 | | `material_params` | `std::map<std::string, json::Value>` | `{}` | Values for the material's params by name, replacing their defaults, e.g. `{"flash": 1}` |
-| | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `lit_layers` shares a bit, 0 to 1048575 (Godot's 20 layers) |
+| | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `lit_layers` shares a bit, 0 to 1048575 |
 | | `normal_texture` | `std::string` | `""` | Project path of a normal map laid out as the texture: OpenGL style, green up, blue toward the viewer. Lights need a `height` to show it |
 | | `specular_texture` | `std::string` | `""` | Project path of a specular map laid out as the texture: highlight color and, in alpha, shininess. Needs a `normal_texture` |
 | | `specular_color` | `Vec4` | `[1, 1, 1, 1]` | Multiplies the specular map's color |
@@ -121,9 +123,9 @@ A reference must name an entity that exists in the same scene.
 | | `playing` | `bool` | `true` | Advance the animation each tick |
 | | `speed_scale` | `float` | `1` | Multiplies the playback speed; negative plays backwards |
 | | `time` | `double` | `0` | Seconds into the animation, from 0 to its length |
-| | `backwards` | `bool` | `false` | Play toward the start, as Godot's `play_backwards`; pingpong loops flip it at each end |
+| | `backwards` | `bool` | `false` | Play toward the start; pingpong loops flip it at each end |
 | | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track [`target`](#animations) names, by name; `null` leaves that target's tracks unplayed |
-| | `audio_max_polyphony` | `int` | `32` | How many streams its [audio tracks](#cinematics) play at once on each audio player, 1 to 128, as Godot's `audio_max_polyphony`; a start past it is dropped, and a new value takes once nothing plays on that player's track voice |
+| | `audio_max_polyphony` | `int` | `32` | How many streams its [audio tracks](#cinematics) play at once on each audio player, 1 to 128; a start past it is dropped, and a new value takes once nothing plays on that player's track voice |
 | `AnimationGraph` | `root` | `std::string` | `""` | Project path of a [`.animtree.json`](#animation-trees) file |
 | | `libraries` | `std::map<std::string, std::string>` | `{}` | Its animation libraries by name: `.anim.json` files or models. The tree names the animations of the library `""` by themselves, others' as `"library/animation"` |
 | | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track `target` names, by name |
@@ -158,7 +160,7 @@ A reference must name an entity that exists in the same scene.
 | | `texture_scroll` | `Vec2` | `[0, 0]` | Scrolls the texture by this much of its size a second, wrapping, in whole texels, as a 3D light's `light_projector_scroll`. SlashEngine's own |
 | | `color` | `Vec4` | `[1, 1, 1, 1]` | The light's color, as [r, g, b, a] from 0 to 1 |
 | | `energy` | `float` | `1` | Multiplies the color |
-| | `temperature` | `float` | `0` | Kelvin, 1000 to 20000, tinting the color as a black body that hot glows (1900 a candle, 6500 daylight, 12000 a blue sky); `0` leaves the color as it is. SlashEngine's own: Godot's 2D lights have none |
+| | `temperature` | `float` | `0` | Kelvin, 1000 to 20000, tinting the color as a black body that hot glows (1900 a candle, 6500 daylight, 12000 a blue sky); `0` leaves the color as it is |
 | | `blend_mode` | `std::string` | `"add"` | How the light changes what it lights: `add` brightens, `sub` darkens and `mix` blends toward its color |
 | | `height` | `float` | `0` | Pixels above the plane, for normal maps: at 0 it lights them only from the side |
 | | `range_z_min`, `range_z_max` | `int` | `-1024`, `1024` | Lights sprites and layers whose `z_index` is in this range |
@@ -220,7 +222,7 @@ A reference must name an entity that exists in the same scene.
 | | `collision_mask` | `int` | `1` | The layers it collides with, as bits. Every body and area has it |
 | | `friction` | `float` | `1` | How much it resists sliding: 0 is ice. Two bodies use the smaller friction |
 | | `bounce` | `float` | `0` | How much it bounces, 0 to 1. Two bodies add theirs, up to 1 |
-| | `physics_material` | `std::string` | `""` | A [`.physics_material.json`](#physics-materials-and-fields) file whose friction, bounce, density and surface it takes over its own, as Godot's |
+| | `physics_material` | `std::string` | `""` | A [`.physics_material.json`](#physics-materials-and-fields) file whose friction, bounce, density and surface it takes over its own |
 | | `constant_linear_velocity` | `Vec2` | `[0, 0]` | Moves what touches it as if it moved this fast, in pixels per second, while it stays put: a conveyor belt |
 | | `constant_angular_velocity` | `float` | `0` | The same for turning, in radians per second, clockwise |
 | `MovingBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material` | | | As `StaticBody2D`'s. It goes where its `Transform2D` says, such as a moving platform |
@@ -229,7 +231,7 @@ A reference must name an entity that exists in the same scene.
 | `RigidBody2D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material` | | | As `StaticBody2D`'s; a material's `density` sets its mass |
 | | `mass` | `float` | `1` | In kilograms, from 0.001 |
 | | `inertia` | `float` | `0` | Resistance to turning; 0 computes it from the shapes and the mass |
-| | `center_of_mass_mode` | `std::string` | `"auto"` | `auto` puts the center of mass where the shapes' is, `custom` at `center_of_mass` (Godot's) |
+| | `center_of_mass_mode` | `std::string` | `"auto"` | `auto` puts the center of mass where the shapes' is, `custom` at `center_of_mass` |
 | | `center_of_mass` | `Vec2` | `[0, 0]` | In pixels in the body's space, when `custom` |
 | | `gravity_scale` | `float` | `1` | Multiplies gravity; 0 floats |
 | | `linear_velocity` | `Vec2` | `[0, 0]` | In pixels per second; the physics step writes it |
@@ -284,7 +286,7 @@ A reference must name an entity that exists in the same scene.
 | | `disable_collision` | `bool` | `true` | The two bodies don't collide with each other. Every joint has it |
 | | `angular_limit_enabled` | `bool` | `false` | Limit how far `body_b` turns from `body_a` |
 | | `angular_limit_lower`, `angular_limit_upper` | `float` | `0` | The limits in radians, from -3.1 to 0 and from 0 to 3.1 |
-| | `motor_enabled` | `bool` | `false` | Turn `body_b` at `motor_target_velocity`; past an angle limit it stops pushing, as Godot's |
+| | `motor_enabled` | `bool` | `false` | Turn `body_b` at `motor_target_velocity`; past an angle limit it stops pushing |
 | | `motor_target_velocity` | `float` | `0` | In radians per second |
 | `SpringJoint2D` | `body_a`, `body_b`, `disable_collision` | | | As `PinJoint2D`'s; a spring from `body_a` at the entity's `Transform2D` to `body_b` |
 | | `length` | `float` | `50` | Where `body_b` is attached, in the entity's pixels along its y axis (its scale stretches it) |
@@ -366,8 +368,8 @@ A reference must name an entity that exists in the same scene.
 | | `trail_sections` | `int` | `8` | Copies of the particle down the trail, 2 to 128 |
 | | `trail_section_subdivisions` | `int` | `4` | Segments the ribbon bends in between two copies, 1 to 1024 |
 | | `texture_filter`, `z_index`, `sort_order_relative`, `visible`, `material`, `material_params`, `light_mask` | | | As `Sprite2D`'s |
-| `Control` | `children` | `std::vector<entity>` | `[]` | [Controls](#ui-and-text) placed in its rect and drawn over it, in this order; each control has one parent at most |
-| | `anchor_left`, `anchor_top`, `anchor_right`, `anchor_bottom` | `float` | `0` | Where each edge is anchored in the parent's rect (or the viewport's): 0 at its left or top, 1 at its right or bottom, and past them outside 0 to 1, as Godot allows |
+| `Widget` | `children` | `std::vector<entity>` | `[]` | [Controls](#ui-and-text) placed in its rect and drawn over it, in this order; each control has one parent at most |
+| | `anchor_left`, `anchor_top`, `anchor_right`, `anchor_bottom` | `float` | `0` | Where each edge is anchored in the parent's rect (or the viewport's): 0 at its left or top, 1 at its right or bottom, and past them outside 0 to 1 |
 | | `offset_left`, `offset_top`, `offset_right`, `offset_bottom` | `float` | `0` | Pixels from each edge's anchor to the edge |
 | | `grow_horizontal`, `grow_vertical` | `std::string` | `"end"` | Which way it grows when its minimum size is bigger than its anchors and offsets make it: `begin` (left or up), `end` or `both` |
 | | `min_size` | `Vec2` | `[0, 0]` | Its smallest size; it can be bigger to fit its content |
@@ -378,7 +380,7 @@ A reference must name an entity that exists in the same scene.
 | | `clip_children` | `bool` | `false` | Cut off its drawing and its children's at its rect, and let the pointer reach only the part of its children inside it ([scrolling](#scrolling)); a `ScrollBox` always does |
 | | `modulate` | `Vec4` | `[1, 1, 1, 1]` | Tints it and its children, as [r, g, b, a] |
 | | `own_tint` | `Vec4` | `[1, 1, 1, 1]` | Tints it only |
-| | `top_level` | `bool` | `false` | Placed in the viewport instead of its parent's rect, left out by containers, with none of its parent's transform, `modulate`, `z_index` or clip, as Godot's `top_level`; it draws and takes the pointer after the rest of its parent's tree, and a hidden parent still hides it |
+| | `top_level` | `bool` | `false` | Placed in the viewport instead of its parent's rect, left out by containers, with none of its parent's transform, `modulate`, `z_index` or clip; it draws and takes the pointer after the rest of its parent's tree, and a hidden parent still hides it |
 | | `z_index` | `int` | `0` | Draws over controls with a lower one, added to its parent's; -4096 to 4096 |
 | | `sort_order_relative` | `bool` | `true` | Add `z_index` to its parent's; `false` makes it the whole of it |
 | | `theme_colors` | `std::map<std::string, Vec4>` | `{}` | [Theme](#theme-items) colors by name, e.g. `{"font_color": [1, 0.8, 0.2, 1]}` |
@@ -460,14 +462,14 @@ A reference must name an entity that exists in the same scene.
 | | `tick_count` | `int` | `0` | Ticks drawn along it, evenly spaced from end to end; 0 to 4096 |
 | | `ticks_on_borders` | `bool` | `false` | Draw the first and last ticks, at its ends |
 | | `ticks_position` | `std::string` | `"bottom_right"` | Where the ticks are: `bottom_right` (below, or right of a vertical one), `top_left`, `both` or `center` |
-| | `vertical` | `bool` | `false` | Godot's `VSlider`: its minimum at the bottom; otherwise an `HSlider` |
+| | `vertical` | `bool` | `false` | A vertical slider, its minimum at the bottom; otherwise horizontal |
 | `ScrollBar` | `value` | `double` | `0` | The [scroll bar](#scrolling)'s value, between `min_value` and `max_value - page` |
 | | `min_value`, `max_value` | `double` | `0`, `100` | The values at its ends |
 | | `page` | `double` | `0` | The part of the range in view: the grabber is this share of the bar long, and a click beside it moves the value this much |
 | | `step` | `double` | `0` | The value is a multiple of it from `min_value`; 0 for any value |
 | | `custom_step` | `float` | `-1` | What the `ui_*` actions and its arrows step it by; -1 for `step` |
 | | `rounded`, `allow_greater`, `allow_lesser` | `bool` | `false` | As `Slider`'s |
-| | `vertical` | `bool` | `false` | Godot's `VScrollBar`; otherwise an `HScrollBar` |
+| | `vertical` | `bool` | `false` | A vertical scroll bar; otherwise horizontal |
 | `Button` | `text` | `std::string` | `""` | The [button](#buttons)'s text; lines break at `"\n"` |
 | | `icon` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file drawn beside the text |
 | | `flat` | `bool` | `false` | Draw no style box, only the text and icon |
@@ -568,7 +570,7 @@ A reference must name an entity that exists in the same scene.
 | | `search_flags` | `std::vector<std::string>` | `[]` | How `search_text` matches: `match_case`, `whole_words` |
 | | `gutters` | `std::vector<TextEditGutter>` | `[]` | [Columns](#gutters-and-line-numbers) left of the text: `name`, `type` (`string` or `icon`), `width` (`24`), `draw` (`true`) and `lines`, each `{"line": int, "text": string, "icon": string, "color": Vec4}` |
 | `SyntaxColors` | `number_color`, `symbol_color`, `function_color`, `member_variable_color` | `Vec4` | `[0, 0, 0, 1]` | [Colors](#searching-and-highlighting-code) for numbers, symbols, a word before `(` and a word after `.` in the `TextArea` on its entity |
-| | `keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words and their colors; opaque black colors nothing, as Godot's `Color()` |
+| | `keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words and their colors; opaque black colors nothing |
 | | `member_keyword_colors` | `std::map<std::string, Vec4>` | `{}` | Words colored as keywords unless they come after a `.` |
 | | `color_regions` | `std::map<std::string, Vec4>` | `{}` | Regions by `"start end"` keys of symbols, such as `"/* */"`; a key with no end, such as `"#"`, runs to the line's end |
 | `CodeEditor` | `gutters_draw_line_numbers` | `bool` | `false` | Number the lines of the `TextArea` on its entity, in a [gutter](#gutters-and-line-numbers) |
@@ -603,7 +605,7 @@ A reference must name an entity that exists in the same scene.
 | | `max_polyphony` | `int` | `1` | Sounds it may play at once, 1 to 64; playing again past this stops the oldest |
 | | `bus` | `std::string` | `"Master"` | The bus it plays through, from the project's [bus layout](#bus-layouts); Master if there is no such bus |
 | | `mix_target` | `std::string` | `"stereo"` | Which speakers play it in [surround](#surround-sound): `stereo` (the front pair), `surround` (every speaker) or `center` (the center speaker and the LFE). Stereo plays it on both |
-| | `parameters` | `std::map<std::string, json::Value>` | `{}` | Its stream's [parameters](#stream-parameters), as Godot's `parameters/`: `switch_to_clip` for interactive music, `stream_<index>_volume_db` for a synchronized stream |
+| | `parameters` | `std::map<std::string, json::Value>` | `{}` | Its stream's [parameters](#stream-parameters): `switch_to_clip` for interactive music, `stream_<index>_volume_db` for a synchronized stream |
 | `SoundPlayer2D` | `stream`, `volume_db`, `pitch_scale`, `playing`, `autoplay`, `stream_paused`, `max_polyphony`, `bus`, `parameters` | | | As `SoundPlayer`'s; it plays at the entity's `Transform2D` |
 | | `max_distance` | `float` | `2000` | Pixels from the listener beyond which it is silent, 1 or more |
 | | `attenuation` | `float` | `1` | How fast it fades with distance: volume is (1 - distance / `max_distance`) to this power |
@@ -624,10 +626,9 @@ A reference must name an entity that exists in the same scene.
 
 ## Parent transforms
 
-An entity listed in another's `Transform2D` `children` is placed in its parent's space, as a
-Godot Node2D is in its parent's: its `position`, `rotation`, `scale` and `skew` are its own, and
-its global transform is its parent's global transform times its own (Godot's
-`get_global_transform`). An entity no one lists is a root, placed in the world.
+An entity listed in another's `Transform2D` `children` is placed in its parent's space: its
+`position`, `rotation`, `scale` and `skew` are its own, and its global transform is its parent's
+global transform times its own. An entity no one lists is a root, placed in the world.
 [examples/parent-transforms](../../examples/parent-transforms/) has a boat with a mast, a flag, a
 cannon and a deck.
 
@@ -638,34 +639,32 @@ cannon and a deck.
 ```
 
 - **Drawing.** Each root draws in the order entities were made, followed by its children in the
-  order its list gives and theirs after them, so a child draws over its parent. `z_index` is
-  added to the parents' (Godot's `z_as_relative`), and the sum is held to -4096 to 4096; with
-  `sort_order_relative` off, an entity's `z_index` is the whole of it, and its children add theirs to
-  it. A parent's `Sprite2D` or `TileLayer2D` passes on its `visible` and `modulate`
-  (`own_tint` stays its own); a `Emitter2D` or `GpuEmitter2D` passes on `visible`
-  and `z_index`.
-  Sprites, tile layers, particles, occluders and lights draw where their global transforms put
-  them.
+  order its list gives and theirs after them, so a child draws over its parent. `z_index` is added
+  to the parents', and the sum is held to -4096 to 4096; with `sort_order_relative` off, an entity's
+  `z_index` is the whole of it, and its children add theirs to it. A parent's `Sprite2D` or
+  `TileLayer2D` passes on its `visible` and `modulate` (`own_tint` stays its own); a `Emitter2D` or
+  `GpuEmitter2D` passes on `visible` and `z_index`. Sprites, tile layers, particles, occluders and
+  lights draw where their global transforms put them.
 - **Top level.** An entity with `top_level` keeps its parent, but its transform is its global
-  one, as Godot's `top_level`: moving the parent leaves it where it is, and what it holds is
-  placed in its space. Like Godot's top-level items, it draws with what it holds after the rest
-  of its tree and before roots made later, top-level entities in tree order, and takes neither
-  its parents' `z_index` nor their `modulate`; hiding a parent still hides it. A body with
-  `top_level` is where its own transform says.
+  one: moving the parent leaves it where it is, and what it holds is placed in its space. It
+  draws with what it holds after the rest of its tree and before
+  roots made later, top-level entities in tree order, and takes neither its parents' `sort_order`
+  nor their `tint`; hiding a parent still hides it. A body with `top_level` is where its own
+  transform says.
 - **Physics.** Bodies, areas and joints are where their global transforms put them, and a parent
-  that moves moves the bodies in it. The physics step writes a `RigidBody2D`'s motion back as
-  Godot sets a body's global transform: its own transform becomes what puts it where Box2D says.
+  that moves moves the bodies in it. The physics step writes a `RigidBody2D`'s motion back by
+  setting the body's global transform: its own transform becomes what puts it where Box2D says.
   A `CharacterMover2D` slides in the world and is put back in its parent's space. A body or
   area takes the shapes of its own entity, then those of its children that have a
   `Collider2D` or `PolygonCollider2D` and no body or area of their own, placed by their
-  transforms, as a Godot `CollisionObject2D` takes its shape nodes'; hits and events name the
+  transforms; hits and events name the
   body. A character moves as the first of its shapes. Shapes and light textures don't lean
   with `skew`.
 - **Sound and particles.** `SoundPlayer2D`, `Listener2D`, `Emitter2D` and
   `GpuEmitter2D` work from global transforms; particles with `local_space` move with the emitter's.
 - **Rules.** A child needs a `Transform2D`, has one parent and is never its own ancestor. `scene
   validate` reports each broken rule at the entry's JSON Pointer, and a command that would break
-  one fails and changes nothing, as Godot's `add_child` refuses:
+  one fails and changes nothing:
 
   ```json
   {"code":-32002,"data":{"path":"/entities/flag/components/Transform2D/children/0"},"message":"/entities/flag/components/Transform2D/children/0: \"boat\" is an ancestor of \"flag\", so it can't be its child"}
@@ -673,20 +672,19 @@ cannon and a deck.
 
 - **Commands.** [`entity.get`](commands.md#entityget) adds a child's `parent` and `global`
   transform. [`entity.destroy`](commands.md#entitydestroy) destroys the entity's `Transform2D` and
-  `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
+  `Widget` children with it, and takes destroyed entities out
   of the lists of parents that stay.
 - **Not yet.** Node2D and Control entities in one tree.
 
 ## Paths
 
-`Spline2D` and `Spline3D` are Godot's paths: a curve through `points`, each with a `position` and
-`in` and `out` handles relative to it (`[0, 0]` or `[0, 0, 0]` for a sharp corner), joined by
-cubic Bézier segments. The curve is baked as Godot bakes it, each segment halved until its
-pieces are no longer than `bake_interval`, so its length and the points along it are Godot's.
-An entity with a `SplineFollower2D` or `SplineFollower3D` in a path's `Transform2D` or `Transform3D`
-`children` sits `progress` along its curve: each tick the `path_follow` system, after animations
-and before physics, wraps its `progress` and sets its transform's position and rotation, as
-Godot's `PathFollow2D` and `SplineFollower3D` do.
+`Spline2D` and `Spline3D` are paths: a curve through `points`, each with a `position` and
+`in` and `out` handles relative to it (`[0, 0]` or `[0, 0, 0]` for a sharp corner), joined by cubic
+Bézier segments. The curve is baked, each segment halved until its pieces are no
+longer than `bake_interval`. An entity with a
+`SplineFollower2D` or `SplineFollower3D` in a path's `Transform2D` or `Transform3D` `children` sits
+`progress` along its curve: each tick the `path_follow` system, after animations and before physics,
+wraps its `progress` and sets its transform's position and rotation.
 
 ```json
 "track": {"components": {
@@ -714,13 +712,12 @@ Godot's `PathFollow2D` and `SplineFollower3D` do.
 - **Progress.** With `loop`, progress goes round: past the end it comes back from the start, and
   below zero from the end. Without, it stops at the ends. The system writes the wrapped value
   back, so an `Animator` track or gameplay code can keep adding to it.
-- **Rotation.** `SplineFollower3D`'s `rotation_mode` is Godot's: `"none"` leaves it unturned,
+- **Rotation.** `SplineFollower3D`'s `rotation_mode` sets how it turns: `"none"` leaves it unturned,
   `"y"` turns it only about y, `"xy"` about y and x, `"xyz"` as the curve's up vectors say, and
   `"oriented"` faces it the way the curve goes with y up. With `tilt_enabled`, the curve's tilt
   rolls it after. Its `scale` is left as it is.
 - **Checks.** [`scene validate`](cli.md#scene-validate) and exports report a follower whose
-  parent has no path of its kind, and `"oriented"` on a `Spline3D` without up vectors, as Godot's
-  configuration warnings.
+  parent has no path of its kind, and `"oriented"` on a `Spline3D` without up vectors.
 - **Commands.** [`path.get`](commands.md#pathget) returns a curve's length, the position and
   rotation at offsets or ratios along it, and its nearest point to another.
 
@@ -729,14 +726,13 @@ A [`SolidExtrusion3D`](#csg-shapes) in `"path"` mode pushes its polygon along a 
 
 ## 3D nodes
 
-The 3D world is Godot's 3D nodes as components. Units are meters, y points up, and a camera or
-light looks down its entity's -z. A `Transform3D` with `children` places them in its space, as a
-`Node3D` places its child nodes: they move, turn, scale and hide with it. A cycle is broken at
-the entity made first, and `scene validate` reports it.
+The 3D world is made of components. Units are meters, y points up, and a camera or light looks down
+its entity's -z. A `Transform3D` with `children` places them in its space: they move, turn, scale
+and hide with it. A cycle is broken at the entity made first, and `scene validate` reports it.
 
 Games, `slash-cli run` and [`frame.capture`](commands.md#framecapture) draw the 3D world through
 its current `Camera3D` (the first with `current` set, else the first one, in tree order), under
-every canvas, so sprites and controls draw over it, as they do over Godot's 3D viewport. A world
+every canvas, so sprites and controls draw over it. A world
 with no `Camera3D` draws no 3D. Between ticks, entities are drawn part of the way from where
 they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `meshes`.
 
@@ -759,24 +755,24 @@ glTF file, [examples/obj-models](../../examples/obj-models/) a lamp post from an
 ### Meshes
 
 `Model3D` draws its entity's primitive mesh, colored by its `Surface3D` or, with
-none, Godot's default material (white, rough and lit). Its `layers` (default `1`) are render
+none, a default material (white, rough and lit). Its `layers` (default `1`) are render
 layers: a camera whose `layer_filter` and a light whose `lit_layers` share a bit with them see
 it and light it, and a light whose `shadow_caster_mask` shares one gets its shadow.
 
-Its `cast_shadow` (default `"on"`) is Godot's `GeometryInstance3D.cast_shadow`: `"on"` casts
+Its `cast_shadow` (default `"on"`): `"on"` casts
 shadows, culling faces as its material does; `"double_sided"` casts from both sides of every
 face; `"shadows_only"` casts but isn't drawn; `"off"` casts none. A mesh on layers the camera
-doesn't see still casts, as in Godot. Alpha-blended meshes cast no shadow, and alpha scissor
-ones cast only where their pixels are kept.
+doesn't see still casts. Alpha-blended meshes cast no shadow, and alpha scissor ones cast only
+where their pixels are kept.
 
-Its `lighting_mode` (default `"static"`) and `lightmap_texel_scale` (default `1`) are Godot's: a
-`"static"` mesh is baked into a [BakedLighting3D's lightmap](#baked-lightmaps) and lit by it, with
-`lightmap_texel_scale` times the texels; a `"dynamic"` mesh isn't baked but takes its ambient
-light from the BakedLighting3D's [light probes](#light-probes), and a `"disabled"` one from neither. A
-[VoxelLighting3D](#voxelgi) voxelizes `"static"` meshes too, plots `"dynamic"` ones into its light as they
-move, and lights every other mesh in its box.
+Its `lighting_mode` (default `"static"`) and `lightmap_texel_scale` (default `1`) say how it is lit:
+a `"static"` mesh is baked into a [BakedLighting3D's lightmap](#baked-lightmaps) and lit by it, with
+`lightmap_texel_scale` times the texels; a `"dynamic"` mesh isn't baked but takes its ambient light
+from the BakedLighting3D's [light probes](#light-probes), and a `"disabled"` one from neither. A
+[VoxelLighting3D](#voxelgi) voxelizes `"static"` meshes too, plots `"dynamic"` ones into its light
+as they move, and lights every other mesh in its box.
 
-Its `lod_bias` (default `1`) is Godot's `GeometryInstance3D.lod_bias`: a model's surfaces pick
+Its `lod_bias` (default `1`): a model's surfaces pick
 their [LODs](#mesh-lods) as if the entity were that many times larger.
 
 Its `virtualized` (default `false`) is a research feature of SlashEngine's own: a model's
@@ -785,18 +781,18 @@ needs, in place of their LODs ([virtualized-geometry.md](virtualized-geometry.md
 
 Its `blend_shapes` (default `{}`) sets its model's [blend shapes](#blend-shapes) by name.
 
-Its `skip_occlusion` (default `false`) is Godot's: [occluders](#occlusion-culling) never
+Its `skip_occlusion` (default `false`): [occluders](#occlusion-culling) never
 hide the mesh.
 
-Its `material` (default `""`) is Godot's `GeometryInstance3D.material_override`: a
+Its `material` (default `""`) replaces the surface: a
 `.standard_material.json` file, or a `.material.json` file with `"shader_type": "spatial"`, a game's
 own [spatial shader](#spatial-shaders), which then colors the mesh in place of its
 `Surface3D` or its model's materials. `material_params` (default `{}`) sets that
 material's params, as `Sprite2D`'s does for canvas materials. `slash-cli scene validate` reports
 an override that isn't one of those files.
 
-The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
-and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
+The primitive meshes have corners, normals, tangents and texture coordinates that a texture
+wraps in the usual way. An entity has at most one.
 Meshes of equal settings share one mesh on the GPU.
 
 | Component | Fields (defaults) |
@@ -814,11 +810,11 @@ Every primitive also has `flip_faces` (`false`), which turns it inside out, as f
 
 ### Models
 
-`Model3D`'s `mesh` (default `""`) names a model by project path: a glTF 2.0 `.gltf` file,
-with its buffers and images in files beside it or in data URIs, a `.glb` file holding
-everything, a Wavefront [`.obj` file](#obj-models), an [`.fbx` file](#fbx-models), a
-[Blender `.blend` file](#blender-models) or a [`.model.json` recipe](#model-recipes). The entity
-draws the model's meshes in place of a primitive mesh, read as Godot's importers read them:
+`Model3D`'s `mesh` (default `""`) names a model by project path: a glTF 2.0 `.gltf` file, with
+its buffers and images in files beside it or in data URIs, a `.glb` file holding everything, a
+Wavefront [`.obj` file](#obj-models), an [`.fbx` file](#fbx-models), a [Blender `.blend`
+file](#blender-models) or a [`.model.json` recipe](#model-recipes). The entity draws the model's
+meshes in place of a primitive mesh, read:
 
 ```json
 "house": {"components": {
@@ -828,29 +824,28 @@ draws the model's meshes in place of a primitive mesh, read as Godot's importers
 ```
 
 - Each node of the model's scene that has a mesh draws it where the node's transforms place it,
-  in the entity's space. glTF's units are meters with y up, as Godot's are.
-- A node with `EXT_mesh_gpu_instancing`, as Blender's geometry nodes and Houdini export
-  scattered copies, draws its mesh at each instance's `TRANSLATION`, `ROTATION` and `SCALE` in
-  its space and never at itself: each instance is a node of its own under it, named after it and
-  its number (`Tree_0`, `Tree_1`), drawing the mesh as any other part, so collision hints, LODs,
-  lightmaps and [`model.cleanup`](commands.md#modelcleanup) take it and written models keep it
-  as a plain node. Other instance attributes are left out. Godot has no such import; this is
-  SlashEngine's own. [examples/gltf-instances](../../examples/gltf-instances/) loads an orchard.
-- Each glTF material becomes a `Surface3D` as Godot's importer makes it: the base color
-  factor and texture as the albedo, the metallic and roughness factors times the
-  metallic-roughness texture's blue and green channels, the normal map and its scale, the
-  emissive factor or texture, `alphaMode` (`"BLEND"` is `"alpha"`, `"MASK"` is
-  `"alpha_scissor"` at `alphaCutoff`), `doubleSided` as `cull_mode` `"disabled"`, and the base
-  color texture's sampler as `texture_filter` and `repeat`. Linear colors are turned to
-  sRGB. `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_texture_transform` and
-  `KHR_materials_pbrSpecularGlossiness` (its diffuse color and glossiness) are read too.
+  in the entity's space. glTF's units are meters with y up.
+- A node with `EXT_mesh_gpu_instancing`, as Blender's geometry nodes and Houdini export scattered
+  copies, draws its mesh at each instance's `TRANSLATION`, `ROTATION` and `SCALE` in its space and
+  never at itself: each instance is a node of its own under it, named after it and its number
+  (`Tree_0`, `Tree_1`), drawing the mesh as any other part, so collision hints, LODs, lightmaps and
+  [`model.cleanup`](commands.md#modelcleanup) take it and written models keep it as a plain node.
+  Other instance attributes are left out. [examples/gltf-instances](../../examples/gltf-instances/)
+  loads an orchard.
+- Each glTF material becomes a `Surface3D`: the base color factor and texture as the albedo, the
+  metallic and roughness factors times the metallic-roughness texture's blue and green channels,
+  the normal map and its scale, the emissive factor or texture, `alphaMode` (`"BLEND"` is
+  `"alpha"`, `"MASK"` is `"alpha_scissor"` at `alphaCutoff`), `doubleSided` as `cull_mode`
+  `"disabled"`, and the base color texture's sampler as `filter` and `repeat`. Linear
+  colors are turned to sRGB. `KHR_materials_emissive_strength`, `KHR_materials_unlit`,
+  `KHR_texture_transform` and `KHR_materials_pbrSpecularGlossiness` (its diffuse color and
+  glossiness) are read too.
 - A primitive with vertex colors multiplies them into its albedo, and one with no material gets
-  Godot's default material.
-- A `Surface3D` on the entity replaces every material of the model, as Godot's
-  `material`.
-- Models keep Godot's clockwise front faces, a primitive with no normals gets one per face, and
-  one with texture coordinates but no tangents gets MikkTSpace's, as Godot's importer makes
-  them. `KHR_mesh_quantization` attributes are read.
+  a default material.
+- A `Surface3D` on the entity replaces every material of the model.
+- Models keep clockwise front faces, a primitive with no normals gets one per face, and
+  one with texture coordinates but no tangents gets MikkTSpace's. `KHR_mesh_quantization`
+  attributes are read.
 - Skins deform their meshes and animations move the model's nodes, as
   [skeletons and model animations](#skeletons-and-model-animations) says.
 - Points and lines are left out, since only triangles draw, and so are cameras, `KHR_lights_punctual`
@@ -865,9 +860,8 @@ share its meshes and textures on the device, and the model reloads when its file
 
 #### Mesh LODs
 
-Every model's surfaces get coarser versions when they load, as Godot's importer makes them with
-its `meshes/generate_lods` option on (`ImporterMesh::generate_lods`, with meshoptimizer 1.0, the
-version Godot uses):
+Every model's surfaces get coarser versions when they load, with
+meshoptimizer 1.0:
 
 - Corners at one position merge where their texture coordinates, tangent sign, colors and
   normals (within 20 degrees) agree, so seams stay sharp and smooth areas simplify.
@@ -876,17 +870,16 @@ version Godot uses):
   surface's size. Skinned surfaces are simplified in their rest pose, with more regular
   triangles. Surfaces of 8 triangles or fewer get none.
 - Each LOD keeps the error it was made with, in the surface's units: how far it may be off.
-- A lightmapped mesh's LODs are made from its unwrapped vertices, as Godot makes them after the
+- A lightmapped mesh's LODs are made from its unwrapped vertices, after the
   unwrap.
 
-Drawing picks a LOD per surface each frame, as Godot's Forward+ and Compatibility renderers do:
-the coarsest whose error, times the entity's largest scale and its `Model3D`'s
-`lod_bias` (default `1`), over its distance from the camera to the mesh's bounds, comes to no
-more than project.json's
-[`rendering.lod.threshold_pixels`](project-format.md#mesh-lods) (default `1`) of
-the view's width. Shadow maps draw the LOD the camera sees, and reflection probes pick their
-own from where their cube is drawn, by their `mesh_lod_threshold` over the atlas's cube size.
-`lod_bias` above `1` keeps detail further away; a threshold of `0` draws every mesh in full.
+Drawing picks a LOD per surface each frame: the coarsest whose error, times the entity's largest
+scale and its `Model3D`'s `lod_bias` (default `1`), over its distance from the camera to the
+mesh's bounds, comes to no more than project.json's
+[`rendering.lod.threshold_pixels`](project-format.md#mesh-lods) (default `1`) of the view's
+width. Shadow maps draw the LOD the camera sees, and reflection probes pick their own from where
+their cube is drawn, by their `mesh_lod_threshold` over the atlas's cube size. `lod_bias` above
+`1` keeps detail further away; a threshold of `0` draws every mesh in full.
 
 ```json
 "boulder": {"components": {
@@ -897,13 +890,12 @@ own from where their cube is drawn, by their `mesh_lod_threshold` over the atlas
 
 [`model.inspect`](commands.md#modelinspect) gives each mesh's triangles at every LOD, and
 [`frame.capture`](commands.md#framecapture)'s `drawn` counts the meshes drawn at a coarser one
-as `lods`. Primitive meshes, CSG shapes, `BlockMap3D`s and terrains have no LODs, as in Godot.
+as `lods`. Primitive meshes, CSG shapes, `BlockMap3D`s and terrains have no LODs.
 
 #### Model collision
 
-A model says what it collides as with Godot's import hints on its nodes' names (an OBJ file's
-objects, a glTF or FBX file's nodes, a `.blend` file's objects), as Godot's scene importer reads
-them:
+A model says what it collides as with import hints on its nodes' names (an OBJ file's
+objects, a glTF or FBX file's nodes, a `.blend` file's objects):
 
 | Hint | Collides as | Draws |
 | --- | --- | --- |
@@ -912,10 +904,10 @@ them:
 | `-colonly` | its triangles | no |
 | `-convcolonly` | their convex hull | no |
 
-A hint is matched as Godot matches it, in any case: at the end of the name after `-` or `_`, once
-trailing digits and dots are dropped, or anywhere after `$` (`Wall-COL.001` is `Wall_001`
-colliding as its triangles). The name keeps the rest. A convex hull is one hull of all the node's corners, as
-Godot's `create_convex_shape`. A node with no mesh, such as a recipe's point, makes no collision.
+A hint is matched in any case: at the end of the name after `-` or `_`, once
+trailing digits and dots are dropped, or anywhere after `$` (`Wall-COL.001` is `Wall_001` colliding
+as its triangles). The name keeps the rest. A convex hull is one hull of all the node's corners. A
+node with no mesh, such as a recipe's point, makes no collision.
 
 ```json
 "yard": {"components": {
@@ -924,8 +916,8 @@ Godot's `create_convex_shape`. A node with no mesh, such as a recipe's point, ma
 }}
 ```
 
-A `Model3D` whose model has collision collides as it, with no other components, as the
-`StaticBody3D` Godot's importer adds above the mesh: it is a static body of those shapes, on
+A `Model3D` whose model has collision collides as it, with no other components, as
+a `StaticBody3D` above the mesh would: it is a static body of those shapes, on
 collision layer and mask 1, with no friction or bounce changes. On an entity that is a body
 already (`RigidBody3D`, `CharacterMover3D` and the rest), or a direct child of one, the shapes are
 that body's, in the place the model is drawn, as a `Collider3D` there would be. Collision
@@ -934,58 +926,54 @@ follows the model when its file changes.
 A model without hints gets collision from [`model.cleanup`](commands.md#modelcleanup)'s
 `collision`. [`model.inspect`](commands.md#modelinspect) lists it apart from the parts, and
 [`model.cleanup`](commands.md#modelcleanup) and `write_glb` keep it in the `.glb` files they write
-as nodes named with those hints, so Godot reads them as it reads its own.
+as nodes named with those hints.
 
 #### OBJ models
 
-An `.obj` file is read as Godot's OBJ importer reads one as a scene, with its `.mtl` material
-libraries beside it:
+An `.obj` file is read, with its `.mtl` material libraries beside it:
 
 - Each `o` object is a mesh, named by its `o` line (`"Mesh"` before the first), and each run of
-  faces between `usemtl` lines is a surface of it. `g` groups are left alone, as in Godot.
+  faces between `usemtl` lines is a surface of it. `g` groups are left alone.
 - Faces are fans of triangles from their first corner, and corners may count back from the
   latest vertex with negative indices. A vertex's color after its position (`v x y z r g b`) is
-  kept, though Godot's material doesn't show it.
+  kept, though the material doesn't show it.
 - A surface without normals gets smooth ones by its smoothing groups: corners at the same
   position in a group share the sum of their faces' normals. Faces are smooth until `s off`,
   which makes them flat; any other `s` line after it starts a new group. A surface with texture
-  coordinates gets MikkTSpace's tangents; one without, Godot's stand-in tangents.
+  coordinates gets MikkTSpace's tangents; one without, stand-in tangents.
 - `mtllib` names a library relative to the model, and `usemtl` a material in the latest one;
-  faces before any `usemtl` in an object get Godot's default material. Each material becomes a
-  `Surface3D` as Godot's importer makes it: `Kd` is the albedo color; `Ks`'s brightest
-  channel, or `Ns` after it as `(1000 - Ns) / 1000`, is the `metallic` (Godot's importer sets no
-  roughness); `d`, or `1 - Tr`, is the albedo's alpha, with `transparency` `"alpha"` below 0.99;
-  `map_Kd` is the albedo texture, `map_Ks` the metallic one, `map_Ns` the roughness one and
-  `map_bump` the normal map. Ambient colors and other keywords are left out. Texture paths are
-  relative to the library, with backslashes read as slashes.
-- A library that can't be read, or that Godot's importer would refuse (a color before any
+  faces before any `usemtl` in an object get a default material. Each material becomes a
+  `Surface3D`: `Kd` is the albedo color; `Ks`'s brightest channel, or `Ns` after it as `(1000 -
+  Ns) / 1000`, is the `metallic`; `d`, or `1 - Tr`, is the albedo's alpha, with `transparency`
+  `"alpha"` below 0.99; `map_Kd` is the albedo texture, `map_Ks` the metallic one, `map_Ns` the
+  roughness one and `map_bump` the normal map. Ambient colors and other keywords are left out.
+  Texture paths are relative to the library, with backslashes read as slashes.
+- A library that can't be read, or that is malformed (a color before any
   `newmtl`, or one with too few numbers), leaves its materials out, and a texture outside the
   project folder or not a texture file is left out of its material. The model still loads, and
   `scene validate` reports each of them with its line.
 
 #### FBX models
 
-An `.fbx` file, binary or ASCII, is read with ufbx as Godot 4.3's FBX importer reads one:
+An `.fbx` file, binary or ASCII, is read with ufbx:
 
 - Lengths become meters and axes y up, whatever units and axes the file was written in, and each
-  node's geometric transform and pivots are applied to its mesh, as Godot's importer does.
+  node's geometric transform and pivots are applied to its mesh.
 - Each node with a mesh draws it where the node's transforms place it, in tree order. Polygons
   become triangles, and each material on a mesh is a surface of it. A mesh without normals gets
   smooth ones; one with texture coordinates but no tangents gets MikkTSpace's, one without,
-  Godot's stand-in tangents.
-- Vertex colors multiply into the albedo, since Godot's importer sets
-  `vertex_color_use_as_albedo` on every material, and a surface with vertex colors and no
+  stand-in tangents.
+- Vertex colors multiply into the albedo on every material, and a surface with vertex colors and no
   material gets one that shows them.
-- Each material becomes a `Surface3D` as Godot's importer makes it: the base color
-  times its factor as the albedo color, turned to sRGB; the base color texture, its UV
-  transform as `uv_offset` and `uv_scale`, `repeat` only if it wraps both ways, and
-  `transparency` from its alpha (`"alpha"` if some of it is partly clear, `"alpha_scissor"` if
-  it is only clear or opaque); the PBR metalness and roughness (1 under a texture, which is read
-  from its red channel); the normal map and its scale; and the emission color, with the emission
-  factor as its energy, or the emission texture. Ambient occlusion and separate transparency
-  textures are left out.
+- Each material becomes a `Surface3D`: the base color times its factor as the albedo color,
+  turned to sRGB; the base color texture, its UV transform as `uv_offset` and `uv_scale`,
+  `repeat` only if it wraps both ways, and `transparency` from its alpha (`"alpha"` if some of
+  it is partly clear, `"alpha_scissor"` if it is only clear or opaque); the PBR metalness and
+  roughness (1 under a texture, which is read from its red channel); the normal map and its
+  scale; and the emission color, with the emission factor as its energy, or the emission
+  texture. Ambient occlusion and separate transparency textures are left out.
 - Textures carried in the file are used as they are. Others are looked for as named, relative to
-  the model, then by file name in the model's folder and the folders Godot looks in under it
+  the model, then by file name in the model's folder and the folders under it
   (`textures`, `Textures`, `images`, `Images`, `materials`, `Materials`, `maps`, `Maps`, `tex`,
   `Tex`), then in each folder above it up to the project's. A texture that isn't found, isn't a
   PNG, JPEG, BMP or KTX2 file, or doesn't decode is left out of its materials; the model still
@@ -995,23 +983,23 @@ An `.fbx` file, binary or ASCII, is read with ufbx as Godot 4.3's FBX importer r
   skin: each cluster's bone is a joint, with the cluster's geometry-to-bone matrix as its inverse
   bind, and each vertex takes its four largest weights, or eight when a vertex of the skin has more
   than four, normalized.
-- Each animation stack is an animation, baked into linear keys 30 times a second as Godot's
-  importer bakes it (any curve interpolation, Euler rotations in any order), as long as the
+- Each animation stack is an animation, baked into linear keys 30 times a second
+  (any curve interpolation, Euler rotations in any order), as long as the
   stack's end and named and looping as glTF animations are. Tracks that only hold a node where it
-  is, and tracks on a skinned mesh's own node, are left out, as Godot leaves them out.
+  is, and tracks on a skinned mesh's own node, are left out.
 - Cameras, lights and blend shapes are left out.
 
 #### Blender models
 
-A `.blend` file is imported as Godot imports one: the engine never reads it, but runs the
+A `.blend` file is imported through Blender: the engine never reads it, but runs the
 artist's own Blender in the background (`blender --background --python-expr ...`), which opens
-the file and exports it as a `.glb` file with Godot's default import options (y up, modifiers
+the file and exports it as a `.glb` file with default import options (y up, modifiers
 applied, every object whether visible or not, materials, skins and actions, no vertex colors),
 and reads that as a [glTF model](#meshes). No Blender code is linked into the engine or shipped
 with a game.
 
-- Blender is the program `SLASH_BLENDER_PATH` names, else the first of these that runs, as
-  Godot looks: `blender` on `PATH`, then where Blender's installers put it (`/Applications` and
+- Blender is the program `SLASH_BLENDER_PATH` names, else the first of these that runs:
+  `blender` on `PATH`, then where Blender's installers put it (`/Applications` and
   `~/Applications`, Homebrew and MacPorts on macOS; `C:\Program Files\Blender Foundation` on
   Windows; `/usr/bin`, `/usr/local/bin`, `/opt/blender/bin` and the Snap Store on Linux). It
   must be Blender 3.0 or later.
@@ -1030,11 +1018,11 @@ with a game.
 #### Model recipes
 
 A `.model.json` file is a model written as text: named parameters, materials and parts, which the
-engine builds into meshes when it loads the file, so `Model3D`'s `mesh`, `model.inspect`
-and exports take it as they take a glTF file, and it reloads when it changes. Parts are Godot's
-[CSG shapes](#csg-shapes), combined as CSG nodes are, so refining a prop means changing a number.
-`slash-cli schema model` prints the schema with every field's doc, `slash-cli scene validate`
-checks a recipe and `slash-cli scene format` writes it in canonical form.
+engine builds into meshes when it loads the file, so `Model3D`'s `mesh`, `model.inspect` and exports
+take it as they take a glTF file, and it reloads when it changes. Parts are [solid
+shapes](#csg-shapes), combined as they are in a scene, so refining a prop means changing a number.
+`slash-cli schema model` prints the schema with every field's doc, `slash-cli scene validate` checks
+a recipe and `slash-cli scene format` writes it in canonical form.
 
 ```json
 {
@@ -1061,8 +1049,8 @@ checks a recipe and `slash-cli scene format` writes it in canonical form.
 | `variants`, `quality` | object | `{}` | Named forms of the recipe, as [below](#variants-and-quality-tiers) |
 | `checks` | object | `{}` | What the model must be: size, pivot, triangles and names, as [below](#model-checks) |
 
-Every number in a part, and every parameter, can be a string starting with `=`: an expression in
-Godot's `Expression` syntax over the parameters (`"=width / 2"`, `"=sin(angle) * r"`). A name
+Every number in a part, and every parameter, can be a string starting with `=`: an expression
+over the parameters (`"=width / 2"`, `"=sin(angle) * r"`). A name
 that isn't a parameter is reported with the closest one, and parameters that depend on
 themselves are reported with the chain (`a -> b -> a`).
 
@@ -1070,23 +1058,23 @@ A part's fields:
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `name` | string | its shape | The node a top-level part becomes; copies are numbered from 2 as Godot names nodes (`leg`, `leg2`) |
+| `name` | string | its shape | The node a top-level part becomes; copies are numbered from 2 (`leg`, `leg2`) |
 | `shape` | string | `"combiner"` | `combiner` (only its children), `box`, `sphere`, `cylinder`, `torus`, `polygon`, `capsule` or `prism` |
 | `operation` | string | `"union"` | `union`, `intersection` or `subtraction` with what came before it among its parent's children, as a CSG shape's |
 | `material` | string | its parent's | A name in `materials`; shapes under it inherit it |
-| `position`, `rotation`, `scale` | `[x, y, z]` | none | Placed in its parent's space; rotation in radians in Godot's YXZ order |
+| `position`, `rotation`, `scale` | `[x, y, z]` | none | Placed in its parent's space; rotation in radians in YXZ order |
 | `flip_faces` | bool | `false` | Turns its faces inside out (not on a combiner) |
 | `array` | object | none | `count` copies (1 to 1024), each placed by the array's `position`, `rotation` and `scale` after the one before, so a rotation turns them round the parent's origin |
 | `children` | array | `[]` | Parts combined with it in order, as a CSG shape's children |
 | `model` | string | none | A top-level part only: another model file whose nodes go under its node, as below |
 
-Shapes take the fields of Godot's CSG node of that shape (`SolidBox3D`'s `size`, `SolidSphere3D`'s
+Shapes take the fields of the solid shape of that kind (`SolidBox3D`'s `size`, `SolidSphere3D`'s
 `radius`, `radial_segments` and `rings`, `SolidCylinder3D`'s `radius`, `height`, `sides` and
 `cone`, `SolidTorus3D`'s radii and sides, `SolidExtrusion3D`'s `polygon`, `mode`, `depth`, `spin_*`
 and `path_*`, `smooth_faces`), with the same defaults and limits; a capsule takes
 `CapsuleGeometry`'s `radius`, `height`, `radial_segments` and `rings` and a prism `PrismGeometry`'s
 `size`, `left_to_right` and `subdivide_*`. A field the shape doesn't take is reported with the
-fields it does. Beyond Godot's:
+fields it does. Beyond those:
 
 - A box or cylinder's `bevel` (meters, default `0`) rounds its edges in `bevel_segments` steps
   (default 4, 1 to 16; 1 cuts them flat). A bevel more than half a box's smallest side, or more
@@ -1102,8 +1090,8 @@ reported at its pointer and left out. A recipe makes at most 4096 shapes in all.
 
 Parts move by their node names, as any model's nodes do: a `Skeleton3D`'s `bone_rotations` turns
 one about its own origin, so a door is a part placed at its hinge whose board is a child beside it.
-Points are where other things attach, as Godot's `Marker3D` in a scene: each becomes a node with
-no mesh, which a [`BoneSocket3D`](#bone-attachments)'s `bone_name` follows and
+Points are where other things attach in a scene: each becomes a node with no mesh, which a
+[`BoneSocket3D`](#bone-attachments)'s `bone_name` follows and
 [`model.inspect`](commands.md#modelinspect)'s brief form lists.
 
 | Field | Type | Default | Meaning |
@@ -1125,7 +1113,7 @@ no mesh, which a [`BoneSocket3D`](#bone-attachments)'s `bone_name` follows and
 its top point.
 
 A top-level part can instead be another model file, by project path: a recipe, glTF, OBJ, FBX or
-`.blend` file, as Godot instances a scene under a node. It takes only `name` (default the file's
+`.blend` file. It takes only `name` (default the file's
 name without its folders and suffix), `position`, `rotation`, `scale` and `array`; its model
 brings its own shapes and materials.
 
@@ -1148,12 +1136,11 @@ a lantern.
 
 A recipe's `variants` are named options of it, such as a damaged crate or a winter tree, and its
 `quality` holds tiers, such as `phone`, that an [export preset](project-format.md#export-presets)'s
-`model_quality` picks. Each form changes the recipe as Godot's inherited scenes override their
-nodes: `parameters` sets parameters the recipe has, `materials` sets fields of its materials (or
-adds one), and `parts` sets fields of every part of that name, top-level or a child, or removes
-it with `null`. A path picks a variant after `::`, wherever a model file goes:
-`Model3D`'s `mesh`, a model part's `model`, `model.inspect`'s `path`. A variant shares
-its file, so it reloads with it.
+`model_quality` picks. Each form changes the recipe: `parameters` sets parameters the recipe has,
+`materials` sets fields of its materials (or adds one), and `parts` sets fields of every part of
+that name, top-level or a child, or removes it with `null`. A path picks a variant after `::`,
+wherever a model file goes: `Model3D`'s `mesh`, a model part's `model`, `model.inspect`'s `path`. A
+variant shares its file, so it reloads with it.
 
 ```json
 "variants": {
@@ -1178,7 +1165,7 @@ with the closest one. Only recipes have variants: `::` after another model file 
 ##### Material files
 
 A `.standard_material.json` file is one [`Surface3D`](#standardmaterial3d) in a file of
-its own, as Godot saves one as a `.tres` resource, so models share a material and its textures:
+its own, so models share a material and its textures:
 `format` (`1`) and the component's fields, texture fields naming images by project path.
 `slash-cli schema standard_material` prints its schema; `scene validate` checks it and that its
 textures decode, `scene format` writes it in canonical form, and exports check and ship it.
@@ -1195,7 +1182,7 @@ textures decode, `scene format` writes it in canonical form, and exports check a
 ```
 
 A recipe's material is the file's path, or an object whose `extends` names the file and whose
-other fields replace the file's, as a Godot scene overrides a resource's properties:
+other fields replace the file's:
 
 ```json
 "materials": {
@@ -1249,7 +1236,7 @@ stool and a lamp.
 
 #### Skeletons and model animations
 
-A glTF or FBX model's nodes are its bones, as Godot's importers make a `Skeleton3D` of them: its
+A glTF or FBX model's nodes are its bones: its
 skins deform their meshes, its animations move its nodes, and an entity's `Animator` and
 `Skeleton3D` pose them. A `.blend` file's armatures and actions come through its glTF, and an FBX
 file's skin deformers and animation stacks are read as [FBX models](#fbx-models) says.
@@ -1263,33 +1250,31 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 }}
 ```
 
-- Nodes are named as Godot names them: `.`, `:`, `@`, `/`, `"` and `%` become `_`, a name used
+- Nodes are named with `.`, `:`, `@`, `/`, `"` and `%` turned into `_`, a name used
   before gets a number from 2 (`Arm`, `Arm2`), and a node with no name is `Mesh` if it has a mesh,
   else `Node`.
-- A mesh with a skin is moved by its joints, as Godot's skeleton shader moves it: each vertex by
-  up to eight joints (`JOINTS_0`, `JOINTS_1` and their weights, normalized), each joint by its
-  node's transform times its inverse bind matrix, with normals and tangents turned the same way.
-  It is placed by its joints, not by the node that holds it, as glTF says, and a vertex with no
-  weight stays where it is. A skin whose joints aren't all in the model's scene is left out.
-- Each animation is one Godot imports: as long as its last key, named as nodes are (`,` and `[`
+- A mesh with a skin is moved by its joints: each vertex by up to eight joints (`JOINTS_0`,
+  `JOINTS_1` and their weights, normalized), each joint by its node's transform times its
+  inverse bind matrix, with normals and tangents turned the same way. It is placed by its
+  joints, not by the node that holds it, as glTF says, and a vertex with no weight stays where
+  it is. A skin whose joints aren't all in the model's scene is left out.
+- Each animation is as long as its last key, named as nodes are (`,` and `[`
   also become `_`; one with no name is `Animation`), and looping linearly when its name begins or
-  ends with `loop` or `cycle` in any case (`Walk-loop`, `cycle_run`), as Godot's import hints.
-  Position, rotation and scale keys play with their interpolation (`STEP` holds each key,
-  `CUBICSPLINE` is sampled 30 times a second); morph target weights are kept as
-  [blend shape](#blend-shapes) tracks.
-- An `Animator` whose `library` is the model plays its animations by name, as Godot's
-  `Animator` plays an imported scene's library. A [`.anim.json` animation](#animations) can
-  come `from` a model's animation and add tracks of its own, such as footsteps. An animation from
-  another model moves the nodes of the same names, so one rig's animations can play on every model
-  made from it, or every [retargeted](#retargeting) humanoid. The pose follows the player's
-  `time` while paused too.
+  ends with `loop` or `cycle` in any case (`Walk-loop`, `cycle_run`). Position, rotation and
+  scale keys play with their interpolation (`STEP` holds each key, `CUBICSPLINE` is sampled 30
+  times a second); morph target weights are kept as [blend shape](#blend-shapes) tracks.
+- An `Animator` whose `library` is the model plays its animations by name. A [`.anim.json`
+  animation](#animations) can come `from` a model's animation and add tracks of its own, such as
+  footsteps. An animation from another model moves the nodes of the same names, so one rig's
+  animations can play on every model made from it, or every [retargeted](#retargeting) humanoid. The
+  pose follows the player's `time` while paused too.
 - A model is posed from its rest, then by its animation, then by its `Skeleton3D`, each time it
   is drawn, so undo, snapshots and dry runs always draw what the components say. Between ticks it
   is drawn part of the way from its last pose, as entities are.
 
 | `Skeleton3D` field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `bone_positions` | Map of `Vec3` | `{}` | A bone's position in its parent, by name, over its animation, as Godot's `set_bone_pose_position` |
+| `bone_positions` | Map of `Vec3` | `{}` | A bone's position in its parent, by name, over its animation |
 | `bone_rotations` | Map of `Vec3` | `{}` | A bone's rotation in its parent, in radians as `Transform3D`'s, by name |
 | `bone_scales` | Map of `Vec3` | `{}` | A bone's scale, by name |
 | `show_rest_only` | `bool` | `false` | Draw the model at rest, whatever plays |
@@ -1300,20 +1285,19 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
 glTF file and from the same arm as an FBX file.
 
-Skinned and blend-shaped meshes move on the GPU where the device can, as Godot's skeleton
-compute shader moves them: the GPU device on Vulkan and Metal, and WebGPU in a browser, keep each
-surface's rest vertices, weights and blend shapes on the GPU and move them in a compute pass
-before the frame draws, sending only the joints and shape weights each frame. Direct3D 12, the
-OpenGL devices, the software device and meshes with `Flesh3D` skin on the CPU instead. Both give
-the same vertices, so the choice changes no pixels.
+Skinned and blend-shaped meshes move on the GPU where the device can: the GPU device on Vulkan
+and Metal, and WebGPU in a browser, keep each surface's rest vertices, weights and blend shapes
+on the GPU and move them in a compute pass before the frame draws, sending only the joints and
+shape weights each frame. Direct3D 12, the OpenGL devices, the software device and meshes with
+`Flesh3D` skin on the CPU instead. Both give the same vertices, so the choice changes no pixels.
 
 #### Blend shapes
 
-A glTF model's morph targets are its meshes' blend shapes, as Godot's importer makes them: each
-target is a shape that moves the mesh's vertices, named by the mesh's `extras.targetNames` (else
-`morph_0`, `morph_1`, ...) with the mesh's `weights` as each shape's value at rest.
-`Model3D`'s `blend_shapes` (default `{}`) sets shapes by name, as Godot's
-`blend_shapes/<name>` properties, over every mesh of the model that has the shape:
+A glTF model's morph targets are its meshes' blend shapes: each target is a shape that moves the
+mesh's vertices, named by the mesh's `extras.targetNames` (else `morph_0`, `morph_1`, ...) with
+the mesh's `weights` as each shape's value at rest. `Model3D`'s `blend_shapes` (default `{}`)
+sets shapes by name, over every mesh of the model
+that has the shape:
 
 ```json
 "face": {"components": {
@@ -1323,13 +1307,12 @@ target is a shape that moves the mesh's vertices, named by the mesh's `extras.ta
 }}
 ```
 
-- A mesh is moved as Godot's skeleton shader moves it, before its skin: each vertex by the sum of
-  each shape's offset times its value, its normal and tangent by theirs and normalized again. A
-  value near 0 (within 0.0001) is skipped, and values can go below 0 or above 1.
-- A model animation's morph target weights are a track per shape, played as Godot's
-  `AnimationMixer` blends a blend shape track: each moves the value its weight of the way from the
-  value set (`blend_shapes`, else the mesh's) to the track's. A `.anim.json` value track on
-  `Model3D/blend_shapes/<name>` animates the field as any other.
+- A mesh is moved, before its skin: each vertex by the sum of each shape's offset times its
+  value, its normal and tangent by theirs and normalized again. A value near 0 (within 0.0001) is
+  skipped, and values can go below 0 or above 1.
+- A model animation's morph target weights are a track per shape, each moves the value its weight of
+  the way from the value set (`blend_shapes`, else the mesh's) to the track's. A `.anim.json` value
+  track on `Model3D/blend_shapes/<name>` animates the field as any other.
 - [`model.inspect`](commands.md#modelinspect) lists each mesh's shapes with their values at rest,
   and its `brief` the shapes' names.
 - `write_gltf` and `write_glb` (so `model.cleanup` and the library) keep them.
@@ -1339,43 +1322,43 @@ target is a shape that moves the mesh's vertices, named by the mesh's `extras.ta
 #### Retargeting
 
 Humanoids rigged in different tools name and turn their bones differently.
-[`model.retarget`](commands.md#modelretarget) makes a rigged model's skeleton Godot's
-`SkeletonProfileHumanoid`, as Godot's importer does with a `BoneMap`, so animations made for one
-retargeted humanoid play on every other:
+[`model.retarget`](commands.md#modelretarget) makes a rigged model's skeleton a standard
+humanoid with a bone map, so animations made for one retargeted humanoid play
+on every other:
 
-- The bone map says which of the model's bones is each of the profile's 56 (`Root`, `Hips`,
+- The bone map says which of the model's bones is each of the humanoid profile's 56 (`Root`, `Hips`,
   `Spine`, `Chest`, `UpperChest`, `Neck`, `Head`, then each side's shoulder, arm, hand, five
   fingers of three bones, leg, foot and toes, as `LeftUpperArm`, `LeftIndexProximal`,
-  `RightLowerLeg`). It is guessed as Godot's `BoneMapper` guesses it, from the words in the
+  `RightLowerLeg`). It is guessed from the words in the
   bones' names and where they are in the hierarchy, so Mixamo's and Blender's names map with no
   help. The skeleton is the model's largest.
 - The nodes above the skeleton fold into it: their turn into its roots and their scale into
-  every bone's position, as Godot's `apply_node_transforms`, so a rig in centimeters under an
-  armature scaled by 0.01 comes out in meters.
+  every bone's position, so a rig in centimeters under an armature scaled by 0.01 comes out in
+  meters.
 - Mapped bones take the profile's names; a node that already has one moves aside (`Spine`
   becomes `Spine2`).
 - Each mapped bone's rest is turned to lie as the profile's does (y along the bone, z forward),
   bones that aren't mapped and have none mapped under them keep their rest in the world, and every
-  skin, animation and node a bone carries turns with it, so the model looks and moves as it did
-  (Godot's Overwrite Axis). `fix_silhouette` first turns bones that point more than 15 degrees
-  away from the profile's T-pose toward it, as for an A-pose.
+  skin, animation and node a bone carries turns with it, so the model looks and moves as it did.
+  `fix_silhouette` first turns bones that point more than 15 degrees away from the profile's
+  T-pose toward it, as for an A-pose.
 - Each animation gets a rotation key at its start for each mapped bone it doesn't move, and loses
   the position tracks of mapped bones other than `Root` and `Hips`, whose lengths differ between
   characters.
 
-Godot also divides position tracks by the skeleton's motion scale, the hips' height, which a
-glTF file can't keep. Instead, an animation from another model whose motion scale differs (both
-skinned, both with a node named `Hips`) has its bones' position tracks scaled by the ratio, so a
-short character's hips move less. [examples/humanoid-retarget](../../examples/humanoid-retarget/)
-plays a Mixamo hero's wave on a Blender knight.
+A glTF file can't keep a skeleton's motion scale, the hips' height. Instead, an animation from
+another model whose motion scale differs (both skinned, both with a node named `Hips`) has its
+bones' position tracks scaled by the ratio, so a short character's hips move less.
+[examples/humanoid-retarget](../../examples/humanoid-retarget/) plays a Mixamo hero's wave on a
+Blender knight.
 
 #### IK modifiers
 
-`TwoBoneIK3D`, `FabrikIK3D`, `CcdIK3D` and `JacobianIK3D` are Godot 4.6's IK modifiers: they turn a
+`TwoBoneIK3D`, `FabrikIK3D`, `CcdIK3D` and `JacobianIK3D` are IK modifiers: they turn a
 model's bones after its animations and `Skeleton3D`, so a hand reaches a target while the arm
 walks. Each goes on the entity that draws the model or on an entity in its `Transform3D`
-`children` (Godot's modifier children of a `Skeleton3D`), and names bones by name and target and
-pole entities by ID, which may be anywhere in the world.
+`children`, and names bones by name and target and pole entities by ID, which may be anywhere in
+the world.
 
 ```json
 "goal": {"components": {"Transform3D": {"position": [1, 1, 0]}}},
@@ -1388,18 +1371,18 @@ pole entities by ID, which may be anywhere in the world.
 }}
 ```
 
-- They run in Godot's order: those on the drawing entity, then those on each of its children in
+- They run in this order: those on the drawing entity, then those on each of its children in
   list order; on one entity, `TwoBoneIK3D`, `FabrikIK3D`, `CcdIK3D`, `JacobianIK3D`,
   `BoneCopy3D`, `BoneLookAt3D`, then `BoneSimulation3D`. Each setting in
   `settings` is one limb or chain, solved in turn.
 - `TwoBoneIK3D` bends two bones so the end reaches the target, with the middle joint on the
-  pole's side, as Godot's: straight at the target when it is out of reach. It needs a target
-  and a pole. `pole_direction` rolls the middle bone so that axis faces the pole.
-- `FabrikIK3D`, `CcdIK3D` and `JacobianIK3D` turn every bone from `root_bone` to `end_bone`. Like
-  Godot's, each joint turns at most `angular_delta_limit` a step and they take at most
-  `max_iterations` steps a tick, carrying the chain from tick to tick, so it eases toward a
-  moving target; the chain is kept beside the components, so saving, snapshots and undo leave it
-  alone. `deterministic` solves from the pose each time instead.
+  pole's side: straight at the target when it is out of reach. It needs a target and a pole.
+  `pole_direction` rolls the middle bone so that axis faces the pole.
+- `FabrikIK3D`, `CcdIK3D` and `JacobianIK3D` turn every bone from `root_bone` to `end_bone`. Each
+  joint turns at most `angular_delta_limit` a step and they take at most `max_iterations` steps a
+  tick, carrying the chain from tick to tick, so it eases toward a moving target; the chain is kept
+  beside the components, so saving, snapshots and undo leave it alone. `deterministic` solves from
+  the pose each time instead.
 - A chain's `joints` limit its bones by name: `rotation_axis` turns one only about an axis, and
   a `"cone"` limitation keeps it within `limitation_angle` (the cone's full width, in radians)
   of the way it points at rest.
@@ -1414,7 +1397,7 @@ pole entities by ID, which may be anywhere in the world.
 | `settings` | Array of settings | `[]` | One limb each: `root_bone`, `middle_bone`, `end_bone`, `target`, `pole`, and those below |
 | `active` | `bool` | `true` | Whether it turns bones |
 | `influence` | `float` | `1` | How far its result replaces the pose, from 0 to 1 |
-| `mutable_bone_axes` | `bool` | `true` | Follow bones the pose moves rather than their rest, as Godot's |
+| `mutable_bone_axes` | `bool` | `true` | Follow bones the pose moves rather than their rest |
 
 | Two-bone setting field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1440,9 +1423,9 @@ pole entities by ID, which may be anywhere in the world.
 | `extend_end_bone`, `end_bone_direction`, `end_bone_length` | | `false`, `"from_parent"`, `0` | As a two-bone setting's |
 | `joints` | Map of joints | `{}` | A bone's limits, by name: `rotation_axis` (`"all"`, `"x"`, `"y"`, `"z"` or `"custom"` with `rotation_axis_vector`), `limitation` (`""` or `"cone"`), `limitation_angle` (default a quarter turn), `limitation_rotation_offset`, and `limitation_right_axis` with `limitation_right_axis_vector` |
 
-`BoneLookAt3D` and `BoneCopy3D` are Godot 4.6's too, ported line for line
-(`engine/scene3d/src/bone_constraints.cpp`): one turns a bone to look at an entity, the other
-copies bones' turns onto others, which is how a twist bone takes half its limb's roll.
+`BoneLookAt3D` and `BoneCopy3D` (`engine/scene3d/src/bone_constraints.cpp`): one turns a bone to
+look at an entity, the other copies bones' turns onto others, which is how a twist bone takes half
+its limb's roll.
 
 ```json
 "eyes": {"components": {"Transform3D": {},
@@ -1455,18 +1438,16 @@ copies bones' turns onto others, which is how a twist bone takes half its limb's
     "axis_x_enabled": false, "axis_z_enabled": false}]}}}
 ```
 
-- `BoneLookAt3D` turns `bone` so its `forward_axis` points at `target`, first about
-  its `primary_rotation_axis`, then (with `use_secondary_rotation`) about the axis square to
-  both, from its pose (`relative`) or its rest. The look starts from the bone itself, another
-  bone (`origin_from` `"specific_bone"` with `origin_bone`) or an entity (`"external_node"` with
-  `origin_entity`), moved by `origin_offset`. With `use_angle_limitation`, each axis
-  turns at most half of `primary_limit_angle` and `secondary_limit_angle` either way
+- `BoneLookAt3D` turns `bone` so its `forward_axis` points at `target`, first about its
+  `primary_rotation_axis`, then (with `use_secondary_rotation`) about the axis square to both,
+  from its pose (`relative`) or its rest. The look starts from the bone itself, another bone
+  (`origin_from` `"specific_bone"` with `origin_bone`) or an entity (`"external_node"` with
+  `origin_entity`), moved by `origin_offset`. With `use_angle_limitation`, each axis turns at
+  most half of `primary_limit_angle` and `secondary_limit_angle` either way
   (`symmetry_limitation`), or the `_positive_` and `_negative_` limits each side, easing in from
   each `_damp_threshold`. When the look flips across a limit or starts, it eases over `duration`
-  seconds by `transition_type` and `ease_type` (Godot's tween transitions: `"linear"`, `"sine"`,
-  `"quint"`, `"quart"`, `"quad"`, `"expo"`, `"elastic"`, `"cubic"`, `"circ"`, `"bounce"`,
-  `"back"`, `"spring"`; `"in"`, `"out"`, `"in_out"`, `"out_in"`). The easing is stepped once a
-  tick, as chains are.
+  seconds by `transition_type` and `ease_type`. The easing is stepped once a tick, as chains
+  are.
 - `BoneCopy3D`'s `settings` each copy `reference_bone`'s pose (or with
   `reference_type` `"node"`, `reference_node`'s place) onto `apply_bone`, `amount` of the way:
   its position, rotation and scale (`copy_position`, `copy_rotation`, `copy_scale`), each axis
@@ -1486,7 +1467,7 @@ bones where their physics bodies are ([ragdolls](#ragdolls)).
 
 #### Bone attachments
 
-A `BoneSocket3D` is Godot's: an entity that goes where a bone of a model is posed, so what
+A `BoneSocket3D` is an entity that goes where a bone of a model is posed, so what
 hangs under it in its `Transform3D` `children` moves with the bone, such as a sword in a hand or
 a hit box on a head. Put it in the `Transform3D` `children` of the entity that draws the model,
 or name that entity in `skeleton_entity` to follow a model from anywhere in the world.
@@ -1509,9 +1490,9 @@ or name that entity in `skeleton_entity` to follow a model from anywhere in the 
 
 - Each tick, after the animations and skeleton modifiers (in the `skeleton_modifiers` system,
   before physics), its `Transform3D` becomes what puts it at the drawing entity's transform times
-  the bone's, scale included, as Godot's `BoneAttachment3D`. Bodies and areas under it move with
-  it, so hit boxes follow the animation.
-- Godot's `override_pose`, which poses the bone from the attachment, isn't there yet: pose a
+  the bone's, scale included. Bodies and areas under it move with it, so hit boxes follow the
+  animation.
+- A socket doesn't pose the bone from the attachment: pose a
   bone with `Skeleton3D` or an IK modifier.
 
 | `BoneSocket3D` field | Type | Default | Meaning |
@@ -1525,13 +1506,12 @@ or name that entity in `skeleton_entity` to follow a model from anywhere in the 
 
 ### ModelInstances3D
 
-`ModelInstances3D` draws one model many times, as Godot's `MultiMeshInstance3D` with a
-`MultiMesh` of 3D transforms: its `mesh` (a model file, as `Model3D`'s, or a
-[made mesh](#made-textures-and-meshes)) at each of its `instances`, each placed in the entity's
-space by a `position`, `rotation` (radians, YXZ) and `scale`, as a `Transform3D`'s fields.
-`visible_instance_count` (default `-1`, all) draws only the first ones, as Godot's; `layers`,
-`cast_shadow` and `lod_bias` are `Model3D`'s, and a `Surface3D` on the entity
-replaces the model's materials. [`scatter.run`](commands.md#scatterrun) makes them from
+`ModelInstances3D` draws one model many times with a `MultiMesh` of 3D transforms: its `mesh` (a
+model file, as `Model3D`'s, or a [made mesh](#made-textures-and-meshes)) at each of its
+`instances`, each placed in the entity's space by a `position`, `rotation` (radians, YXZ) and
+`scale`, as a `Transform3D`'s fields. `visible_instance_count` (default `-1`, all) draws only
+the first ones; `layers`, `cast_shadow` and `lod_bias` are `Model3D`'s, and a `Surface3D` on the
+entity replaces the model's materials. [`scatter.run`](commands.md#scatterrun) makes them from
 [scatter rules](#scatter-rules).
 
 ```json
@@ -1548,13 +1528,13 @@ at `/components/ModelInstances3D/mesh` once, not once an instance.
 
 ### CSG shapes
 
-Seven components are Godot 4.6's CSG nodes: shapes that add to, cut from or intersect each other
-to build level geometry, as in Godot's editor. A shape's children (entities in its `Transform3D`
-`children` that are CSG shapes too) change it in their order, each placed by its own transform;
-a hidden child is left out. Only the root, a CSG shape whose parent isn't one, draws, collides
-and bakes into navigation meshes: everything under it makes one mesh, with a surface per
-material. Faces keep the `Surface3D` of the shape they came from, so a hole cut by a
-box shows that box's material, and faces from a shape with none get Godot's default material.
+Seven components are solid shapes that add to, cut from or intersect each other
+to build level geometry. A shape's children (entities in its `Transform3D` `children` that are
+CSG shapes too) change it in their order, each placed by its own transform; a hidden child is
+left out. Only the root, a CSG shape whose parent isn't one, draws, collides and bakes into
+navigation meshes: everything under it makes one mesh, with a surface per material. Faces keep
+the `Surface3D` of the shape they came from, so a hole cut by a box shows that box's material,
+and faces from a shape with none get a default material.
 
 ```json
 "house": {"components": {
@@ -1577,33 +1557,32 @@ box shows that box's material, and faces from a shape with none get Godot's defa
 | `SolidExtrusion3D` | `polygon` (`[x, y]` points in the entity's xy plane; default a unit square), `mode` `"depth"` (pushed `depth` `1` along -z), `"spin"` (turned `spin_degrees` `360` around y in `spin_sides` `8` steps) or `"path"` (pushed along a [path](#paths), below), `smooth_faces` `false` |
 | `SolidMesh3D` | `mesh` (a `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file, its meshes placed as at rest; `""` for the entity's primitive mesh). The mesh must be closed |
 
-Each also has the fields of Godot's `CSGShape3D`:
+Each also has these fields:
 
 - `operation` (`"union"`): how it changes its parent, `"union"`, `"intersection"` or
   `"subtraction"`. A root's operation is unused.
 - `use_collision` (`false`), `collision_layer` and `collision_mask` (`1`): a root with
   `use_collision` is a static body with its triangles as a concave shape, for
   [3D physics](#3d-physics). Shapes under a root leave these unused.
-- `calculate_tangents` (`true`): a root makes tangents for normal maps, as Godot's does.
+- `calculate_tangents` (`true`): a root makes tangents for normal maps.
 - `layers` (`1`) and `cast_shadow` (`"on"`): as a [`Model3D`'s](#meshes), for a root.
 - `flip_faces` (`false`, not on `SolidGroup3D`): turns the shape inside out.
 
-Shapes are made as Godot makes them, face for face, then combined with
-[Manifold](https://github.com/elalish/manifold) in Godot's order, so a level built in Godot
-builds the same here. A root keeps its mesh until a shape under it changes; moving the root
+Shapes are combined with
+[Manifold](https://github.com/elalish/manifold) in order. A root keeps its mesh until a shape under it changes; moving the root
 alone doesn't remake it. [`solid.get`](commands.md#csgget) returns what a root makes.
 
 In `"path"` mode a `SolidExtrusion3D` pushes its polygon along the `Spline3D` of the entity its
-`path` names, as Godot's `MODE_PATH`: a ring of the polygon every `path_interval` (`1`)
-meters (`path_interval_type` `"distance"`), or as many rings as the path has points divided by
-`path_interval` (`"subdivide"`), each facing the way the curve goes. `path_rotation` turns the rings:
-`"polygon"` not at all, `"path"` to face along the curve, `"path_follow"` (the default) with its
-up vectors and tilt too; `path_rotation_accurate` (`false`) takes their direction from the curve
-itself rather than the next ring. `path_simplify_angle` (`0`) merges rings that turn less than
-that many degrees, `path_joined` (`false`) joins the last ring to the first with no ends, and
-`path_continuous_u` (`true`) and `path_u_distance` (`1`) lay the texture along it. The path's
-place in the world counts unless `path_local` (`false`), as in Godot, so leave the CSG root at
-the origin, and a path that changes or moves remakes the mesh.
+`path` names: a ring of the polygon every `path_interval` (`1`) meters (`path_interval_type`
+`"distance"`), or as many rings as the path has points divided by `path_interval` (`"subdivide"`),
+each facing the way the curve goes. `path_rotation` turns the rings: `"polygon"` not at all,
+`"path"` to face along the curve, `"path_follow"` (the default) with its up vectors and tilt too;
+`path_rotation_accurate` (`false`) takes their direction from the curve itself rather than the next
+ring. `path_simplify_angle` (`0`) merges rings that turn less than that many degrees, `path_joined`
+(`false`) joins the last ring to the first with no ends, and `path_continuous_u` (`true`) and
+`path_u_distance` (`1`) lay the texture along it. The path's place in the world counts unless
+`path_local` (`false`), so leave the CSG root at the origin, and a path that changes or moves
+remakes the mesh.
 
 A shape that can't be made is left out and reported: a `polygon` with fewer than 3 points, no
 area or edges that cross, a path mode `path` that names no `Spline3D` or one with fewer than
@@ -1614,7 +1593,7 @@ radii are equal, or a root whose result is empty. An entity has at most one CSG 
 
 ### Grid maps
 
-A `BlockMap3D` is Godot 4.6's: items of a mesh library placed in a grid of cells, one item per
+A `BlockMap3D` holds items of a mesh library placed in a grid of cells, one item per
 cell, to build levels from blocks. Cells are in the entity's `Transform3D` space. Like a
 [tile map layer](#tile-map-layers), it writes its cells as text: a `legend` of short keys, and
 `floors`, each the rows of keys at one height `y`. A row is a string of keys for the cells from
@@ -1646,28 +1625,26 @@ toward +z.
 | `legend` | `{}` | key to item: the item's name, then `:` and an orientation, `1` to `23`, when it is turned |
 | `floors` | `[]` | `y` `0`, `origin` `[0, 0]` and `rows` |
 
-- **Keys and rows** are as a tile map layer's: one to three characters, all the same length,
-  `.` an empty cell. Cells are from -32768 to 32767 on each axis, as in Godot. Commands write
-  the map in canonical form: a floor for each `y` in use, lowest first, its origin the corner of
-  its cells nearest -x and -z, rows ending at their last item, keys kept for what they stood for
-  and new keys going to the most used items first, each the first letter of the item's name
-  where that is free.
-- **Orientation** is Godot's orthogonal index: one of the 24 ways a cell's item can face, as
-  Godot's `GridMap::get_basis_with_orthogonal_index`. `0` is unturned; `16`, `10` and `22` turn
-  it 90, 180 and 270 degrees about y.
+- **Keys and rows** are as a tile map layer's: one to three characters, all the same length, `.`
+  an empty cell. Cells are from -32768 to 32767 on each axis. Commands write the map in
+  canonical form: a floor for each `y` in use, lowest first, its origin the corner of its cells
+  nearest -x and -z, rows ending at their last item, keys kept for what they stood for and new
+  keys going to the most used items first, each the first letter of the item's name where that
+  is free.
+- **Orientation** is an orthogonal index: one of the 24 ways a cell's item can face. `0` is
+  unturned; `16`, `10` and `22` turn it 90, 180 and 270 degrees about y.
 - **Where a cell is.** A cell's item is turned by its orientation, scaled by `cell_scale` and
-  placed at `cell × cell_size`, moved half a cell along each centered axis, as Godot's
-  `map_to_local`. A point is in the cell `floor(point / cell_size)`.
-- **Drawing.** Cells are grouped into octants of `cell_octant_size` cells a side, as Godot
-  groups them, and each octant's items draw as one mesh per material and `mesh_cast_shadow`. A
+  placed at `cell × cell_size`, moved half a cell along each centered axis. A point is in the
+  cell `floor(point / cell_size)`.
+- **Drawing.** Cells are grouped into octants of `cell_octant_size` cells a side,
+  and each octant's items draw as one mesh per material and `mesh_cast_shadow`. A
   change to some cells remakes only their octants.
 - **Collision.** With any item shapes, the BlockMap3D is one static body of every cell's shapes, on
   its `collision_layer` and `collision_mask`. [`physics.raycast`](commands.md#physicsraycast)
   returns the `cell` it hit and its `item`.
 - **Navigation.** With `bake_navigation`, each cell whose item has a `navigation_mesh` is a
   region on the item's `navigation_layers`, and neighboring cells join where their edges meet.
-  [Baking](#baking) a navigation mesh takes the BlockMap3D's meshes, or its shapes, as Godot's
-  `GridMap::navmesh_parse_source_geometry` does.
+  [Baking](#baking) a navigation mesh takes the BlockMap3D's meshes, or its shapes.
 - **Commands.** [`blockmap.set`](commands.md#gridmapset) places or erases an item in cells or a
   box of them, and [`blockmap.get`](commands.md#gridmapget) reads the map, cells or the cells
   points are in.
@@ -1678,7 +1655,7 @@ toward +z.
 
 #### Mesh libraries
 
-A `.blocks.json` file is Godot's `MeshLibrary`: items by name (1 to 64 characters, no `:`),
+A `.blocks.json` file is a mesh library: items by name (1 to 64 characters, no `:`),
 each what a cell holding it draws, collides as and walks on, in the cell's space.
 `slash-cli schema blocks` prints its JSON Schema, and `scene validate` and `scene format` take
 it.
@@ -1706,7 +1683,7 @@ it.
 | --- | --- | --- |
 | `mesh` | `""` | A `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file's meshes, as they are at rest |
 | `primitive` | none | Or one [primitive mesh](#meshes) by its component's name, such as `{"BoxGeometry": {}}` |
-| `material` | none | `Surface3D` fields: takes the place of the model's materials, or colors the primitive; Godot's default material without one |
+| `material` | none | `Surface3D` fields: takes the place of the model's materials, or colors the primitive; a default material without one |
 | `mesh_transform` | none | `position`, `rotation` and `scale` placing the mesh in the cell |
 | `mesh_cast_shadow` | `"on"` | As a `Model3D`'s `cast_shadow` |
 | `shapes` | `[]` | `Collider3D` fields, each placed by its `position` and `rotation`; not `world_boundary` |
@@ -1718,8 +1695,7 @@ it.
 
 ### Heightmap terrains
 
-An `Terrain3D` is a heightmap terrain, as the Terrain3D plugin for Godot (zylann.hterrain), since
-Godot has no terrain node of its own: `resolution` by `resolution` heights a cell apart, from the
+A `Terrain3D` is a heightmap terrain: `resolution` by `resolution` heights a cell apart, from the
 entity's origin toward +x and +z in its `Transform3D` space, stretched by `map_scale`. Its
 heights, ground texture weights and colors are image files that the
 [terrain commands](commands.md#terraingenerate) write, so no one edits them by hand.
@@ -1806,9 +1782,9 @@ Each texture is Terrain3D's Classic4 ground layer:
 
 ### Surface3D
 
-Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are
-project paths of PNG, JPEG, BMP or KTX2 files, and `""` leaves one out. Textures repeat, as
-Godot's do in 3D, unless `repeat` is off.
+`Surface3D` is the surface material of a mesh. Colors are sRGB; textures are
+project paths of PNG, JPEG, BMP or KTX2 files, and `""` leaves one out. Textures repeat in 3D,
+unless `repeat` is off.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -1817,7 +1793,7 @@ Godot's do in 3D, unless `repeat` is off.
 | `metallic`, `metallic_texture`, `metallic_texture_channel` | `0`, `""`, `"red"` | How metallic, times a channel of the texture (`"red"`, `"green"`, `"blue"`, `"alpha"` or `"gray"`) |
 | `metallic_specular` | `0.5` | Specular strength of the non-metallic part |
 | `roughness`, `roughness_texture`, `roughness_texture_channel` | `1`, `""`, `"red"` | How rough, as `metallic` |
-| `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit: the color (plus the texture) made linear, times the multiplier, as Godot |
+| `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit: the color (plus the texture) made linear, times the multiplier |
 | `emission_intensity` | `1000` | With [physical light units](#physical-light-units), the emission's brightness in nits |
 | `normal_enabled`, `normal_scale`, `normal_texture` | `false`, `1`, `""` | A tangent-space normal map |
 | `shading` | `"per_pixel"` | `"unshaded"` draws the albedo with no lighting |
@@ -1831,46 +1807,47 @@ Godot's do in 3D, unless `repeat` is off.
 | `clearcoat_enabled`, `clearcoat`, `clearcoat_roughness` | `false`, `1`, `0.5` | A glossy coat over the surface (car paint, lacquer, an eye's wet layer), lit about the mesh's own normal rather than the normal map's, with its own highlight and its own reflection of the sky |
 | `anisotropy_enabled`, `anisotropy` | `false`, `0` | Highlights stretched along the mesh's tangents (above 0) or across them (below 0, down to -1), as hair cards and brushed metal; reflections bend the same way |
 
-`"alpha_hash"` is Godot's alpha hash (Wyman and McGuire's hashed alpha testing): each pixel is
+`"alpha_hash"` is hashed alpha testing (Wyman and McGuire): each pixel is
 drawn whole or not at all, where the alpha reaches a threshold made from noise on cells of the
 mesh about a pixel wide, at the two scales nearest the pixel's size, so a surface of alpha 0.3
 keeps about 30% of its pixels, the dither stays put as the mesh moves, and it draws as an opaque
 mesh: in depth order, in the prepass and with shadows that are dithered the same way. TAA or
-FSR smooth the dither into a fade. The noise is a hash of whole numbers (PCG3D) where Godot's
-uses sines, so every device keeps the same pixels; ray-traced and path-traced effects take the
+FSR smooth the dither into a fade. The noise is a hash of whole numbers (PCG3D),
+so every device keeps the same pixels; ray-traced and path-traced effects take the
 surface's alpha as the share of rays it stops, as they take a blended one's.
 | `subsurface_enabled`, `subsurface_strength`, `subsurface_skin_mode` | `false`, `0`, `false` | `clustered`: light [scattered under the surface](#subsurface-scattering), as skin, wax and marble; `subsurface_skin_mode` spreads red further than green and blue, as skin does |
 | `subsurface_transmittance_enabled`, `subsurface_transmittance_color`, `subsurface_transmittance_depth`, `subsurface_transmittance_boost` | `false`, `[1, 1, 1, 1]`, `0.1`, `0` | With subsurface scattering, light coming through thin parts (ears, leaves, fingers) from lights behind them that cast shadows: the color it takes (skin's own with skin mode), how deep it reaches in meters, and how far round the lit side it shows |
 | `billboard`, `billboard_keep_scale` | `"disabled"`, `false` | Face the camera: `"enabled"`, `"fixed_y"` (turned about y only) or `"particles"` (turned by each [3D particle](#3d-particles)'s angle); `billboard_keep_scale` keeps the mesh's scale, which billboards otherwise drop |
 | `particles_anim_h_frames`, `particles_anim_v_frames`, `particles_anim_loop` | `1`, `1`, `false` | With `"particles"`, the albedo texture's columns and rows of frames each particle steps through, and whether they start again after the last |
-| `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
+| `filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
 | `repeat` | `true` | Textures tile past their edges; `false` stretches the edge texels, as a glTF sampler that clamps |
 
-Rim, clearcoat and anisotropy follow Godot's scene shader, on every renderer and device. Their
+Rim, clearcoat and anisotropy work on every renderer and device. Their
 textures (`rim_texture`, `clearcoat_texture`, `anisotropy_flowmap`) aren't read yet: the
-highlight runs along Godot's default flow map.
+highlight runs along a default flow map.
 
 ### Subsurface scattering
 
-Subsurface scattering is Godot 4.6's Forward+ screen-space blur after Jorge Jimenez's separable
-kernels. After the opaque meshes, the meshes whose material has `subsurface_enabled` and a
-strength above 0 draw again where they are seen, keeping only their emitted, diffuse and ambient
-light; that light is blurred across the screen and then down it by the kernel of the project's
-quality ([project-format.md](project-format.md#subsurface-scattering)), each pixel by its
-strength (the blur is `scale` of the screen wide at full strength, narrowing with distance by
-`depth_scale`) and stopping where no such mesh shows, and the change is added to the frame before
-transparent meshes draw. Specular light is left sharp, as Godot keeps it apart. Skin mode blurs
-each channel by skin's own weights.
+Subsurface scattering is a screen-space blur in the clustered renderer, after Jorge
+Jimenez's separable kernels. After the opaque meshes, the meshes whose material has
+`subsurface_enabled` and a strength above 0 draw again where they are seen, keeping only their
+emitted, diffuse and ambient light; that light is blurred across the screen and then down it by
+the kernel of the project's quality
+([project-format.md](project-format.md#subsurface-scattering)), each pixel by its strength (the
+blur is `scale` of the screen wide at full strength, narrowing with distance by `depth_scale`)
+and stopping where no such mesh shows, and the change is added to the frame before transparent
+meshes draw. Specular light is left sharp. Skin mode blurs each channel
+by skin's own weights.
 
 The transmittance lights a mesh's side away from a light by how much of the mesh the light
 passes through, which is measured in the light's shadow map: a light that casts no shadow lights
 nothing through it. Each light's `shadow_transmittance_bias` moves where it is measured.
-Compatibility draws neither, nor do probe captures, path-traced frames or
-[spatial shaders](#spatial-shaders); `subsurf_scatter_texture` and
-`subsurf_scatter_transmittance_texture` aren't read yet.
+The compatibility renderer draws neither, nor do probe captures, path-traced frames or
+[spatial shaders](#spatial-shaders); the subsurface and transmittance textures
+aren't read yet.
 
 Opaque and alpha scissor meshes draw by depth (in 16 slices out to the camera's far plane), then
-by mesh, then nearest first, then alpha meshes farthest first, as Godot sorts them. Copies of one
+by mesh, then nearest first, then alpha meshes farthest first. Copies of one
 mesh with one material next to each other in that order draw as instances of one draw, each
 culled on its own where the device culls. A texture that can't load is left out, with a warning and a problem in
 `frame.summary`.
@@ -1890,8 +1867,7 @@ culled on its own where the device culls. A texture that can't load is left out,
 | `doppler_tracking` | `"disabled"` | `idle_step` or `physics_step`: measure how fast it moves, for [3D sound](#3d-sound) heard through it |
 | `compositor` | `""` | A [`.pipeline.json` file](#compositor-shaders-and-pipeline-files) used in place of the `Environment3D`'s while this camera is current |
 
-The camera's scale is ignored, as Godot's is. Depth is reversed, so far scenes keep their
-precision.
+The camera's scale is ignored. Depth is reversed, so far scenes keep their precision.
 
 ### Lights
 
@@ -1901,7 +1877,7 @@ Up to 8 directional lights and 512 omni and spot lights shine at once, the direc
 first and each kind in tree order, and hidden ones don't. The project's
 [rendering method](project-format.md#rendering-methods) picks how: `clustered`, the default,
 lights each pixel with only the omni and spot lights whose range reaches it, and
-`compatibility`, as the OpenGL drivers always do, with the first 64. Their fields are Godot's:
+`compatibility`, as the OpenGL drivers always do, with the first 64. Their fields:
 
 | Field | Default | Lights | Meaning |
 | --- | --- | --- | --- |
@@ -1910,7 +1886,7 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `light_temperature` | `6500` | all | With [physical light units](#physical-light-units), the color's black body temperature in kelvin, 1000 to 20000, which tints `light_color` |
 | `light_intensity_lux` | `100000` | directional | With physical light units, its brightness in lux (100000 is the noon sun) |
 | `light_intensity_lumens` | `1000` | omni, spot | With physical light units, its brightness in lumens (about a 75 W bulb's) |
-| `light_projector` | `""` | omni, spot | `clustered`: project path of a texture the light casts, as Godot's: through a spot light's cone, or an omni light's [dual paraboloid](#light-projectors-and-ies-profiles); its color times its alpha tints the light |
+| `light_projector` | `""` | omni, spot | `clustered`: project path of a texture the light casts: through a spot light's cone, or an omni light's [dual paraboloid](#light-projectors-and-ies-profiles); its color times its alpha tints the light |
 | `light_projector_scroll` | `[0, 0]` | omni, spot | Moves the projector's texture coordinates by this much a second, wrapping, so it scrolls (clouds, water caustics). SlashEngine's own |
 | `light_ies` | `""` | omni, spot | `clustered`: project path of an IES LM-63 profile (`.ies`) whose pattern the light shines in, baked into its projector. SlashEngine's own, after Unreal's IES textures |
 | `light_specular` | `0.5` | all | How strong its highlights are |
@@ -1933,14 +1909,14 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `directional_shadow_pancake_size` | `20` | directional | How far behind each cascade casters still cast, in meters |
 | `light_angular_distance` | `0` | directional | Degrees across its sun's radius in the [sky](#skies), 0 to 90; [ray-traced shadows](#ray-traced-shadows) spread their rays over a disk this many degrees across, so they soften with distance from what casts them |
 | `sky_mode` | `"light_and_sky"` | directional | `"light_only"` lights meshes and shows no sun in the sky; `"sky_only"` shows a sun and lights nothing |
-| `light_bake_mode` | `"dynamic"` | all | How a [BakedLighting3D](#baked-lightmaps) bakes it: `"disabled"` leaves it out, `"dynamic"` bakes only its bounces and it lights live, `"static"` bakes it whole and it doesn't light lightmapped meshes live. [VoxelGIs](#voxelgi) leave out omni and spot lights that are `"disabled"` |
+| `light_bake_mode` | `"dynamic"` | all | How a [BakedLighting3D](#baked-lightmaps) bakes it: `"disabled"` leaves it out, `"dynamic"` bakes only its bounces and it lights live, `"static"` bakes it whole and it doesn't light lightmapped meshes live. [`VoxelLighting3D`s](#voxelgi) leave out omni and spot lights that are `"disabled"` |
 | `light_indirect_energy` | `1` | all | Times its light in baked bounces |
 | `light_size` | `0` | omni, spot | Its radius when baked and in [ray-traced shadows](#ray-traced-shadows), for soft shadows (a directional light's is `light_angular_distance`) |
 | `shadow_blur` | `1` | all | How much its baked shadows soften |
 | `light_volumetric_fog_energy` | `1` | all | `clustered`: how much it lights [volumetric fog](#volumetric-fog), times `light_energy` |
 | `shadow_transmittance_bias` | `0.05` | all | Moves where its shadow map measures how deep a pixel is in its mesh for the [transmittance](#subsurface-scattering), -16 to 16 |
 
-Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
+Shadows are the compatibility renderer's shadow maps, drawn on every device and by
 `frame.capture`. A directional light's cascades share the directional atlas with the other
 directional lights that cast (up to 4); omni and spot lights (up to 16) share the positional
 atlas, an omni light's cube taking six tiles and a spot light's one. Edges are filtered by the
@@ -1949,29 +1925,27 @@ project's `rendering.shadows` ([project-format.md](project-format.md#shadows)).
 ### Physical light units
 
 With project.json's `rendering.physical_light_units`
-([project-format.md](project-format.md#shadows)), lights, skies and emission shine in real
-units, as Godot's: each light's color is tinted by its `light_temperature` (Krystek's fit of the
-Planckian locus, multiplied in linear light, as Godot's `Light3D::get_correlated_color`), and its
-`light_energy` is multiplied by `light_intensity_lux` / π (directional), `light_intensity_lumens`
-/ 4π² (omni) or `light_intensity_lumens` / π² (spot); a directional light's sun in the sky is
-tinted and shines by its lux. The background and sky shine by the `Environment3D`'s
-`background_intensity` in nits, and emission by each material's `emission_intensity`. A
-[`CameraLens`](#cameraattributespractical)'s exposure is then normalized by its
-`exposure_sensitivity` (ISO 100 is 100 / 3072007), so a scene in real units needs one, as in
-Godot. Lightmap and VoxelLighting3D bakes take the same units. Without the setting, these fields change
-nothing. [`light.tune`](commands.md#lighttune) scales lights to a brightness and
+([project-format.md](project-format.md#shadows)), lights, skies and emission shine in real units:
+each light's color is tinted by its `light_temperature` (Krystek's fit of the Planckian locus,
+multiplied in linear light), and its `light_energy` is multiplied by `light_intensity_lux` / π
+(directional), `light_intensity_lumens` / 4π² (omni) or `light_intensity_lumens` / π² (spot); a
+directional light's sun in the sky is tinted and shines by its lux. The background and sky shine by
+the `Environment3D`'s `background_intensity` in nits, and emission by each material's
+`emission_intensity`. A [`CameraLens`](#cameraattributespractical)'s exposure is then normalized by
+its `exposure_sensitivity` (ISO 100 is 100 / 3072007), so a scene in real units needs one. Lightmap
+and VoxelLighting3D bakes take the same units. Without the setting, these fields change nothing.
+[`light.tune`](commands.md#lighttune) scales lights to a brightness and
 [examples/light-tools](../../examples/light-tools/) lights a street at dusk.
 
 ### Light projectors and IES profiles
 
-An omni or spot light's `light_projector` casts a texture, as Godot 4.6's Forward+ does: the
+An omni or spot light's `light_projector` casts a texture in the clustered renderer: the
 texture goes into the [decal](#decals) atlas, and each pixel the light reaches is tinted by the
 texture's color times its alpha where the light's ray meets it. A spot light maps it over its
 cone (twice `spot_angle` across, the texture's top toward the light's +y); an omni light maps it
 as a dual paraboloid, the texture's top half round the light's -z and its bottom half round +z,
 each half's top row toward the light's -y. `light_projector_scroll` moves the texture's
-coordinates each second, wrapping, as a light function. `compatibility` casts no projectors,
-as Godot's.
+coordinates each second, wrapping, as a light function. `compatibility` casts no projectors.
 
 `light_ies` names an IES LM-63 profile (1986 to 2002 files with `TILT=NONE` or `INCLUDE`, type
 C photometry, the kind lamp makers publish), baked into the projector the way the light maps it:
@@ -1986,7 +1960,7 @@ glass window.
 
 With the project's `rendering.ray_tracing.shadows` on
 ([project-format.md](project-format.md#ray-tracing)), a frame in `clustered` traces its lights'
-shadows instead of taking them from shadow maps, which Godot 4.6 can't. After the depth and normal
+shadows instead of taking them from shadow maps. After the depth and normal
 prepass, each pixel sends `shadow_samples` rays toward each of the first 8 lights the frame draws
 with `shadow_enabled` and a `shadow_opacity` above 0, to points spread over the light's disk:
 `light_angular_distance` degrees across for a directional light, `light_size` meters in radius for
@@ -2010,28 +1984,28 @@ tracing) draw with shadow maps.
 
 With the project's `rendering.ray_tracing.global_illumination` on
 ([project-format.md](project-format.md#ray-tracing)), a frame in `clustered` traces each opaque
-pixel's ambient light, so light bounces off what is near it, which Godot 4.6 does with SDFGI. After
-the depth and normal prepass, each pixel sends `global_illumination_samples` rays over the half of
-the sphere its normal faces, cosine weighted, through every mesh the frame draws. What a ray meets
-is lit as [ray-traced reflections](#screen-space-reflections) light it: what it gives off, the
-lights through ray-traced shadows, and the environment's light; a ray that meets nothing brings
-the environment's light (the sky's radiance or the ambient light) from its way. Their average is
-smoothed over the pixels within two of it, each counted by how alike its normal is and how near it
-is to the pixel's plane, so edges stay sharp. The result is the pixel's ambient light in place of
-the `Environment3D`'s, the sky's, VoxelGIs' and reflection probes' (lightmapped meshes keep
-their lightmaps), still darkened by ambient occlusion. Out in the open it is the environment's
-light, as before; in corners and beside walls it is darker and takes their colors. Transparent
-meshes, which the prepass doesn't draw, keep the ambient light. The software device traces it, so
-`frame.capture` returns it, and so does the GPU device on Vulkan, Metal or Direct3D 12 where the
-GPU traces rays, which matches it; other GPUs light pixels as before.
-[examples/ray-traced-gi-3d](../../examples/ray-traced-gi-3d) bounces a red wall's light.
+pixel's ambient light, so light bounces off what is near it. After the depth and normal prepass,
+each pixel sends `global_illumination_samples` rays over the half of the sphere its normal faces,
+cosine weighted, through every mesh the frame draws. What a ray meets is lit as [ray-traced
+reflections](#screen-space-reflections) light it: what it gives off, the lights through ray-traced
+shadows, and the environment's light; a ray that meets nothing brings the environment's light (the
+sky's radiance or the ambient light) from its way. Their average is smoothed over the pixels within
+two of it, each counted by how alike its normal is and how near it is to the pixel's plane, so edges
+stay sharp. The result is the pixel's ambient light in place of the `Environment3D`'s, the sky's,
+`VoxelLighting3D`s' and reflection probes' (lightmapped meshes keep their lightmaps), still darkened
+by ambient occlusion. Out in the open it is the environment's light, as before; in corners and
+beside walls it is darker and takes their colors. Transparent meshes, which the prepass doesn't
+draw, keep the ambient light. The software device traces it, so `frame.capture` returns it, and so
+does the GPU device on Vulkan, Metal or Direct3D 12 where the GPU traces rays, which matches it;
+other GPUs light pixels as before. [examples/ray-traced-gi-3d](../../examples/ray-traced-gi-3d)
+bounces a red wall's light.
 
 ### Environment3D
 
-The first `Environment3D` made sets the background a 3D frame clears to or the sky behind
-its meshes, the fog, the ambient light every lit surface gets and what happens to colors after,
-as Godot's `Environment`. Without one, the background is the project's `rendering.clear_color`,
-there is no ambient light and colors stay as they are.
+The first `Environment3D` made sets the background a 3D frame clears to or the sky behind its
+meshes, the fog, the ambient light every lit surface gets and what happens to colors after.
+Without one, the background is the project's `rendering.clear_color`, there is no ambient light
+and colors stay as they are.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -2051,7 +2025,7 @@ there is no ambient light and colors stay as they are.
 | `tonemap_white` | `1` | The color tonemapped to white, at least 1 with `clustered` (`"agx"` uses its own) |
 | `tonemap_agx_white`, `tonemap_agx_contrast` | `16.29`, `1.25` | `clustered`: `"agx"`'s white, at least 2, and how steep its curve is |
 | `glow_enabled` | `false` | Bright colors bleed into what is around them |
-| `glow_levels` | `[0, 0.8, 0.4, 0.1, 0, 0, 0]` | `clustered`: how much each of glow's seven levels adds, from the sharpest to the softest; Godot's `glow_levels/1` to `/7` |
+| `glow_levels` | `[0, 0.8, 0.4, 0.1, 0, 0, 0]` | `clustered`: how much each of glow's seven levels adds, from the sharpest to the softest |
 | `glow_normalized` | `false` | `clustered`: `glow_levels` are divided by their sum |
 | `glow_intensity` | `0.3` | How strong the glow is |
 | `glow_strength` | `1` | `clustered`: multiplies each level as it is blurred |
@@ -2076,13 +2050,13 @@ there is no ambient light and colors stay as they are.
 | `ssao_detail` | `0.5` | How much the pixels right beside a pixel occlude it, for small creases, from 0 to 5 |
 | `ssao_horizon` | `0.06` | Samples below this angle above a surface don't occlude it, from 0 to 1 |
 | `ssao_sharpness` | `0.98` | How much the blur keeps to edges, from 0 to 1 |
-| `ssao_light_affect`, `ssao_ao_channel_affect` | `0`, `0` | How much occlusion darkens direct light too: their product, as Godot 4.6 mixes them, each from 0 to 1 |
+| `ssao_light_affect`, `ssao_ao_channel_affect` | `0`, `0` | How much occlusion darkens direct light too: their product mixes them, each from 0 to 1 |
 | `fog_enabled` | `false` | [Fog](#fog) fades what is far away, or low down, into its color |
 | `fog_mode` | `"exponential"` | `"exponential"` thickens with distance by `fog_density`; `"depth"` from `fog_depth_begin` to `fog_depth_end` |
 | `fog_light_color`, `fog_light_energy` | `[0.518, 0.553, 0.608, 1]`, `1` | The fog's color, sRGB, and how bright it is |
 | `fog_sun_scatter` | `0` | How much directional lights brighten the fog looked through toward them |
 | `fog_density` | `0.01` | How thick exponential fog is |
-| `fog_aerial_perspective` | `0` | How much the sky colors the fog in front of it, from 0 to 1 (over the sky only, as Godot's Compatibility renderer) |
+| `fog_aerial_perspective` | `0` | How much the sky colors the fog in front of it, from 0 to 1 (over the sky only, as the compatibility renderer) |
 | `fog_sky_affect` | `1` | How much fog covers the sky or background, from 0 to 1 |
 | `fog_height`, `fog_height_density` | `0`, `0` | Fog thickens below this height, by this much; `0` for none |
 | `fog_depth_curve`, `fog_depth_begin`, `fog_depth_end` | `1`, `10`, `100` | How depth fog grows, where it begins and where it is thickest; an end of `0` or less is the camera's `far` |
@@ -2094,10 +2068,10 @@ there is no ambient light and colors stay as they are.
 | `volumetric_fog_length` | `64` | How far from the camera it reaches, in meters; what is past it is seen through all of it |
 | `volumetric_fog_detail_spread` | `2` | How its slices spread over its length: above 1, more of them are near the camera, from 0.5 to 6 |
 | `volumetric_fog_ambient_inject` | `0` | How much the ambient light (and the sky's, as meshes take it) lights it, from 0 to 16 |
-| `volumetric_fog_gi_inject` | `1` | How much the light of the [VoxelGIs](#voxelgi) it is in lights it, from 0 to 16 |
+| `volumetric_fog_gi_inject` | `1` | How much the light of the [`VoxelLighting3D`s](#voxelgi) it is in lights it, from 0 to 16 |
 | `volumetric_fog_sky_affect` | `1` | How much it covers the sky, from 0 to 1 |
 | `volumetric_fog_temporal_reprojection_enabled`, `volumetric_fog_temporal_reprojection_amount` | `true`, `0.9` | Each frame blends in this much of the frame before's fog, from 0.5 to 0.99, smoothing it |
-| `field_lighting_enabled` | `false` | `clustered`: [SDFGI](sdfgi.md), Godot's fully dynamic global illumination, bounces the lights and the sky off the meshes around the camera with nothing baked. Research: only the software device draws it |
+| `field_lighting_enabled` | `false` | `clustered`: [SDFGI](sdfgi.md), fully dynamic global illumination, bounces the lights and the sky off the meshes around the camera with nothing baked. Research: only the software device draws it |
 | `field_lighting_cascades` | `4` | Cascades around the camera, each twice as far as the one before, from 1 to 8 |
 | `field_lighting_min_cell_size` | `0.2` | The nearest cascade's cell size in meters; each holds 128 cells across |
 | `field_lighting_y_scale` | `"75_percent"` | How far cascades reach up and down, as a share of across: `"50_percent"`, `"75_percent"` or `"100_percent"` |
@@ -2107,37 +2081,35 @@ there is no ambient light and colors stay as they are.
 | `field_lighting_energy` | `1` | Multiplies its light, from 0 to 8 |
 | `field_lighting_normal_bias`, `field_lighting_probe_bias` | `1.1`, `1.1` | How far along a pixel's normal it reads the probes, and how far probes' rays start from them, in cells, from 0 to 4 |
 
-How colors are finished depends on the project's
-[rendering method](project-format.md#rendering-methods), as in Godot.
+How colors are finished depends on the project's [rendering
+method](project-format.md#rendering-methods).
 
-With `clustered`, as Godot's Forward+ renderer, the background and meshes draw linear into
-a texture of 16-bit floats the frame's size, so colors keep their brightness above 1. Glow
-blurs the parts above `glow_hdr_threshold` into up to seven textures, the first half the
-frame's size and each next one half the last, drawing only as far as the last level of more
-than 0.01. A pass over the frame then exposes every pixel, blends glow in by
-`glow_blend_mode`, tonemaps it, adjusts and corrects it, and turns it to sRGB, before the 2D
-draws go over it. Alpha blending happens in linear colors.
+With `clustered`, the background and meshes draw linear into a texture of 16-bit floats the
+frame's size, so colors keep their brightness above 1. Glow blurs the parts above
+`glow_hdr_threshold` into up to seven textures, the first half the frame's size and each next
+one half the last, drawing only as far as the last level of more than 0.01. A pass over the
+frame then exposes every pixel, blends glow in by `glow_blend_mode`, tonemaps it, adjusts and
+corrects it, and turns it to sRGB, before the 2D draws go over it. Alpha blending happens in
+linear colors.
 
-With `compatibility`, as Godot's Compatibility renderer, meshes are exposed and tonemapped
-as they draw when there is no glow and no adjustments, and the background is left alone. With
-either, the meshes draw exposed but not tonemapped into a texture of the frame's size, and a pass
-over the frame screens glow in, tonemaps, adjusts and corrects every pixel, the background's
-too. Glow blurs the texture's bright parts through four textures each half the size of the last.
-The textures hold 8 bits a channel, so drawn colors reach 1 at most: glow needs
-`glow_hdr_threshold` below 1, or `glow_bloom`, and `glow_levels`, `glow_strength`,
-`glow_blend_mode` and `glow_mix` do nothing.
+With `compatibility`, as the compatibility renderer, meshes are exposed and tonemapped as they
+draw when there is no glow and no adjustments, and the background is left alone. With either, the
+meshes draw exposed but not tonemapped into a texture of the frame's size, and a pass over the
+frame screens glow in, tonemaps, adjusts and corrects every pixel, the background's too. Glow
+blurs the texture's bright parts through four textures each half the size of the last. The
+textures hold 8 bits a channel, so drawn colors reach 1 at most: glow needs `glow_hdr_threshold`
+below 1, or `glow_bloom`, and `glow_levels`, `glow_strength`, `glow_blend_mode` and `glow_mix` do
+nothing.
 
-A color correction texture one pixel tall maps each channel by its value along x, as Godot's 1D
-LUTs (a `gradient_1d` texture) do. One as wide as its height squared is a 3D LUT: height slices of
-height by height pixels side by side, blue choosing the slice and red and green the pixel in it,
-as Godot imports a `Texture3D` from horizontal slices. A texture of another shape, or one that
-can't load, is reported and left out.
+A color correction texture one pixel tall maps each channel by its value along x, as 1D LUTs (a
+`gradient_1d` texture) do. One as wide as its height squared is a 3D LUT: height slices of height by
+height pixels side by side, blue choosing the slice and red and green the pixel in it. A texture of
+another shape, or one that can't load, is reported and left out.
 
 ### CameraLens
 
-How a camera exposes and focuses the 3D world, as Godot's `CameraAttributesPractical`. A
-`Camera3D` uses the one on its own entity, as Godot's `Camera3D.attributes`, or else the one on
-the first `Environment3D`'s, as `Environment3D.camera_attributes`.
+How a camera exposes and focuses the 3D world. A `Camera3D` uses the one on its own entity, or
+else the one on the first `Environment3D`'s, as `Environment3D.camera_attributes`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -2147,41 +2119,39 @@ the first `Environment3D`'s, as `Environment3D.camera_attributes`.
 | `auto_exposure_scale` | `0.4` | The brightness frames are exposed toward: higher is brighter |
 | `auto_exposure_speed` | `0.5` | How much of the way to a new brightness the exposure moves each second of game time |
 | `auto_exposure_min_sensitivity`, `auto_exposure_max_sensitivity` | `0`, `800` | The least and most brightness the exposure follows, in ISO: a scene darker than the least stays dark, and one brighter than the most stays bright |
-| `auto_exposure_metering` | `"average"` | How a frame's brightness is measured: `"average"`, as Godot; `"log_average"` (SlashEngine's own) averages its natural logarithm and takes the exponential, a geometric mean, as Unreal's auto exposure meters in log space, so a few bright spots darken the rest less |
+| `auto_exposure_metering` | `"average"` | How a frame's brightness is measured: `"average"`; `"log_average"` (SlashEngine's own) averages its natural logarithm and takes the exponential, a geometric mean, as Unreal's auto exposure meters in log space, so a few bright spots darken the rest less |
 | `dof_blur_far_enabled` | `false` | `clustered`: blurs what is past `dof_blur_far_distance` |
 | `dof_blur_far_distance`, `dof_blur_far_transition` | `10`, `5` | Meters from the camera where the far blur starts, and over how many more it grows to full. A negative transition grows it as a lens does instead, by how far past the distance something is |
 | `dof_blur_near_enabled` | `false` | `clustered`: blurs what is nearer than `dof_blur_near_distance` |
 | `dof_blur_near_distance`, `dof_blur_near_transition` | `2`, `1` | Meters from the camera where the near blur starts, and over how many fewer it grows to full. A negative transition grows it as a lens does instead, by how far short of the distance something is |
 | `dof_blur_amount` | `0.1` | How much it blurs, from 0 to 1: the widest blur is 64 pixels times this |
 
-Auto exposure measures each frame as Godot's Forward+ renderer does: each pixel's brightest
-channel is averaged in blocks of 8 by 8, then the blocks' averages, down to one value, and the
-frame is exposed by `auto_exposure_scale` over it, glow too. The brightness moves toward each
-new frame's by `auto_exposure_speed` per second of game time, so the same frames at the same
-times expose the same way. It starts from the first frame's own brightness when auto exposure
-turns on, when the camera follows other attributes, or when game time goes back, as after a
-restore. With `"log_average"` metering the first pass takes each pixel's logarithm and the last
-the average's exponential; the rest is the same. `compatibility` has no auto exposure, as in
-Godot.
+Auto exposure measures each frame: each pixel's brightest channel is averaged in blocks of 8 by
+8, then the blocks' averages, down to one value, and the frame is exposed by
+`auto_exposure_scale` over it, glow too. The brightness moves toward each new frame's by
+`auto_exposure_speed` per second of game time, so the same frames at the same times expose the
+same way. It starts from the first frame's own brightness when auto exposure turns on, when the
+camera follows other attributes, or when game time goes back, as after a restore. With
+`"log_average"` metering the first pass takes each pixel's logarithm and the last the average's
+exponential; the rest is the same. `compatibility` has no auto exposure.
 
-Depth of field blurs as Godot 4.6's Forward+ renderer does, by each pixel's distance in the depth
-buffer, between the sky and meshes and glow. Each pixel's blur size is worked out from the
-distances, then the frame is blurred by the project's bokeh shape (`rendering.depth_of_field`
-in [project.json](project-format.md)) and mixed with the sharp frame by that size, so what is in
+Depth of field blurs, in the clustered renderer, by each pixel's distance in the
+depth buffer, between the sky and meshes and glow. Each pixel's blur size is worked out from the
+distances, then the frame is blurred by the project's bokeh shape (`rendering.depth_of_field` in
+[project.json](project-format.md)) and mixed with the sharp frame by that size, so what is in
 focus stays sharp. The box and hexagon blur in two passes, at half size for the `very_low` and
 `low` qualities; the circle gathers a spiral of samples at half size. Frames smaller than 8 by 8
-aren't blurred, and `compatibility` has no depth of field, as in Godot.
+aren't blurred, and `compatibility` has no depth of field.
 
 ### Skies
 
 A `"sky"` background draws the sky material on the `Environment3D`'s entity behind the meshes,
-worked out for each pixel's view direction as Godot's sky shaders do: a
-`SkyGradient`, a `SkyScattering` or a `SkyPanorama`. An entity with none
-has Godot's default procedural sky; one with two is reported, and the first of those three
-draws. Colors are sRGB and textures project paths, and `background_energy_multiplier` brightens
-the sky. As in Godot, Forward+ works the sky out from its colors, textures and suns made linear,
-and leaves the result linear; `compatibility` works it out in sRGB and makes the result
-linear, so the same material is darker and grayer there.
+worked out for each pixel's view direction: a `SkyGradient`, a `SkyScattering` or a
+`SkyPanorama`. An entity with none has a default procedural sky; one with two is reported,
+and the first of those three draws. Colors are sRGB and textures project paths, and
+`background_energy_multiplier` brightens the sky. The clustered renderer works the sky out from
+its colors, textures and suns made linear, and leaves the result linear; `compatibility` works
+it out in sRGB and makes the result linear, so the same material is darker and grayer there.
 
 The sky shows the sun of each `SunLight3D` whose `sky_mode` isn't `"light_only"`, up to
 four in tree order, where the light shines from, in its `light_color` and `light_energy`, sized
@@ -2216,8 +2186,8 @@ ground's bottom, with each sun on it:
 | `use_debanding` | `true` | As the procedural sky's |
 | `night_sky` | `""` | A panorama behind the sky, such as stars |
 
-`SkyPanorama` is an equirectangular texture all round, x once round the horizon and y
-from straight up to straight down, as Godot's:
+`SkyPanorama` is an equirectangular texture all round, x once round the horizon and y from
+straight up to straight down:
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -2227,10 +2197,9 @@ from straight up to straight down, as Godot's:
 
 ### Sky light
 
-The sky lights meshes and shines in them, as Godot's sky radiance. The sky material on the
-`Environment3D`'s entity (or the default procedural sky) is drawn into a cube of
-`sky_radiance_size` texels a side, with its suns but without fog, and blurred into smaller
-levels for rougher surfaces: Godot's `RADIANCE_SIZE` levels, down to four texels a side, each
+The sky lights meshes and shines in them. The sky material on the `Environment3D`'s entity (or the
+default procedural sky) is drawn into a cube of `sky_radiance_size` texels a side, with its suns but
+without fog, and blurred into smaller levels for rougher surfaces, down to four texels a side, each
 filtered by GGX samples. It is drawn again only when the sky changes.
 
 Ambient light comes from it when `ambient_light_source` is `"sky"`, or `"background"` with a sky
@@ -2238,56 +2207,53 @@ background: each surface gets the blurriest level's light from where its normal 
 `background_energy_multiplier`, mixed with `ambient_light_color` times `ambient_light_energy` by
 `ambient_light_sky_contribution`. Reflections come from it when `reflected_light_source` is
 `"sky"`, or `"background"` with a sky background: a smooth surface reflects the sharp level and a
-rough one a blurrier level, as Godot's `StandardMaterial3D` does, and dark ambient light dims
-them, as Godot's specular occlusion does. Either can use the sky while the background is a
-color: the sky then lights the meshes without being drawn behind them.
+rough one a blurrier level, and dark ambient light dims them. Either can use the sky while the
+background is a color: the sky then lights the meshes without being drawn behind them.
 
 ### Fog
 
-Fog is the Compatibility renderer's. After lighting and before exposure, each mesh fades toward
+Fog is the compatibility renderer's. After lighting and before exposure, each mesh fades toward
 the fog's color by distance (exponential fog, or depth fog between its begin and end) and below
 `fog_height`, and directional lights brighten the fog toward them by `fog_sun_scatter`. The sky
 fades by `fog_sky_affect`, after `fog_aerial_perspective` mixes its colors into the fog's. A
 `"color"` or `"clear_color"` background is fogged as a sky of that color, which the background's
-energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it clear.
+energy multiplies twice. A material's `disable_fog` leaves it clear.
 
 ### Volumetric fog
 
-With `clustered`, `volumetric_fog_enabled` fills the view with fog that the lights shine
-through and the shadows fall in, as Godot 4.6's Forward+ renderer does. Each frame, the view out
-to `volumetric_fog_length` is cut into froxels (cells across, down and into the screen, set by
-the project's `rendering.volumetric_fog`, see
+With `clustered`, `volumetric_fog_enabled` fills the view with fog that the lights shine through and
+the shadows fall in. Each frame, the view out to `volumetric_fog_length` is cut into froxels (cells
+across, down and into the screen, set by the project's `rendering.volumetric_fog`, see
 [project-format.md](project-format.md#volumetric-fog)), more of them near the camera by
 `volumetric_fog_detail_spread`. A compute pass works out each froxel's light: its emission, the
-directional lights through their shadow maps, the omni and spot lights that reach it (through
-the meshes' clusters, with their shadows), the ambient light by
-`volumetric_fog_ambient_inject`, the light of the first eight `VoxelLighting3D`s whose boxes hold it by
-`volumetric_fog_gi_inject` (every level of each, as Godot's fog reads them), each scattered toward the camera by
-`volumetric_fog_anisotropy` (the Henyey-Greenstein phase) and times each light's
-`light_volumetric_fog_energy`. With temporal reprojection, each froxel is sampled at a point
-that moves each frame and blends in the frame before's light where it was then. The volume is
-blurred across and down, then gathered along each column into the light the fog in front of
-each point adds and how much of it the fog lets through.
+directional lights through their shadow maps, the omni and spot lights that reach it (through the
+meshes' clusters, with their shadows), the ambient light by `volumetric_fog_ambient_inject`, the
+light of the first eight `VoxelLighting3D`s whose boxes hold it by `volumetric_fog_gi_inject` (every
+level of each), each scattered toward the camera by `volumetric_fog_anisotropy` (the
+Henyey-Greenstein phase) and times each light's `light_volumetric_fog_energy`. With temporal
+reprojection, each froxel is sampled at a point that moves each frame and blends in the frame
+before's light where it was then. The volume is blurred across and down, then gathered along each
+column into the light the fog in front of each point adds and how much of it the fog lets through.
 
-Meshes are seen through the volume at their depth, after the [fog](#fog), as Godot blends them,
+Meshes are seen through the volume at their depth, after the [fog](#fog),
 and the sky through all of it by `volumetric_fog_sky_affect` (a `"color"` or `"clear_color"`
-background is left as it is unless the fog draws it as a sky). Transparent meshes take it too;
-a material's `disable_fog` leaves it out. Frames with no meshes and reflection probes' cubes go
-without it, and `compatibility` has none, as in Godot. Every device draws the same passes (the
-software device on the CPU, so `frame.capture` shows it), and a target's first frame starts from
-its own density instead of fading in from none.
+background is left as it is unless the fog draws it as a sky). Transparent meshes take it too; a
+material's `disable_fog` leaves it out. Frames with no meshes and reflection probes' cubes go
+without it, and `compatibility` has none. Every device draws the same passes (the software
+device on the CPU, so `frame.capture` shows it), and a target's first frame starts from its own
+density instead of fading in from none.
 
 #### Fog volumes
 
-A `FogVolume` adds fog to the volumetric fog in a shape, as Godot 4.6's: mist in a hollow, a
-glowing cloud, or a box of clear air in fog where its material's density is below 0. It is
-filled as the `FogVolumeLook` on its entity says, and with none as Godot's default material does:
-a density of 1, white, filling the shape and stopping at its edge. A material's density fades
-toward the shape's edges by `edge_fade`, and with height above the entity by `height_falloff`.
+A `FogVolume` adds fog to the volumetric fog in a shape: mist in a hollow, a glowing cloud,
+or a box of clear air in fog where its material's density is below 0. It is filled as the
+`FogVolumeLook` on its entity says, and with none: a density of 1, white, filling the shape and
+stopping at its edge. A material's density fades toward the shape's edges by `edge_fade`, and
+with height above the entity by `height_falloff`.
 
-As Godot's, each volume fills the froxels between its corners' froxels (the whole view across
+Each volume fills the froxels between its corners' froxels (the whole view across
 while the camera is near it), up to 32 a frame, those after left out and reported, and adds to
-each froxel in Godot's fixed point: its density in 1024ths, and the light it scatters and its
+each froxel in fixed point: its density in 1024ths, and the light it scatters and its
 glow held to what 11, 11 and 10 bits a channel carry. A `"world"` volume fills every froxel, as
 big as twice the froxels in each direction, so a material on one fades by `edge_fade` (0 keeps
 it whole). Volumes only show with `volumetric_fog_enabled`, in `clustered`, to cameras whose
@@ -2310,49 +2276,49 @@ it whole). Volumes only show with `volumetric_fog_enabled`, in `clustered`, to c
 
 ### Ambient occlusion
 
-With `clustered`, `ssao_enabled` darkens what light can't easily reach (corners, creases and
-what is close to a surface) as Godot 4.6's Forward+ renderer does with Intel's ASSAO. Before the
-meshes' color pass, a prepass draws the opaque meshes' depth and view-space normals. The depth is
-made linear and split into four slices of every other pixel; each slice's occlusion is gathered
-from the depth within `ssao_radius` of each pixel, blurred along edges by `ssao_sharpness`, and the
-slices are put back together at the frame's size. The color pass multiplies each opaque mesh's
-ambient light by the occlusion, which dims its reflections too, as Godot's specular occlusion
-does, and its direct light by `ssao_light_affect` times `ssao_ao_channel_affect` of it. Occlusion fades out with distance, and the project's
-`rendering.ssao` ([project-format.md](project-format.md#ssao)) sets its quality, size,
-blur and fade. Transparent meshes get none, and `compatibility` has no SSAO, as in Godot. The
-software device draws the same passes on the CPU, so `frame.capture` shows it too.
+With `clustered`, `ssao_enabled` darkens what light can't easily reach (corners, creases and what is
+close to a surface), following Intel's ASSAO. Before the meshes' color pass, a prepass draws the
+opaque meshes' depth and view-space normals. The depth is made linear and split into four slices of
+every other pixel; each slice's occlusion is gathered from the depth within `ssao_radius` of each
+pixel, blurred along edges by `ssao_sharpness`, and the slices are put back together at the frame's
+size. The color pass multiplies each opaque mesh's ambient light by the occlusion, which dims its
+reflections too, and its direct light by `ssao_light_affect` times `ssao_ao_channel_affect` of it.
+Occlusion fades out with distance, and the project's `rendering.ssao`
+([project-format.md](project-format.md#ssao)) sets its quality, size, blur and fade. Transparent
+meshes get none, and `compatibility` has no SSAO. The software device draws the same passes on the
+CPU, so `frame.capture` shows it too.
 
 With the project's `rendering.ray_tracing.ambient_occlusion` on
 ([project-format.md](project-format.md#ray-tracing)), devices that trace rays trace the occlusion
 instead of gathering it from the screen. After the prepass, each opaque pixel sends
 `ambient_occlusion_samples` rays over the half of the sphere its normal faces, cosine weighted, up
 to `ssao_radius` meters. The share that hits a mesh whose `cast_shadow` isn't `"off"`, times
-`ssao_intensity` (at most 0.98) and to `ssao_power`, is its occlusion, as Godot's SSAO makes its
-occlusion from what it gathers, and lights it as above. Rays find what the screen doesn't show,
-such as the backs of things and what is off the screen, so creases come out darker than SSAO's;
-there is no fade with distance, and `rendering.ssao`'s settings don't apply.
-`ssao_enabled` still turns it on and off. As with [ray-traced shadows](#ray-traced-shadows), the
-software device traces it on the CPU and Vulkan, Metal and Direct3D 12 GPUs that trace rays on the GPU, alpha-tested
-meshes there occluding whole; other devices draw SSAO.
-[examples/ray-traced-ao-3d](../../examples/ray-traced-ao-3d) traces a room's corners.
+`ssao_intensity` (at most 0.98) and to `ssao_power`, is its occlusion, and lights it as above. Rays
+find what the screen doesn't show, such as the backs of things and what is off the screen, so
+creases come out darker than SSAO's; there is no fade with distance, and `rendering.ssao`'s settings
+don't apply. `ssao_enabled` still turns it on and off. As with [ray-traced
+shadows](#ray-traced-shadows), the software device traces it on the CPU and Vulkan, Metal and
+Direct3D 12 GPUs that trace rays on the GPU, alpha-tested meshes there occluding whole; other
+devices draw SSAO. [examples/ray-traced-ao-3d](../../examples/ray-traced-ao-3d) traces a room's
+corners.
 
 ### Screen-space reflections
 
-With `clustered`, `ssr_enabled` reflects what is on the screen in shiny surfaces, as Godot
-4.6's Forward+ renderer does. From the prepass's depth and normals (halved first at half size,
-keeping the nearest of each 2x2 pixels), a pyramid of the nearest depths is made. Each opaque
-pixel's reflected ray steps across it, up to `ssr_max_steps` times, dropping a level where it
-might hit something and climbing one where it can't, and hits what it passes behind by no more
-than `ssr_depth_tolerance`. Where it lands it reads the frame before, moved to where it is now,
-fading in near the surface by `ssr_fade_in` and out toward the screen's edges by `ssr_fade_out`.
-Rougher pixels read blurrier levels of a pyramid of the reflections, and the result is resolved
-to the frame's size along its depths and normals. The color pass puts the reflections over the
-sky's (see [Sky light](#sky-light)), weighed by how much the ray found, and then the material's
-Fresnel. A target's first frame is drawn once without them, for the next to reflect.
+With `clustered`, `ssr_enabled` reflects what is on the screen in shiny surfaces. From the prepass's
+depth and normals (halved first at half size, keeping the nearest of each 2x2 pixels), a pyramid of
+the nearest depths is made. Each opaque pixel's reflected ray steps across it, up to `ssr_max_steps`
+times, dropping a level where it might hit something and climbing one where it can't, and hits what
+it passes behind by no more than `ssr_depth_tolerance`. Where it lands it reads the frame before,
+moved to where it is now, fading in near the surface by `ssr_fade_in` and out toward the screen's
+edges by `ssr_fade_out`. Rougher pixels read blurrier levels of a pyramid of the reflections, and
+the result is resolved to the frame's size along its depths and normals. The color pass puts the
+reflections over the sky's (see [Sky light](#sky-light)), weighed by how much the ray found, and
+then the material's Fresnel. A target's first frame is drawn once without them, for the next to
+reflect.
 
 Only what is on the screen is reflected: what is off it, or hidden behind something nearer,
-isn't, as in Godot. Surfaces from roughness 0.7 up and transparent meshes take none, and
-`compatibility` has no SSR. The project's `rendering.ssr`
+isn't. Surfaces from roughness 0.7 up and transparent meshes take none, and `compatibility` has
+no SSR. The project's `rendering.ssr`
 ([project-format.md](project-format.md#screen-space-reflections)) sets its resolution. The
 software device draws the same passes on the CPU, so `frame.capture` shows them too.
 
@@ -2367,27 +2333,26 @@ and its mirror direction. The light the rays bring back, and the share of them t
 go where SSR's reflections go, so the color pass covers the sky's reflections with them as above,
 fading them out from roughness 0.6. Rays find what the screen doesn't show: what is off it or behind
 something nearer. `ssr_enabled` still turns them on and off, and the other `ssr_*` fields and
-`rendering.ssr` don't apply. The software device traces them, so
-`frame.capture` returns them, and so does the GPU device on Vulkan, Metal or Direct3D 12 where the
-GPU traces rays, shading what rays meet from its material's colors and its albedo, metallic, roughness, emission and
-normal textures (the first 64 textures a frame's draws use; the rest read white), its vertex
-colors and the sky's radiance at its sharpest. Hits on terrains, lightmapped meshes and VoxelGIs
-are lit as plain materials. Other GPUs draw SSR.
+`rendering.ssr` don't apply. The software device traces them, so `frame.capture` returns them, and
+so does the GPU device on Vulkan, Metal or Direct3D 12 where the GPU traces rays, shading what rays
+meet from its material's colors and its albedo, metallic, roughness, emission and normal textures
+(the first 64 textures a frame's draws use; the rest read white), its vertex colors and the sky's
+radiance at its sharpest. Hits on terrains, lightmapped meshes and `VoxelLighting3D`s are lit as
+plain materials. Other GPUs draw SSR.
 [examples/ray-traced-reflections-3d](../../examples/ray-traced-reflections-3d) reflects a banner
 above the screen.
 
 ### Reflection probes
 
-A `ReflectionProbe` is a box whose meshes reflect a cube drawn from inside it, as Godot 4.6's
-Forward+ `ReflectionProbe`: shiny floors and metal in a room reflect its walls instead of the sky.
-With `clustered`, the renderer draws the world into the probe's cube from `origin_offset`
-through six 90-degree views, out to the box's sides or `max_distance` if that is further, with
-the `layer_filter` layers' meshes, the frame's lights (shadows with `enable_shadows`), sky and fog,
-but no post-processing, SSAO, SSR or probes. The cube is filtered into blurrier levels as the
-[sky's light](#sky-light) is. `"once"` draws it when the probe first shows and again when it moves
-or its box, offset, distance, layers or shadows change; `"always"` draws it every frame, which
-costs six frames' worth of drawing. With `interior`, the cube shows no sky, fog or ambient light,
-only the project's clear color behind the meshes, as for a room.
+A `ReflectionProbe` is a box whose meshes reflect a cube drawn from inside it: shiny floors and
+metal in a room reflect its walls instead of the sky. With `clustered`, the renderer draws the world
+into the probe's cube from `origin_offset` through six 90-degree views, out to the box's sides or
+`max_distance` if that is further, with the `layer_filter` layers' meshes, the frame's lights
+(shadows with `enable_shadows`), sky and fog, but no post-processing, SSAO, SSR or probes. The cube
+is filtered into blurrier levels as the [sky's light](#sky-light) is. `"once"` draws it when the
+probe first shows and again when it moves or its box, offset, distance, layers or shadows change;
+`"always"` draws it every frame, which costs six frames' worth of drawing. With `interior`, the cube
+shows no sky, fog or ambient light, only the project's clear color behind the meshes, as for a room.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -2410,32 +2375,30 @@ only the project's clear color behind the meshes, as for a room.
 Each opaque pixel inside a probe's box, on a mesh in its `reflection_mask`, reflects the cube's
 level for its roughness in place of the sky's, times `intensity`, and with `ambient_mode` takes
 its ambient light from it too. Toward the box's sides the probe fades out over `blend_distance`.
-Where probes overlap they blend as Godot's `reflection_process` does: probes are sorted largest
-first, smaller ones take the pixel first and larger ones fill what is left, and the sky fills the
-rest. The probe's rotation turns its box; its scale is ignored, as Godot's. Probes share one atlas
-of cubes, `rendering.reflections` in project.json
-([project-format.md](project-format.md#reflection-probes)), which sets their size and how many a
-frame draws (at most 42; the smallest past that reflect nothing). `compatibility` draws no
-probes yet. The software device draws the same captures and reflections on the CPU, so
+Where probes overlap they blend: probes are sorted largest first, smaller ones take the pixel
+first and larger ones fill what is left, and the sky fills the rest. The probe's rotation turns
+its box; its scale is ignored. Probes share one atlas of cubes, `rendering.reflections` in
+project.json ([project-format.md](project-format.md#reflection-probes)), which sets their size and
+how many a frame draws (at most 42; the smallest past that reflect nothing). `compatibility` draws
+no probes yet. The software device draws the same captures and reflections on the CPU, so
 `frame.capture` shows them too.
 
 ### Baked lightmaps
 
-A `BakedLighting3D` bakes light into textures, as Godot 4.6's `BakedLighting3D`: light that bounces off
-walls and floors, soft shadows and sky light, worked out once rather than every frame.
-[`lightmap.bake`](commands.md#lightmapbake) traces it on the CPU, as Godot's `LightmapperRD`
-does on the GPU, and writes a `.lightmap.json` file and its `.hdr` texels, naming the file in
-`light_data`. It bakes the `Model3D`s whose `lighting_mode` is `"static"`, visible under the
-entity's parent (the whole world for a root), lit by the lights there whose `light_bake_mode`
+A `BakedLighting3D` bakes light into textures: light that bounces off walls and floors, soft shadows
+and sky light, worked out once rather than every frame. [`lightmap.bake`](commands.md#lightmapbake)
+traces it on the CPU on the GPU, and writes a `.lightmap.json` file and its `.hdr` texels, naming
+the file in `light_data`. It bakes the `Model3D`s whose `lighting_mode` is `"static"`, visible under
+the entity's parent (the whole world for a root), lit by the lights there whose `light_bake_mode`
 isn't `"disabled"`:
 
-- Each mesh is unwrapped into lightmap UVs with xatlas, as Godot's `lightmap_unwrap`, at 0.2
-  meters a texel times `texel_scale` and its `lightmap_texel_scale`. Meshes alike are
-  unwrapped once, and the unwraps are packed into slices no larger than `max_texture_size`.
+- Each mesh is unwrapped into lightmap UVs with xatlas, at 0.2 meters a texel times
+  `texel_scale` and its `lightmap_texel_scale`. Meshes alike are unwrapped once, and the unwraps
+  are packed into slices no larger than `max_texture_size`.
 - Every texel takes the direct light of the lights, with shadows softened by their size, and
   rays traced from it (`quality`: 32, 128, 512 or 2048) bring the light of `bounces` bounces
   and of the environment. Emissive materials light their surroundings.
-- The denoiser smooths the noise, as Godot's JNLM, and seams between charts are blended.
+- The denoiser smooths the noise, and seams between charts are blended.
 
 A bake is the same on every machine and for any number of threads, and takes seconds for a
 room at `"medium"`. A model part with a skin isn't baked, since its bones move it.
@@ -2455,7 +2418,7 @@ room at `"medium"`. A model part with a skin isn't baked, since its bones move i
 | `environment_custom_color`, `environment_custom_energy` | `[1, 1, 1, 1]`, `1` | The light for `"custom_color"` |
 | `camera_attributes` | `""` | An entity whose `CameraLens`'s `exposure_multiplier` it bakes with |
 | `generate_probes_subdiv` | `"8"` | Where [light probes](#light-probes) go: `"disabled"` for the bounds' corners only, or `"4"`, `"8"`, `"16"` or `"32"` cells along the longest side of an octree over the static meshes |
-| `interior` | `false` | Moving meshes inside its probes' bounds take only interior LightmapGIs' light |
+| `interior` | `false` | Moving meshes inside its probes' bounds take only interior `BakedLighting3D`s' light |
 | `light_data` | `""` | The `.lightmap.json` file it bakes into and draws from |
 
 Each baked mesh then draws with its texels as its ambient light, in place of the
@@ -2465,7 +2428,7 @@ drawn on lightmapped meshes, since the lightmap holds its light; a `"dynamic"` o
 mesh that changed since the bake draws without its lightmap, with a problem saying to bake again.
 Every device draws lightmaps, including the software one, so `frame.capture` shows them.
 
-A `.lightmap.json` file is Godot's `LightmapGIData` in text (`slash-cli schema lightmap`): the
+A `.lightmap.json` file holds baked lightmap data in text (`slash-cli schema lightmap`): the
 `texture` (an `.hdr` file of the slices one above the other), each slice's `width` and `height`,
 the `slices`, the `baked_exposure`, the unwraps in `meshes` by a hash of each mesh (lightmap UVs,
 the vertices they came from and the triangles, as base64), and the `users`: each baked entity, the
@@ -2474,25 +2437,22 @@ model `part`, its `mesh`, `slice` and `uv_rect`, then its `probes` (below). `sce
 
 #### Light probes
 
-A BakedLighting3D also bakes light probes, as Godot 4.6's do, which light the meshes that move: a
-`Model3D` whose `lighting_mode` is `"dynamic"` takes its ambient light from them, at its bounds'
-middle, in place of the Environment3D's and the reflection probes'. Lights still light it live,
-`"static"` ones included.
+A BakedLighting3D also bakes light probes, which light the meshes that move: a `Model3D` whose
+`lighting_mode` is `"dynamic"` takes its ambient light from them, at its bounds' middle, in place
+of the Environment3D's and the reflection probes'. Lights still light it live, `"static"` ones
+included.
 
-- Probes go at the corners of the bounds around the static meshes and at the corners of the
-  octree cells (`generate_probes_subdiv` along the longest side) that their triangles touch, as
-  Godot's `LightmapGI::bake` places them. An entity with a `LightProbe3D` component (no fields)
-  adds one where light changes quickly, as in a doorway; generated probes within half a cell of
-  it are left out.
+- Probes go at the corners of the bounds around the static meshes and at the corners of the octree
+  cells (`generate_probes_subdiv` along the longest side) that their triangles touch. An entity with
+  a `LightProbe3D` component (no fields) adds one where light changes quickly, as in a doorway;
+  generated probes within half a cell of it are left out.
 - Each probe traces rays (`quality`: 64, 256, 512 or 2048) for its light from every direction,
   kept as nine spherical harmonics coefficients, with the lightmap's bounces.
-- The probes are joined into Delaunay tetrahedra (Godot's `Delaunay3D`, with an exact in-sphere
-  test so they never overlap and are the same everywhere) and a BSP tree finds the one around a
-  point. A moving mesh
-  takes its four probes' light blended by where it is, turned with the BakedLighting3D and scaled by
-  the camera's exposure over the one it was baked with, then eased toward it as it moves (15
-  times the frame's time, Godot's `update_speed`). Where LightmapGIs' bounds overlap, their
-  light blends by how far inside each the mesh is, and an `interior` one stands in for the
+- The probes are joined into Delaunay tetrahedra and a BSP tree finds the one around a point. A
+  moving mesh takes its four probes' light blended by where it is, turned with the BakedLighting3D
+  and scaled by the camera's exposure over the one it was baked with, then eased toward it as it
+  moves (15 times the frame's time). Where BakedLighting3Ds' bounds overlap,
+  their light blends by how far inside each the mesh is, and an `interior` one stands in for the
   rest. Outside every BakedLighting3D's bounds, it takes the scene's ambient light.
 
 The `.lightmap.json` file keeps them in `probes`: the `bounds` (position, then size), `interior`,
@@ -2502,45 +2462,43 @@ side). `scene validate` reports light, tetrahedra or nodes that don't fit the po
 
 ### VoxelLighting3D
 
-A `VoxelLighting3D` lights what is in a box with light that bounces, as Godot 4.6's `VoxelLighting3D`: the static
-meshes in it are voxelized into cells once, and the lights are injected into the cells as the game
-runs, so lights that move or change bounce too. Meshes in the box take their ambient light and
-reflections from it, by tracing cones through the cells. It is Forward+ only, as Godot's.
+A `VoxelLighting3D` lights what is in a box with light that bounces: the static meshes in it are
+voxelized into cells once, and the lights are injected into the cells as the game runs, so lights
+that move or change bounce too. Meshes in the box take their ambient light and reflections from it,
+by tracing cones through the cells. It is the clustered renderer only.
 
 [`voxel_lighting.bake`](commands.md#voxel_gibake) voxelizes the `Model3D`s whose `lighting_mode` is
-`"static"`, visible under the entity's parent (the whole world for a root), that touch its box, as
-Godot's `Voxelizer`: each triangle goes down an octree to cells `subdiv` across the box's longest
-side, and each cell takes the albedo, emission and normal of the triangles in it. It writes a
-`.voxellight.json` file and names it in `data`. A bake is the same on every machine.
+`"static"`, visible under the entity's parent (the whole world for a root), that touch its box:
+each triangle goes down an octree to cells `subdiv` across the box's longest side, and each cell
+takes the albedo, emission and normal of the triangles in it. It writes a `.voxellight.json` file
+and names it in `data`. A bake is the same on every machine.
 
 As the game runs, the renderer:
 
-- Injects the lights into the cells whenever they, the VoxelLighting3D's place or its settings change,
-  as Godot's `voxel_gi.glsl` does on the GPU, here on the CPU on the job pool: the omni and spot
-  lights whose `light_bake_mode` isn't `"disabled"` and whose range reaches the box, then every
-  directional light, at most 32, each at its `light_energy` times its `light_indirect_energy`,
-  shadowed through the cells where it casts shadows. A second bounce is traced through the first
-  with `use_two_bounces`, and the light spreads up the octree by `propagation`.
+- Injects the lights into the cells whenever they, the VoxelLighting3D's place or its settings
+  change on the GPU, here on the CPU on the job pool: the omni and spot lights whose
+  `light_bake_mode` isn't `"disabled"` and whose range reaches the box, then every directional
+  light, at most 32, each at its `light_energy` times its `light_indirect_energy`, shadowed through
+  the cells where it casts shadows. A second bounce is traced through the first with
+  `use_two_bounces`, and the light spreads up the octree by `propagation`.
 - Plots the `"dynamic"` meshes whose bounds touch the box into the cells' light, again each frame
-  one moves or changes, as Godot's dynamic objects: each is drawn from the six faces of its box
-  into maps 16 times finer than the cells, the albedo, normal and emission of its nearest surfaces
-  lit by the same lights, then shrunk down to the cells and blended over each level of the light.
-  So a moving mesh bounces light onto what is near it, and glows on it where it is emissive. Moving
-  meshes don't shadow the cells, a skinned model part is plotted at rest, and emission is plotted
-  at an exposure of 1, as Godot's without physical light units.
-- Gives each mesh the VoxelGIs its bounds touch, at most two in the order they were made, as
-  Godot pairs them. Lightmapped meshes, `"dynamic"` meshes lit by [light probes](#light-probes),
+  one moves or changes: each is drawn from the six faces of its box into maps 16 times finer than
+  the cells, the albedo, normal and emission of its nearest surfaces lit by the same lights, then
+  shrunk down to the cells and blended over each level of the light. So a moving mesh bounces light
+  onto what is near it, and glows on it where it is emissive. Moving meshes don't shadow the cells,
+  a skinned model part is plotted at rest, and emission is plotted at an exposure of 1.
+- Gives each mesh the VoxelLighting3Ds its bounds touch, at most two in the order they were
+  made. Lightmapped meshes, `"dynamic"` meshes lit by [light probes](#light-probes),
   terrains and meshes drawn only into shadows take none.
-- Traces cones from each pixel through the cells' light, as Godot's `gi.glsl`: four cones of 45
-  degrees for its ambient light, or six narrower ones with project.json's
-  `rendering.voxel_lighting.quality` set to `"high"`, and one as wide as its
-  roughness for its reflection. Where the cones find cells, their light goes over the
-  environment's ambient light and sky reflections by how much they cover, before
-  [reflection probes](#reflection-probes); where they find none, the environment shows through,
-  except in an `interior` VoxelLighting3D.
+- Traces cones from each pixel through the cells' light: four cones of 45 degrees for its
+  ambient light, or six narrower ones with project.json's `rendering.voxel_lighting.quality` set
+  to `"high"`, and one as wide as its roughness for its reflection. Where the cones find cells,
+  their light goes over the environment's ambient light and sky reflections by how much they
+  cover, before [reflection probes](#reflection-probes); where they find none, the environment
+  shows through, except in an `interior` VoxelLighting3D.
 
-Every Forward+ device traces VoxelGIs, including the software one, so `frame.capture` shows
-them; Compatibility draws without them.
+Every device of the clustered renderer traces `VoxelLighting3D`s, including the software one, so
+`frame.capture` shows them; the compatibility renderer draws without them.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -2556,30 +2514,30 @@ them; Compatibility draws without them.
 | `use_two_bounces` | `true` | Light bounces twice inside the cells, not once |
 | `interior` | `false` | Leaves out the environment's light: meshes take only the cells' |
 
-A `.voxellight.json` file is Godot's `VoxelGIData` in text (`slash-cli schema voxel_light`): the
-`bounds` it voxelized (position, then size, in the VoxelLighting3D's space), its `octree_size` (cells
-along each axis), the `baked_exposure`, the `level_counts` of the octree from the root, and its
-`cells` as base64, level by level, each sorted as Godot sorts them: a cell's place, albedo,
-emission and normal. `scene validate` checks a VoxelLighting3D's `subdiv`, `size`, `camera_attributes`
-and `data`, and exports ship the file.
+A `.voxellight.json` file holds voxelized lighting data in text (`slash-cli schema voxel_light`):
+the `bounds` it voxelized (position, then size, in the VoxelLighting3D's space), its `octree_size`
+(cells along each axis), the `baked_exposure`, the `level_counts` of the octree from the root, and
+its `cells` as base64, level by level, each sorted: a cell's place, albedo, emission and normal.
+`scene validate` checks a VoxelLighting3D's `subdiv`, `size`, `camera_attributes` and `data`, and
+exports ship the file.
 
 ### Decals
 
-A `Decal` projects textures down its -Y onto the surfaces in a box, as Godot 4.6's Forward+
-`Decal`: paint on a wall, a puddle on the street, a scorch mark. Where its albedo texture
-covers a surface, the surface takes its color by `albedo_mix`, its normal texture's bumps, and its
-ORM texture's ambient occlusion, roughness and metallic (red, green and blue); its emission
-texture glows on top, whatever the albedo covers. A decal with neither an albedo nor an emission
-texture draws nothing. Textures load as sprites' do, at most 16384 texels across.
+A `Decal` projects textures down its -Y onto the surfaces in a box: paint on a wall, a puddle on the
+street, a scorch mark. Where its albedo texture covers a surface, the surface takes its color by
+`albedo_mix`, its normal texture's bumps, and its ORM texture's ambient occlusion, roughness and
+metallic (red, green and blue); its emission texture glows on top, whatever the albedo covers. A
+decal with neither an albedo nor an emission texture draws nothing. Textures load as sprites' do, at
+most 16384 texels across.
 
-As Godot's, decals go into the frame's clusters with the lights: up to 512 a frame, those nearest
-the camera (less their `sorting_offset`) drawn last, on top. Each frame's textures are packed into
-one atlas, as Godot's, with mipmaps that project.json's `rendering.textures.decals.filter` samples
-(see [Texture forms](project-format.md#texture-forms)). The atlas holds 2^25 texels over its
-levels, so a texture 2048 texels across fits with room to spare; decals whose textures overflow it
-are left out and reported, those before them kept. Every Forward+ device draws decals, including
-the software one, so `frame.capture` shows them, on unshaded meshes too; Compatibility draws
-without them, as Godot's. A mesh takes a decal when its `layers` share a bit with the decal's
+Decals go into the frame's clusters with the lights: up to 512 a frame, those nearest the camera
+(less their `sorting_offset`) drawn last, on top. Each frame's textures are packed into one atlas,
+with mipmaps that project.json's `rendering.textures.decals.filter` samples (see [Texture
+forms](project-format.md#texture-forms)). The atlas holds 2^25 texels over its levels, so a texture
+2048 texels across fits with room to spare; decals whose textures overflow it are left out and
+reported, those before them kept. Every device of the clustered renderer draws decals, including the
+software one, so `frame.capture` shows them, on unshaded meshes too; the compatibility renderer
+draws without them. A mesh takes a decal when its `layers` share a bit with the decal's
 `layer_filter`, and a camera sees a decal on its `layer_filter` layers.
 [examples/decals-3d](../../examples/decals-3d/) paints a street with three.
 
@@ -2605,40 +2563,39 @@ without them, as Godot's. A mesh takes a decal when its `layers` share a bit wit
 
 ### Occlusion culling
 
-Before any of this, every mesh outside the camera's view is left out, as Godot's renderer culls
-by frustum. On the GPU device (Vulkan, Metal, Direct3D 12) and WebGPU the frustum test runs on
-the GPU, a thread a draw, which writes each draw's indirect arguments (no instances when its box is
-wholly past one edge of the view), so the CPU sends every draw and the GPU skips those out of
-view; the software device runs the same test on the CPU, and OpenGL draws them all. A mesh's box
-counts as in view up to 1/64 of the view past an edge, so TAA's and FSR 2's jitter never cut off
-what shows. Meshes drawn with a spatial shader that has a `vertex()` are never culled, since it
-can move their corners anywhere, and shadow maps and reflection probes draw every mesh.
+Before any of this, every mesh outside the camera's view is left out. On the GPU device (Vulkan,
+Metal, Direct3D 12) and WebGPU the frustum test runs on the GPU, a thread a draw, which writes each
+draw's indirect arguments (no instances when its box is wholly past one edge of the view), so the
+CPU sends every draw and the GPU skips those out of view; the software device runs the same test on
+the CPU, and OpenGL draws them all. A mesh's box counts as in view up to 1/64 of the view past an
+edge, so TAA's and FSR 2's jitter never cut off what shows. Meshes drawn with a spatial shader that
+has a `vertex()` are never culled, since it can move their corners anywhere, and shadow maps and
+reflection probes draw every mesh.
 
-An `Occluder3D` hides the meshes behind it from the camera, as Godot 4.6's: while
-project.json's [`rendering.occlusion_culling.enabled`](project-format.md#occlusion-culling)
-is on, each frame the renderer casts a ray through each texel of a small depth buffer into every
-occluder's triangles, as Godot's raycast occlusion culler does (on a bounding volume hierarchy of
-its own, where Godot's uses Embree), keeps the farthest depth in each texel of its mipmaps, and
+An `Occluder3D` hides the meshes behind it from the camera: while project.json's
+[`rendering.occlusion_culling.enabled`](project-format.md#occlusion-culling) is on, each frame the
+renderer casts a ray through each texel of a small depth buffer into every occluder's triangles (on
+a bounding volume hierarchy of its own), keeps the farthest depth in each texel of its mipmaps, and
 leaves out each mesh whose bounds are behind that depth everywhere they cover. Occluders draw
-nothing; put them a little inside the walls they stand for, so they don't hide what shows past
-the walls' edges.
+nothing; put them a little inside the walls they stand for, so they don't hide what shows past the
+walls' edges.
 
 - The buffer has `occlusion_rays_per_thread` times 8 texels, at the view's aspect, and at most a
-  quarter of the view's pixels. With `jitter_projection` on, as in Godot, its rays move through
-  nine places across a texel, one a frame, and a mesh that was seen stays drawn for nine frames,
-  so thin gaps don't make meshes flicker.
+  quarter of the view's pixels. With `jitter_projection` on, its rays move through nine places
+  across a texel, one a frame, and a mesh that was seen stays drawn for nine frames, so thin
+  gaps don't make meshes flicker.
 - Each mesh is tested by its own bounds where it is placed. Meshes whose `cast_shadow` is
-  `"double_sided"` or `"shadows_only"` and those with `skip_occlusion` are never hidden.
-  A hidden mesh still casts its shadow unless its `cast_shadow` is `"off"`, and shadow maps and
-  [reflection probes](#reflection-probes) draw every mesh, as in Godot.
+  `"double_sided"` or `"shadows_only"` and those with `skip_occlusion` are never hidden. A
+  hidden mesh still casts its shadow unless its `cast_shadow` is `"off"`, and shadow maps and
+  [reflection probes](#reflection-probes) draw every mesh.
 - Hidden occluders (`visible` off in their tree) hide nothing.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `shape` | `"quad"` | Godot's occluder: `"quad"` (`QuadOccluder3D`, `size`'s x and y, facing +Z), `"box"` (`BoxOccluder3D`, `size`), `"sphere"` (`SphereOccluder3D`, `radius`), `"polygon"` (`PolygonOccluder3D`) or `"array"` (`ArrayOccluder3D`, as `occluder.bake` writes it) |
+| `shape` | `"quad"` | The occluder's shape: `"quad"` (`size`'s x and y, facing +Z), `"box"` (`size`), `"sphere"` (`radius`), `"polygon"` or `"array"` (as `occluder.bake` writes it) |
 | `size` | `[1, 1, 1]` | `quad` and `box`: meters across, centered on the entity |
 | `radius` | `1` | `sphere`: meters |
-| `polygon` | `[]` | `polygon`: at least 3 points `[x, y]` in the entity's XY plane, in meters, triangulated as Godot's |
+| `polygon` | `[]` | `polygon`: at least 3 points `[x, y]` in the entity's XY plane, in meters, triangulated |
 | `vertices` | `[]` | `array`: points `[x, y, z]` in the entity's space |
 | `indices` | `[]` | `array`: into `vertices`, every three a triangle |
 | `bake_mask` | `0xFFFFFFFF` | `occluder.bake` takes the meshes whose `layers` share a bit with it |
@@ -2652,19 +2609,18 @@ the walls' edges.
 }}
 ```
 
-[`occluder.bake`](commands.md#occluderbake) makes an `"array"` occluder of the scene's meshes as
-Godot's `OccluderInstance3D` bake does: every visible `Model3D` on `bake_mask`, whose
-material isn't transparent, simplified with meshoptimizer to `bake_simplification_distance`, its
-duplicate corners and triangles merged. [`frame.capture`](commands.md#framecapture)'s `drawn`
-counts the meshes hidden as `occluded`. [examples/occlusion-culling](../../examples/occlusion-culling/)
-hides three houses behind a wall.
+[`occluder.bake`](commands.md#occluderbake) makes an `"array"` occluder of the scene's meshes: every
+visible `Model3D` on `bake_mask`, whose material isn't transparent, simplified with meshoptimizer to
+`bake_simplification_distance`, its duplicate corners and triangles merged.
+[`frame.capture`](commands.md#framecapture)'s `drawn` counts the meshes hidden as `occluded`.
+[examples/occlusion-culling](../../examples/occlusion-culling/) hides three houses behind a wall.
 
 ### Gaussian splats
 
-A `Splat3D` draws scenery captured from photos: a 3D Gaussian Splatting `.ply` file of
-small, see-through 3D Gaussians, placed by the entity's `Transform3D` and blended over the opaque
-meshes in Forward+, nearest first, where no mesh is in front of them. It is a research feature of
-SlashEngine's own (Godot has none), and only the software device draws it yet; see
+A `Splat3D` draws scenery captured from photos: a 3D Gaussian Splatting `.ply` file of small,
+see-through 3D Gaussians, placed by the entity's `Transform3D` and blended over the opaque meshes
+in the clustered renderer, nearest first, where no mesh is in front of them. It is a research
+feature of SlashEngine's own, and only the software device draws it yet; see
 [gaussian-splats.md](gaussian-splats.md) for how it draws and what it doesn't do.
 
 | `Splat3D` field | Default | Meaning |
@@ -2679,19 +2635,17 @@ SlashEngine's own (Godot has none), and only the software device draws it yet; s
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
-`/entities/<id>/components`), a `Model3D` with none (at its `Model3D`), a
-`TorusGeometry` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
-project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
-[CSG shapes](#csg-shapes) that can't be made, [grid maps](#grid-maps) whose cells can't
-be made, [path followers](#paths) that can't follow, [LightmapGIs](#baked-lightmaps) whose
-`light_data` doesn't load and [VoxelGIs](#voxelgi) whose `data` doesn't load, and [occluders](#occlusion-culling) whose
-`polygon` or `indices` can't make triangles (too few, an index out of range, or a polygon that
-can't be triangulated), and [GaussianSplat3Ds](#gaussian-splats) whose `splats` isn't a `.ply`
-file of splats or whose `sh_degree` isn't 0 to 3.
-Exports
-check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
-`.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
-yet.
+`/entities/<id>/components`), a `Model3D` with none (at its `Model3D`), a `TorusGeometry` whose
+radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the project,
+doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and [CSG
+shapes](#csg-shapes) that can't be made, [grid maps](#grid-maps) whose cells can't be made, [path
+followers](#paths) that can't follow, [`BakedLighting3D`s](#baked-lightmaps) whose `light_data`
+doesn't load and [`VoxelLighting3D`s](#voxelgi) whose `data` doesn't load, and
+[occluders](#occlusion-culling) whose `polygon` or `indices` can't make triangles (too few, an index
+out of range, or a polygon that can't be triangulated), and [`Splat3D`s](#gaussian-splats) whose
+`splats` isn't a `.ply` file of splats or whose `sh_degree` isn't 0 to 3. Exports check every
+`.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their `.bin`
+buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes yet.
 
 ## Canonical form
 
@@ -2754,10 +2708,10 @@ An invalid scene never loads partly: the open scene stays as it was.
 
 ## Prefabs
 
-A prefab is one entity's components in a `.prefab.json` file, like a Godot scene of one node
-that other scenes instance; for several entities, instance a scene
+A prefab is one entity's components in a `.prefab.json` file; for several entities, instance a scene
 ([instanced scenes](#instanced-scenes)). An entity that `"extends"` it starts with the prefab's
-components, and its own fields override the prefab's. With `Health` as a game's component, `prefabs/enemy.prefab.json`:
+components, and its own fields override the prefab's. With `Health` as a game's component,
+`prefabs/enemy.prefab.json`:
 
 ```json
 {
@@ -2816,10 +2770,10 @@ instance overrides.
 
 ## Instanced scenes
 
-A scene can be instanced by other scenes, as Godot's PackedScene: an entity that `"extends"` a
-`.scene.json` file becomes the scene's root entity, and the scene's other entities come with it.
-A scene names its root in `"root"`, which `scene.save` sets
-([commands](commands.md#scenesave)). `scenes/player.scene.json`:
+A scene can be instanced by other scenes: an entity that `"extends"` a `.scene.json` file
+becomes the scene's root entity, and the scene's other entities come with it. A scene names its
+root in `"root"`, which `scene.save` sets ([commands](commands.md#scenesave)).
+`scenes/player.scene.json`:
 
 ```json
 {
@@ -2937,35 +2891,35 @@ measures them without drawing a frame. `slash-cli schema texture` prints the sch
 }
 ```
 
-Every key but `format` and `type` is optional, with Godot's default.
+Every key but `format` and `type` is optional, with a default.
 
 | Key | Types | Default | Meaning |
 | --- | --- | --- | --- |
 | `format` | all | required | Format version. Must be `1` |
 | `type` | all | required | `noise`, `gradient_1d` or `gradient_2d` (the old `NoiseTexture2D`, `GradientTexture1D` and `GradientTexture2D` still load) |
 | `width`, `height` | all | `512` (noise), `256` x 1 (1D), `64` (2D) | Size in pixels, 1 to 16384; a 1D gradient is one pixel high |
-| `noise` | noise | Godot's `FastNoiseLite` | The [noise](#noise) to draw |
+| `noise` | noise | the default noise | The [noise](#noise) to draw |
 | `invert` | noise | `false` | Light becomes dark and dark light |
 | `in_3d_space` | noise | `false` | Sample 3D noise at z 0 rather than 2D noise |
-| `seamless` | noise | `false` | Tile without seams, as Godot's: noise a skirt larger, its quarters swapped and the skirt blended over the seams |
+| `seamless` | noise | `false` | Tile without seams: noise a skirt larger, its quarters swapped and the skirt blended over the seams |
 | `seamless_blend_skirt` | noise | `0.1` | The share of the size blended across the seams, 0.05 to 1 |
 | `normalize` | noise | `true` | Stretch the values over 0 to 255; off, -1 to 1 maps onto them |
 | `color_ramp` | noise | none | A [gradient](#gradients) each pixel's brightness picks its color from; left out, gray |
-| `as_normal_map` | noise | `false` | Turn the result into a tangent-space normal map, as Godot's `bump_map_to_normal_map`, wrapping at the edges |
+| `as_normal_map` | noise | `false` | Turn the result into a tangent-space normal map, wrapping at the edges |
 | `bump_strength` | noise | `8` | How steep the normal map's bumps are |
 | `gradient` | 1D, 2D | black to white | The [gradient](#gradients) to fill with |
 | `fill` | 2D | `linear` | `linear` along `fill_from` to `fill_to`, `radial` out from `fill_from`, or `square` out from it as squares |
 | `fill_from`, `fill_to` | 2D | `[0, 0]`, `[1, 0]` | Where offsets 0 and 1 are, in UV (0 to 1 across the texture) |
 | `repeat` | 2D | `none` | Past `fill_to`: `none` holds the last color, `repeat` starts again, `mirror` comes back |
 
-Godot's `generate_mipmaps` and `use_hdr` are left out: textures here are one level of 8 bits a
+Textures here are one level of 8 bits a
 channel. An error names the bad value's JSON Pointer, and an unknown `type` lists the three.
 
 ### Noise
 
-A noise object is Godot's `FastNoiseLite` resource, on Auburn's FastNoiseLite, by Godot's
-property names with its enums in snake case. Gameplay code samples the same noise with
-`procedural::Noise` (`slash/procedural/noise.hpp`): `get_noise_2d(x, y)`, about -1 to 1.
+A noise object is Auburn's FastNoiseLite noise, with its enums in snake case. Gameplay code samples
+the same noise with `procedural::Noise` (`slash/procedural/noise.hpp`): `get_noise_2d(x, y)`, about
+-1 to 1.
 
 | Key | Default | Values |
 | --- | --- | --- |
@@ -2974,9 +2928,9 @@ property names with its enums in snake case. Gameplay code samples the same nois
 | `frequency` | `0.01` | Higher is busier |
 | `offset` | `[0, 0, 0]` | Added to every point before sampling |
 | `fractal_type` | `fbm` | `none`, `fbm`, `ridged`, `ping_pong` |
-| `fractal_octaves` | `5` | 1 to 16 layers, as Godot allows |
+| `fractal_octaves` | `5` | 1 to 16 layers |
 | `fractal_lacunarity`, `fractal_gain` | `2`, `0.5` | Each layer's frequency and strength against the last |
-| `fractal_weighted_strength`, `fractal_ping_pong_strength` | `0`, `2` | As Godot's |
+| `fractal_weighted_strength`, `fractal_ping_pong_strength` | `0`, `2` | The weighted and ping-pong fractals' strengths |
 | `cellular_distance_function` | `euclidean` | `euclidean`, `euclidean_squared`, `manhattan`, `hybrid` |
 | `cellular_return_type` | `distance` | `cell_value`, `distance`, `distance2`, `distance2_add`, `distance2_sub`, `distance2_mul`, `distance2_div` |
 | `cellular_jitter` | `1` | How far cell points stray from the grid |
@@ -2988,7 +2942,7 @@ property names with its enums in snake case. Gameplay code samples the same nois
 
 ### Gradients
 
-A gradient object is Godot's `Gradient`: colors at offsets from 0 to 1. Colors are sRGB
+A gradient object is colors at offsets from 0 to 1. Colors are sRGB
 `[r, g, b]` or `[r, g, b, a]`, each 0 to 1.
 
 | Key | Default | Meaning |
@@ -3042,7 +2996,7 @@ the same either way.
 
 | Ops | What they make |
 | --- | --- |
-| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, Godot's FastNoiseLite noise (with domain warp and `seamless`), a `gradient_2d` gradient, shapes and bricks in cells, bands, an image file |
+| `constant`, `noise`, `gradient`, `shape`, `bricks`, `checker`, `waves`, `image` | Generators: a color, FastNoiseLite noise (with domain warp and `seamless`), a `gradient_2d` gradient, shapes and bricks in cells, bands, an image file |
 | `levels`, `invert`, `clamp`, `gradient_map`, `hsv`, `grayscale`, `threshold`, `posterize`, `swizzle`, `remap` | Color and value adjustments |
 | `blur`, `sharpen`, `warp`, `transform`, `edge_detect` | Filters and moves |
 | `normal_from_height`, `ao_from_height`, `curvature_from_height` | Maps from a height's red |
@@ -3055,13 +3009,12 @@ nodes share slots once nothing later reads them.
 ## Scatter rules
 
 A `.scatter.json` file says what to place over terrains, meshes, tile maps and areas and how
-thickly, a layer at a time, as Unreal's PCG graphs and Godot's MultiMesh *Populate Surface* do
-(Godot has no scatter rules of its own). [`scatter.run`](commands.md#scatterrun) places what it
-asks for; the same rules over the same ground place the same things on every machine, since
-places come from a seeded random number generator (PCG32) and the module builds with no fused
-multiply-adds. `slash-cli schema scatter` prints the schema, and `scene validate` and
-`scene format` take the files. Scatter rules are a game's source: what they placed is saved in
-its scenes, and exports leave the rules out.
+thickly, a layer at a time, as Unreal's PCG graphs do. [`scatter.run`](commands.md#scatterrun)
+places what it asks for; the same rules over the same ground place the same things on every machine,
+since places come from a seeded random number generator (PCG32) and the module builds with no fused
+multiply-adds. `slash-cli schema scatter` prints the schema, and `scene validate` and `scene format`
+take the files. Scatter rules are a game's source: what they placed is saved in its scenes, and
+exports leave the rules out.
 
 ```json
 {
@@ -3104,7 +3057,7 @@ Each layer:
 | `height` | | 3D: `[min, max]` world height of the ground |
 | `noise` | | [Noise settings](#noise), sampled at (x, z) in 3D or (x, y) in 2D |
 | `noise_range` | `[0, 1]` | Only where the noise, about -1 to 1, is within this |
-| `align_to_normal` | `false` | 3D: stand along the ground's normal, as Godot's populate; else upright |
+| `align_to_normal` | `false` | 3D: stand along the ground's normal; else upright |
 | `rotate_random` | `0` | Turn about the up axis by up to this many half turns either way: `1` is any heading |
 | `tilt_random` | `0` | 3D: tilt by up to this many half turns either way |
 | `scale` | `1` | Uniform scale |
@@ -3112,17 +3065,16 @@ Each layer:
 | `offset` | `0` | Move along the up axis by this much; negative sinks it |
 
 Give `mesh` or `prefab`, and `count` or `density`, one of each; and `on`, `area` or both. A layer
-picks a triangle of its ground by area, then a point in it as Godot's
-`Face3::get_random_point_inside` does, and keeps it when it is in the area, on a slope and at a
-height in range, where the noise is in range and `spacing` from every place kept before; kept
-places turn and scale as Godot's `MultiMeshEditor::_populate` turns them. It stops at the count
-wanted or after 30 tries a place, so rules that leave too little room place fewer, and
-`scatter.run` says which rules threw tries away. [examples/scatter-rules](../../examples/scatter-rules/)
-grows a forest over a field and a hill.
+picks a triangle of its ground by area, then a point in it, and keeps it when it is in the area, on
+a slope and at a height in range, where the noise is in range and `spacing` from every place kept
+before; kept places turn and scale by the layer's rotation and scale settings. It stops at the count
+wanted or after 30 tries a place, so rules that leave too little room place fewer, and `scatter.run`
+says which rules threw tries away. [examples/scatter-rules](../../examples/scatter-rules/) grows a
+forest over a field and a hill.
 
 ## Procedural graphs
 
-A `.pcg.json` file is a graph of steps over points, after Unreal's PCG graphs (Godot has none),
+A `.pcg.json` file is a graph of steps over points, after Unreal's PCG graphs,
 that [`pcg.run`](commands.md#pcgrun) follows to fill a world with what every other tool makes:
 samplers make points, modifiers keep, thin, move and turn them, and spawners place things at
 them: prefabs, meshes, foliage, routes, and any command that places something (creatures,
@@ -3184,7 +3136,7 @@ the ground: x and z in 3D, x and y in 2D. Each op takes only its own fields:
 | `prune` | `spacing` | Those `spacing` apart, the densest kept first (ties in order), back in their order |
 | `difference` | `to`, `targets`, `story`, `distance` | Those at least `distance` from every point of the `to` nodes, the `targets` entities and the `story` places |
 | `near` | `to`, `targets`, `story`, `range` | Those whose nearest of the same is within `range` `[min, max]` |
-| `transform` | `offset`, `offset_up`, `rotation_degrees`, `rotate_random`, `tilt_random`, `scale`, `scale_random`, `align_to_normal` | All, moved by `offset` in the world and `offset_up` along each one's up, stood along the ground's normal with `align_to_normal` (3D), turned by `rotation_degrees` (Godot's YXZ; 2D by z) and up to `rotate_random` half turns about up (`tilt_random` about the others), their scale times `scale` plus up to `scale_random` either way |
+| `transform` | `offset`, `offset_up`, `rotation_degrees`, `rotate_random`, `tilt_random`, `scale`, `scale_random`, `align_to_normal` | All, moved by `offset` in the world and `offset_up` along each one's up, stood along the ground's normal with `align_to_normal` (3D), turned by `rotation_degrees` and up to `rotate_random` half turns about up (`tilt_random` about the others), their scale times `scale` plus up to `scale_random` either way |
 | `merge` | | All of them |
 | `spawn` | `prefab`, `components`, `keep` | An entity a point, `<into>_<node>_<n>`, extending `prefab` with `components` over it, its transform the point's |
 | `multimesh` | `mesh`, `keep` | One [`ModelInstances3D`](#multimeshinstance3d) `<into>_<node>` drawing `mesh` at every point (3D) |
@@ -3205,8 +3157,7 @@ order, 3D-only fields in 2D and noise settings, each at its JSON Pointer.
 
 ## Made textures and meshes
 
-Gameplay code can make textures and meshes while a game runs, as a Godot script makes an
-`ImageTexture` or builds an `ArrayMesh` with `SurfaceTool`. Each is an asset named `made:` and a
+Gameplay code can make textures and meshes while a game runs. Each is an asset named `made:` and a
 name of letters, digits and `_-./`, such as `made:minimap`, which any field that names a texture
 or a model can name: a `Sprite2D`'s `texture`, a `Picture`, a `Surface3D`'s maps, a
 `Model3D`'s `mesh` or a particle emitter's.
@@ -3214,12 +3165,12 @@ or a model can name: a `Sprite2D`'s `texture`, a `Picture`, a `Surface3D`'s maps
 - `procedural::make_texture(world, "minimap", image)` (`slash/procedural/texture.hpp`) makes a
   texture of RGBA8 pixels; `procedural::make_image` gives a `.texture.json` texture's pixels for
   it, with settings the code chose.
-- `scene3d::SurfaceTool` (`slash/scene3d/surface_tool.hpp`) is Godot's: `set_color`,
+- `scene3d::SurfaceTool` (`slash/scene3d/surface_tool.hpp`) takes `set_color`,
   `set_normal`, `set_tangent`, `set_uv`, `set_uv2` and `set_smooth_group` before each
   `add_vertex`, `add_index`, `index`, `deindex`, `generate_normals` and `generate_tangents`
   (MikkTSpace, as models' importers), then `commit` adds the surface, with its `set_material`, to
-  a `scene3d::Model`. Triangles' front faces wind clockwise, as Godot's.
-  `scene3d::make_mesh(world, "ground", model)` makes the model an asset.
+  a `scene3d::Model`. Triangles' front faces wind clockwise. `scene3d::make_mesh(world, "ground",
+  model)` makes the model an asset.
 
 Making one again with the same name changes it in place, and renderers draw the new one. Made
 assets stay until the code drops them (`asset::Assets::drop`). Until it is made, a sprite or mesh
@@ -3230,11 +3181,11 @@ and [`model.inspect`](commands.md#modelinspect) read them in a running game.
 
 ## Sprite frames
 
-A `.frames.json` file holds named flipbook animations, like Godot's SpriteFrames resource. An
-entity with `Flipbook2D` plays one of them on its `Sprite2D`, adding a `Sprite2D` if it
-has none: each tick the `animated_sprite_2d` system moves the animation on and sets the sprite's
-`texture`, `hframes`, `vframes` and `frame`. `slash-cli schema frames` prints the schema, and
-`slash-cli scene validate` and `scene format` accept `.frames.json` files.
+A `.frames.json` file holds named flipbook animations. An entity with `Flipbook2D` plays one of
+them on its `Sprite2D`, adding a `Sprite2D` if it has none: each tick the `animated_sprite_2d`
+system moves the animation on and sets the sprite's `texture`, `hframes`, `vframes` and `frame`.
+`slash-cli schema frames` prints the schema, and `slash-cli scene validate` and `scene format`
+accept `.frames.json` files.
 
 ```json
 {
@@ -3283,12 +3234,12 @@ has none: each tick the `animated_sprite_2d` system moves the animation on and s
 
 ## Materials
 
-A `.material.json` file colors each pixel of a sprite, like a Godot `ShaderMaterial` with a
-`canvas_item` shader, written as a node graph, or as a game's own [shader](#shaders) in HLSL. `Sprite2D`'s `material`
-names the file and `material_params` sets its params, so one material serves many sprites.
-`slash-cli schema material` prints the schema, `slash-cli scene validate` and `scene format`
-accept `.material.json` files, and the [`material.eval`](commands.md#materialeval) command
-returns the colors a material draws. [examples/materials](../../examples/materials/) has three.
+A `.material.json` file colors each pixel of a sprite, written as a node graph, or as a game's own
+[shader](#shaders) in HLSL. `Sprite2D`'s `material` names the file and `material_params` sets its
+params, so one material serves many sprites. `slash-cli schema material` prints the schema,
+`slash-cli scene validate` and `scene format` accept `.material.json` files, and the
+[`material.eval`](commands.md#materialeval) command returns the colors a material draws.
+[examples/materials](../../examples/materials/) has three.
 
 ```json
 {
@@ -3317,8 +3268,8 @@ returns the colors a material draws. [examples/materials](../../examples/materia
 | `params/<name>/repeat` | No | Textures: tile past the edges instead of stretching them (default `false`) |
 | `params/<name>/filter` | No | Textures: `inherit` (the sprite's filter, the default), `linear` or `nearest` |
 | `params/<name>/doc` | No | What the param does, for whoever sets it |
-| `blend` | No | How the color combines with what is under it, as Godot's blend modes: `mix` (default), `add`, `sub`, `mul` or `premul_alpha` |
-| `light_mode` | No | How [2D lights](#2d-lights) shade it, as Godot's: `normal` (default), `unshaded` (lights and `AmbientTint2D` leave it alone) or `light_only` (visible only where lights reach) |
+| `blend` | No | How the color combines with what is under it: `mix` (default), `add`, `sub`, `mul` or `premul_alpha` |
+| `light_mode` | No | How [2D lights](#2d-lights) shade it: `normal` (default), `unshaded` (lights and `AmbientTint2D` leave it alone) or `light_only` (visible only where lights reach) |
 | `shader` | No | A game's own shader instead of `color` and `nodes`: an `.hlsl` file's project path (see [Shaders](#shaders)), or a `.texture.json` graph worked out as it draws (see [Live texture graphs](#live-texture-graphs)) |
 | `compiled` | No | The shader compiled for each backend. Exports write it; never written by hand |
 
@@ -3327,10 +3278,10 @@ An arg is a number, an array of 2 to 4 numbers, a node written in place, or a na
 `"base.rgb"`, `"uv.yx"`, `"color.aaaa"`. Names of nodes and params use lowercase letters, digits
 and `_`, don't start with a digit, and can't be an input's.
 
-| Input | Type | Godot's | Value |
+| Input | Type | Shader name | Value |
 | --- | --- | --- | --- |
 | `uv` | vec2 | `UV` | The texture coordinate, from 0 to 1 across the sprite's frame |
-| `color` | vec4 | `COLOR` | The vertex color: the sprite's `modulate` |
+| `color` | vec4 | `COLOR` | The vertex color: the sprite's `tint` |
 | `texture` | texture | `TEXTURE` | The sprite's texture, for the `texture` op |
 | `texture_pixel_size` | vec2 | `TEXTURE_PIXEL_SIZE` | One over the texture's width and height |
 | `fragcoord` | vec2 | `FRAGCOORD.xy` | The pixel's position in the target, in pixels from the top left |
@@ -3378,11 +3329,10 @@ unless the table says otherwise.
 ### Shaders
 
 For what a graph can't say, `shader` names a game's own shader: an `.hlsl` file with a
-`fragment()` function, a `vertex()` function or both, as Godot's `canvas_item` shaders, written
-in HLSL. The functions take nothing and return nothing; they read and write Godot's built-ins,
-which are globals, and the material's params, by name. Helper functions, loops and `discard` are
-plain HLSL. [examples/custom-shaders](../../examples/custom-shaders/) has a dissolve and a flag
-that sways.
+`fragment()` function, a `vertex()` function or both in HLSL. The functions take nothing and
+return nothing; they read and write shader built-ins, which are globals, and the material's
+params, by name. Helper functions, loops and `discard` are plain HLSL.
+[examples/custom-shaders](../../examples/custom-shaders/) has a dissolve and a flag that sways.
 
 ```hlsl
 // shaders/dissolve.hlsl, with params amount (float) and edge_color (color).
@@ -3420,8 +3370,8 @@ void fragment() {
 | `NORMAL_MAP` | float3 | `fragment()` | The sprite's `normal_texture` texel (green up), or `(0.5, 0.5, 1)`, which lights shade with |
 | `SPECULAR_SHININESS` | float4 | `fragment()` | The specular color and shininess lights use: the sprite's `specular_texture` texel times its specular color |
 
-- `texture(t, uv)` samples `TEXTURE` or a texture param, as Godot's `texture()`, with the
-  texture's filter and repeat; `PI`, `TAU` and `E` are defined.
+- `texture(t, uv)` samples `TEXTURE` or a texture param, with the texture's filter and repeat;
+  `PI`, `TAU` and `E` are defined.
 - Params are globals of their type: a `float` param is a `float`, `vec2` a `float2`, `vec3` a
   `float3`, `vec4` and `color` a `float4`, and `texture` a texture. A shader takes at most 30
   number params (`WIND` and the time take the last two constants) and 3 textures. Names HLSL or the code
@@ -3430,7 +3380,7 @@ void fragment() {
 - A `vertex()` that moves `VERTEX`, `UV` or `COLOR` moves or recolors the corners, and
   `fragment()` gets those, interpolated. Lights shade the color `fragment()` leaves, as the
   material's `light_mode` says; writing `NORMAL_MAP` or `SPECULAR_SHININESS` makes lights use
-  them even when the sprite has no normal or specular texture, as in Godot.
+  them even when the sprite has no normal or specular texture.
 - `slash-cli` and `slash-mcp` compile shaders with glslang, SPIRV-Cross and Tint when they first
   draw, for Vulkan, Metal, Direct3D 12, OpenGL ES, WebGL 2 and WebGPU, and the CPU, which the software device
   ([`frame.capture`](commands.md#framecapture)) and `material.eval` run. Games can't compile
@@ -3443,8 +3393,7 @@ void fragment() {
 - `material.eval` runs `fragment()` alone, with derivatives (`ddx`, `ddy`, `fwidth`) of 0, and a
   discarded pixel comes back as `[0, 0, 0, 0]`. Functions such as `sin` and `pow` run with the C
   library on the CPU, which can differ from a GPU's in the last bits.
-- Not yet: passing a texture to a function of your own (sample it in `fragment()` instead), and
-  Godot's shader language itself.
+- Not yet: passing a texture to a function of your own (sample it in `fragment()` instead).
 
 #### Live texture graphs
 
@@ -3488,7 +3437,7 @@ size and inputs fixed), and it compiles, exports and reloads as any shader does.
 
 #### Spatial shaders
 
-A material with `"shader_type": "spatial"` is Godot's `shader_type spatial`: its shader's
+A material with `"shader_type": "spatial"` is a spatial shader: its shader's
 `vertex()` moves a mesh's corners and its `fragment()` gives the mesh's surface, which the
 engine's 3D lighting then lights as it lights a `Surface3D`, with every light, shadow,
 reflection, the sky, fog, SSAO, SSR and the rest. A `Model3D` draws one through its
@@ -3520,11 +3469,11 @@ void fragment() {
 }
 ```
 
-`render_mode` is Godot's `render_mode` line: one of `blend_mix` (the default), `blend_add`,
+`render_mode` is a line of modes: one of `blend_mix` (the default), `blend_add`,
 `blend_sub` and `blend_mul`, which blend a transparent mesh; one of `cull_back` (the default),
 `cull_front` and `cull_disabled`; and `unshaded`, `fog_disabled`, `shadows_disabled` and
 `world_vertex_coords`, which gives `vertex()` its corner in the world rather than in the mesh's
-own space, as Godot's. A spatial material has no `blend` or `light_mode`.
+own space. A spatial material has no `blend` or `light_mode`.
 
 ```hlsl
 // shaders/sway.hlsl: the top of a fence leans in the wind, and its shadow with it.
@@ -3538,11 +3487,11 @@ In `fragment()`:
 | Built-in | Type | Value |
 | --- | --- | --- |
 | `ALBEDO` | float3 | Out: the base color, linear; `(1, 1, 1)` |
-| `ALPHA` | float | Out: the opacity. Writing it makes the mesh transparent, blended by the blend mode, as Godot's; `1` |
+| `ALPHA` | float | Out: the opacity. Writing it makes the mesh transparent, blended by the blend mode; `1` |
 | `ALPHA_SCISSOR_THRESHOLD` | float | Out: writing it cuts the mesh out where `ALPHA` is under it instead of blending |
 | `METALLIC` | float | Out; `0` |
 | `ROUGHNESS` | float | Out; `1` |
-| `SPECULAR` | float | Out: the reflection at facing angles, as Godot's; `0.5` |
+| `SPECULAR` | float | Out: the reflection at facing angles; `0.5` |
 | `EMISSION` | float3 | Out: light the surface gives off, linear, added after lighting; `(0, 0, 0)` |
 | `AO` | float | Out: ambient occlusion, which darkens ambient light; `1` |
 | `AO_LIGHT_AFFECT` | float | Out: how much `AO` darkens direct light too; `0` |
@@ -3577,11 +3526,11 @@ In `vertex()`, which runs once a corner:
 
 `texture()` works in `vertex()` too, reading the texture's largest level.
 
-A `light()`, as Godot's, lights the surface in place of the engine's light model: it runs once for
-each light that reaches the pixel, adding what that light gives to `DIFFUSE_LIGHT` and
-`SPECULAR_LIGHT`. The engine then multiplies `DIFFUSE_LIGHT` by `ALBEDO` and by 1 minus
-`METALLIC`, and adds the ambient light, reflections and `EMISSION`, which `light()` doesn't
-change. A light the shader adds nothing for leaves the surface dark but for those.
+A `light()`, lights the surface in place of the engine's light model: it runs once for each light
+that reaches the pixel, adding what that light gives to `DIFFUSE_LIGHT` and `SPECULAR_LIGHT`. The
+engine then multiplies `DIFFUSE_LIGHT` by `ALBEDO` and by 1 minus `METALLIC`, and adds the ambient
+light, reflections and `EMISSION`, which `light()` doesn't change. A light the shader adds nothing
+for leaves the surface dark but for those.
 [examples/custom-lighting-3d](../../examples/custom-lighting-3d/) cel-shades a ball.
 
 ```hlsl
@@ -3603,29 +3552,29 @@ In `light()`:
 | `DIFFUSE_LIGHT`, `SPECULAR_LIGHT` | float3 | In and out: the light summed over the lights before this one; `(0, 0, 0)` at the first |
 | `ALPHA` | float | In and out: the opacity `fragment()` gave, which a transparent mesh draws with |
 | `LIGHT` | float3 | The direction from the pixel to the light, in view space |
-| `LIGHT_COLOR` | float3 | The light's color times its energy times pi, as Godot's, linear |
+| `LIGHT_COLOR` | float3 | The light's color times its energy times pi, linear |
 | `LIGHT_IS_DIRECTIONAL` | bool | Whether it is a `SunLight3D` |
 | `ATTENUATION` | float | How much of it reaches the pixel: its fade with distance and a spot light's cone, times its shadow |
-| `SPECULAR_AMOUNT` | float | The light's `light_specular`, doubled for omni and spot lights, as Godot's |
+| `SPECULAR_AMOUNT` | float | The light's `light_specular`, doubled for omni and spot lights |
 | `NORMAL` | float3 | The surface's normal in view space, after `NORMAL_MAP` and decals |
 | `VIEW` | float3 | The direction from the pixel to the camera, in view space |
 | `ALBEDO`, `METALLIC`, `ROUGHNESS` | | The surface `fragment()` gave, after decals |
 | `BACKLIGHT` | float3 | `(0, 0, 0)` |
 | `UV`, `UV2`, `FRAGCOORD`, `SCREEN_UV`, `TIME`, the matrices and `VIEWPORT_SIZE` | | As in `fragment()` |
 
-Globals `fragment()` sets keep their values in `light()`, as Godot's varyings between the two
-do. `discard` in `light()` drops the pixel. `DIFFUSE_LIGHT`, `LIGHT` and the rest of `light()`'s
-own built-ins are refused in `fragment()` and `vertex()`, as Godot's.
+Globals `fragment()` sets keep their values in `light()`. `discard` in `light()` drops the
+pixel. `DIFFUSE_LIGHT`, `LIGHT` and the rest of `light()`'s own built-ins are refused in
+`fragment()` and `vertex()`.
 
-- Params are globals as in canvas shaders. A spatial shader takes up to 5 textures, and a
-  texture param with `"source_color": true` holds sRGB colors that `texture()` makes linear, as
-  Godot's `source_color` hint. A `color` param's value is made linear before the shader reads
-  it, so colors written in a material look as they do in Godot. The names `mesh.hlsl` and its
-  wrappers declare are refused with the param's path, as `albedo_texture` is.
-- The shader is compiled into each of the mesh shader's fragment stages: the Compatibility
-  renderer's, Forward+'s, and the prepasses that draw normals for SSAO and SSR and motion for TAA
-  and FSR 2, so `NORMAL_MAP`, `ROUGHNESS` and cut-outs show in them too. `frame.capture` draws it
-  on the CPU, where derivatives (`ddx`, `ddy`, `fwidth`) work as on a GPU.
+- Params are globals as in canvas shaders. A spatial shader takes up to 5 textures, and a texture
+  param with `"source_color": true` holds sRGB colors that `texture()` makes linear. A `color`
+  param's value is made linear before the shader reads it. The names `mesh.hlsl` and its wrappers
+  declare are refused with the param's path, as `albedo_texture` is.
+- The shader is compiled into each of the mesh shader's fragment stages: the compatibility
+  renderer's, the clustered renderer's, and the prepasses that draw normals for SSAO and SSR and
+  motion for TAA and FSR 2, so `NORMAL_MAP`, `ROUGHNESS` and cut-outs show in them too.
+  `frame.capture` draws it on the CPU, where derivatives (`ddx`, `ddy`, `fwidth`) work as on a
+  GPU.
 - `vertex()` is compiled into the mesh shader's vertex stage, the motion prepass's (which runs
   it again with the mesh's place and `TIME` of the frame before, so TAA and FSR 2 see what it
   moves) and the shadow pass's, so a mesh's shadow moves with it. Shadow passes see the light's
@@ -3633,19 +3582,19 @@ own built-ins are refused in `fragment()` and `vertex()`, as Godot's.
 - A mesh whose material's shader writes `ALPHA` draws after the opaque ones, farthest first, and
   casts no shadow; one that writes `ALPHA_SCISSOR_THRESHOLD` runs its `fragment()` in the shadow
   pass too and casts only what it keeps.
-- `light()` runs in the Compatibility and Forward+ color stages, for every light, the clustered
-  ones included; the prepasses and shadow passes don't light anything, so they leave it out. On
-  the CPU, `frame.capture` runs it once a pixel and light, where `ddx` and `ddy` give 0.
+- `light()` runs in the compatibility and the clustered renderer color stages, for every light,
+  the clustered ones included; the prepasses and shadow passes don't light anything, so they
+  leave it out. On the CPU, `frame.capture` runs it once a pixel and light, where `ddx` and
+  `ddy` give 0.
 
 #### Compositor shaders and pipeline files
 
-A material with `"shader_type": "compositor"` is a screen pass, as Godot 4.3's
-`CompositorEffect`: its `fragment()` runs once a pixel over the 3D world drawn so far and writes
-the world's new color. A `.pipeline.json` file (`$cli schema pipeline`), Godot's `Compositor`,
-lists such effects and the passes it turns off; a `Environment3D`'s `compositor` names one,
-and a current `Camera3D`'s `compositor` takes its place, as in Godot.
-[examples/compositor-effects](../../examples/compositor-effects/) inks outlines and grades a
-scene.
+A material with `"shader_type": "compositor"` is a screen pass: its `fragment()` runs once a
+pixel over the 3D world drawn so far and writes the world's new color. A `.pipeline.json` file
+(`$cli schema pipeline`) lists such effects and the passes it turns off;
+a `Environment3D`'s `compositor` names one, and a current `Camera3D`'s `compositor` takes its
+place. [examples/compositor-effects](../../examples/compositor-effects/) inks outlines and
+grades a scene.
 
 ```json
 {
@@ -3674,10 +3623,10 @@ An effect's fields:
 | `name` | | Unique in the file |
 | `material` | | A `.material.json` file with `"shader_type": "compositor"` |
 | `material_params` | `{}` | Its params' values over the material's |
-| `effect_callback_type` | `"post_transparent"` | Where it draws, as Godot's: `pre_opaque` over the sky before the opaque meshes; `post_opaque`, `post_sky` and `pre_transparent`, in that order, after the opaque meshes and subsurface scattering; `post_transparent` after the blended meshes, before TAA, FSR and post-processing |
+| `effect_callback_type` | `"post_transparent"` | Where it draws: `pre_opaque` over the sky before the opaque meshes; `post_opaque`, `post_sky` and `pre_transparent`, in that order, after the opaque meshes and subsurface scattering; `post_transparent` after the blended meshes, before TAA, FSR and post-processing |
 | `needs_normal_roughness` | `false` | Draws the prepass, so `normal_roughness_texture` reads the meshes' normals and roughness |
 | `enabled` | `true` | Whether it draws |
-| `code` | `""` | A C++ callback the game's code registers with `scene3d::add_compositor_code(name, fn)` (`slash/scene3d/pipeline.hpp`) in its `SLASH_GAME_MODULE` function, as Godot's `_render_callback`: run each frame before the effect draws, with the world and the effect to change (its params, `enabled` and the rest) |
+| `code` | `""` | A C++ callback the game's code registers with `scene3d::add_compositor_code(name, fn)` (`slash/scene3d/pipeline.hpp`) in its `SLASH_GAME_MODULE` function: run each frame before the effect draws, with the world and the effect to change (its params, `enabled` and the rest) |
 
 `passes` turns off what the environment and project.json would draw, by name: `ssao`, `ssr`,
 `glow`, `adjustments`, `subsurface`, `volumetric_fog`, `sdfgi`, `dof`, `auto_exposure`, `taa`,
@@ -3693,12 +3642,13 @@ In a compositor shader's `fragment()`:
 | `SCREEN_PIXEL_SIZE` | float2 | One over the frame's width and height |
 | `TIME` | float | Seconds of game time |
 | `PROJECTION_MATRIX`, `INV_PROJECTION_MATRIX`, `VIEW_MATRIX`, `INV_VIEW_MATRIX` | float4x4 | The camera's, as in spatial shaders |
-| `screen_texture(uv)` | float4 | Godot's `SCREEN_TEXTURE` (`hint_screen_texture`): the world as drawn so far, filtered linearly |
-| `depth_texture(uv)` | float | Godot's `DEPTH_TEXTURE`: the nearest pixel's reversed depth, 1 near and 0 at the far plane (0 before the meshes draw) |
-| `normal_roughness_texture(uv)` | float4 | Godot's `NORMAL_ROUGHNESS_TEXTURE`, decoded: the view-space normal and the roughness, or `(0, 0, 1, 1)` without `needs_normal_roughness` |
+| `screen_texture(uv)` | float4 | The world as drawn so far, filtered linearly |
+| `depth_texture(uv)` | float | The nearest pixel's reversed depth, 1 near and 0 at the far plane (0 before the meshes draw) |
+| `normal_roughness_texture(uv)` | float4 | The decoded view-space normal and the roughness, or `(0, 0, 1, 1)` without `needs_normal_roughness` |
 
-- Effects draw only in Forward+, as Godot's Compatibility renderer has none: the OpenGL devices
-  draw none, nor do reflection probes' captures or path-traced frames. A frame draws up to 16.
+- Effects draw only in the clustered renderer, as the compatibility renderer has none: the
+  OpenGL devices draw none, nor do reflection probes' captures or path-traced frames. A frame
+  draws up to 16.
 - Each device copies the world into a texture of its own before an effect, so an effect reads
   what came before it, effects at one point in the file's order.
 - A compositor material takes up to 4 texture params; its params are globals as in canvas
@@ -3707,20 +3657,18 @@ In a compositor shader's `fragment()`:
 
 ## Animations
 
-A `.anim.json` file holds keyframe animations by name, like a Godot `AnimationLibrary` of
-`Animation` resources. An entity's `Animator` names the file (or a
-[model](#skeletons-and-model-animations), to play its animations as they are) in `library` and
-plays one of them: each tick the `animation_player` system moves `time` on, sets every field the
+A `.anim.json` file holds keyframe animations by name. An entity's `Animator` names the file (or a
+[model](#skeletons-and-model-animations), to play its animations as they are) in `library` and plays
+one of them: each tick the `animation_player` system moves `time` on, sets every field the
 animation's value tracks name on the entity's own components (adding a component it lacks), and
-emits the events its event tracks name. A track with a `target` acts on another entity instead,
-the one the player's `targets` maps that name to, as a Godot track names a node by its path from
-the player's root node. A node track moves a node or bone of the model the entity's
-`Model3D` draws, as Godot's position, rotation and scale tracks move a `Node3D` or a
-`Skeleton3D` bone (see [node tracks](#node-tracks)). `slash-cli schema animation` prints the schema,
-`slash-cli scene validate` and `scene format` accept `.anim.json` files, and the
+emits the events its event tracks name. A track with a `target` acts on another entity instead, the
+one the player's `targets` maps that name to. A node track moves a node or bone of the model the
+entity's `Model3D` draws, rotation and scale tracks move a `Node3D` or a `Skeleton3D` bone (see
+[node tracks](#node-tracks)). `slash-cli schema animation` prints the schema, `slash-cli scene
+validate` and `scene format` accept `.anim.json` files, and the
 [`animation.eval`](commands.md#animationeval) command returns the values an animation sets.
-[examples/keyframe-animation](../../examples/keyframe-animation/) has two. Bezier tracks,
-animation tracks, camera cuts and markers make [cinematics](#cinematics).
+[examples/keyframe-animation](../../examples/keyframe-animation/) has two. Bezier tracks, animation
+tracks, camera cuts and markers make [cinematics](#cinematics).
 
 ```json
 {
@@ -3762,11 +3710,11 @@ and the entity that plays it, whose child `sword` the last track turns:
 | `animations` | Yes | Animations by name |
 | `animations/<name>/from` | No | A model's animation it plays on the nodes of the model the entity's `Model3D` draws: `{"model": "models/hero.glb", "animation": "Walk"}` ([model animations](#skeletons-and-model-animations)) |
 | `animations/<name>/length` | Unless `from` | Seconds, more than 0. Left out, the length of the model's animation it comes from |
-| `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` stops there, `linear` starts over, `pingpong` turns round. Left out, the model animation's (`linear` if it loops), else `none` |
+| `animations/<name>/loop` | No | What happens at the end: `none` stops there, `linear` starts over, `pingpong` turns round. Left out, the model animation's (`linear` if it loops), else `none` |
 | `animations/<name>/speed` | No | With `from`: how fast the model's animation plays, more than 0 and up to 10 (default 1); a left-out `length` is the model animation's divided by it |
 | `animations/<name>/layers` | No | With `from`: up to 16 [animation layers](#animation-layers) of bone changes over the model's animation, applied in order |
 | `animations/<name>/tracks` | Unless `from` | Value tracks, event tracks and node tracks, and [cinematics](#cinematics)' bezier, animation and audio tracks |
-| `animations/<name>/markers` | No | Named times in seconds, as Godot's animation markers: `{"close_up": 4}`. [`animation.seek`](commands.md#animationseek) takes them |
+| `animations/<name>/markers` | No | Named times in seconds: `{"close_up": 4}`. [`animation.seek`](commands.md#animationseek) takes them |
 | `tracks/<n>/type` | No | What it does: `value`, `bezier`, `event`, `node`, `animation` or `audio`. Left out, a track with `path` is a value track, with `event` an event track and with `node` a node track; bezier, animation and audio tracks say so |
 | `tracks/<n>/path` | One of these | A value or bezier track: the field it sets, as a component, a field and optionally a part of the field |
 | `tracks/<n>/event` | One of these | An event track: the event kind it emits |
@@ -3777,26 +3725,25 @@ and the entity that plays it, whose child `sword` the last track turns:
 | `keys/<n>/time` | Yes | Seconds from the start |
 | `keys/<n>/value` | Value, bezier and node tracks | A value the field takes; for a bezier track, a number; for a node track, `[x, y, z]` |
 | `keys/<n>/data` | No | Event tracks: the event's data, any JSON |
-| `keys/<n>/in`, `keys/<n>/out` | No | Bezier tracks: the key's handles, `[seconds, value]` from the key, as Godot's `in_handle` and `out_handle`; `in`'s seconds 0 or less, `out`'s 0 or more. Left out, `[0, 0]` |
+| `keys/<n>/in`, `keys/<n>/out` | No | Bezier tracks: the key's handles, `[seconds, value]` from the key; `in`'s seconds 0 or less, `out`'s 0 or more. Left out, `[0, 0]` |
 | `keys/<n>/animation` | Animation tracks | The animation the target's player plays from this key, or `"[stop]"` to stop it |
 | `keys/<n>/stream` | Audio tracks | The project path of the sound the target's player plays from this key: a `.wav`, `.ogg`, `.mp3` or `.audio.json` file |
-| `keys/<n>/start_offset`, `keys/<n>/end_offset` | No | Audio tracks: seconds cut from the sound's start and end, as Godot's. Left out, 0 |
-| `tracks/<n>/use_blend` | No | Audio tracks: in an [animation tree](#animation-trees), whether the sound's volume follows how much its animation counts in the blend (default `true`), as Godot's |
-| `keys/<n>/transition` | No | Easing on the way to the next key, as Godot's easing curve: 1 (default) is linear, above 1 eases in, between 0 and 1 eases out, below 0 eases in and out, 0 holds the value until the next key |
+| `keys/<n>/start_offset`, `keys/<n>/end_offset` | No | Audio tracks: seconds cut from the sound's start and end. Left out, 0 |
+| `tracks/<n>/use_blend` | No | Audio tracks: in an [animation tree](#animation-trees), whether the sound's volume follows how much its animation counts in the blend (default `true`) |
+| `keys/<n>/transition` | No | Easing on the way to the next key: 1 (default) is linear, above 1 eases in, between 0 and 1 eases out, below 0 eases in and out, 0 holds the value until the next key |
 | `tracks/<n>/interpolation` | No | Value tracks: `linear` (default), `nearest` (each key's value until the next), `cubic` (a smooth curve through the keys), or `linear_angle` and `cubic_angle`, which turn the short way round, for rotations in radians. Node tracks: `linear` or `nearest` |
 | `tracks/<n>/update` | No | Value tracks: `continuous` sets the value every tick, `discrete` sets a key's value when playback reaches it. `auto` (default) is continuous for float fields and discrete for others: integers, strings, booleans and entity references |
 | `tracks/<n>/loop_wrap` | No | Value and node tracks in a looping animation: before the first key and after the last, move between the last key and the first across the loop's end (default `true`); `false` holds them |
 
 A path's part picks one number out of a vector or color field, by `x`, `y`, `z` or `w`, `r`, `g`,
-`b` or `a`, or by index (`Sprite2D/modulate/a`, `Transform2D/position/y`), or a field of a
-struct field. Values are absolute, as in Godot: a track on `Transform2D/position` places the
-entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
+`b` or `a`, or by index (`Sprite2D/modulate/a`, `Transform2D/position/y`), or a field of a struct
+field. Values are absolute: a track on `Transform2D/position` places the entity, so animate
+`Sprite2D/offset` to move a sprite around its entity instead.
 
-- Playback passes the keys after where it was, up to and including where it gets to, as Godot's:
-  at 60 ticks a second, a key at 0.25 seconds is passed on the 15th tick. When playback starts at
-  the start of an animation, a key there is passed too. Event keys emit their event then, with
-  the ID of the entity the track acts on and the key's `data`, and discrete tracks set their
-  key's value.
+- Playback passes the keys after where it was, up to and including where it gets to: at 60 ticks
+  a second, a key at 0.25 seconds is passed on the 15th tick. When playback starts at the start
+  of an animation, a key there is passed too. Event keys emit their event then, with the ID of
+  the entity the track acts on and the key's `data`, and discrete tracks set their key's value.
 - The names in `targets` are entity references, so they follow the entities when a scene is
   instanced: a hero scene whose player targets `sword` targets `knight/sword` in the knight
   instance. Two tracks may set one path on different targets. A target missing from `targets`,
@@ -3806,7 +3753,7 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   again from there starts it over. A linear loop passes keys at both its end and its start as it
   wraps; a pingpong loop passes a key at each end once and flips `backwards`. Whole loops in a
   single tick pass no keys.
-- Fields a new animation doesn't set keep their last values, as in Godot.
+- Fields a new animation doesn't set keep their last values.
 - Given the components, mistakes fail with the JSON Pointer of the bad value: keys out of order
   or past the length, an unknown component or field (with "did you mean"), a part a field doesn't
   have, a key value the field doesn't take, a string or boolean on a continuous track, two
@@ -3851,9 +3798,9 @@ nothing to play.
 
 ### Cinematics
 
-Cutscenes are animations, as in Godot, where a cinematic is an `Animator` whose tracks
-move cameras, start other players and fire events. An animation that directs one usually sits
-on an entity of its own whose `targets` name the cameras and actors.
+Cutscenes are animations, where a cinematic is an `Animator` whose tracks move cameras, start
+other players and fire events. An animation that directs one usually sits on an entity of its
+own whose `targets` name the cameras and actors.
 
 ```json
 "intro": {
@@ -3870,55 +3817,51 @@ on an entity of its own whose `targets` name the cameras and actors.
 }
 ```
 
-- A bezier track sets one number (`Camera3D/fov`, `Transform3D/position/y`) along a curve, as
-  Godot's bezier tracks: between two keys it is the cubic Bézier from the first key through its
-  `out` handle and the second key's `in` handle, found at the time as Godot's
-  `bezier_track_interpolate` finds it, by ten halvings. With no handles the curve is a straight
-  line; before the first key and after the last it holds, and it never wraps round a loop. It
-  sets the value every tick, and has no `interpolation`, `update`, `loop_wrap` or key
-  `transition`.
-- An animation track plays the `Animator` of its `target`, which it needs, as Godot's
-  animation playback tracks: when playback passes a key, the target plays the key's `animation`
-  as Godot's `play` does (another animation starts from its start, the same one goes on, or
-  starts over once it ended), and `"[stop]"` stops it and moves it back to its start, as
-  `stop()`. Players run newest entity first, so a player made after the one it starts begins
-  playing on the same tick.
+- A bezier track sets one number (`Camera3D/fov`, `Transform3D/position/y`) along a curve:
+  between two keys it is the cubic Bézier from the first key through its `out` handle and the
+  second key's `in` handle, found at the time by
+  ten halvings. With no handles the curve is a straight line; before the first key and after the
+  last it holds, and it never wraps round a loop. It sets the value every tick, and has no
+  `interpolation`, `update`, `loop_wrap` or key `transition`.
+- An animation track plays the `Animator` of its `target`, which it needs: when playback passes
+  a key, the target plays the key's `animation` (another animation starts
+  from its start, the same one goes on, or starts over once it ended), and `"[stop]"` stops it
+  and moves it back to its start, as `stop()`. Players run newest entity first, so a player made
+  after the one it starts begins playing on the same tick.
 - A value track that sets a `Camera3D`'s `current` to `true` cuts to it: every other
-  `Camera3D`'s `current` turns off, as setting Godot's `current` makes the camera the viewport's.
+  `Camera3D`'s `current` turns off.
   [Animation trees](#animation-trees) cut the same way.
 - [`animation.seek`](commands.md#animationseek) jumps a player to a time or a marker and sets what
-  its tracks set there at once, as Godot's `seek(time, true, true)`: value and bezier tracks'
+  its tracks set there at once: value and bezier tracks'
   values, and for each animation track the animation its last key started, moved to where it
   would be (held at its end, round its loop or back and forth) and set in turn. Event tracks wait
   for playback.
-- [Animation trees](#animation-trees) play animation tracks as Godot's `AnimationMixer` does:
-  playback plays the last key passed, as a player does, and a seek in the tree (an animation's
-  first tick, a `TimeSeek`) moves the target to where the key at or before the time started its
-  animation and plays it from there, unless that animation doesn't loop and has ended.
+- [Animation trees](#animation-trees) play animation tracks: playback plays the last key passed,
+  as a player does, and a seek in the tree (an animation's first tick, a `TimeSeek`) moves the
+  target to where the key at or before the time started its animation and plays it from there,
+  unless that animation doesn't loop and has ended.
 - An audio track plays sounds on the audio player of its `target` (an `SoundPlayer`,
-  `SoundPlayer2D` or `SoundPlayer3D`, which it needs), as Godot's audio playback
-  tracks: when playback passes a key, the key's `stream` starts there, `start_offset` seconds
-  into the sound, and stops `end_offset` seconds before its end. Each sound plays on a voice of
-  the player's own, beside the player's own `stream`, at the player's volume, pitch, bus and
-  place; up to 32 play at once on a player, as Godot's mixer allows. A sound stops when the
-  animation stops, pauses or ends, when its key plays again, and, in an animation that doesn't
-  loop, when playback goes back before its key. `animation.seek` starts none, as Godot's
-  update-only seek. [`audio.state`](commands.md#audiostate) counts each player's `track_streams`.
-- [Animation trees](#animation-trees) play audio tracks as Godot's `AnimationMixer` does: a seek
-  in the tree starts the sound of the key at or before the time from that far in, and each
-  sound's volume follows the weight its animation has in the blend unless `use_blend` is off. A
-  tree that stops being `active` stops its sounds.
+  `SoundPlayer2D` or `SoundPlayer3D`, which it needs): when playback passes a key, the key's
+  `stream` starts there, `start_offset` seconds into the sound, and stops `end_offset` seconds
+  before its end. Each sound plays on a voice of the player's own, beside the player's own
+  `stream`, at the player's volume, pitch, bus and place; up to 32 play at once on a player. A
+  sound stops when the animation stops, pauses or ends, when its key plays again, and, in an
+  animation that doesn't loop, when playback goes back before its key. `animation.seek` starts
+  none. [`audio.state`](commands.md#audiostate) counts each player's `track_streams`.
+- [Animation trees](#animation-trees) play audio tracks: a seek in the tree starts the sound of
+  the key at or before the time from that far in, and each sound's volume follows the weight its
+  animation has in the blend unless `use_blend` is off. A tree that stops being `active` stops
+  its sounds.
 - [examples/cinematics](../../examples/cinematics/) dollies a camera, opens a door and cuts, and
   [examples/cinematic-sound](../../examples/cinematic-sound/) plays a cutscene's sounds.
 
 ### Node tracks
 
 A node track moves one node of the model the playing entity's `Model3D` draws, a bone
-or any other node, as a Godot `position_3d`, `rotation_3d` or `scale_3d` track moves a node or a
-`Skeleton3D` bone. It plays as a model's own animations do: the player poses the model, an
+or any other node. It plays as a model's own animations do: the player poses the model, an
 [animation tree](#animation-trees) blends it with the model's animations and uses it for root
 motion, and nodes no track moves keep their rests. Rotations are Euler angles in radians, as
-`Transform3D`'s, and turn the shorter way round from key to key, as Godot slerps them.
+`Transform3D`'s, and turn the shorter way round from key to key.
 
 ```json
 "wave": {
@@ -3942,18 +3885,16 @@ motion, and nodes no track moves keep their rests. Rotations are Euler angles in
 
 ## Animation trees
 
-A `.animtree.json` file is a tree of animation nodes, as Godot's `AnimationNodeBlendTree`,
-`AnimationNodeStateMachine` and the nodes they hold: animations blended, added, faded in and out,
-switched between and played as states. An entity's
-[`AnimationGraph`](#built-in-components) names the file in `root` and the libraries its animations
-come from in `libraries` (`.anim.json` files or models). Each tick the `animation_tree` system,
-after `animation_player`, processes the tree with the entity's `parameters`, keeps what the nodes
-need in `state`, and mixes the animations they play as Godot's `AnimationMixer` does: value
-tracks blend by weight into the entity's (or a target's) components, event tracks emit their
-events, and a model's animations pose the skeleton of the model its `Model3D` draws in
-place of its `Animator`'s. `slash-cli schema animtree` prints the schema,
-`slash-cli scene validate` and `scene format` accept `.animtree.json` files, and the
-[`animation.tree`](commands.md#animationtree) and
+A `.animtree.json` file is a tree of animation nodes, `AnimationNodeStateMachine` and the nodes
+they hold: animations blended, added, faded in and out, switched between and played as states. An
+entity's [`AnimationGraph`](#built-in-components) names the file in `root` and the libraries its
+animations come from in `libraries` (`.anim.json` files or models). Each tick the `animation_tree`
+system, after `animation_player`, processes the tree with the entity's `parameters`, keeps what
+the nodes need in `state`, and mixes the animations they play: value tracks blend by weight into
+the entity's (or a target's) components, event tracks emit their events, and a model's animations
+pose the skeleton of the model its `Model3D` draws in place of its `Animator`'s. `slash-cli schema
+animtree` prints the schema, `slash-cli scene validate` and `scene format` accept `.animtree.json`
+files, and the [`animation.tree`](commands.md#animationtree) and
 [`animation.set_parameters`](commands.md#animationset_parameters) commands list and set
 parameters. [examples/animation-tree](../../examples/animation-tree/) points a waving arm.
 
@@ -3976,8 +3917,7 @@ parameters. [examples/animation-tree](../../examples/animation-tree/) points a w
 ```
 
 `root` is an `Animation`, a `BlendTree`, a blend space or a `StateMachine`. A `BlendTree` holds nodes by name and connects them by the names in each
-node's `inputs`; `output` names the node whose result it gives. The node types are Godot's, with
-its field names:
+node's `inputs`; `output` names the node whose result it gives. The node types:
 
 | Type | Inputs | Fields | Parameters |
 | --- | --- | --- | --- |
@@ -3990,17 +3930,16 @@ its field names:
 | `TimeScale` | `in` | | `scale` |
 | `TimeSeek` | `in` | `explicit_elapse` | `seek_request`: seconds |
 | `Transition` | a list of `{name, node, auto_advance, break_loop_at_end, reset}` | `xfade_time`, `xfade_curve`, `allow_transition_to_self`, `sync` | `transition_request`: an input's name |
-| `BlendSpace1D`, `BlendSpace2D` | | `points` (`{position, node}`, each node an `Animation`, a `BlendTree`, a blend space or a `StateMachine`), `blend_mode` (`interpolated`, `discrete`, `discrete_carry`), `min_space`, `max_space`, `sync`; 2D: `auto_triangles` (Delaunay, as Godot's) or `triangles` | `blend_position`: a number, or `[x, y]` |
+| `BlendSpace1D`, `BlendSpace2D` | | `points` (`{position, node}`, each node an `Animation`, a `BlendTree`, a blend space or a `StateMachine`), `blend_mode` (`interpolated`, `discrete`, `discrete_carry`), `min_space`, `max_space`, `sync`; 2D: `auto_triangles` (Delaunay) or `triangles` | `blend_position`: a number, or `[x, y]` |
 | `StateMachine` | | `states` (by name, `{node, position}`), `transitions`, `state_machine_type` (`root`, `nested`, `grouped`), `allow_transition_to_self`, `reset_ends` | `travel`, `start`: a state's name; `next`, `stop`: `true`; `conditions/<name>` |
 
 Filters (`filter_enabled` and `filters`) name the tracks a node blends: a model node's name for
 the tracks that move it, a value track's path, `@` and an event track's event, or `[animation]`
 for an animation track and `[audio]` for an audio track, each after its target and `:` if it has
-one (`"sword:Transform2D/rotation"`, `"door:[animation]"`). The rest pass through, as Godot's
-filters.
+one (`"sword:Transform2D/rotation"`, `"door:[animation]"`). The rest pass through.
 
-A `StateMachine` plays one of its `states` at a time, as Godot's `AnimationNodeStateMachine`, and
-moves between them through its `transitions`:
+A `StateMachine` plays one of its `states` at a time, and moves between them through its
+`transitions`:
 
 ```json
 {
@@ -4031,15 +3970,14 @@ moves between them through its `transitions`:
   ends a loop). `xfade_time` and `xfade_curve` cross-fade the two states, and `reset` (the
   default) starts the next one over. Transitions taken one after another happen in one tick
   until one cross-fades.
-- `travel` names a state to go to by the cheapest way through transitions that aren't disabled,
-  as Godot's `travel()`: A* over the states' `position`s, each step costing its length times its
-  `priority`, a direct transition first. With no way there, it jumps there. `start` jumps to a
-  state and starts it over, `next` takes the next transition (a travel's next step or an auto
-  transition) now, without waiting for `at_end`, and `stop` plays nothing for a tick and leaves
-  the machine stopped, so the next `travel` sets out from `Start`; the tree sets them back once
-  it acts on them. `state` keeps the machine's `playback` (`"move/playback"`): `current`,
-  `fading_from` with the cross-fade's `fading_time` and `fading_pos`, the travel's `path`, and
-  `playing`.
+- `travel` names a state to go to by the cheapest way through transitions that aren't disabled: A*
+  over the states' `position`s, each step costing its length times its `priority`, a direct
+  transition first. With no way there, it jumps there. `start` jumps to a state and starts it over,
+  `next` takes the next transition (a travel's next step or an auto transition) now, without waiting
+  for `at_end`, and `stop` plays nothing for a tick and leaves the machine stopped, so the next
+  `travel` sets out from `Start`; the tree sets them back once it acts on them. `state` keeps the
+  machine's `playback` (`"move/playback"`): `current`, `fading_from` with the cross-fade's
+  `fading_time` and `fading_pos`, the travel's `path`, and `playing`.
 - `state_machine_type`: a `root` machine (the default) starts over when its parent seeks it to
   its start, as the tree's first tick and a Transition switching to it do; a `nested` one
   carries on, starting over only once it reached `End`; a `grouped` one is a state of another
@@ -4047,13 +3985,13 @@ moves between them through its `transitions`:
   parent's into and out of it, so there are as many of each, and a travel goes into it by a
   path, `"combat/shoot"`, through its `End` when it leaves.
 - A state's node's parameters are named after the state: `"move/run/blend_position"`.
-- An auto transition's `advance_expression` must also run to a value that counts as true, as
-  Godot's: `"speed > 0.1 and not crouching"`. It reads the tree's `variables`, which the file
-  declares at its top with their defaults (a number, `true`, `false` or `null`) and games set as
-  parameters of their own (`"speed"`, beside the root's `travel`), as Godot's expressions read the
-  properties of the tree's `advance_expression_base_node`. `triggers` names variables that start
-  `false` and go back to `false` once a transition that reads them is taken on its own, as Unity's
-  Animator triggers: set `jump` and the next transition whose expression holds uses it up.
+- An auto transition's `advance_expression` must also run to a value that counts as true: `"speed >
+  0.1 and not crouching"`. It reads the tree's `variables`, which the file declares at its top with
+  their defaults (a number, `true`, `false` or `null`) and games set as parameters of their own
+  (`"speed"`, beside the root's `travel`), which expressions can read. `triggers` names variables
+  that start `false` and go back to `false` once a transition that reads them is taken on its own,
+  as Unity's Animator triggers: set `jump` and the next transition whose expression holds uses it
+  up.
 
   ```json
   {"format": 1, "variables": {"speed": 0.0}, "triggers": ["jump"], "root": {"type": "StateMachine",
@@ -4062,15 +4000,15 @@ moves between them through its `transitions`:
                     "advance_expression": "jump and speed < 4"}]}}
   ```
 
-  Expressions are Godot's `Expression`: numbers, strings, `true`, `false`, `null`, `PI`, `TAU`,
-  `INF` and `NAN`; the operators `**`, `~`, unary `-`, `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`,
-  comparisons, `not` (`!`), `and` (`&&`) and `or` (`||`), bound as Godot binds them; and the
-  functions `abs`, `sign`, `min`, `max`, `clamp`, `floor`, `ceil`, `round`, `sqrt`, `pow`, `lerp`,
-  `fmod`, `is_equal_approx`, `is_zero_approx`, `int`, `float` and `bool`. Values follow Godot's
-  rules: whole numbers divide as integers, and comparing a number with `null` or a string fails.
-  An expression that fails isn't taken. `validate` reports one that doesn't parse, with the
-  character it stops at, and a name that isn't a variable or trigger, with "did you mean".
-  [examples/animation-expressions](../../examples/animation-expressions/) jumps on a trigger.
+  Expressions have numbers, strings, `true`, `false`, `null`, `PI`, `TAU`, `INF` and `NAN`; the
+  operators `**`, `~`, unary `-`, `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`, comparisons, `not` (`!`),
+  `and` (`&&`) and `or` (`||`); and the functions `abs`, `sign`, `min`, `max`, `clamp`, `floor`,
+  `ceil`, `round`, `sqrt`, `pow`, `lerp`, `fmod`, `is_equal_approx`, `is_zero_approx`, `int`,
+  `float` and `bool`. Values follow these rules: whole numbers divide as integers, and comparing a
+  number with `null` or a string fails. An expression that fails isn't taken. `validate` reports one
+  that doesn't parse, with the character it stops at, and a name that isn't a variable or trigger,
+  with "did you mean". [examples/animation-expressions](../../examples/animation-expressions/) jumps
+  on a trigger.
 
 - A parameter's name is its node's path in the tree and its own: `"shot/request"`,
   `"locomotion/walk/blend_amount"` for a node inside a blend tree inside the root's, and
@@ -4079,23 +4017,22 @@ moves between them through its `transitions`:
   their defaults once the tree acts on them. Everything else the nodes keep (times, fades, the
   current input, `shot/active`) is in `state`. A blend space's points' nodes are named by their
   index: `"space/0/..."`.
-- The first tick after the tree starts (or `state` is emptied) seeks every node to its start, as
-  Godot's tree does: nothing moves until the second tick. Animations at zero weight don't move on
-  unless a node's `sync` keeps them playing.
+- The first tick after the tree starts (or `state` is emptied) seeks every node to its start:
+  nothing moves until the second tick. Animations at zero weight don't move on unless a node's
+  `sync` keeps them playing.
 - With `deterministic` (the default), every track any animation in the tree has is set each
   tick: tracks no playing animation moves blend back toward their rest values, the first key of
   the `RESET` animation in the library `""` (model nodes' rest poses for model animations). Off,
   only played tracks are set and their weights are scaled to add up to 1.
 - Root motion: `root_motion_track` names a model node whose motion is taken out of the pose and
   reported each tick in `root_motion_position`, `root_motion_rotation` and `root_motion_scale`
-  (the change) and the `_accumulator`s (where the animations put it), as Godot's, for gameplay
-  code to move the entity by. `root_motion_local` turns the position into the node's own frame.
+  (the change) and the `_accumulator`s (where the animations put it), for gameplay code to move
+  the entity by. `root_motion_local` turns the position into the node's own frame.
 - An `Animation` node whose animation doesn't loop emits `animation_started` when it starts and
-  `animation_finished` when it reaches its end, with `{"animation": "<name>"}`, as Godot's tree
-  signals, before the events of event tracks.
+  `animation_finished` when it reaches its end, with `{"animation": "<name>"}`, before the
+  events of event tracks.
 - A tree that can't play, such as an animation the libraries lack or an input connected to
-  nothing, plays nothing and says why in `invalid`, as Godot's `invalid_reasons`. A file that
-  doesn't load logs one warning.
+  nothing, plays nothing and says why in `invalid`. A file that doesn't load logs one warning.
 - `slash-cli scene validate` and exports check, in a scene or prefab, that each tree and library
   loads, that the tree's animations and filters' tracks are in its libraries (with "did you
   mean"), that `root_motion_track` is a node some animation moves, that `parameters` names
@@ -4107,11 +4044,11 @@ moves between them through its `transitions`:
 ## Tile sets
 
 A `.tileset.json` file cuts atlas textures into tiles, names the terrains that connect them and
-gives tiles collision polygons, occluders and custom data, like Godot's `TileSet` with
-`TileSetAtlasSource`s. A [`TileLayer2D`](#tile-map-layers) draws
-its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene validate` and
-`scene format` accept `.tileset.json` files, and exports check and ship them.
-[examples/tilemaps](../../examples/tilemaps/) has one with grass, water and the tiles between.
+gives tiles collision polygons, occluders and custom data with `TileSetAtlasSource`s. A
+[`TileLayer2D`](#tile-map-layers) draws its tiles. `slash-cli schema tileset` prints the schema,
+`slash-cli scene validate` and `scene format` accept `.tileset.json` files, and exports check
+and ship them. [examples/tilemaps](../../examples/tilemaps/) has one with grass, water and the
+tiles between.
 
 ```json
 {
@@ -4139,26 +4076,26 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | Key | Required | Meaning |
 | --- | --- | --- |
 | `format` | Yes | Format version. Must be `1` |
-| `tile_shape` | No | The cells' shape, as Godot's: `square` (default), `isometric` (diamonds), `half_offset_square` (bricks) or `hexagon`. See [tile shapes](#tile-shapes) |
-| `tile_layout` | No | How cells of the shapes other than squares are numbered, as Godot's: `stacked` (default), `stacked_offset`, `stairs_right`, `stairs_down`, `diamond_right` or `diamond_down` |
+| `tile_shape` | No | The cells' shape: `square` (default), `isometric` (diamonds), `half_offset_square` (bricks) or `hexagon`. See [tile shapes](#tile-shapes) |
+| `tile_layout` | No | How cells of the shapes other than squares are numbered: `stacked` (default), `stacked_offset`, `stairs_right`, `stairs_down`, `diamond_right` or `diamond_down` |
 | `tile_offset_axis` | No | Which way those shapes' rows run: `horizontal` (default), offset rows, or `vertical`, offset columns |
 | `tile_size` | No | A cell's width and height in pixels, the box its shape fills; default `[16, 16]` |
 | `terrain_sets` | No | Terrain sets by name |
-| `terrain_sets/<name>/mode` | No | How tiles connect, as Godot's terrain modes: `match_corners_and_sides` (default) by their sides and corners, `match_corners` by their corners only, `match_sides` by their sides only |
+| `terrain_sets/<name>/mode` | No | How tiles connect: `match_corners_and_sides` (default) by their sides and corners, `match_corners` by their corners only, `match_sides` by their sides only |
 | `terrain_sets/<name>/terrains` | Yes | Terrain names, unique in the file |
-| `physics_layers` | No | Physics layers, as Godot's: each tile's collision polygons are on one, by index from 0 |
+| `physics_layers` | No | Physics layers: each tile's collision polygons are on one, by index from 0 |
 | `physics_layers/<n>/collision_layer` | No | The layer bits its polygons are on; default `1` |
 | `physics_layers/<n>/collision_mask` | No | The layer bits its polygons collide with; default `1` |
-| `physics_layers/<n>/friction`, `bounce` | No | Its physics material, as Godot's `PhysicsMaterial`: friction from 0 (default `1`) and bounce from 0 to 1 (default `0`) |
-| `occlusion_layers` | No | Occlusion layers, as Godot's: each tile's [occluders](#tile-occluders-and-custom-data) are on one, by index from 0 |
+| `physics_layers/<n>/friction`, `bounce` | No | Its physics material: friction from 0 (default `1`) and bounce from 0 to 1 (default `0`) |
+| `occlusion_layers` | No | Occlusion layers: each tile's [occluders](#tile-occluders-and-custom-data) are on one, by index from 0 |
 | `occlusion_layers/<n>/light_mask` | No | Lights whose `shadow_layers` shares a bit take shadows from its occluders; default `1` |
 | `occlusion_layers/<n>/sdf_collision` | No | [GPU particles](#gpu-particle-collision) collide with its occluders; default `false` |
-| `navigation_layers` | No | Navigation layers, as Godot's: each tile's [navigation outlines](#tile-navigation) are on one, by index from 0 |
+| `navigation_layers` | No | Navigation layers: each tile's [navigation outlines](#tile-navigation) are on one, by index from 0 |
 | `navigation_layers/<n>/layers` | No | The `navigation_layers` bits of the regions its outlines make; default `1` |
-| `custom_data_layers` | No | Values every tile has, as Godot's custom data layers, each with a `name` (unique in the file) and a `type`: `bool`, `int`, `float`, `string`, `vector2`, `vector2i` or `color` |
+| `custom_data_layers` | No | Values every tile has, each with a `name` (unique in the file) and a `type`: `bool`, `int`, `float`, `string`, `vector2`, `vector2i` or `color` |
 | `sources` | Yes | Atlas sources by name, at least one |
 | `sources/<name>/texture` | Yes | Project path of a PNG, BMP or KTX2 file |
-| `sources/<name>/normal_texture` | No | Project path of a normal map laid out as the texture, which [2D lights](#2d-lights) shade its tiles with, as a Godot `CanvasTexture`'s |
+| `sources/<name>/normal_texture` | No | Project path of a normal map laid out as the texture, which [2D lights](#2d-lights) shade its tiles with |
 | `sources/<name>/specular_texture` | No | Project path of a specular map laid out as the texture: highlight color and, in alpha, shininess. Needs a `normal_texture` |
 | `sources/<name>/specular_color` | No | Multiplies the specular map's color, as [r, g, b, a] from 0 to 1; default `[1, 1, 1, 1]` |
 | `sources/<name>/specular_shininess` | No | Multiplies the specular map's alpha, from 0 to 1; default `1` |
@@ -4168,10 +4105,10 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `sources/<name>/tiles` | No | Tiles by `"column,row"` in the texture's grid, as `"2,0"` |
 | `tiles/<cell>/name` | No | What legends and `tilemap.set` call the tile: unique in the file, no `:`. A tile without one is `"source:column,row"` |
 | `tiles/<cell>/terrain` | No | The terrain it paints |
-| `tiles/<cell>/peering` | No | The terrain each side and corner must touch for the tile to fit, by compass direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw` for squares, as Godot's terrain peering bits; the [shape](#tile-shapes) says which directions it has. A direction left out must have the tile's own terrain; `null` means none |
+| `tiles/<cell>/peering` | No | The terrain each side and corner must touch for the tile to fit, by compass direction: `n`, `ne`, `e`, `se`, `s`, `sw`, `w`, `nw` for squares; the [shape](#tile-shapes) says which directions it has. A direction left out must have the tile's own terrain; `null` means none |
 | `tiles/<cell>/probability` | No | How often painting picks the tile over others that fit as well; default `1`, and `0` only when nothing else fits |
-| `tiles/<cell>/texture_origin` | No | Pixels to move its texture by, up and to the left, as Godot's `texture_origin`: `[0, 8]` draws it 8 pixels higher in its cell. It turns with the cell; collision polygons stay put. Default `[0, 0]` |
-| `tiles/<cell>/size_in_atlas` | No | Its width and height in the texture's cells, as Godot's: `[2, 1]` is two cells wide. Default `[1, 1]`. See [animated and large tiles](#animated-and-large-tiles) |
+| `tiles/<cell>/texture_origin` | No | Pixels to move its texture by, up and to the left: `[0, 8]` draws it 8 pixels higher in its cell. It turns with the cell; collision polygons stay put. Default `[0, 0]` |
+| `tiles/<cell>/size_in_atlas` | No | Its width and height in the texture's cells: `[2, 1]` is two cells wide. Default `[1, 1]`. See [animated and large tiles](#animated-and-large-tiles) |
 | `tiles/<cell>/animation_frames` | No | Each frame's duration in seconds, above 0, 1 to 256 frames; default `[1]`, one frame |
 | `tiles/<cell>/animation_columns` | No | Frames per row before they wrap to the next, 0 to 256; default `0`, all in one row |
 | `tiles/<cell>/animation_separation` | No | Texture cells to skip between frames, across and down; default `[0, 0]` |
@@ -4191,10 +4128,10 @@ closest one. Tile sets reload when they change, like every asset.
 
 ### Tile shapes
 
-Cells are squares unless `tile_shape` says otherwise, and the other shapes follow Godot's
-`TileSet` exactly: where each cell sits, which cells are its neighbors and which sides and
-corners its peering names. [examples/isometric-and-hex-tiles](../../examples/isometric-and-hex-tiles/)
-paints an island on diamonds and sets tiles on a board of hexagons.
+Cells are squares unless `tile_shape` says otherwise, and the other shapes set where each cell sits,
+which cells are its neighbors and which sides and corners its peering names.
+[examples/isometric-and-hex-tiles](../../examples/isometric-and-hex-tiles/) paints an island on
+diamonds and sets tiles on a board of hexagons.
 
 | Shape | Sides | Corners | Cells overlap |
 | --- | --- | --- | --- |
@@ -4204,18 +4141,18 @@ paints an island on diamonds and sets tiles on a board of hexagons.
 | `hexagon`, offset columns | `n`, `ne`, `se`, `s`, `sw`, `nw` | `nne`, `e`, `sse`, `ssw`, `w`, `nnw` | by a quarter |
 | `half_offset_square` | as a hexagon | as a hexagon | not at all |
 
-- `tile_layout` numbers the cells of the shapes other than squares, as Godot's layouts. In
-  `stacked` every other row (or column, with a vertical `tile_offset_axis`) sits half a cell
-  over, starting with row 1; `stacked_offset` starts with row 0. `stairs_right` and `stairs_down`
-  step each row, or each column, half a cell over from the last. `diamond_right` and
-  `diamond_down` turn the grid so that columns and rows both run diagonally; in `diamond_down`,
-  the usual isometric layout, columns run down to the right and rows down to the left.
+- `tile_layout` numbers the cells of the shapes other than squares. In `stacked` every other row
+  (or column, with a vertical `tile_offset_axis`) sits half a cell over, starting with row 1;
+  `stacked_offset` starts with row 0. `stairs_right` and `stairs_down` step each row, or each
+  column, half a cell over from the last. `diamond_right` and `diamond_down` turn the grid so
+  that columns and rows both run diagonally; in `diamond_down`, the usual isometric layout,
+  columns run down to the right and rows down to the left.
 - A cell has a neighbor across each of its sides; a square or a diamond also has one across each
   corner, and a hexagon has none there. Painting terrain fits a side to the cell across it, and
   a corner to the cells around it, so a hexagon's corner follows the two sides beside it.
 - [`tilemap.convert`](commands.md#tilemapconvert) turns cells into the points at their centers
-  and points into the cells they are in, as Godot's `map_to_local` and `local_to_map`. The
-  C++ calls are `canvas::map_to_local`, `canvas::local_to_map` and `canvas::neighbor_cell`.
+  and points into the cells they are in. The C++ calls are `canvas::map_to_local`,
+  `canvas::local_to_map` and `canvas::neighbor_cell`.
 
 ### Tile map layers
 
@@ -4238,23 +4175,23 @@ the rows that changed:
 - Each legend key is one to three characters from letters, digits and punctuation other than
   `.`, `"` and backslash, all keys the same length. Each row is a string of keys for the cells
   from `origin` rightward, and `.` (or `..`, `...`) is an empty cell. Cells are from -32768 to
-  32767 on each axis, as in Godot.
+  32767 on each axis.
 - Commands write the layer in canonical form: `origin` is the top left of the cells in use, rows
   end at their last tile, keys keep standing for the tiles they stood for, and new keys go to
   the most used tiles first, each the first letter of the tile's name where that is free. Keys
   are one character while a layer uses up to 91 tiles, then two, then three.
-- [`tilemap.paint`](commands.md#tilemappaint) paints terrain as Godot's terrain painting does:
-  each painted cell, and each terrain cell around them, gets the tile of its terrain whose
-  peering fits its neighbors best, first where its own terrain stops and then which terrain lies
-  beyond. Empty cells and terrains of other sets count as none, so painting in empty space draws
-  edges. Among equal fits the cell's position picks, weighted by `probability`, so the same
-  paint always gives the same tiles. [`tilemap.generate`](commands.md#tilemapgenerate) paints
-  terrains by [noise](#noise) thresholds. [`tilemap.set`](commands.md#tilemapset) places tiles
-  without changing their neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
+- [`tilemap.paint`](commands.md#tilemappaint) paints terrain: each painted cell, and each
+  terrain cell around them, gets the tile of its terrain whose peering fits its neighbors best,
+  first where its own terrain stops and then which terrain lies beyond. Empty cells and terrains
+  of other sets count as none, so painting in empty space draws edges. Among equal fits the
+  cell's position picks, weighted by `probability`, so the same paint always gives the same
+  tiles. [`tilemap.generate`](commands.md#tilemapgenerate) paints terrains by [noise](#noise)
+  thresholds. [`tilemap.set`](commands.md#tilemapset) places tiles without changing their
+  neighbors, and [`tilemap.get`](commands.md#tilemapget) reads the rows.
 - A layer draws at its entity's `Transform2D` if it has one, each tile's region centered on its
   cell, less its `texture_origin` (a square cell `(c, r)` spans `c × tile_size` to `(c + 1) × tile_size`; other shapes are
   placed as [tile shapes](#tile-shapes) says). Cells draw down the screen by their centers, then
-  left to right, as Godot draws a layer with Y-sort on, so a tile taller than its cell covers the
+  left to right, so a tile taller than its cell covers the
   cells behind it. Tiles from one texture draw together, so a layer whose tiles share an atlas
   is one GPU draw. Lights shade a source's tiles with its normal and specular maps,
   flipped and turned with each cell.
@@ -4265,10 +4202,10 @@ the rows that changed:
 ### Tile collision
 
 A tile's `collision` lists polygons in pixels around the tile's center (`[-8, -8]` is a 16-pixel
-tile's top left), as Godot's tile physics polygons. A [`TileLayer2D`](#tile-map-layers) whose
-tiles have them is one static body in [2D physics](#2d-physics), each cell's polygons placed at
-its center. [examples/tile-collision](../../examples/tile-collision/) rolls, bounces and drops
-balls on a level of tiles.
+tile's top left). A [`TileLayer2D`](#tile-map-layers) whose tiles have them is one static body
+in [2D physics](#2d-physics), each cell's polygons placed at its center.
+[examples/tile-collision](../../examples/tile-collision/) rolls, bounces and drops balls on a
+level of tiles.
 
 ```json
 "0,0": {"name": "ledge",
@@ -4283,9 +4220,9 @@ balls on a level of tiles.
 | `collision/<n>/one_way_margin` | No | How deep in it, in pixels, something may be and still pass; default `1` |
 
 - Polygons collide by their physics layer's `collision_layer` and `collision_mask`, as any
-  body's shapes, with its friction and bounce. As in Godot, a tile set needs a physics layer
-  before its tiles have polygons: a polygon on a physics layer the tile set doesn't have, with
-  no area, or crossing itself fails validation.
+  body's shapes, with its friction and bounce. A tile set needs a physics layer before its tiles
+  have polygons: a polygon on a physics layer the tile set doesn't have, with no area, or
+  crossing itself fails validation.
 - The layer's body follows its entity's `Transform2D`, and its parents'. Editing cells,
   `tile_set` or the tile set file rebuilds it, and `collision_enabled: false` removes it.
 - [`physics.raycast`](commands.md#physicsraycast) reports the `cell` a ray hit beside the layer's
@@ -4294,9 +4231,9 @@ balls on a level of tiles.
 
 ### Alternative tiles and turned cells
 
-A tile's `alternatives` are other versions of it, numbered from 1, as Godot's alternative tiles.
-Each has its own flips, color, collision and texture origin, and a legend or `tilemap.set` names
-one after the tile: `"rock:1"` or `"ground:3,2:1"`.
+A tile's `alternatives` are other versions of it, numbered from 1. Each has its own flips,
+color, collision and texture origin, and a legend or `tilemap.set` names one after the tile:
+`"rock:1"` or `"ground:3,2:1"`.
 
 | Key | Required | Meaning |
 | --- | --- | --- |
@@ -4309,17 +4246,16 @@ one after the tile: `"rock:1"` or `"ground:3,2:1"`.
 | `alternatives/<n>/navigation` | No | Its own navigation outlines, as a tile's; an alternative without them has none |
 | `alternatives/<n>/custom_data` | No | Its own custom data, as a tile's; a layer it leaves out has the type's default, whatever the tile's is |
 
-A cell can also turn whatever tile it holds, as Godot's cell transform flags: after the tile, and
-its alternative if any, `:h` flips it left to right, `:v` top to bottom and `:t` swaps its axes,
-written in that order (`"slope:h"`, `"rock:1:hv"`, `"ground:3,2:vt"`). A quarter turn clockwise
-is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons, occluders and
-navigation polygons turn with it, and an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
-a legend key of its own.
+A cell can also turn whatever tile it holds: after the tile, and its alternative if any, `:h` flips
+it left to right, `:v` top to bottom and `:t` swaps its axes, written in that order (`"slope:h"`,
+`"rock:1:hv"`, `"ground:3,2:vt"`). A quarter turn clockwise is `:ht`, counterclockwise `:vt`. The
+tile draws turned, its collision polygons, occluders and navigation polygons turn with it, and an
+alternative's own flips combine with the cell's. Commands give each turned or alternative tile a
+legend key of its own.
 
 ### Animated and large tiles
 
-A tile can span several of its texture's cells and play frames, as Godot's
-`TileSetAtlasSource`:
+A tile can span several of its texture's cells and play frames:
 
 ```json
 "0,0": {"name": "water", "animation_frames": [0.4, 0.4, 0.4]},
@@ -4336,9 +4272,9 @@ A tile can span several of its texture's cells and play frames, as Godot's
   `size_in_atlas + animation_separation`, or `(f, 0)` steps with `animation_columns` `0`. The
   water above plays texture cells `0,0`, `1,0` and `2,0`; the torch `0,1`, `1,1`, `0,2` and
   `1,2`.
-- A tile, its size and its frames cover texture cells no other tile does, as Godot's
-  `has_room_for_tile`: a tile on another's frame fails at its key, and at most 65,536 cells a
-  tile. Every frame must fit in the texture, or the layer reports it when it draws.
+- A tile, its size and its frames cover texture cells no other tile does: a tile on another's
+  frame fails at its key, and at most 65,536 cells a tile. Every frame must fit in the texture,
+  or the layer reports it when it draws.
 - Tiles play on game time: the loop lasts the frames' durations added up, over
   `animation_speed`. With `random_start_times`, each cell starts from its own point of the loop,
   picked from the layer's entity ID and the cell, the same on every run. Alternatives play
@@ -4346,8 +4282,7 @@ A tile can span several of its texture's cells and play frames, as Godot's
 
 ### Tile occluders and custom data
 
-Tiles carry occluders that cast shadows and values that gameplay code reads, as Godot's tile
-set occlusion and custom data layers.
+Tiles carry occluders that cast shadows and values that gameplay code reads.
 [examples/tile-data-and-occluders](../../examples/tile-data-and-occluders/) lights a dungeon
 whose walls cast shadows and whose lava does damage.
 
@@ -4372,10 +4307,10 @@ whose walls cast shadows and whose lava does damage.
   as a `Occluder2D` with the occlusion layer's `light_mask` as its `light_layers`.
   A layer casts none while it is hidden or its `occlusion_enabled` is `false`.
 - A cell's turns turn its occluders. When they mirror it (an odd number of `h`, `v` and `t`),
-  `clockwise` and `counter_clockwise` swap, so the same edges face the light. Godot's turned
-  copies lose their cull mode; this keeps it.
+  `clockwise` and `counter_clockwise` swap, so the same edges face the light. Turned
+  copies keep their cull mode.
 - A tile's value in a layer it doesn't set is the type's default: `false`, `0`, `0.0`, `""`,
-  `[0, 0]` or `[0, 0, 0, 1]`, as Godot's `get_custom_data` returns. An alternative's values are
+  `[0, 0]` or `[0, 0, 0, 1]`. An alternative's values are
   its own. [`tilemap.get`](commands.md#tilemapget) with `cells` returns each cell's tile and all
   its values; C++ asks `TileSet::custom_data(tile, "damage")`.
 - An occluder on an occlusion layer the tile set doesn't have, a value of the wrong type and a
@@ -4384,11 +4319,10 @@ whose walls cast shadows and whose lava does damage.
 
 ### Tile navigation
 
-Tiles carry navigation outlines, as Godot's tile set navigation layers: each cell of a
-`TileLayer2D` is a region of the 2D [navigation](#navigation) map, so agents find paths over a
-tile map with no navigation file of its own.
-[examples/navigation-tiles](../../examples/navigation-tiles/) sends a mouse through a maze of
-tiles and a duck across its pond.
+Tiles carry navigation outlines: each cell of a `TileLayer2D` is a region of the 2D
+[navigation](#navigation) map, so agents find paths over a tile map with no navigation file of
+its own. [examples/navigation-tiles](../../examples/navigation-tiles/) sends a mouse through a
+maze of tiles and a duck across its pond.
 
 ```json
 "navigation_layers": [{}, {"layers": 2}],
@@ -4405,17 +4339,17 @@ tiles and a duck across its pond.
 | `navigation/<n>/layer` | No | The navigation layer it is on, by index; default `0` |
 
 - A tile's outlines on each navigation layer bake into polygons the first time a cell needs
-  them, as Godot's tile set editor bakes the outlines drawn in it: merged, with no agent radius.
+  them: merged, with no agent radius.
 - Each cell whose tile has polygons on a navigation layer is a region there, at the cell's
   center moved by the layer's `Transform2D`, with the navigation layer's `layers` as its
-  `navigation_layers`, as Godot's `TileMapLayer` makes them. Regions join where their edges meet,
+  `navigation_layers`. Regions join where their edges meet,
   so outlines that reach a tile's edges join the cells beside it.
 - A cell's turns turn its polygons, and those a turn mirrors are reversed so they wind as
-  before, as Godot's turned copies are.
+  before.
 - Navigation layers only filter paths: polygons that share an edge join whatever their layers,
-  and an edge three polygons share joins none, as in Godot. A tile with outlines on two layers
-  that reach the same side of its cell can cut paths off there, so keep each cell to one
-  layer's polygons where it meets its neighbors.
+  and an edge three polygons share joins none. A tile with outlines on two layers that reach the
+  same side of its cell can cut paths off there, so keep each cell to one layer's polygons where
+  it meets its neighbors.
 - Paths and [`navigation.closest`](commands.md#navigationclosest) name the layer's entity as a
   cell's owner, and [`navigation.map`](commands.md#navigationmap) counts each cell's region.
   The map is rebuilt when a layer's cells, tile set or transform change, not each tick.
@@ -4428,11 +4362,11 @@ tiles and a duck across its pond.
 
 ## 2D camera
 
-A `Camera2D` chooses the part of the world the window shows, as Godot's. Without one the window
-shows world pixels from (0, 0) at its top left corner. With one, the view is seen from the
-camera's entity: put the camera in the player's `Transform2D` `children` and the view follows
-the player. [examples/camera-2d](../../examples/camera-2d/) follows a player through a level
-wider than the window.
+A `Camera2D` chooses the part of the world the window shows. Without one the window shows world
+pixels from (0, 0) at its top left corner. With one, the view is seen from the camera's entity:
+put the camera in the player's `Transform2D` `children` and the view follows the player.
+[examples/camera-2d](../../examples/camera-2d/) follows a player through a level wider than the
+window.
 
 ```json
 "cam": {
@@ -4463,7 +4397,7 @@ wider than the window.
   each tick, for the current camera only. An edit to a camera or its entity shows in the next
   frame without waiting for a tick, and games draw between ticks with the view in between.
 - Sprites, tile layers, particles, lights and shadows and the debug overlay's collision shapes
-  are drawn through the camera; controls stay where they are on the screen, as if on Godot's
+  are drawn through the camera; controls stay where they are on the screen, as if on the
   default `ScreenLayer`, and what a [`ScreenLayer`](#canvas-layers-and-parallax) holds is placed
   by the layer. 2D sounds with no `Listener2D` are heard from the middle of the view.
 - [`frame.summary`](commands.md#framesummary) reports rects on the screen, and its `camera` field
@@ -4473,11 +4407,11 @@ wider than the window.
 
 ## Canvas layers and parallax
 
-A `ScreenLayer` draws the entities its `children` list in a canvas of its own, as Godot's: a HUD
-that stays put while the camera moves, or a background behind the world. A `Parallax2D` scrolls
-its entity with the camera, slower or faster than the world, and can draw what it holds again
-and again to fill the window. [examples/canvas-layers](../../examples/canvas-layers/) has a
-parallax background and a HUD.
+A `ScreenLayer` draws the entities its `children` list in a canvas of its own: a HUD that stays
+put while the camera moves, or a background behind the world. A `Parallax2D` scrolls its entity
+with the camera, slower or faster than the world, and can draw what it holds again and again to
+fill the window. [examples/canvas-layers](../../examples/canvas-layers/) has a parallax
+background and a HUD.
 
 ```json
 "hud": {"components": {"ScreenLayer": {"children": ["heart", "score"]}}},
@@ -4505,7 +4439,7 @@ parallax background and a HUD.
   were made. Within a canvas, things draw as in the world: by `z_index`, then parents before
   children.
 - `children` lists the 2D entities and controls that draw in the layer, and their own
-  `Transform2D` and `Control` children draw there too. A `ScreenLayer` has no `Transform2D` of
+  `Transform2D` and `Widget` children draw there too. A `ScreenLayer` has no `Transform2D` of
   its own. An entity in a layer can't also be another entity's child, nor be in two layers
   (the first made wins), and layers don't hold each other; `scene validate` reports each at
   the JSON Pointer of the list item. `entity.destroy` on a layer takes its children with it.
@@ -4515,8 +4449,8 @@ parallax background and a HUD.
   looks farther away than the world.
 - Lights shade the canvases their `range_layer_min` to `range_layer_max` holds, the world's
   (layer 0) by default, and a `AmbientTint2D` tints the canvas it is in. A layer that no light
-  reaches and that holds no `AmbientTint2D` draws unlit, as in Godot. Lights and occluders in a
-  layer are placed in its canvas, and shadows fall across every canvas a light reaches.
+  reaches and that holds no `AmbientTint2D` draws unlit. Lights and occluders in a layer are
+  placed in its canvas, and shadows fall across every canvas a light reaches.
 - Controls in a layer lay out in the window as other controls do, then the layer places them;
   they take clicks and touches where they show. Controls in no layer stay on the screen, above
   the world's sprites. Popup menus, tooltips and drag previews draw over every canvas.
@@ -4537,18 +4471,17 @@ parallax background and a HUD.
 | `screen_offset` | `[0, 0]` | The top left of the current camera's view in the world, set each tick |
 
 - The `parallax_2d` system (priority 1060, right after `camera_2d`) sets each `Parallax2D`'s
-  `Transform2D` `position` each tick, as Godot's `Parallax2D::_update_scroll`: it takes
-  `screen_offset` from the current camera (none leaves it as it is), keeps it inside the limits
-  less a window, scales it by `scroll_scale` and adds `scroll_offset`. Set `scroll_offset`, not
-  `position`, to place one.
+  `Transform2D` `position` each tick: it takes `screen_offset` from the current camera (none
+  leaves it as it is), keeps it inside the limits less a window, scales it by `scroll_scale` and
+  adds `scroll_offset`. Set `scroll_offset`, not `position`, to place one.
 - With a `repeat_size` it wraps its position within one repeat and draws everything it holds
   again beside it, so a picture as wide as the window always fills it. Something drawn between
   ticks jumps where its repeat wrapped instead of sliding back across the window.
-- `autoscroll` drifts only a `Parallax2D` with a `repeat_size`, as in Godot.
+- `autoscroll` drifts only a `Parallax2D` with a `repeat_size`.
 
 ## 2D lights
 
-Lights follow Godot's 2D lighting. Draws in a [canvas](#canvas-layers-and-parallax) are unshaded
+Draws in a [canvas](#canvas-layers-and-parallax) are unshaded
 until an enabled light's layer range holds it or it has a `AmbientTint2D`. Then each lit pixel
 of a sprite or tile layer starts from the color its material made, times its canvas's
 `AmbientTint2D` color (the ambient light, white if there is none), and each light whose
@@ -4596,14 +4529,14 @@ map.
 
 ## 2D physics
 
-2D physics follows Godot's, on [Box2D](https://box2d.org) v3. An entity is a body or an area by
+2D physics runs on [Box2D](https://box2d.org) v3. An entity is a body or an area by
 having one of `StaticBody2D`, `MovingBody2D`, `RigidBody2D`, `CharacterMover2D` or `Zone2D`,
-placed by its `Transform2D`, and takes its shapes from its `Collider2D` and
-`PolygonCollider2D`, then from its [children's](#parent-transforms) that have no body or area
-of their own, as Godot's shape nodes. Lengths are pixels and y points down. The `physics2d`
-system steps the world each tick at priority 950, after gameplay systems and keyframe
-animation; gravity and damping come from `physics_2d` in [`project.json`](project-format.md).
-[examples/physics-2d](../../examples/physics-2d/) has every kind of body, an area and a joint.
+placed by its `Transform2D`, and takes its shapes from its `Collider2D` and `PolygonCollider2D`,
+then from its [children's](#parent-transforms) that have no body or area of their own. Lengths
+are pixels and y points down. The `physics2d` system steps the world each tick at priority 950,
+after gameplay systems and keyframe animation; gravity and damping come from `physics_2d` in
+[`project.json`](project-format.md). [examples/physics-2d](../../examples/physics-2d/) has every
+kind of body, an area and a joint.
 
 ```json
 "hero": {
@@ -4622,12 +4555,12 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
 - A `RigidBody2D` is moved by gravity, collisions, forces and joints, and the step writes back
   its `Transform2D`, `linear_velocity`, `angular_velocity` and `sleeping`. Setting those moves
   or wakes it. `physics2d::apply_impulse` and `apply_torque_impulse` push it at the next step.
-- A `CharacterMover2D` moves as Godot's `move_and_slide`, each tick: gameplay code sets its
-  `velocity`, then the step moves it, slides it along what it hits up to `max_slides` times,
-  snaps it to the floor within `floor_snap_length` and writes `on_floor`, `on_wall`,
-  `on_ceiling`, the normals and the velocity it ended with. Standing on a moving body carries
-  it along. It moves as its `Collider2D`, or its `PolygonCollider2D`'s convex hull; a
-  polygon's corners are rounded by a pixel.
+- A `CharacterMover2D` moves, each tick: gameplay code sets its `velocity`, then the step moves
+  it, slides it along what it hits up to `max_slides` times, snaps it to the floor within
+  `floor_snap_length` and writes `on_floor`, `on_wall`, `on_ceiling`, the normals and the
+  velocity it ended with. Standing on a moving body carries it along. It moves as its
+  `Collider2D`, or its `PolygonCollider2D`'s convex hull; a polygon's corners are rounded by a
+  pixel.
 - An `Zone2D` collides with nothing and detects the bodies and areas in its `collision_mask`
   (an area only if it is `detectable`), emitting `body_entered`, `body_exited`,
   `area_entered` and `area_exited` events with the other entity's ID in `body` or `area`. A
@@ -4635,8 +4568,8 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
   Events report each pair once and stay quiet when [`undo`](commands.md#undo) or
   [`world.restore`](commands.md#worldrestore) brings bodies back.
 - Two bodies collide when either one's `collision_mask` has a bit of the other's
-  `collision_layer`, as in Godot. Joints with `disable_collision` stop their two bodies
-  colliding with each other.
+  `collision_layer`. Joints with `disable_collision` stop their two bodies colliding with each
+  other.
 - A shape with `one_way_collision` stops only what comes from its -y side, after the shape's
   and the entity's rotation, and lets through what is deeper in it than
   `one_way_collision_margin` pixels: platforms one jumps up through.
@@ -4645,10 +4578,10 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
   `PolygonCollider2D` takes any simple polygon, split into convex pieces, or only its outline
   with `build_mode` `segments`. A shape with no area, or a polygon that crosses itself, is left
   out with one warning in the log.
-- A joint joins `body_a` and `body_b` at its own entity's `Transform2D`, as Godot's joints are
-  placed by their node; a `null` `body_a` joins `body_b` to the world. It is made where the
-  entity is once both bodies exist, and stays there when a parent carries the entity away, as
-  Godot's; changing the entity's own `Transform2D` makes it again there.
+- A joint joins `body_a` and `body_b` at its own entity's `Transform2D`; a `null` `body_a` joins
+  `body_b` to the world. It is made where the entity is once both bodies exist, and stays there
+  when a parent carries the entity away; changing the entity's own `Transform2D` makes it again
+  there.
 - Results are the same on every platform for the same scene and ticks, so tests and replays
   can check exact positions.
 - [`physics.raycast`](commands.md#physicsraycast), [`physics.overlap`](commands.md#physicsoverlap)
@@ -4657,12 +4590,12 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
 
 ### Character options
 
-`CharacterMover2D`'s options are Godot's, and `move_and_slide` follows Godot 4's step for step:
+`CharacterMover2D`'s options:
 
 - `floor_constant_speed` keeps its speed along a slope the same as on flat ground; without it
   the slope slows it going up and speeds it going down.
-- `floor_block_on_wall` stops it climbing a slope steeper than `floor_max_angle` by walking
-  into it. It is on by default, as in Godot.
+- `floor_block_on_wall` stops it climbing a slope steeper than `floor_max_angle` by walking into
+  it. It is on by default.
 - `wall_min_slide_angle`, in `floating` mode, stops it against a wall it hits nearly head-on
   instead of sliding along it.
 - `safe_margin` is how close something must be to count as touching: floors, walls and
@@ -4673,9 +4606,8 @@ animation; gravity and damping come from `physics_2d` in [`project.json`](projec
 ### Gravity and damping zones
 
 An `Zone2D` with a space override changes the gravity and damping of the bodies in its
-`collision_mask` while they overlap it, whether or not it is `monitoring`, as Godot's areas.
-Areas apply from the highest `priority` down, then the project's gravity and damping fill in
-what no area stopped:
+`collision_mask` while they overlap it, whether or not it is `monitoring`. Areas apply from the
+highest `priority` down, then the project's gravity and damping fill in what no area stopped:
 
 | Override | Its value | Then |
 | --- | --- | --- |
@@ -4702,10 +4634,10 @@ what no area stopped:
   distance squared, as a planet's.
 - A `RigidBody2D` multiplies the gravity by its `gravity_scale`, and adds its own
   `linear_damp` and `angular_damp` or replaces the zones' with them, as its damp modes say.
-- Overrides take effect from the step after a body enters, as in Godot, so on its first step
-  every body falls with the project's gravity. A resting body wakes when its zone changes.
-- Characters aren't pulled, since gameplay code sets their velocity: as in Godot, the code
-  adds the gravity `physics2d::gravity` returns, as Godot's `get_gravity`.
+- Overrides take effect from the step after a body enters, so on its first step every body falls
+  with the project's gravity. A resting body wakes when its zone changes.
+- Characters aren't pulled, since gameplay code sets their velocity:, the code adds the gravity
+  `physics2d::gravity` returns.
 - [`physics.gravity`](commands.md#physicsgravity) returns each body's gravity, damping and the
   areas that set them.
 
@@ -4718,13 +4650,13 @@ a zone with no gravity.
 
 ## 3D physics
 
-3D physics follows Godot 4.4's Jolt module, on [Jolt Physics](https://github.com/jrouwe/JoltPhysics).
-An entity is a body or an area by having one of `StaticBody3D`, `MovingBody3D`,
-`RigidBody3D`, `CharacterMover3D` or `Zone3D`, placed by its `Transform3D`, and takes its shapes
-from its `Collider3D`, then from its [children's](#parent-transforms) that have no body or
-area of their own, as Godot's shape nodes. Lengths are meters and y points up. The `physics3d`
-system steps the world each tick at priority 950, beside 2D physics; gravity and damping come
-from `physics_3d` in [`project.json`](project-format.md).
+3D physics runs on [Jolt
+Physics](https://github.com/jrouwe/JoltPhysics). An entity is a body or an area by having one of
+`StaticBody3D`, `MovingBody3D`, `RigidBody3D`, `CharacterMover3D` or `Zone3D`, placed by its
+`Transform3D`, and takes its shapes from its `Collider3D`, then from its
+[children's](#parent-transforms) that have no body or area of their own. Lengths are meters and y
+points up. The `physics3d` system steps the world each tick at priority 950, beside 2D physics;
+gravity and damping come from `physics_3d` in [`project.json`](project-format.md).
 [examples/physics-3d](../../examples/physics-3d/) has every kind of body and an area.
 
 ```json
@@ -4742,30 +4674,30 @@ from `physics_3d` in [`project.json`](project-format.md).
 | `Collider3D` | `shape` `"box"` (or `sphere`, `capsule`, `cylinder`, `convex_polygon`, `concave_polygon`, `world_boundary`), `size` `[1, 1, 1]`, `radius` `0.5`, `height` `2` (a capsule's end to end), `points` `[]` (a convex polygon's hull), `faces` `[]` (a concave polygon's triangles, three points each), `backface_collision` `false`, `plane` `[0, 1, 0, 0]` (a world boundary's normal and distance; below it is solid), `margin` `0.04`, `position` `[0, 0, 0]`, `rotation` `[0, 0, 0]`, `disabled` `false` |
 | `StaticBody3D` | `collision_layer` `1`, `collision_mask` `1`, `friction` `1`, `bounce` `0`, `physics_material` `""` (a [physics material](#physics-materials-and-fields) whose values win), `constant_linear_velocity` `[0, 0, 0]`, `constant_angular_velocity` `[0, 0, 0]` |
 | `MovingBody3D` | as `StaticBody3D`, and `sync_to_physics` `true` |
-| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material` as `StaticBody3D`; `mass` `1` (a material's `density` replaces it), `inertia` `[0, 0, 0]` (0 computes that axis's), `center_of_mass_mode` `"auto"` (`"custom"` puts it at `center_of_mass`, `[0, 0, 0]`, in meters in the body's space, as Godot's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `frozen_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `report_contacts` `false` |
+| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce`, `physics_material` as `StaticBody3D`; `mass` `1` (a material's `density` replaces it), `inertia` `[0, 0, 0]` (0 computes that axis's), `center_of_mass_mode` `"auto"` (`"custom"` puts it at `center_of_mass`, `[0, 0, 0]`, in meters in the body's space), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `frozen_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `report_contacts` `false` |
 | `CharacterMover3D` | `collision_layer`, `collision_mask`; `movement` `"grounded"` (or `floating`), `up_direction` `[0, 1, 0]`, `velocity` `[0, 0, 0]`, `max_slides` `6`, `slide_on_ceiling` `true`, `wall_min_slide_angle` `0.261799`, `floor_stop_on_slope` `true`, `floor_constant_speed` `false`, `floor_block_on_wall` `true`, `floor_max_angle` `0.785398`, `floor_snap_length` `0.1`, `platform_on_leave` `"add_velocity"`, `platform_floor_layers` all, `platform_wall_layers` `0`, `safe_margin` `0.001`; written by each move: `on_floor`, `on_wall`, `on_ceiling`, `floor_normal`, `wall_normal`, `platform_velocity` |
-| `Zone3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `detectable` `true`, `priority` `0`, `gravity_mode` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_mode` and `angular_damp_mode` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0`; for soft bodies, as Godot's: `wind_force_magnitude` `0`, `wind_attenuation_factor` `0`, `wind_source_path` `null` (an entity whose -z the wind blows along, from its position) |
+| `Zone3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `detectable` `true`, `priority` `0`, `gravity_mode` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_mode` and `angular_damp_mode` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0`; for soft bodies: `wind_force_magnitude` `0`, `wind_attenuation_factor` `0`, `wind_source_path` `null` (an entity whose -z the wind blows along, from its position) |
 
 - Bodies act as their 2D namesakes do ([2D physics](#2d-physics)): a static body stays put and
   jumps where its `Transform3D` is set, an animatable body moves there during the step and
   pushes what is in its way, the step writes a rigid body's `Transform3D`, velocities and
   `sleeping` back, and setting them moves or wakes it.
-- A `CharacterMover3D` moves as Godot's `move_and_slide`, ported line for line onto Godot's Jolt
-  motion tests: gameplay code sets its `velocity`, then the step moves it, slides it along what
-  it hits, snaps it to the floor and writes what it found. Its options are Godot's, as the 2D
-  [character options](#character-options) describe. As Godot's, it stops at rigid bodies rather
-  than pushing them; gameplay code pushes them with `physics3d::apply_impulse`.
-- Shapes are built as Godot's Jolt module builds them: a box's, cylinder's and convex polygon's
-  `margin` rounds no more than 8% of its shortest half extent, a capsule shorter than twice its
-  radius is an error, a concave polygon is solid from the side its triangles wind clockwise
-  from, as Godot's, and from behind too with `backface_collision`, and a world boundary reaches 1000 meters
-  each way. A shape that can't be made, such as a hull of two points, is left out with a
-  warning. The entity's `Transform3D` scale scales its shapes; a sphere takes one scale.
+- A `CharacterMover3D` moves with Jolt's motion tests: gameplay code
+  sets its `velocity`, then the step moves it, slides it along what it hits, snaps it to the
+  floor and writes what it found. Its options are the 2D [character
+  options](#character-options). It stops at rigid bodies rather than
+  pushing them; gameplay code pushes them with `physics3d::apply_impulse`.
+- Shapes are built: a box's, cylinder's and convex polygon's `margin` rounds no more than 8% of its
+  shortest half extent, a capsule shorter than twice its radius is an error, a concave polygon is
+  solid from the side its triangles wind clockwise from, and from behind too with
+  `backface_collision`, and a world boundary reaches 1000 meters each way. A shape that can't be
+  made, such as a hull of two points, is left out with a warning. The entity's `Transform3D` scale
+  scales its shapes; a sphere takes one scale.
 - An `Zone3D` collides with nothing and detects the bodies and areas in its `collision_mask`,
   emitting the 2D events. It leaves out static bodies unless `physics_3d`'s
-  `areas_detect_static_bodies` is on, as Godot's Jolt module does. Space overrides change the
-  gravity and damping of rigid bodies in it by `priority`, as the 2D
-  [zones](#gravity-and-damping-zones) do, with gravity in meters per second squared.
+  `areas_detect_static_bodies` is on. Space overrides change the gravity and damping of rigid
+  bodies in it by `priority`, as the 2D [zones](#gravity-and-damping-zones) do, with gravity in
+  meters per second squared.
 - Static and animatable bodies' constant velocities carry what touches them, as in 2D.
 - Jolt is built cross-platform deterministic and steps on one thread, and bodies are added and
   changed in entity order, so results are the same on every platform for the same scene and
@@ -4777,12 +4709,12 @@ from `physics_3d` in [`project.json`](project-format.md).
 
 ### 3D joints
 
-A joint is an entity with a joint component and a `Transform3D`, as Godot's `Joint3D` nodes on
-its Jolt module. `body_a` and `body_b` name the bodies it holds (any body but an area); a missing
-one is the world, and with only one named the joint holds it to the world. The joint is made
-where its `Transform3D` puts it, after its parents', in its own axes, once both bodies exist.
-[examples/joints-and-vehicles](../../examples/joints-and-vehicles/) has one of each but the
-6DOF joint.
+A joint is an entity with a joint component and a `Transform3D` on its Jolt module. `body_a` and
+`body_b` name the bodies it holds (any body but an area); a missing one is the world, and with
+only one named the joint holds it to the world. The joint is made where its `Transform3D` puts
+it, after its parents', in its own axes, once both bodies exist.
+[examples/joints-and-vehicles](../../examples/joints-and-vehicles/) has one of each but the 6DOF
+joint.
 
 ```json
 "door_hinge": {
@@ -4802,28 +4734,27 @@ where its `Transform3D` puts it, after its parents', in its own axes, once both 
 | `ConeJoint3D` | as `PinJoint3D`, swinging in a cone around the joint's x axis and twisting about it; `swing_span` `0.785398`, `twist_span` `3.14159` (radians; out of range leaves that way free) |
 | `SixAxisJoint3D` | as `PinJoint3D`; `linear_x`, `linear_y`, `linear_z` and `angular_x`, `angular_y`, `angular_z`, each with `limit_enabled` `true`, `limit_upper` and `limit_lower` `0`, `motor_enabled` `false`, `motor_target_velocity` `0`, `motor_force_limit` (`0` linear, `300` angular), `spring_enabled` `false`, `spring_stiffness`, `spring_damping`, `spring_equilibrium_point`; every axis is locked by default |
 
-- Limits and motors keep Godot's signs and are centered as its Jolt module centers them. A
+- Limits and motors keep their signs and are centered as Jolt centers them. A
   slider's position is how far `body_b` has moved along the joint's x axis from `body_a`, so a
   drawer that is its cabinet's `body_b` opens toward its upper limit.
 - While `exclude_nodes_from_collision` is on, the two bodies don't collide with each other.
 - Changing a joint's own `Transform3D` or bodies makes it again where it now is; a parent
   carrying it away leaves it where it was made. Changing a limit, motor or spring rebuilds it in
   place. Either way, and when the joint goes, its bodies wake.
-- Parameters Godot's Jolt module ignores (bias, softness, relaxation and the like) are left out.
+- Parameters Jolt ignores (bias, softness, relaxation and the like) are left out.
 
 ### Vehicles
 
-A `WheeledBody3D` on an entity with a `RigidBody3D` makes it a car, as Godot's: it rolls on the
-`Wheel3D` entities among its `Transform3D` [children](#parent-transforms). Godot's
-`WheeledBody3D` is a rigid body of 40 kilograms; give the `RigidBody3D` that `mass` for Godot's
-feel.
+A `WheeledBody3D` on an entity with a `RigidBody3D` makes it a car: it rolls on the `Wheel3D`
+entities among its `Transform3D` [children](#parent-transforms). Its default feel is a
+rigid body of 40 kilograms; give the `RigidBody3D` that `mass` for that feel.
 
 | Component | Fields (defaults) |
 | --- | --- |
 | `WheeledBody3D` | `engine_force` `0` (newtons, to the wheels `use_as_traction`), `brake` `0` (to every wheel), `steering` `0` (radians, to the wheels `use_as_steering`; positive turns left) |
 | `Wheel3D` | `engine_force`, `brake`, `steering` `0`, `use_as_traction` and `use_as_steering` `false`, `wheel_roll_influence` `0.1`, `wheel_radius` `0.5`, `wheel_rest_length` `0.15`, `wheel_friction_slip` `10.5`, `suspension_travel` `0.2`, `suspension_stiffness` `5.88`, `suspension_max_force` `6000`, `damping_compression` `0.83`, `damping_relaxation` `0.88`; written by each step: `in_contact`, `contact_point`, `contact_normal`, `contact_body`, `suspension_length`, `rotation`, `rpm`, `skid_info` |
 
-- Each step runs Godot's `VehicleBody3D` code, ported line for line: a wheel casts a ray down
+- Each step runs the vehicle simulation: a wheel casts a ray down
   its y axis from where it is mounted, its spring and dampers push the body up, and friction
   along and across its axle (its x axis, turned by `steering`) drives, brakes and steers it.
   Positive `engine_force` drives toward +z.
@@ -4831,12 +4762,12 @@ feel.
   wheel's own can be set between changes. A change of input wakes a car that has fallen asleep.
 - The step moves each wheel's `Transform3D` with its suspension, steering and roll. Setting a
   wheel's `Transform3D` by hand mounts it there.
-- Godot's suspension defaults are soft for a car of four wheels resting on them; stiffer springs
+- The suspension defaults are soft for a car of four wheels resting on them; stiffer springs
   (`suspension_stiffness` around 30) hold it up.
 
 ### Ragdolls
 
-Ragdolls follow Godot 4.6's `BoneSimulation3D` and `SimulatedBone3D`. A
+Ragdolls use `BoneSimulation3D` and `SimulatedBone3D`. A
 `BoneSimulation3D` is a [skeleton modifier](#ik-modifiers): it goes on the entity that
 draws a model or on one of its `Transform3D` children, and runs in its place among the other
 modifiers. Each entity in the simulator's entity's `Transform3D` `children` with a
@@ -4863,21 +4794,21 @@ any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go li
 - While the simulator is `active` and not `simulating`, the `skeleton_modifiers` system moves
   each body to its bone every tick and physics moves it there as a kinematic body, so it pushes
   what is in its way and other bodies land on it.
-- `simulating` (Godot's `physical_bones_start_simulation`) hands the bodies to physics as rigid
-  bodies, `top_level` so their parents no longer carry them, keeping the velocity they had; each
-  simulating bone then goes where its body is, after the modifiers before it and blended by
-  `influence`, and the bones under it follow. `simulated_bones` simulates only the bones it
-  names and those under them (all of them when it names none the model has), and the others
-  keep following the pose. Stopping puts the bodies back on the pose.
+- `simulating` hands the bodies to physics as rigid bodies, `top_level` so their parents no
+  longer carry them, keeping the velocity they had; each simulating bone then goes where its
+  body is, after the modifiers before it and blended by `influence`, and the bones under it
+  follow. `simulated_bones` simulates only the bones it names and those under them (all of them
+  when it names none the model has), and the others keep following the pose. Stopping puts the
+  bodies back on the pose.
 - An inactive simulator neither moves bodies nor moves bones; its bodies don't collide unless
   they simulate.
 - `joint_type` holds a body to the body of the nearest bone above its own that has one, at its
   bone's origin, in the axes `joint_rotation` turns from the body's: `"pin"`, `"cone"` (a
   `ConeJoint3D` with `swing_span` and `twist_span`), `"hinge"` (about z, with its angular
   limit), `"slider"` (along x, with its linear limit) or `"6dof"` (`x`, `y` and `z`, each with
-  Godot's linear and angular limits and springs); for a bone along y, a `joint_rotation` of
+  linear and angular limits and springs); for a bone along y, a `joint_rotation` of
   `[0, 0, 1.5707964]` turns a cone's or slider's x axis along it. A body never collides with
-  the body its joint holds it to, as Godot's joints' `exclude_nodes_from_collision`, but does
+  the body its joint holds it to (see `exclude_nodes_from_collision`), but does
   with the others. `"none"` holds nothing.
 - `drive` is a muscle, as Unreal's physical animation: while the body simulates, it is turned
   toward its bone's place in the animated pose, in its parent body's space (`space` `"local"`)
@@ -4902,13 +4833,13 @@ mean"), a bone with two bodies and a `SimulatedBone3D` no simulator holds.
 ### Ragdoll profiles
 
 Characters' and creatures' own ragdolls are SlashEngine's, after Unreal's physics assets and
-Physical Animation component, made of the ragdolls above (Godot builds them one physical bone at
-a time). A `.ragdoll.json` profile (`slash-cli schema ragdoll`) names each bone's body, joint and
-muscle, and how the whole keeps its balance, takes hits and gets back up; a `Ragdoll3D` on the
-entity that draws a model, or a `Ragdoll2D` on the root of a cut-out character's `Transform2D`
-tree, plays it. `ragdoll.generate` writes one fitted to a model or tree, `ragdoll.hit` hits a
-bone and `ragdoll.tune` changes one instance. [examples/ragdoll-profiles](../../examples/ragdoll-profiles/)
-knocks a cut-out kid down and generates an arm's profile.
+Physical Animation component, made of the ragdolls above. A `.ragdoll.json` profile (`slash-cli
+schema ragdoll`) names each bone's body, joint and muscle, and how the whole keeps its balance,
+takes hits and gets back up; a `Ragdoll3D` on the entity that draws a model, or a `Ragdoll2D` on the
+root of a cut-out character's `Transform2D` tree, plays it. `ragdoll.generate` writes one fitted to
+a model or tree, `ragdoll.hit` hits a bone and `ragdoll.tune` changes one instance.
+[examples/ragdoll-profiles](../../examples/ragdoll-profiles/) knocks a cut-out kid down and
+generates an arm's profile.
 
 ```json
 {"format": 1,
@@ -4980,16 +4911,15 @@ cone joints, 3D shapes and bones that are the `Ragdoll2D`'s own entity.
 
 ### Soft bodies
 
-Soft bodies follow Godot 4.4's `SoftBody3D` on its Jolt module: cloth, flags and anything
-squashy. A `SoftBody3D` simulates the primitive mesh its entity's `Model3D` draws (a
-`PlaneGeometry`, `SphereGeometry`, `BoxGeometry` or any other; model files aren't simulated yet). The mesh's
-vertices are welded where they meet into points, its faces hold the points apart with springs,
-and Jolt's soft body moves them under gravity, colliding with the bodies around it. The mesh then
-draws where its points are, with each vertex's normal the average of the faces around it, as
-Godot sends it to the rendering server. The entity's own `Transform3D` stays put: it places the
+Soft bodies use Jolt's soft body: cloth, flags and anything squashy. A `SoftBody3D` simulates the
+primitive mesh its entity's `Model3D` draws (a `PlaneGeometry`, `SphereGeometry`, `BoxGeometry` or
+any other; model files aren't simulated yet). The mesh's vertices are welded where they meet into
+points, its faces hold the points apart with springs, and Jolt's soft body moves them under gravity,
+colliding with the bodies around it. The mesh then draws where its points are, with each vertex's
+normal the average of the faces around it. The entity's own `Transform3D` stays put: it places the
 points when the body is made, and setting it later moves every point with it and stops them.
-[examples/soft-bodies](../../examples/soft-bodies/) drapes a tablecloth, flies a flag and drops
-a ball full of air.
+[examples/soft-bodies](../../examples/soft-bodies/) drapes a tablecloth, flies a flag and drops a
+ball full of air.
 
 ```json
 "flag": {
@@ -5010,23 +4940,23 @@ a ball full of air.
 | `SoftBody3D` | `collision_layer` `1`, `collision_mask` `1`, `parent_collision_ignore` `null` (an entity it passes through), `simulation_precision` `5` (iterations a step), `total_mass` `1` (kilograms, shared by its points), `linear_stiffness` `0.5` (0 to 1), `shrinking_factor` `0`, `pressure_coefficient` `0`, `damping_coefficient` `0.01`, `drag_coefficient` `0`, `ray_pickable` `true`, `pinned_points` `[]`: each a `point` (a mesh vertex index), `attachment` `null` (an entity it follows) and `offset` `[0, 0, 0]` (in the attachment's space) |
 
 - A pinned point holds still where it is. With an `attachment`, it goes where the attachment's
-  global transform puts its `offset` each step, as Godot's `spatial_attachment_path`, carrying the
-  body along. Pinning a vertex pins every vertex welded into its point.
-- `linear_stiffness` is Godot's: its cube, times 100,000, is the springs' stiffness. Changing
+  global transform puts its `offset` each step, carrying the body along. Pinning a vertex pins
+  every vertex welded into its point.
+- `linear_stiffness`: its cube, times 100,000, is the springs' stiffness. Changing
   it, `shrinking_factor` (which shortens every spring by that share) or the mesh makes the body
   again from the mesh; other fields change in place and wake it.
 - `pressure_coefficient` fills a closed mesh with air that pushes its faces out, so a sphere
   stays round. `drag_coefficient` is how hard [`WindSource3D`s'](#wind) wind pushes its faces:
   each face takes `0.5 * 1.225 * drag_coefficient * area * (n . v) * |n . v|` along its normal
   `n`, `v` the wind less the face's velocity, before each step. `ray_pickable` is kept but does
-  nothing, as on Godot's Jolt module.
+  nothing.
 - An `Zone3D` with `wind_force_magnitude` blows the faces of soft bodies inside it whose layer
-  its mask holds, as Godot's `_compute_area_windforce`: along the face's normal, by the
-  magnitude, the face's area and how squarely it faces `wind_source_path`'s -z, weakened by the
-  distance from the source to the power of `-wind_attenuation_factor`.
+  its mask holds: along the face's normal, by the magnitude, the face's area and how squarely it
+  faces `wind_source_path`'s -z, weakened by the distance from the source to the power of
+  `-wind_attenuation_factor`.
 - Layers and masks work as other bodies': a body whose mask lacks a soft body's layer pushes it
   without being pushed back, and the other way round. Soft bodies feel the project's gravity,
-  not areas', and queries, motion tests and areas pass them by, as Godot's Jolt module does.
+  not areas', and queries, motion tests and areas pass them by.
 - `physics.soft_body` returns its points' bounds and places, and C++ code calls
   `physics3d::soft_body_points`. `scene validate` reports a `SoftBody3D` without a
   `Model3D`, one drawing a model file, pinned points past the mesh's vertices and
@@ -5034,7 +4964,7 @@ a ball full of air.
 
 ### Character cloth
 
-Godot has no skinned cloth, so `Cloth3D` and `Cloth2D` follow Unreal's Chaos Cloth: cloth that
+`Cloth3D` and `Cloth2D` follow Unreal's Chaos Cloth: cloth that
 a character's skin, or a cut-out's transform, carries along, each point free to move only up to
 its share of a max distance from where the skin puts it. A cape's top stays on the shoulders
 while its hem swings; a skirt flares but never crosses the legs.
@@ -5085,7 +5015,7 @@ while its hem swings; a skirt flares but never crosses the legs.
 
 ### Destruction
 
-Godot has no destruction of its own, so `Destructible3D` follows Unreal's geometry collections:
+`Destructible3D` follows Unreal's geometry collections:
 a static or rigid body whose mesh breaks into pieces. Its entity's `Model3D` draws a
 closed mesh (a primitive mesh component or a model file), which is cut into Voronoi cells around
 `pieces` points seeded by `seed` in its bounds, with Manifold's booleans as CSG shapes are; the
@@ -5243,7 +5173,7 @@ its part of the body's look (its texture coordinates carried over). Without a pr
 
 ### World streaming
 
-Godot has no world streaming, so this follows Unreal's World Partition: a world too large to keep
+This follows Unreal's World Partition: a world too large to keep
 whole is kept as scene files, each loaded while something that streams the world in is near it.
 A `StreamedScene3D` names a `.scene.json` file that names its `root` (`scene.save` takes `root`)
 and the box it covers; a `StreamingSource3D` on the player or the camera streams in the cells
@@ -5282,7 +5212,7 @@ player down a road of three cells.
 
 ### Wind
 
-Godot's only wind is an `Zone3D`'s for soft bodies, so this follows Unreal's
+This follows Unreal's
 `WindDirectionalSource`: a `WindSource3D` blows through the whole world along its entity's -z,
 or, with `point_wind`, out from its position to `radius`. Soft bodies (by their
 `drag_coefficient`), 3D particles (by their `wind_influence`) and spatial shaders (`WIND`, for
@@ -5322,7 +5252,7 @@ for `Emitter2D` (`wind_influence`) and canvas shaders (`WIND`).
 
 ### Foliage
 
-Godot has no foliage tool, so this follows Unreal's Foliage tool and its grass that parts for
+This follows Unreal's Foliage tool and its grass that parts for
 characters. A `.foliage.json` file is one kind of plant or rock (grass, flowers, shrubs, bushes,
 trees, moss, rocks, pebbles): what it draws, how thickly a brush paints it, how it bends in the
 wind and parts for characters, whether it blocks them, can be climbed or harvested and how far it
@@ -5366,7 +5296,7 @@ both.
 | Component | Fields (defaults) |
 | --- | --- |
 | `Foliage2D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, rotation, scale, ...]}`, four numbers an instance in the entity's space, a negative scale mirrored), `modulate` `[1, 1, 1, 1]`, `collision_layer` `1`, `collision_mask` `1`, `z_index` `0`, `sort_order_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
-| `Foliage3D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, z, rx, ry, rz, scale, ...]}`, seven numbers an instance in the entity's space, rotations in radians in Godot's YXZ), `layers` `1`, `collision_layer` `1`, `collision_mask` `1`, `lod_bias` `1` |
+| `Foliage3D` | `groups` `[]` (each `{"type": ".foliage.json file", "instances": [x, y, z, rx, ry, rz, scale, ...]}`, seven numbers an instance in the entity's space, rotations in radians in YXZ), `layers` `1`, `collision_layer` `1`, `collision_mask` `1`, `lod_bias` `1` |
 
 - Each instance leans as the wind at its foot says, rocked by `sway` with a phase and frequency
   of its own (by `phase_spread` and `frequency_spread`), later the further downwind it stands by
@@ -5388,7 +5318,7 @@ both.
 
 ### Hair and fur
 
-Godot has no hair, so this follows Unreal's Groom and its Chaos-driven strand simulation. A
+This follows Unreal's Groom and its Chaos-driven strand simulation. A
 `.groom.json` file says how strands grow over a surface (how many, how long, how thick, standing
 up or combed down, clumped and curled, their colors and the maps that vary them), how they draw
 (thin strands, cards or fur shells) and how they move. A `Hair3D` grows its groom over
@@ -5454,7 +5384,7 @@ Lengths are meters in 3D and pixels in 2D; a 2D file's defaults (in brackets) ar
 
 ### Characters
 
-Godot has no character creator, so this follows Unreal's MetaHuman Creator and Mutable: a
+This follows Unreal's MetaHuman Creator and Mutable: a
 `.character.json` recipe says a person's body, face, hair, clothing and props, and both
 dimensions build it. A `Model3D` whose `mesh` names the file draws it as a rigged humanoid
 model, as any model; a `Character2D` draws it as a side-view cut-out of `Polygon2D` parts.
@@ -5501,14 +5431,14 @@ shoulder guards) and `scarf`. Two garments can't cover the same place (a shirt a
 jacket and a coat, pants and a skirt, boots and shoes, a hat and a hood), only one garment may be
 cloth, and only one prop may be at a point; `scene validate` reports each at its pointer.
 
-- **The model** is a skeleton of all 56 of Godot's humanoid profile's bones, in its order
+- **The model** is a skeleton of all 56 bones of the humanoid profile, in its order
   (`Root`, `Hips`, `Spine`, `Chest`, `UpperChest`, `Neck`, `Head`, `LeftEye`, `RightEye`,
   `Jaw`, and `Left`/`Right` `Shoulder`, `UpperArm`, `LowerArm`, `Hand`, the thumb's
   `ThumbMetacarpal`, `ThumbProximal` and `ThumbDistal`, each finger's (`Index`, `Middle`,
   `Ring`, `Little`) `Proximal`, `Intermediate` and `Distal`, `UpperLeg`, `LowerLeg`, `Foot` and
   `Toes`), then a twist bone along each limb (`<side>UpperArmTwist`, `LowerArmTwist`,
   `UpperLegTwist`, `LowerLegTwist`). Each bone is turned as the profile's is, then onto the
-  next bone, so its y runs down the limb as in models Godot's importer retargets, and
+  next bone, so its y runs down the limb as in [retargeted](#retargeting) models, and
   animations retarget onto it. Its arms hang 12 degrees out, palms in. The body and hair are
   primitive meshes placed and stretched over the recipe's measures, facing +z with the feet at
   0, and the head is its [face](#faces)'s sculpt: hands with a palm and three phalanges a
@@ -5581,7 +5511,7 @@ cloth, and only one prop may be at a point; `scene validate` reports each at its
 | `Flesh3D` | `enabled` `true`, `stiffness` `0.5` (0 soft to 1 firm), `damping` `0.5`, `jiggle` `0.5` (how far and long flesh swings after the body moves), `activation` `0` (every muscle's), `automatic` `true`, `muscles` `{}` (activations by muscle name, kind or group), `substeps` `4` (1 to 16) |
 | `Flesh2D` | `Flesh3D`'s, and `view` `"skin"` (`"muscles"` or `"skeleton"` drawn over the cut-out) |
 | `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""`, `expressions` `{}` (ARKit's [expression shapes](#faces) by name, 0 to 1) |
-| `Polygon2D` | Godot's: `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `modulate` `[1, 1, 1, 1]`, `z_index` `0`, `sort_order_relative` `true`, `visible` `true`, `light_mask` `1`, `texture_filter` `"inherit"` |
+| `Polygon2D` | `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `tint` `[1, 1, 1, 1]`, `sort_order` `0`, `sort_order_relative` `true`, `visible` `true`, `light_layers` `1`, `filter` `"inherit"` |
 
 The storyboard's `character_rules` entries (in `storyboard/design.json`) cover the recipes in
 their links, or every one with neither links nor refs: `silhouette_difference` (how different, 0
@@ -5594,7 +5524,7 @@ outlines 0.05 apart and colors 5 apart tell characters apart.
 
 ### Faces
 
-Faces follow Unreal's MetaHuman Creator (Godot has none): a `.face.json` file (`slash-cli schema
+Faces follow Unreal's MetaHuman Creator: a `.face.json` file (`slash-cli schema
 face`), or a character recipe's `face`, sculpts a head from named controls, carves at its
 landmarks and blends of other faces, in a style that fits the game's look, and both dimensions
 draw it: a character's 3D head is the sculpt, and its 2D cut-out's head the sculpt's profile.
@@ -5711,7 +5641,7 @@ drafts a cast from briefs, catches a face too like another and draws their portr
 
 ### Creatures
 
-Godot has no animals, so this follows Unreal's Mutable and its animal AI: a `.creature.json`
+This follows Unreal's Mutable and its animal AI: a `.creature.json`
 recipe says an animal's body plan, look, parts and behavior, and both dimensions build it. A
 `Model3D` whose `mesh` names the file draws it as a rigged, animated model, as any model;
 a `Creature2D` draws it as a side-view cut-out of `Polygon2D` parts. The `fauna` system (priority
@@ -5846,11 +5776,11 @@ and `gait` (the animation playing).
 
 ### Vehicle recipes
 
-Godot has only `WheeledBody3D`, so this follows Unreal's Chaos Vehicles: a `.vehicle.json` recipe
+This follows Unreal's Chaos Vehicles: a `.vehicle.json` recipe
 says what a car, bike, truck, tracked vehicle, boat or aircraft looks like and how it handles,
 and both dimensions build and drive it from the same recipe. A `Model3D` whose `mesh` names
 the file draws its model, as any model. The `vehicles_3d` system (priority 945, before the physics
-step) keeps each `Vehicle3D`'s rigid body, Godot's `VehicleBody3D` and its `Wheel3D`s, and
+step) keeps each `Vehicle3D`'s rigid body, its `WheeledBody3D` and its `Wheel3D`s, and
 the `vehicles_2d` system keeps each `Vehicle2D`'s side view as Box2D bodies and joints; both run
 its drivetrain from its `controls`, float boats, fly aircraft, carry riders and hit characters
 and creatures. [`vehicle.place`](commands.md#vehicleplace) puts one in a scene,
@@ -5901,7 +5831,7 @@ designs a vehicle of its own as Unreal's modular vehicles are put together:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `name` | required | Letters, digits and `_`; unique, and not one its own pieces take (`body`, `cabin`, `hull`, `frame`, `wing`, `tail`, `track`, `collision`, `wheel_*`) |
-| `shape` | `"box"` | `"box"`, `"cylinder"` (along y), `"sphere"` or `"prism"` (Godot's `PrismMesh`, its ridge up), a meter across before `size` |
+| `shape` | `"box"` | `"box"`, `"cylinder"` (along y), `"sphere"` or `"prism"`, a meter across before `size` |
 | `model` | | A model file (glTF, OBJ, FBX, a recipe) placed instead; not with `shape`. 3D only |
 | `position`, `size`, `rotation` | `[0, 0, 0]`, `[1, 1, 1]`, `[0, 0, 0]` | Its middle, its size (a model's scale) and its Euler angles in radians, as `Transform3D`'s |
 | `material`, `color` | `"paint"` | The body's `"paint"`, `"trim"` or `"glass"`, or a name of its own with its `color` |
@@ -5920,8 +5850,8 @@ and seen from the side, drawn after the body's own pieces.
 | `differential`, `front_share` | `"rear"`, `0.5` | Which wheels drive: `"rear"`, `"front"` or `"all"`, splitting by `front_share` |
 | `steering` | | `max_angle` (`0.6` radians the wheels turn; a tracked vehicle slews at 0.6 times it a second), `speed` (`2` radians a second) and `at_speed` (`0.5`, how much less they turn at 30 meters a second) |
 | `brakes` | | `force` (`4000` newtons each wheel) and `handbrake` (`6000`) |
-| `suspension` | | `stiffness` (`40`), `damping` (`2.5`), `relaxation` (`2.8`), `travel` (`0.2`), `rest` (`0.15`) and `max_force` (`0`: four times its share of the weight), as Godot's `VehicleWheel3D`; in 2D a spring of its share of the weight over the rest's compression |
-| `tires` | | `friction` (`10.5`) and `roll_influence` (`0.1`), as Godot's `wheel_friction_slip` and `wheel_roll_influence` |
+| `suspension` | | `stiffness` (`40`), `damping` (`2.5`), `relaxation` (`2.8`), `travel` (`0.2`), `rest` (`0.15`) and `max_force` (`0`: four times its share of the weight); in 2D a spring of its share of the weight over the rest's compression |
+| `tires` | | `friction` (`10.5`) and `roll_influence` (`0.1`), the `Wheel3D`'s `wheel_friction_slip` and `wheel_roll_influence` |
 | `drag` | `0.35` | Air drag over its front's area; the project's linear damping doesn't slow vehicles |
 | `balance` | `0` (bikes `1`) | How hard it keeps itself upright |
 | `water` | | Boats: `level` (`0`, where the surface is, meters up; pixels up in 2D), `draft` (`0.5`, how deep the hull sits at rest), `drag` (`2`) and `rudder` (`1.5`, how hard it turns) |
@@ -5984,7 +5914,7 @@ physics materials, and fields act on all the bodies and particles in their reach
 worlds have the same, in pixels. [examples/physics-fields](../../examples/physics-fields/)
 blasts crates, holds a lantern, breaks a window and slides a 2D puck.
 
-A `.physics_material.json` file is Godot's `PhysicsMaterial` with what Chaos's physical
+A `.physics_material.json` file holds a body's physical material with what Chaos's physical
 materials add. A `StaticBody3D`, `MovingBody3D`, `RigidBody3D`, `SimulatedBone3D` or 2D body
 names one in `physics_material`, and its values win over the body's `friction` and
 `bounce`. `$cli schema physics_material` prints the schema, and `$cli scene validate` and
@@ -6003,7 +5933,7 @@ names one in `physics_material`, and its values win over the body's `friction` a
 | --- | --- | --- |
 | `format` | required | `1` |
 | `friction` | `1` | How much it grips, 0 for ice |
-| `rough` | `false` | Its friction wins over a smoother material's, as Godot's: two bodies take the smaller friction, a rough one's counting as below every other |
+| `rough` | `false` | Its friction wins over a smoother material's: two bodies take the smaller friction, a rough one's counting as below every other |
 | `bounce` | `0` | How much it bounces, 0 to 1; two bodies add theirs, up to 1 |
 | `absorbent` | `false` | Its bounce is taken from the other's instead of added |
 | `density` | `0` | Kilograms a cubic meter: a rigid body made of it weighs its shapes' volume times this (in 2D, a square meter of 64 pixels a side). 0 keeps the body's `mass`; shapes with no volume, such as planes and meshes, keep it too |
@@ -6057,19 +5987,19 @@ fields. A `PhysicsField2D` does the same in a 2D world, in pixels.
 
 ## Navigation
 
-Navigation follows Godot 4.6's `NavigationServer2D` and `NavigationServer3D`. Each world has a
-2D map and a 3D map, made of the regions of navigation mesh and the links that components place
-on them. Paths are found with Godot's own A* over the regions' polygons and pulled tight with its
-funnel, so they come out as Godot's do, and the same on every machine. Each tick, after physics,
-the `navigation` system (priority 960) rebuilds the maps whose regions or links changed, then
-updates each agent's path and progress, then gives agents that avoid each other their safe
-velocities. [examples/navigation](../../examples/navigation/) sends a guard through a hatch and
-a cat round the corner of a yard.
+Each world has a 2D
+map and a 3D map, made of the regions of navigation mesh and the links that components place on
+them. Paths are found with A* over the regions' polygons and pulled tight with a
+funnel, so they come out the same on every machine. Each tick, after physics, the
+`navigation` system (priority 960) rebuilds the maps whose regions or links changed, then updates
+each agent's path and progress, then gives agents that avoid each other their safe velocities.
+[examples/navigation](../../examples/navigation/) sends a guard through a hatch and a cat round
+the corner of a yard.
 
 ### Navigation meshes and polygons
 
-A `.navmesh.json` file is Godot's `NavigationMesh`: convex polygons over shared vertices, in
-meters. A `.navmesh2d.json` file is its `NavigationPolygon`, the same in pixels. An agent can write
+A `.navmesh.json` file is a navigation mesh: convex polygons over shared vertices, in
+meters. A `.navmesh2d.json` file is the same in pixels. An agent can write
 the polygons, or bake them from the scene with [`navigation.bake`](commands.md#navigationbake)
 and the settings below ([Baking](#baking)).
 
@@ -6088,7 +6018,7 @@ and the settings below ([Baking](#baking)).
 | `format` | Yes | | `1` |
 | `vertices` | No | `[]` | Points, as `[x, y, z]` (`[x, y]` in a `.navmesh2d.json` file) |
 | `polygons` | No | `[]` | Convex polygons, each a list of three or more indices into `vertices` |
-| `cell_size` | No | `0.25` (`1` in 2D) | The cell size it was made for, as Godot's |
+| `cell_size` | No | `0.25` (`1` in 2D) | The cell size it was made for |
 | `cell_height` | No | `0.25` | The cell height it was made for, in `.navmesh.json` files only |
 
 `$cli scene validate` and `$cli scene format` take both, and `$cli schema navmesh` and
@@ -6098,26 +6028,24 @@ Files reload when they change, and their maps rebuild.
 
 ### Baking
 
-`navigation.bake` bakes a region's file from the geometry under the region, as Godot's
-`bake_navigation_mesh` and `bake_navigation_polygon`: the region's entity and those under it in
-`Transform3D` (or `Transform2D`) children, in the region's space. It replaces the file's
-`vertices` and `polygons` and keeps everything else as written, so the settings below stay in
-the file. [examples/navigation-baking](../../examples/navigation-baking/) bakes a courtyard and
-a garden.
+`navigation.bake` bakes a region's file from the geometry under the region: the region's entity
+and those under it in `Transform3D` (or `Transform2D`) children, in the region's space. It
+replaces the file's `vertices` and `polygons` and keeps everything else as written, so the
+settings below stay in the file. [examples/navigation-baking](../../examples/navigation-baking/)
+bakes a courtyard and a garden.
 
-In 3D, what bakes is each `Model3D`'s primitive mesh or model file and the shapes of
-each `StaticBody3D` and `MovingBody3D` (on the body or on children with no body of their
-own), as Godot's parsers take them: a primitive shape as Godot's mesh of it, a convex polygon
-as its hull's faces. Recast marks the triangles agents can walk, voxelizes them into cells,
-keeps agents `agent_radius` from walls and returns the walkable area; its detail triangles are
-the polygons, wound clockwise seen from above, as Godot's are. A bake warns when a setting
-doesn't fit whole cells, as Godot does, and fails past 30 million cells.
+In 3D, what bakes is each `Model3D`'s primitive mesh or model file and the shapes of each
+`StaticBody3D` and `MovingBody3D` (on the body or on children with no body of their own): a
+primitive shape, a convex polygon as its hull's faces. Recast marks the triangles agents can
+walk, voxelizes them into cells, keeps agents `agent_radius` from walls and returns the walkable
+area; its detail triangles are the polygons, wound clockwise seen from above. A bake warns when
+a setting doesn't fit whole cells, and fails past 30 million cells.
 
-A `NavObstacle3D` under the region with `affect_navigation_mesh` is cut out too, as
-Godot's projected obstructions: its `vertices` (turned only about y with the entity, and scaled)
-from its elevation up by `height`, and a circle of 12 sides of its `radius`. Its cells are marked
-unwalkable before the walkable area shrinks by `agent_radius`, so the hole grows by it like any
-wall's; with `carve_navigation_mesh` they are marked after, so it cuts only its own shape.
+A `NavObstacle3D` under the region with `affect_navigation_mesh` is cut out too: its `vertices`
+(turned only about y with the entity, and scaled) from its elevation up by `height`, and a circle
+of 12 sides of its `radius`. Its cells are marked unwalkable before the walkable area shrinks by
+`agent_radius`, so the hole grows by it like any wall's; with `carve_navigation_mesh` they are
+marked after, so it cuts only its own shape.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -6141,19 +6069,19 @@ wall's; with `carve_navigation_mesh` they are marked after, so it cuts only its 
 | `filter_walkable_low_height_spans` | `false` | Leave out places lower than `agent_height` |
 | `filter_baking_aabb_position`, `filter_baking_aabb_size`, `filter_baking_aabb_offset` | `[0, 0, 0]` | Bake only what is in this box, when its size has volume |
 
-In 2D, a `.navmesh2d.json` file's `outlines` say where agents may walk: closed outlines of
-`[x, y]` points, merged where they overlap. The shapes of each `StaticBody2D` and
-`MovingBody2D` under the region are cut out of them, as Godot's parser takes them: a
-rectangle, a circle of 12 sides, a capsule of 14 corners, a polygon's convex hull, or a
-`PolygonCollider2D` as written. So is each `NavObstacle2D` with
-`affect_navigation_mesh`: its `vertices` and a circle of 12 sides of its `radius`. Clipper2
-merges the outlines and the obstructions, takes one from the other and shrinks the rest by
-`agent_radius`, then PolyPartition splits it into convex polygons or triangles. An obstacle with
-`carve_navigation_mesh` is taken out after the shrink, so it cuts only its own shape.
+In 2D, a `.navmesh2d.json` file's `outlines` say where agents may walk: closed outlines of `[x,
+y]` points, merged where they overlap. The shapes of each `StaticBody2D` and `MovingBody2D`
+under the region are cut out of them: a rectangle, a circle of 12 sides, a capsule of 14
+corners, a polygon's convex hull, or a `PolygonCollider2D` as written. So is each
+`NavObstacle2D` with `affect_navigation_mesh`: its `vertices` and a circle of 12 sides of its
+`radius`. Clipper2 merges the outlines and the obstructions, takes one from the other and
+shrinks the rest by `agent_radius`, then PolyPartition splits it into convex polygons or
+triangles. An obstacle with `carve_navigation_mesh` is taken out after the shrink, so it cuts
+only its own shape.
 
-A `TileLayer2D` under the region adds its cells' tiles, as Godot's parser takes them: each
-tile's [navigation outlines](#tile-navigation) on every navigation layer are outlines agents may
-walk, and its collision polygons on physics layers whose `collision_layer` shares a bit with
+A `TileLayer2D` under the region adds its cells' tiles: each tile's [navigation
+outlines](#tile-navigation) on every navigation layer are outlines agents may walk, and its
+collision polygons on physics layers whose `collision_layer` shares a bit with
 `parsed_collision_mask` are cut out, both turned with the cell. A region whose file has no
 `outlines` can bake from its tile map layers alone.
 
@@ -6187,10 +6115,9 @@ A `NavArea3D` places a `.navmesh.json` file on the 3D map at the entity's `Trans
   bit with its own.
 - `travel_cost` multiplies the cost of each unit of distance in the region, and `enter_cost` is
   added when a path enters it from another region. The search finds the cheapest way, which is
-  not always the shortest. As in Godot, the search charges `enter_cost` by the polygon it took
-  last rather than the one the path comes from, so `travel_cost` steers paths more reliably.
-- A region that isn't `enabled` is left out of paths, but `navigation.closest` still finds it,
-  as Godot's `map_get_closest_point` does.
+  not always the shortest. The search charges `enter_cost` by the polygon it took last rather
+  than the one the path comes from, so `travel_cost` steers paths more reliably.
+- A region that isn't `enabled` is left out of paths, but `navigation.closest` still finds it.
 - A file that doesn't load, or is of the wrong kind, leaves the region out of the map, and
   `navigation.map` reports why under `errors`.
 - A `TileLayer2D`'s cells are regions too, of its tiles' navigation polygons: see
@@ -6198,10 +6125,9 @@ A `NavArea3D` places a `.navmesh.json` file on the 3D map at the entity's `Trans
 
 ### Links
 
-A `NavLink3D` or `NavLink2D` joins two places the regions don't, such as a jump, a
-ladder or a door, as Godot's. `start_position` and `end_position` are in the space of the
-entity's transform, and each end joins the closest region polygon within the map's
-`link_connection_radius`.
+A `NavLink3D` or `NavLink2D` joins two places the regions don't, such as a jump, a ladder or a
+door. `start_position` and `end_position` are in the space of the entity's transform, and each
+end joins the closest region polygon within the map's `link_connection_radius`.
 
 ```json
 "hatch": {"components": {
@@ -6218,11 +6144,11 @@ entity's transform, and each end joins the closest region polygon within the map
 
 ### Agents
 
-A `NavAgent3D` finds a path on the 3D map from the entity's `Transform3D` to its
-`target_position` and keeps track of its progress, as Godot's; a `NavAgent2D` does the
-same on the 2D map from the entity's `Transform2D`. Agents move nothing: gameplay code moves the
-entity toward `navigation::next_path_position_3d` (or `_2d`), as a Godot script calls
-`get_next_path_position`, and asks `navigation::is_navigation_finished` when to stop.
+A `NavAgent3D` finds a path on the 3D map from the entity's `Transform3D` to its `target_position`
+and keeps track of its progress; a `NavAgent2D` does the same on the 2D map from the entity's
+`Transform2D`. Agents move nothing: gameplay code moves the entity toward
+`navigation::next_path_position_3d` (or `_2d`), and asks `navigation::is_navigation_finished` when
+to stop.
 
 ```json
 "guard": {"components": {
@@ -6240,30 +6166,30 @@ entity toward `navigation::next_path_position_3d` (or `_2d`), as a Godot script 
   `target_desired_distance` of `target_position`. For a target it can't reach, navigation
   finishes at the end of the path, the closest point it can reach.
 - `path_height_offset` is how far the navigation mesh is above the entity's origin: it is taken
-  off each path point's y, as Godot's.
-- `path_postprocessing` shapes the path, as Godot's: `"corridorfunnel"` pulls it tight round
-  corners, `"edgecentered"` goes through the middle of each edge it crosses, and `"none"` keeps
-  the points where the search entered each polygon. `simplify_path` then drops the points within
-  `simplify_epsilon` of a straight line, as Godot's Ramer-Douglas-Peucker.
+  off each path point's y.
+- `path_postprocessing` shapes the path: `"corridorfunnel"` pulls it tight round corners,
+  `"edgecentered"` goes through the middle of each edge it crosses, and `"none"` keeps the
+  points where the search entered each polygon. `simplify_path` then drops the points within
+  `simplify_epsilon` of a straight line.
 - `path_search_max_polygons` and `path_search_max_distance` limit the search, and
   `path_return_max_length` and `path_return_max_radius` cut the path it returns; `0` means no
   limit.
-- The agent emits world events as Godot's emits signals: `path_changed` when it has a new path,
-  `waypoint_reached` at each point (with its `position`, `type` (`"region"` or `"link"`) and
-  `owner`), also `link_reached` at a link's start (with `link_entry_position` and
-  `link_exit_position`), then `target_reached` and `navigation_finished`.
+- The agent emits world events: `path_changed` when it has a new path, `waypoint_reached` at
+  each point (with its `position`, `type` (`"region"` or `"link"`) and `owner`), also
+  `link_reached` at a link's start (with `link_entry_position` and `link_exit_position`), then
+  `target_reached` and `navigation_finished`.
 - Paths and progress live beside the components, kept by entity ID, so saving, snapshots and
   undo leave them alone; a failed command or a dry run puts them back.
 
 ### Avoidance
 
-Agents with `avoidance_enabled` steer round each other and round obstacles, as Godot's, with
-the optimal reciprocal collision avoidance of RVO2. Gameplay code sets the agent's `velocity` to
-where it wants to go, and the `navigation` system, after updating paths, gives back a safe
-velocity that keeps it `radius` from the others for `time_horizon_agents` seconds (and from
-obstacles' outlines for `time_horizon_obstacles`), emitted as a `velocity_computed` event with
-its `safe_velocity` and returned by `navigation::safe_velocity_2d` (or `_3d`). Gameplay code then
-moves the entity at that velocity: in a system above priority 960, or the next tick.
+Agents with `avoidance_enabled` steer round each other and round obstacles, with the optimal
+reciprocal collision avoidance of RVO2. Gameplay code sets the agent's `velocity` to where it
+wants to go, and the `navigation` system, after updating paths, gives back a safe velocity that
+keeps it `radius` from the others for `time_horizon_agents` seconds (and from obstacles' outlines
+for `time_horizon_obstacles`), emitted as a `velocity_computed` event with its `safe_velocity`
+and returned by `navigation::safe_velocity_2d` (or `_3d`). Gameplay code then moves the entity at
+that velocity: in a system above priority 960, or the next tick.
 [examples/navigation-avoidance](../../examples/navigation-avoidance/) has walkers weaving past
 each other in a plaza.
 
@@ -6288,18 +6214,18 @@ each other in a plaza.
   (`keep_y_velocity`) or dropped. With `use_3d_avoidance` they avoid as spheres in every
   direction, among the others that do.
 - `navigation::set_velocity_forced` replaces the velocity avoidance starts the next step from,
-  as Godot's `set_velocity_forced`, for an agent moved to a new place.
+  for an agent moved to a new place.
 
-A `NavObstacle2D` or `NavObstacle3D` is in agents' way, as Godot's. Its `radius`
-is a circle agents keep out of, which moves at its `velocity` (gameplay code moves the entity);
-its `vertices` are an outline, in the entity's space, that agents don't cross. Listed
-counterclockwise in x and y (in 2D, clockwise on screen, since y points down), an outline keeps
-agents out; the other way round, it keeps them in. Avoidance finds no way round an outline,
-though: an agent heading straight at one stops at its edge, so give obstacles
-`affect_navigation_mesh` for paths to go round them ([Baking](#baking)). A 3D obstacle's outline
-spans `height` up from its origin, and agents on the ground avoid it only where their heights
-overlap; with `use_3d_avoidance` its circle is a sphere among agents that avoid in 3D. Agents
-avoid an obstacle when their `avoidance_mask` shares a bit with its `avoidance_layers`.
+A `NavObstacle2D` or `NavObstacle3D` is in agents' way. Its `radius` is a circle agents keep out
+of, which moves at its `velocity` (gameplay code moves the entity); its `vertices` are an
+outline, in the entity's space, that agents don't cross. Listed counterclockwise in x and y (in
+2D, clockwise on screen, since y points down), an outline keeps agents out; the other way round,
+it keeps them in. Avoidance finds no way round an outline, though: an agent heading straight at
+one stops at its edge, so give obstacles `affect_navigation_mesh` for paths to go round them
+([Baking](#baking)). A 3D obstacle's outline spans `height` up from its origin, and agents on
+the ground avoid it only where their heights overlap; with `use_3d_avoidance` its circle is a
+sphere among agents that avoid in 3D. Agents avoid an obstacle when their `avoidance_mask`
+shares a bit with its `avoidance_layers`.
 
 | Component | Fields (defaults) |
 | --- | --- |
@@ -6321,7 +6247,7 @@ agents.
 ## NPCs
 
 NPCs plan, as F.E.A.R.'s goal-oriented action planning (Jeff Orkin, "Three States and a Plan",
-GDC 2006); Godot has nothing of the kind. An `NpcAgent` names a `.npc.json` brain
+GDC 2006). An `NpcAgent` names a `.npc.json` brain
 (`slash-cli schema npc`), which lists what the NPC knows, wants and can do:
 
 - `facts`: every fact by name with its starting value, `true`, `false` (1 and 0) or a whole
@@ -6537,18 +6463,17 @@ conversation in two languages and watchmen on their rounds in 2D and 3D.
 
 ## Visual effects
 
-A `.vfx.json` file (`slash-cli schema vfx`) is a visual effect, after Unreal's Niagara systems
-(Godot has none: its effects are scenes of particles, lights and sounds a script times). It lays
-layers on one timeline. Each layer is an entity of components, written as a scene writes them:
-particles (`Emitter3D`, `GpuEmitter3D` and their 2D forms, with trails, mesh particles and
-flipbooks as those components draw them), `Decal`s, lights, sounds, screen flashes (a `Control`
-with a `ColorFill`), `CameraShake`s or anything else a scene holds. A layer appears at its
-`start`, has its fields moved along `curves` while it lasts and goes at its end; an emitter stops
-emitting and goes once its particles' `lifetime` has passed, so they finish what they started.
-Any value may be an expression (`"=8 * intensity"`, Godot's `Expression`) over the recipe's
-`parameters`, which an effect sets, and `detail`; curves also read `t` (seconds into the layer)
-and `life` (`t` over the layer's length). Whole numbers come out as integers, and as in
-Godot two whole numbers divide as integers (`"=size / 2.0"` keeps the fraction).
+A `.vfx.json` file (`slash-cli schema vfx`) is a visual effect, after Unreal's Niagara systems It
+lays layers on one timeline. Each layer is an entity of components, written as a scene writes them:
+particles (`Emitter3D`, `GpuEmitter3D` and their 2D forms, with trails, mesh particles and flipbooks
+as those components draw them), `Decal`s, lights, sounds, screen flashes (a `Widget` with a
+`ColorFill`), `CameraShake`s or anything else a scene holds. A layer appears at its `start`, has its
+fields moved along `curves` while it lasts and goes at its end; an emitter stops emitting and goes
+once its particles' `lifetime` has passed, so they finish what they started. Any value may be an
+expression (`"=8 * intensity"`) over the recipe's `parameters`, which an effect sets, and `detail`;
+curves also read `t` (seconds into the layer) and `life` (`t` over the layer's length). Whole
+numbers come out as integers, and two whole numbers divide as integers (`"=size / 2.0"` keeps the
+fraction).
 
 ```json
 {"format": 1, "name": "Explosion", "duration": 2,
@@ -6591,7 +6516,7 @@ layers named twice, curve keys out of order and levels of detail out of order.
 The `vfx` system (priority 1090, before the particle systems) plays each effect: a layer plays as
 the entity `<effect>_<layer>` with a `VfxPart` (numbered past taken names), placed under the
 effect in its `Transform3D` or `Transform2D` children (`world` layers are `top_level`, left
-where they appeared; layers with a `Control` are on the screen). It emits `vfx_started` and
+where they appeared; layers with a `Widget` are on the screen). It emits `vfx_started` and
 `vfx_finished`, and `vfx_failed` once for a recipe or layer that can't play. Parts of an effect
 that is removed go with it. Every enabled `CameraShake` shakes the current `Camera3D`'s
 `h_offset` and `v_offset` and the current `Camera2D`'s `offset` with smooth noise hashed from its
@@ -6604,7 +6529,7 @@ part holding its own `Fluid3D` or `Fluid2D` lingers while its particles last (th
 
 ### Particle simulation
 
-Simulation stages run over CPU particles, after Unreal's Niagara modules (Godot has none): a
+Simulation stages run over CPU particles, after Unreal's Niagara modules: a
 `ParticleSimulation3D` on an entity with a `Emitter3D`, or a `ParticleSimulation2D` on one
 with a `Emitter2D`, works on its particles each tick after the emitter moved them (the
 `particle_simulation_3d` and `particle_simulation_2d` systems, priority 1105, between the CPU
@@ -6644,7 +6569,7 @@ platform (`world::run_stages`, `slash/world/particle_sim.hpp`, built with `-ffp-
 | `bounce` | `0.3` | The share of its speed into the surface sent back. |
 | `friction` | `0.2` | The share of its speed along the surface lost. |
 | `depth_thickness` | `0.5` | 3D only: how far behind what the camera sees a particle still counts as touching it. |
-| `attributes` | `[]` | At most 8 named values a particle carries: `name`, `value` (a Godot `Expression`) and `every_tick` (`false` works it out once, when the particle starts). |
+| `attributes` | `[]` | At most 8 named values a particle carries: `name`, `value` (an expression) and `every_tick` (`false` works it out once, when the particle starts). |
 | `events` | `[]` | Rules that answer `collision`, `death` or `location`. |
 
 An attribute's value reads the particle's `age`, `life` (age over lifetime), `lifetime`, `speed`,
@@ -6683,8 +6608,8 @@ here.
 ### Screen distortion
 
 `ScreenDistortion3D` and `ScreenDistortion2D` bend the picture of the world as a heat haze, a
-shockwave's refracting ring, ripples or a lens does (Godot draws these with a shader reading
-`SCREEN_TEXTURE`; Niagara with a distortion material). A recipe layer can hold one and move its
+shockwave's refracting ring, ripples or a lens does (Niagara uses a
+distortion material). A recipe layer can hold one and move its
 `progress` or `strength` along curves. `CanvasRenderer` draws the world, with the canvas layers
 below it, into a texture, then shows it through a grid of triangles (96 cells across) whose
 texture coordinates are moved by each distortion, so every device draws the same pixels with no
@@ -6731,7 +6656,7 @@ body starts to push an instance aside (at most 8 a tick; data `type`, `group`, `
 
 ## Fluids
 
-Liquids and gases simulated as particles with no grid (SlashEngine's own; Godot has none),
+Liquids and gases simulated as particles with no grid (SlashEngine's own),
 after Niagara Fluids. A `.fluid.json` recipe (`slash-cli schema fluid`; `slash/world/fluid.hpp`)
 says what a fluid is, and `extends` another as a JSON Merge Patch:
 
@@ -6802,7 +6727,7 @@ of ignition; a `Fluid2D` draws the same discs in its canvas (`world::fluid_color
 
 ## Water
 
-Oceans, lakes and rivers (SlashEngine's own; Godot has none), after Unreal's Water plugin and
+Oceans, lakes and rivers (SlashEngine's own), after Unreal's Water plugin and
 its buoyancy component. A `.water.json` recipe (`slash-cli schema water`;
 `slash/world/water.hpp`) says what a body of water is, and `extends` another as a JSON Merge
 Patch:
@@ -6861,7 +6786,7 @@ rings it with `world::add_water_ripple`.
 
 ## Particles
 
-Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`
+Each tick, after physics, the `cpu_particles_2d`
 system (priority 1100) emits, moves and ages every `Emitter2D`'s particles on the CPU, and
 `CanvasRenderer` draws them with the sprites. [examples/particles](../../examples/particles/) has
 a fountain, a one-shot burst, smoke and a ring of orbiting particles.
@@ -6904,7 +6829,7 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
   `color` × `color_ramp` at that age × its pick of `color_initial_ramp` × its point's
   `emission_colors`, with its hue turned by `hue_variation`.
 - With `hframes` or `vframes` over 1, a particle draws the texture frame `anim_offset` +
-  `anim_speed` × age-fraction of the way through the frames, as Godot's particle animation.
+  `anim_speed` × age-fraction of the way through the frames.
 - Random values come from the entity's ID and `seed`, so a scene makes the same particles every
   run and on every platform. [`particles.eval`](commands.md#particleseval) returns them as
   numbers, as they are or after a time, for checks without a screenshot.
@@ -6917,7 +6842,7 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
 
 ### 3D particles
 
-`Emitter3D` follows Godot 4.6's: the same emission, curves, colors and randomness as
+`Emitter3D` has the same emission, curves, colors and randomness as
 `Emitter2D`'s, in meters and three dimensions. The `cpu_particles_3d` system (priority 1100)
 runs every emitter each tick, sharing them out on the job system's threads, and
 `scene3d::Renderer` draws the entity's mesh at each live particle, between ticks where it was and
@@ -6985,7 +6910,7 @@ snow.
   [Particles](#particles): the same scene makes the same particles on every platform and with
   any number of threads.
 - A particle's transform is a basis turned by the flags and scaled by its scale, never less than
-  0.00001, as Godot's, then placed through the entity's `Transform3D` unless `local_space` is set.
+  0.00001, then placed through the entity's `Transform3D` unless `local_space` is set.
 - The mesh's material decides how it faces the camera: a `Surface3D` with
   `billboard` `"enabled"` faces it, `"fixed_y"` turns only about y toward it, and
   `"particles"` faces it turned by each particle's angle and plays `particles_anim_h_frames` by
@@ -6997,15 +6922,14 @@ snow.
 
 ### GPU particles
 
-`GpuEmitter2D` follows Godot's: the device moves and draws its particles, as a process material
+`GpuEmitter2D`: the device moves and draws its particles, as a process material
 says. Each tick, after the CPU particles, the `gpu_particles_2d` system (priority 1110) works out
-each emitter's steps as Godot's node and its particles storage do, and keeps them; the renderer
-runs the steps it hasn't run on its device, then draws the particles there. On Metal, Direct3D 12
-and Vulkan a compute shader (`particles_process.hlsl`) runs them and the particles stay on the
-GPU, so the CPU's work is the same for ten particles or a hundred thousand. WebGL 2 has no
-compute shaders, so the OpenGL ES device (web exports) runs them on the CPU, as the software
-device does. [examples/gpu-particles](../../examples/gpu-particles/) has a fire, a burst of
-sparks and snow.
+each emitter's steps, and keeps them; the renderer runs the steps it hasn't run on its device,
+then draws the particles there. On Metal, Direct3D 12 and Vulkan a compute shader
+(`particles_process.hlsl`) runs them and the particles stay on the GPU, so the CPU's work is the
+same for ten particles or a hundred thousand. WebGL 2 has no compute shaders, so the OpenGL ES
+device (web exports) runs them on the CPU, as the software device does.
+[examples/gpu-particles](../../examples/gpu-particles/) has a fire, a burst of sparks and snow.
 
 ```json
 "fire": {
@@ -7024,7 +6948,7 @@ sparks and snow.
   `fixed_fps` 0 there is one a tick. With `interpolate`, particles draw where they are between
   steps. `preprocess` runs steps of `1 / fixed_fps` seconds (`1 / 30` with `fixed_fps` 0) when
   the emitter starts.
-- The emission cycle is Godot's: slot `i` of `amount` emits `i / amount` of the way through each
+- The emission cycle: slot `i` of `amount` emits `i / amount` of the way through each
   `lifetime`, pulled toward the start by `explosiveness` and moved by up to `randomness`; only
   the share `amount_ratio` emits. A particle starts and moves as its process material says,
   through the entity's `Transform2D` unless `local_space`, with the emitter's velocity for
@@ -7038,22 +6962,20 @@ sparks and snow.
   [`particles.eval`](commands.md#particleseval) runs the steps kept on the CPU to return the
   particles as numbers, or runs the settings from the start for a `time`.
 - A `one_shot` stops emitting after one `lifetime` and sets `emitting` to false; it emits a
-  `finished` event `lifetime` × (2 - `explosiveness`) after it started, when its particles have
-  had time to die, as Godot's. Setting `emitting` to true starts a new cycle at once, as Godot's
-  `restart` does (Godot's renderer waits for the last cycle's phase to come round, so a burst set
-  off from `finished` can emit nothing there). Turning `one_shot` off while it emits restarts
-  it. Changing `amount`, or turning trails on or off or changing `trail_sections`, starts it over.
+  `finished` event `lifetime` × (2 - `explosiveness`) after it started, when its particles have had
+  time to die. Setting `emitting` to true starts a new cycle at once. Turning `one_shot` off while
+  it emits restarts it. Changing `amount`, or turning trails on or off or changing `trail_sections`,
+  starts it over.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are.
 - Attractors are on the [roadmap](../roadmap.md).
 
 ### Process materials
 
-A `.particles.json` file is Godot's `ParticleProcessMaterial` in 2D, with its property
-names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a process material on a
+A `.particles.json` file is a process material in 2D, with a default `gravity` of `[0, 98]` on a
 `GpuEmitter2D`. `slash-cli schema particles` prints its JSON Schema, and
 `slash-cli scene validate` and `scene format` take these files. A `GpuEmitter3D` reads the same
-files with Godot's 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
+files with 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
 
 ```json
 {
@@ -7097,7 +7019,7 @@ files with Godot's 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
 | `anim_speed_min`, `_max` | `0` | Times its frames play over its life, from 0 |
 | `anim_offset_min`, `_max` | `0` | The frame it starts on, as a fraction of the frames, 0 to 1 |
 | `turbulence_influence_min`, `_max` | `0.1` | How far turbulence turns its velocity, 0 to 1 |
-| `turbulence_initial_displacement_min`, `_max` | `0` | Pixels turbulence moves it where it starts, times the noise direction's length (a tenth of `turbulence_noise_strength`, as Godot's) |
+| `turbulence_initial_displacement_min`, `_max` | `0` | Pixels turbulence moves it where it starts, times the noise direction's length (a tenth of `turbulence_noise_strength`) |
 | `*_curve` | `[]` | Each parameter but `initial_velocity` and `turbulence_initial_displacement` has one (`turbulence_influence_over_life` for turbulence): points `[offset, value]` that multiply it over each particle's life (`anim_offset_curve` adds), offsets from 0 to 1 in order, joined by straight lines |
 | `velocity_limit_curve` | `[]` | The fastest a particle moves over its life, in pixels per second |
 | `alpha_curve` | `[]` | Multiplies alpha over its life |
@@ -7108,9 +7030,9 @@ files with Godot's 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
 | `lifetime_randomness` | `0` | Shortens each particle's life by up to this fraction, 0 to 1 |
 | `particle_flag_align_y` | `false` | Turn each particle so its y axis points along its velocity |
 | `particle_flag_damping_as_friction` | `false` | Damping grows with speed, as friction |
-| `turbulence_enabled` | `false` | Turn particles along moving curl noise, as Godot's turbulence |
+| `turbulence_enabled` | `false` | Turn particles along moving curl noise |
 | `turbulence_noise_strength` | `1` | How sharply the noise turns, 0 to 20 |
-| `turbulence_noise_scale` | `9` | The noise's size, Godot's slider: swirls about 1 / (4 - scale^0.25 × 2.249) pixels across, so 9 makes them 10 pixels and 9.8 about 50; 10 has none |
+| `turbulence_noise_scale` | `9` | The noise's size: swirls about 1 / (4 - scale^0.25 × 2.249) pixels across, so 9 makes them 10 pixels and 9.8 about 50; 10 has none |
 | `turbulence_noise_speed` | `[0, 0, 0]` | How the noise moves per second, as `[x, y, z]` |
 | `turbulence_noise_speed_random` | `0.2` | How fast the noise changes as it moves, 0 to 4 |
 | `collision_mode` | `"disabled"` | What a particle does on touching a shape: `rigid` bounces off it, `hide_on_contact` dies |
@@ -7123,43 +7045,41 @@ files with Godot's 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
 | `sub_emitter_keep_velocity` | `false` | The particles it starts move on with its velocity too |
 | `params`, `nodes`, `start`, `process` | | [Particle graphs](#particle-graphs) that change what the material works out |
 
-Turbulence is Godot's: each step a particle's velocity, built up and controlled, turns towards
-the curl of 4D gradient noise at its position by its `turbulence_influence`, keeping its speed
-(the part turned out of the screen still counts toward it). The noise moves with the time since
-the emitter started over, back to 0 every hour, where Godot's moves with the engine's clock;
-its lattice gradients come from an integer hash of each point rather than Godot's fractions of
-float products, so every device and the CPU make the same noise.
+Turbulence: each step a particle's velocity, built up and controlled, turns towards the curl of 4D
+gradient noise at its position by its `turbulence_influence`, keeping its speed (the part turned out
+of the screen still counts toward it). The noise moves with the time since the emitter started over,
+back to 0 every hour; its lattice gradients come from an integer hash of each point, so every device
+and the CPU make the same noise.
 
 ### GPU particle collision
 
-A process material with a `collision_mode` collides with the outlines of `Occluder2D`s
-whose `sdf_collision` is on and with tile occluders on occlusion layers whose `sdf_collision` is
-on, in every visible canvas, as Godot's particles collide with the signed distance field its
-viewport draws from them. A closed outline of three or more points is solid; an open one is a
+A process material with a `collision_mode` collides with the outlines of `Occluder2D`s whose
+`sdf_collision` is on and with tile occluders on occlusion layers whose `sdf_collision` is on,
+in every visible canvas. A closed outline of three or more points is solid; an open one is a
 line, solid on neither side. A particle collides where it comes nearer to an outline than its
 collision size (the emitter's `collision_size`, through its texture and, with
 `collision_use_scale`, its scale), or is inside a solid one. Then a `rigid` one is pushed out to
 that distance, loses its speed into the outline, slides with `collision_friction` and bounces
-back by `collision_bounce` (only when it hits at least 2 / (1 + bounce) pixels a second, as
-Godot's), and turbulence leaves it alone that step; a `hide_on_contact` one dies. A particle is
-measured where it is at the start of each step, so one that has just reached a shape is in it
-until its next step, and one that moves past the middle of a shape in a step comes out the far
-side, as in Godot: give fast particles shapes thicker than twice a step's travel.
+back by `collision_bounce` (only when it hits at least 2 / (1 + bounce) pixels a second), and
+turbulence leaves it alone that step; a `hide_on_contact` one dies. A particle is measured where
+it is at the start of each step, so one that has just reached a shape is in it until its next
+step, and one that moves past the middle of a shape in a step comes out the far side: give fast
+particles shapes thicker than twice a step's travel.
 
-The shapes are measured exactly, where Godot samples a field drawn on the GPU, so every device
-and the CPU agree. They count everywhere, where Godot's field covers the screen and a margin, and
+The shapes are measured exactly, so every device
+and the CPU agree. They count everywhere, and
 each step takes the nearest the emitter that fit in 1024 points between them. Particles in the
 emitter's coordinates (`local_space`) reach them through its transform, and an emitter in a
 `ScreenLayer` through that layer's.
 
 ### Sub-emitters
 
-A `GpuEmitter2D`'s `sub_emitter` names another that its particles start particles in, as
-Godot's: its process material's `sub_emitter_mode` says when (`constant`, `at_end`,
-`at_collision` or `at_start`) and its `sub_emitter_amount_*` how many. Each starts where the
-particle is, turned and scaled as it is, moving as its own process material says, and with
+A `GpuEmitter2D`'s `sub_emitter` names another that its particles start particles in: its
+process material's `sub_emitter_mode` says when (`constant`, `at_end`, `at_collision` or
+`at_start`) and its `sub_emitter_amount_*` how many. Each starts where the particle is, turned
+and scaled as it is, moving as its own process material says, and with
 `sub_emitter_keep_velocity` adds the particle's velocity. An `at_end` particle starts them in
-the step it dies of age, as Godot's code finds it (in its last two or three), and an
+the step it dies of age (in its last two or three), and an
 `at_collision` one in each step it touches a shape.
 
 ```json
@@ -7182,11 +7102,9 @@ the step it dies of age, as Godot's code finds it (in its last two or three), an
 - A sub-emitter emits only the particles it is given: its `emitting`, `one_shot`, `fixed_fps`
   and `preprocess` go unused, and it emits no `finished`. It steps with the emitter before it,
   a step for each of that one's, as long as its `speed_scale` makes it, and sees the particles
-  started in that step. Godot steps each in its own time, so a sub-emitter there can take
-  particles from a frame before.
+  started in that step.
 - A sub-emitter takes particles into its slots in turn, carrying on from where the last step
-  left off. When they are all alive, new ones take the place of the oldest; Godot drops the new
-  ones.
+  left off. When they are all alive, new ones take the place of the oldest.
 - A sub-emitter can name its own, up to 8 emitters in a chain, which step together. Where two
   name the same one, the one whose ID sorts first has it; a `sub_emitter` naming its own entity
   or one with no `GpuEmitter2D`, or that would loop back or make a chain longer than 8, is
@@ -7195,14 +7113,13 @@ the step it dies of age, as Godot's code finds it (in its last two or three), an
 
 ### GPU particle trails
 
-With `trail_enabled`, each particle draws as Godot's trail ribbon: a strip as wide as a frame of
-its texture, from the particle back along the path it took over the last `trail_lifetime`
-seconds, with the frame running down its length. As in Godot, the particle keeps
-`trail_sections` copies of itself; when it starts, each copy starts with it and waits, then
-follows its path that much later (copy `j` of `trail_sections` `j` / `trail_sections` of the
-way back), and the ribbon bends through them in `trail_section_subdivisions` segments between
-each two, blending their places and colors. A trail that waits is drawn back to where its
-particle started, so it grows out behind it.
+With `trail_enabled`, each particle draws: a strip as wide as a frame of its texture, from the
+particle back along the path it took over the last `trail_lifetime` seconds, with the frame
+running down its length. The particle keeps `trail_sections` copies of itself; when it starts,
+each copy starts with it and waits, then follows its path that much later (copy `j` of
+`trail_sections` `j` / `trail_sections` of the way back), and the ribbon bends through them in
+`trail_section_subdivisions` segments between each two, blending their places and colors. A
+trail that waits is drawn back to where its particle started, so it grows out behind it.
 
 ```json
 "comets": {
@@ -7216,29 +7133,26 @@ particle started, so it grows out behind it.
 }
 ```
 
-- Trails step 60 times a second when `fixed_fps` is 0, as Godot's, since a copy runs a whole
-  number of steps behind its particle. Each draws back along its velocity by the part of a step
-  its place rounded off.
+- Trails step 60 times a second when `fixed_fps` is 0, since a copy runs a whole number of steps
+  behind its particle. Each draws back along its velocity by the part of a step its place
+  rounded off.
 - When a particle dies its copies run on until they reach the end of the same life, so the
   ribbon shortens from the front and goes; a particle that starts again takes its copies with it.
-  An emitter that stops emitting steps until its trails have run out too; Godot stops drawing
-  one 1.2 lifetimes after it stops, cutting off trails longer than a fifth of a lifetime.
+  An emitter that stops emitting steps until its trails have run out too.
 - A copy takes exactly its particle's path: each runs the step it is behind, with that step's
-  time, transform and shapes, so it collides where its particle did. Godot's copies run with the
-  current step's time and collision field, so theirs can drift from it. A copy starts nothing in
-  a [sub-emitter](#sub-emitters); Godot's start particles as their particle did.
-- Godot's Compatibility renderer draws no trails; every SlashEngine device does, the same.
+  time, transform and shapes, so it collides where its particle did. A copy starts nothing in
+  a [sub-emitter](#sub-emitters).
+- the compatibility renderer draws no trails; every SlashEngine device does, the same.
   [`particles.eval`](commands.md#particleseval) reports `trails` and `trail_bounds`, and with
   `list` each particle's `trail`.
 
 ### Particle graphs
 
-A process material can carry particle graphs, as Godot's particle shaders: node graphs, written
-as [materials](#materials)' are, that change what the material works out for each particle.
-`start` runs after the material places a particle, as a particle shader's `start()`, and
-`process` each step after the material has worked the step out, as its `process()`. Each names
-the parts of the particle it changes and leaves the rest to the material, as a process material
-converted to a shader in Godot and then edited would.
+A process material can carry particle graphs: node graphs, written as [materials](#materials)'
+are, that change what the material works out for each particle. `start` runs after the material
+places a particle, as a particle shader's `start()`, and `process` each step after the material
+has worked the step out, as its `process()`. Each names the parts of the particle it changes and
+leaves the rest to the material.
 
 ```json
 {
@@ -7269,7 +7183,7 @@ converted to a shader in Godot and then edited would.
 | `frame` | float | `process` | Where it is in the sprite sheet, from 0 to 1 |
 | `active` | float | both | Below 0.5 the particle dies; in `start` it never shows |
 
-| Input | Type | In | Godot's | Value |
+| Input | Type | In | Shader name | Value |
 | --- | --- | --- | --- | --- |
 | `position` | vec2 | both | `TRANSFORM[3].xy` | Where the particle is: in `start` where the material placed it, in `process` where it was at the start of the step |
 | `velocity` | vec2 | both | `VELOCITY` | Its velocity, as the material worked it out |
@@ -7302,13 +7216,13 @@ converted to a shader in Godot and then edited would.
   from a GPU's in the last ones.
 - A trail's copies run `process` as their particle does, so they keep to its path, and a
   [sub-emitter](#sub-emitters) takes the place and velocity a graph leaves.
-- Godot's particle shaders can also keep values of their own in `CUSTOM` and `USERDATA`, start
-  particles in a sub-emitter with `emit_subparticle` and restart particles; graphs can't yet.
+- Graphs can't yet keep values of their own, start particles in a sub-emitter or restart
+  particles.
 
 ### GPU particles in 3D
 
-`GpuEmitter3D` follows Godot 4.6's: [`GpuEmitter2D`](#gpu-particles)'s emission and steps in
-meters and three dimensions, with a [process material](#process-materials) read with Godot's 3D
+`GpuEmitter3D` has [`GpuEmitter2D`](#gpu-particles)'s emission and steps in
+meters and three dimensions, with a [process material](#process-materials) read with 3D
 fields. The `gpu_particles_3d` system (priority 1110) works out each emitter's steps each tick
 and keeps them, as the 2D system does; `scene3d::Renderer` runs the steps its device hasn't, then
 draws each draw pass's mesh at every live particle, in the visibility box. Metal, Vulkan and
@@ -7348,7 +7262,7 @@ steps, placing the meshes on the CPU for now; the software and OpenGL devices, `
 | `mesh_1` to `mesh_4` | `std::string` | `""` | A model file (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json`) each particle draws; a `mesh_1` of `""` draws the entity's primitive mesh component. The entity's `Surface3D` overrides the meshes' materials |
 | `draw_order` | `std::string` | `"index"` | `index`, `lifetime` (the oldest first), `reverse_lifetime` (the newest first) or `view_depth` (the farthest from the camera first) |
 | `transform_align` | `std::string` | `"disabled"` | `z_billboard` turns each particle's z toward the camera, `y_to_velocity` its y along its velocity, `z_billboard_y_to_velocity` both |
-| `visibility_aabb_position`, `visibility_aabb_size` | `Vec3` | `[-4, -4, -4]`, `[8, 8, 8]` | A box in the emitter's space, as Godot's `visibility_aabb`: the emitter isn't drawn when it is out of view |
+| `visibility_aabb_position`, `visibility_aabb_size` | `Vec3` | `[-4, -4, -4]`, `[8, 8, 8]` | A box in the emitter's space: the emitter isn't drawn when it is out of view |
 | `cast_shadow`, `layers` | | `"on"`, `1` | As `Model3D`'s |
 | `collision_size` | `float` | `0.01` | How near, in meters, a particle comes to a [collider](#particle-collision-3d) before it touches |
 | `wind_influence` | `float` | `0` | How much the [wind](#wind) pushes particles, as `Emitter3D`'s, with attractor interaction on |
@@ -7371,9 +7285,9 @@ A process material's 3D fields, beside the [2D ones](#process-materials):
 
 - `scale_curve`, `orbit_velocity_curve`, `directional_velocity_curve` and
   `scale_over_velocity_curve` take one curve or one per axis, `{"x": [...], "y": [...], "z":
-  [...]}`, as Godot's `CurveXYZTexture`; one curve is used for every axis. A `GpuEmitter2D`
-  reads only `x`. As Godot's, particles orbit in 3D only with `orbit_velocity_curve`, about the
-  axes it gives through `velocity_pivot`.
+  [...]}`; one curve is used for every axis. A `GpuEmitter2D` reads only `x`. Particles
+  orbit in 3D only with `orbit_velocity_curve`, about the axes it gives through
+  `velocity_pivot`.
 - A particle's transform is placed through the entity's `Transform3D` unless `local_space`, and
   its mesh's material decides how it faces the camera, as [`Emitter3D`](#3d-particles)'s
   (`billboard` and particle frames).
@@ -7386,15 +7300,13 @@ A process material's 3D fields, beside the [2D ones](#process-materials):
 
 #### Particle attractors
 
-`ParticleAttractorSphere3D`, `ParticleAttractorBox3D` and
-`ParticleFlowField3D` are Godot 4.6's attractors: each pulls the particles of
-`GpuEmitter3D`s inside its shape, by Godot's particle shader's formula. Each tick the
-`gpu_particles_3d` system pairs every emitter with the attractors that are visible in the tree,
-whose bounds (the sphere's or box's, placed by the entity's transform) touch the emitter's
-visibility box and whose `layer_filter` shares a bit with its `layers`, as Godot's scene cull pairs
-them: at most 32 an emitter, 7 of them vector fields, in the order entities are stored. The
-attractors go into that tick's steps in the particles' space (the emitter's with
-`local_space`), their bases made orthonormal and their sizes scaled by their transforms (a
+`ParticleAttractorSphere3D`, `ParticleAttractorBox3D` and `ParticleFlowField3D` are attractors: each
+pulls the particles of `GpuEmitter3D`s inside its shape. Each tick the `gpu_particles_3d` system
+pairs every emitter with the attractors that are visible in the tree, whose bounds (the sphere's or
+box's, placed by the entity's transform) touch the emitter's visibility box and whose `layer_filter`
+shares a bit with its `layers`: at most 32 an emitter, 7 of them vector fields, in the order
+entities are stored. The attractors go into that tick's steps in the particles' space (the emitter's
+with `local_space`), their bases made orthonormal and their sizes scaled by their transforms (a
 sphere's radius by its scale's average), so every device moves the particles the same way.
 [examples/particle-attractors-3d](../../examples/particle-attractors-3d/) gathers dust in a well,
 blows it with a gust and turns it in a swirl.
@@ -7417,7 +7329,7 @@ blows it with a gust and turns it in a swirl.
 | `radius` | `float` | `1` | The sphere's radius (sphere only) |
 | `size` | `Vec3` | `[2, 2, 2]` | The box's size, centered on the entity (box and vector field) |
 | `texture` | `std::string` | `""` | The vector field's directions: a `.png`, `.jpg` or `.bmp` file cut into slices; `""` reads as white (vector field only) |
-| `slices_horizontal`, `slices_vertical` | `int` | `8`, `8` | How the texture is cut, as Godot's Texture3D importer's `slices/horizontal` and `slices/vertical` (vector field only) |
+| `slices_horizontal`, `slices_vertical` | `int` | `8`, `8` | How the texture is cut (vector field only) |
 
 - A vector field's texture is cut into `slices_horizontal` by `slices_vertical` slices, each
   the image's size over the slices rounded down, left to right then top to bottom, and stacked
@@ -7432,9 +7344,9 @@ blows it with a gust and turns it in a swirl.
 
 #### Particle collision (3D)
 
-`ParticleColliderSphere3D` and `ParticleColliderBox3D` are Godot 4.6's colliders: the
-particles of `GpuEmitter3D`s whose process material has a `collision_mode` collide with them,
-by Godot's particle shader's formulas. Each tick the `gpu_particles_3d` system pairs every emitter
+`ParticleColliderSphere3D` and `ParticleColliderBox3D` are colliders: the
+particles of `GpuEmitter3D`s whose process material has a `collision_mode` collide with them.
+Each tick the `gpu_particles_3d` system pairs every emitter
 with colliders as it pairs [attractors](#particle-attractors), at most 32 an emitter, and puts
 them into that tick's steps the same way. A particle touches a collider when it comes within the
 emitter's `collision_size` (times the average length of its axes with the process
@@ -7462,24 +7374,23 @@ bounces sparks off a floor and keeps rain off the ground under an umbrella.
 
 #### SDF and height field collision (3D)
 
-`ParticleColliderSdf3D` and `ParticleColliderHeight3D` are Godot 4.6's colliders
+`ParticleColliderSdf3D` and `ParticleColliderHeight3D` are colliders
 for shapes and ground, paired and collided as the [sphere and box](#particle-collision-3d) are.
 [examples/particle-sdf-collision-3d](../../examples/particle-sdf-collision-3d/) settles snow on a
 yard and sparks on a statue.
 
 An SDF collider holds a signed distance field of the meshes in its box: `particles.bake_sdf`
-bakes it as Godot's Bake SDF does, from the visible `Model3D`s on layers of its
-`bake_mask` under its parent (everything for a root), with the CSG roots and `BlockMap3D`s there,
-whose triangles touch its box. The box is `resolution` cells along its longest side and as many
-whole cells along the others as fit, at least one; each cell holds its distance to the nearest
-triangle, less than 0 within `thickness` cells behind one (a shell, as Godot's: cells deeper
-inside a mesh hold positive distances again). The bake writes a `.sdf.png` file, 16-bit samples
-of half floats with the slices of cells stacked down, and sets `texture`, `slices_horizontal` 1
-and `slices_vertical` the cells' depth. A particle touches the field where its distance (times
-the average length of the collider's axes) is under its size; it leaves along the field's
-gradient. Without a texture the field is 1 everywhere, as Godot's white default, and holds
-nothing. `scene validate` reports a texture that isn't a `.sdf.png` file or can't be read or cut
-into its slices, and exports ship the file as it is, never in compressed forms.
+bakes it, from the visible `Model3D`s on layers of its `bake_mask` under its parent (everything
+for a root), with the CSG roots and `BlockMap3D`s there, whose triangles touch its box. The box
+is `resolution` cells along its longest side and as many whole cells along the others as fit, at
+least one; each cell holds its distance to the nearest triangle, less than 0 within `thickness`
+cells behind one (a shell: cells deeper inside a mesh hold positive distances again). The bake
+writes a `.sdf.png` file, 16-bit samples of half floats with the slices of cells stacked down,
+and sets `texture`, `slices_horizontal` 1 and `slices_vertical` the cells' depth. A particle
+touches the field where its distance (times the average length of the collider's axes) is under
+its size; it leaves along the field's gradient. Without a texture the field is 1 everywhere, and
+holds nothing. `scene validate` reports a texture that isn't a `.sdf.png` file or can't be read
+or cut into its slices, and exports ship the file as it is, never in compressed forms.
 
 ```json
 "statue_sdf": {
@@ -7502,15 +7413,14 @@ into its slices, and exports ship the file as it is, never in compressed forms.
 | `texture` | path | none | The `.sdf.png` file of distances |
 | `slices_horizontal`, `slices_vertical` | `int` | `1`, `1` | How the texture's slices are laid out, as a vector field's |
 
-A height field collider draws the ground under its box from above, as Godot draws it: each of
+A height field collider draws the ground under its box from above: each of
 its texels holds the highest point at its center of the opaque triangles of what draws on a
-layer of `heightfield_mask` (`Model3D`s, CSG roots, `BlockMap3D`s on layer 1 and
-`Terrain3D`s), clipped to the box. It draws again when it moves or its settings change, or every
-tick with `update_mode` `"always"`. A particle touches it where its bottom (its center less its
-size) is under the ground, and leaves upward; an emitter collides with only the first height
-field paired with it, as Godot's. With `follow_camera_enabled` it steps after the current
-`Camera3D` along its x and z axes, by their length (a meter unscaled) at a time, writing its
-`Transform3D`, as Godot's moves it.
+layer of `heightfield_mask` (`Model3D`s, CSG roots, `BlockMap3D`s on layer 1 and `Terrain3D`s),
+clipped to the box. It draws again when it moves or its settings change, or every tick with
+`update_mode` `"always"`. A particle touches it where its bottom (its center less its size) is
+under the ground, and leaves upward; an emitter collides with only the first height field paired
+with it. With `follow_camera_enabled` it steps after the current `Camera3D` along its x and z
+axes, by their length (a meter unscaled) at a time, writing its `Transform3D`.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -7523,10 +7433,10 @@ field paired with it, as Godot's. With `follow_camera_enabled` it steps after th
 
 ## UI and text
 
-UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, or a
+A `Widget` places a rect in its parent's rect, or a
 [container](#containers) places it; `Label`, `ColorFill`, `Panel`, `Picture`,
 `NineSlice`, `ProgressBar` and the [buttons](#buttons) draw in it. An entity with one of those, or a container, and
-no `Control` is placed with `Control`'s defaults. `CanvasRenderer` draws controls above the
+no `Widget` is placed with `Widget`'s defaults. `CanvasRenderer` draws controls above the
 world, unlit. [examples/ui-and-text](../../examples/ui-and-text/) is a pause screen, and
 [examples/ui-containers](../../examples/ui-containers/) a themed inventory screen, and
 [examples/ui-buttons](../../examples/ui-buttons/) a title menu worked by mouse, keys and touch.
@@ -7563,8 +7473,8 @@ world, unlit. [examples/ui-and-text](../../examples/ui-and-text/) is a pause scr
 
 - A control's left edge is at `offset_left` + `anchor_left` × its parent's width, and so on for
   each edge; controls no `children` list names are placed in the viewport, the project's
-  `window` size (Godot's viewport size). Anchors 0.5 and offsets ±150 keep the panel centered
-  at 300 pixels wide on any window.
+  `window` size. Anchors 0.5 and offsets ±150 keep the panel centered at 300 pixels wide on any
+  window.
 - A control is at least its minimum size: the bigger of `min_size` and its content's,
   such as a label's text. When its edges make it smaller, `grow_horizontal` and
   `grow_vertical` say which edge moves: `end` moves the right or bottom one, `begin` the left
@@ -7581,7 +7491,7 @@ world, unlit. [examples/ui-and-text](../../examples/ui-and-text/) is a pause scr
 
 ### Labels
 
-A `Label` lays out its text as Godot's does:
+A `Label` lays out its text:
 
 - Its minimum size is its widest line by its lines' height. With `autowrap_mode` set, the
   text wraps to the rect's width and doesn't widen it. With `clip_text` or a
@@ -7597,25 +7507,24 @@ A `Label` lays out its text as Godot's does:
 - `visible_characters` counts characters (Unicode code points) from the start of the text.
 - Each label draws its shadow's outline, its shadow, its outline, then its text.
 - Text is shaped with HarfBuzz, one run per script and direction, and ordered by the Unicode
-  Bidirectional Algorithm (SheenBidi, as Godot's text server): each paragraph goes the way its
-  `text_direction` says, by default its first letter's, and runs inside it the other way (an
-  English word in Arabic, numbers in Hebrew) keep their own order. `ui.layout` says `rtl` for
-  lines that go right to left. Such a line's trailing spaces hang off its left end, and it is
-  trimmed at its left end, with the ellipsis there.
+  Bidirectional Algorithm (SheenBidi): each paragraph goes the way its `text_direction` says, by
+  default its first letter's, and runs inside it the other way (an English word in Arabic,
+  numbers in Hebrew) keep their own order. `ui.layout` says `rtl` for lines that go right to
+  left. Such a line's trailing spaces hang off its left end, and it is trimmed at its left end,
+  with the ellipsis there.
 - Characters a label's font doesn't have come from its [fallback fonts](#fonts), then from fonts
   installed on the machine; `ui.layout` counts the ones drawn from installed fonts in
   `system_glyphs` and the ones no font has in `missing_glyphs`.
 
 ### Right-to-left layout
 
-`layout_direction` `rtl` lays a control out as if its parent were mirrored, as Godot's
-`is_layout_rtl`; `inherited` (the default) takes the parent's. `application_locale` goes right to
-left when the game's locale is written so (Arabic, Dhivehi, Hebrew, Persian, Fula, Kurdish and
-Urdu), and `system_locale` when the player's is. At the root, `inherited` follows project.json's
-[`root_node_layout_direction`](project-format.md#localization), the game's locale by
-default, so a menu turns round when the player switches to Arabic;
-`force_right_to_left_layout_direction` makes everything but `ltr` right to left, to check a
-layout before a translation exists.
+`layout_direction` `rtl` lays a control out as if its parent were mirrored; `inherited` (the
+default) takes the parent's. `application_locale` goes right to left when the game's locale is
+written so (Arabic, Dhivehi, Hebrew, Persian, Fula, Kurdish and Urdu), and `system_locale` when
+the player's is. At the root, `inherited` follows project.json's
+[`root_node_layout_direction`](project-format.md#localization), the game's locale by default, so
+a menu turns round when the player switches to Arabic; `force_right_to_left_layout_direction`
+makes everything but `ltr` right to left, to check a layout before a translation exists.
 
 - Anchors and offsets count from the right edge, and `grow_horizontal` `end` grows to the left:
   `offset_left` 10 and `offset_right` 110 put a control 10 pixels from its parent's right edge.
@@ -7624,7 +7533,7 @@ layout before a translation exists.
   column is at the right.
 - `Label`'s `left` and `right` alignments swap, and a wrapped right-to-left paragraph's lines
   that `fill` doesn't stretch start at the right. A label's text direction is its own: Arabic in
-  a left-to-right control goes right to left but is aligned left, as in Godot.
+  a left-to-right control goes right to left but is aligned left.
 - `Button` swaps its icon's and its text's `left` and `right`, and draws a state's
   `<state>_mirrored` style box (`normal_mirrored`, `hover_mirrored` and so on) when a theme sets
   one. `ProgressBar`'s `begin_to_end` fills from the right.
@@ -7633,15 +7542,14 @@ layout before a translation exists.
 
 ### Translated text
 
-As Godot's controls, a `Label`'s and a button's text, a `TextField`'s and a `TextArea`'s
-`placeholder_text`, a tooltip and the items of option buttons, menu buttons and popup menus
-show in the game's locale through the project's [translation
-files](project-format.md#localization), the text as written being the message looked up.
-`auto_translate_mode` `disabled` shows a control's text and its children's as written (version
-numbers, player names), and a child's `always` translates again; an item's own mode overrides
-its owner's, and `tooltip_auto_translate_mode` the control's for its tooltip. A message with no
-translation shows as written. A text field's own text never translates. Controls whose `language`
-is `""` shape in the game's locale once the project has translations, so fonts'
+A `Label`'s and a button's text, a `TextField`'s and a `TextArea`'s `placeholder_text`, a tooltip
+and the items of option buttons, menu buttons and popup menus show in the game's locale through
+the project's [translation files](project-format.md#localization), the text as written being the
+message looked up. `auto_translate_mode` `disabled` shows a control's text and its children's as
+written (version numbers, player names), and a child's `always` translates again; an item's own
+mode overrides its owner's, and `tooltip_auto_translate_mode` the control's for its tooltip. A
+message with no translation shows as written. A text field's own text never translates. Controls
+whose `language` is `""` shape in the game's locale once the project has translations, so fonts'
 `language_support` picks the right glyphs (Japanese forms of shared Chinese characters, say).
 `ui.layout` returns the lines as shown. [examples/localization](../../examples/localization/) is
 a title menu in four languages.
@@ -7649,8 +7557,7 @@ a title menu in four languages.
 ### Containers
 
 A container component places the controls in its `children` and ignores their anchors and
-offsets, as Godot's containers do; its own rect is placed as any control's. Each is a port of
-Godot's code, so a layout comes out as it would in Godot, to the pixel.
+offsets; its own rect is placed as any control's.
 
 | Component | Places its children | Theme constants |
 | --- | --- | --- |
@@ -7674,17 +7581,17 @@ Godot's code, so a layout comes out as it would in Godot, to the pixel.
 - Hidden children take no room. A wrapping label in a container gets the height of its lines at
   the width the container gives it.
 - An entity has one container; `ui.layout` and `scene validate` report a second one.
-- Unlike Godot, a container's children keep their `rotation` and `scale`, drawn around their
+- A container's children keep their `rotation` and `scale`, drawn around their
   `pivot` without changing the layout.
 
 ### Panels, textures and progress bars
 
 - `Panel` draws the theme's `panel` style box over its whole rect. `PanelBox` draws the
   same item and also places children in it.
-- `Picture`'s minimum size is its texture's with `expand_mode` `keep_size`; `ignore_size`
-  lets its rect decide, and the `fit_*` modes take one side from the other. `stretch_mode`
-  places the texture: `keep_aspect_centered` scales it to fit inside the rect, centered,
-  rounded to whole pixels as Godot's.
+- `Picture`'s minimum size is its texture's with `expand_mode` `keep_size`; `ignore_size` lets
+  its rect decide, and the `fit_*` modes take one side from the other. `stretch_mode` places the
+  texture: `keep_aspect_centered` scales it to fit inside the rect, centered, rounded to whole
+  pixels.
 - `NineSlice`'s corners keep their size, its top and bottom stretch (or tile) across, its
   sides down, and its middle both ways. Its minimum size is its margins.
 - `ProgressBar` draws its `background` style box, then its `fill` box as far as its value: the
@@ -7696,9 +7603,9 @@ Godot's code, so a layout comes out as it would in Godot, to the pixel.
 
 ### Buttons
 
-`Button`, `ImageButton` and the [check boxes](#check-boxes) are Godot's: the `gui` system
+`Button`, `ImageButton` and the [check boxes](#check-boxes) work like this: the `gui` system
 (priority -900, right after `input`) sends each tick's [input events](commands.md#inputinject)
-to controls as Godot's viewport does, and buttons answer them as Godot's `BaseButton`.
+to controls, and buttons answer them.
 
 ```json
 "quit": {
@@ -7715,22 +7622,21 @@ to controls as Godot's viewport does, and buttons answer them as Godot's `BaseBu
   `ui_*` keys a focused control doesn't use; and by [`ui.press`](commands.md#uipress). A
   disabled button isn't pressed. A toggle button flips `pressed` first, and turns the
   others in its `button_group` off; the one that is on stays on.
-- Controls emit world events, as Godot's signals: buttons `button_down`, `pressed`, `toggled`
-  (data `{"toggled_on": bool}`) and `button_up`, and any control `mouse_entered`,
-  `mouse_exited`, `focus_entered` and `focus_exited`. Gameplay code reads a tick's with
-  `ui::events(world)` or `ui::was_pressed(world, button)`; agents subscribe to them with
+- Controls emit world events: buttons `button_down`, `pressed`, `toggled` (data `{"toggled_on":
+  bool}`) and `button_up`, and any control `mouse_entered`, `mouse_exited`, `focus_entered` and
+  `focus_exited`. Gameplay code reads a tick's with `ui::events(world)` or
+  `ui::was_pressed(world, button)`; agents subscribe to them with
   [`events.subscribe`](commands.md#eventssubscribe). Only entities with IDs take part.
 - The pointer reaches the last control drawn under it, then its parents as `pointer_mode` says:
   `stop` keeps it, `pass` hands it on to the parent too, `ignore` lets it through to whatever is
   under. A control is hovered from when the pointer moves onto it, and its parents too up to the
   first that stops it.
-- One control has focus, as Godot's: a left click gives it to the first control up from the one
-  clicked whose `focus_mode` is `all` or `click`, without showing it; `ui_focus_next` (Tab),
+- One control has focus: a left click gives it to the first control up from the one clicked
+  whose `focus_mode` is `all` or `click`, without showing it; `ui_focus_next` (Tab),
   `ui_focus_prev` (Shift+Tab), `ui_up`, `ui_down`, `ui_left` and `ui_right` (the arrow keys, a
-  gamepad's d-pad and left stick, once per push) move it and show it, to the control a
-  `focus_*` field names or else the closest one with `focus_mode` `all` that way, as Godot's
-  default focus strategy measures. A hidden control, or one whose `focus_mode` becomes `none`,
-  loses focus.
+  gamepad's d-pad and left stick, once per push) move it and show it, to the control a `focus_*`
+  field names or else the closest one with `focus_mode` `all` that way. A hidden control, or one
+  whose `focus_mode` becomes `none`, loses focus.
 - A button draws by its state, its `draw_mode` in [`ui.layout`](commands.md#uilayout): `normal`,
   `hover`, `pressed` (held down, or a toggle button that is on), `hover_pressed` (on and
   hovered, or just pressed by its shortcut) or `disabled`. `Button` draws the style box of that
@@ -7751,14 +7657,13 @@ to controls as Godot's viewport does, and buttons answer them as Godot's `BaseBu
 
 ### Check boxes
 
-`CheckBox` and `ToggleSwitch` are Godot's: toggle buttons with every field of `Button`
-(`toggles` starts `true` and `alignment` `"left"`), pressed, toggled and grouped as buttons
-are. Instead of a style box they draw an icon beside their text, from their
-[theme items](#theme-items): a check box a box before the text, `checked` or `unchecked`, or
+`CheckBox` and `ToggleSwitch` are toggle buttons with every field of `Button`
+(`toggles` starts `true` and `alignment` `"left"`), pressed, toggled and grouped as buttons are.
+Instead of a style box they draw an icon beside their text, from their [theme
+items](#theme-items): a check box a box before the text, `checked` or `unchecked`, or
 `radio_checked` or `radio_unchecked` when it is in a `button_group`; a check button a switch
-after it, `checked` or `unchecked` (Godot's `toggle_on` and `toggle_off`). Disabled, they draw
-the `_disabled` icons; laid out right to left, the icon goes to the other side, and a check
-button draws the `_mirrored` ones.
+after it, `checked` or `unchecked`. Disabled, they draw the `_disabled` icons; laid out right to
+left, the icon goes to the other side, and a check button draws the `_mirrored` ones.
 
 ```json
 "vsync": {"components": {"ToggleSwitch": {"pressed": true, "text": "V-Sync"}, "Widget": {}}}
@@ -7769,27 +7674,26 @@ button draws the `_mirrored` ones.
   that says "Sound" is 28 pixels wider than a `Label` that does.
 - The icon is drawn at its own size, `icon_max_width` aside, at the left margin of the `normal`
   style box (the right one, at the other end), and centered down the button plus
-  `check_v_offset`; a check box rounds that down to a whole pixel, as Godot's does.
-- The default icons are Godot's, drawn by the engine in the same shapes and colors, so no
+  `check_v_offset`; a check box rounds that down to a whole pixel.
+- The default icons are drawn by the engine, so no
   image files are needed; their names start with `builtin:` (`builtin:checked`,
   `builtin:toggle_on_mirrored`), and a theme or `theme_icons` can name them or a PNG.
   `ui.theme` lists the icons a control uses and where each comes from.
 
 ### Sliders
 
-`Slider` is Godot's `HSlider`, or `VSlider` with `vertical`: a value between `min_value` and
-`max_value` that the pointer, keys and gamepads move, as Godot's `Slider` and `Range`.
+`Slider` is a horizontal slider (vertical with `vertical`): a value between `min_value` and
+`max_value` that the pointer, keys and gamepads move.
 
 ```json
 "volume": {"components": {"Widget": {"size_flags_horizontal": "expand_fill"},
   "Slider": {"step": 5, "tick_count": 5, "ticks_on_borders": true, "value": 80}}}
 ```
 
-- The value is always on its step: a multiple of `step` from `min_value` (Godot's
-  `Math::snapped`, so steps such as 0.1 give 0.3, not 0.30000000000000004), rounded with
-  `rounded`, and no more than `max_value - page` or less than `min_value` unless
-  `allow_greater` or `allow_lesser`. The `gui` system snaps a value set any other way, such as
-  with `component.set`, at the next tick.
+- The value is always on its step: a multiple of `step` from `min_value`, rounded with
+  `rounded`, and no more than `max_value - page` or less than `min_value` unless `allow_greater`
+  or `allow_lesser`. The `gui` system snaps a value set any other way, such as with
+  `component.set`, at the next tick.
 - A left click moves the middle of the grabber to the pointer and starts a drag
   (`drag_started`, then `value_changed` even if the value stayed); moving drags the grabber with
   the pointer, and letting go emits `drag_ended` with `{"value_changed": bool}`, whether the
@@ -7799,18 +7703,17 @@ button draws the `_mirrored` ones.
   that way steps it again after half a second, then 20 times a second.
 - Each change emits `value_changed` with `{"value": number}`. A change made any other way
   emits it at the next tick, once however many times the value changed.
-- It draws as Godot's: its `slider` style box across it, `grabber_area` (or
-  `grabber_area_highlight` while hovered or focused) up to the grabber, `tick_count` `tick`
-  icons along it, and the `grabber` icon (`grabber_highlight`, `grabber_disabled` when not
-  `editable`). Its minimum size is the track's width and the grabber's height (the other way
-  round for a vertical one).
+- It draws: its `slider` style box across it, `grabber_area` (or `grabber_area_highlight` while
+  hovered or focused) up to the grabber, `tick_count` `tick` icons along it, and the `grabber`
+  icon (`grabber_highlight`, `grabber_disabled` when not `editable`). Its minimum size is the
+  track's width and the grabber's height (the other way round for a vertical one).
 - Not yet: `exp_edit`, `custom_step`, theme sounds and `share` between ranges.
 
 ### Scrolling
 
-`ScrollBox` is Godot's: it shows its children through its rect, moved by its scroll, with
-scroll bars when they don't fit. `ScrollBar` is Godot's `HScrollBar`, or `VScrollBar` with
-`vertical`, on its own. `Widget.clip_children` cuts any control's children off at its rect.
+`ScrollBox` shows its children through its rect, moved by its scroll, with
+scroll bars when they don't fit. `ScrollBar` is a horizontal scroll bar (vertical with
+`vertical`) on its own. `Widget.clip_children` cuts any control's children off at its rect.
 
 ```json
 "log": {"components": {
@@ -7828,12 +7731,11 @@ scroll bars when they don't fit. `ScrollBar` is Godot's `HScrollBar`, or `VScrol
   `disabled` doesn't scroll: the container grows to its children's size on that axis.
 - The wheel scrolls an eighth of the visible height a turn (Shift, or
   `scroll_horizontal_by_default`, sideways); what it can't scroll goes on to the container
-  outside. Buttons and other controls inside let wheel events through, as Godot's
-  `force_pass_scroll_events` does.
+  outside. Buttons and other controls inside let wheel events through.
 - A finger scrolls it by dragging past `scroll_deadzone` (`scroll_started`), and it glides on
   when let go, slowing by 1000 pixels a second each second, until it stops or reaches an end
   (`scroll_ended`). Touches start on the container itself or a child that passes the pointer
-  (`pointer_mode` `pass`); a button stops them, as in Godot.
+  (`pointer_mode` `pass`); a button stops them.
 - With `follow_focus`, a control inside that gets focus is scrolled into view, the inner
   container first when they nest.
 - A scroll bar's grabber is `page`'s share of the bar long. A click before or after it moves the
@@ -7849,8 +7751,8 @@ scroll bars when they don't fit. `ScrollBar` is Godot's `HScrollBar`, or `VScrol
 
 ### Menus
 
-`Dropdown`, `MenuButton` and `PopupList` are Godot's. A `PopupList` is a list of items
-shown over every control while `visible`, at its `position`; in Godot it is a window, so here it
+`Dropdown`, `MenuButton` and `PopupList` are listed together. A `PopupList` is a list of items
+shown over every control while `visible`, at its `position`; it
 is an entity of its own, not a control. An option button opens a list of its options below it,
 as wide as the button at least, and a menu button a menu of its items, both drawn as a
 `PopupList` with the [`PopupList` theme items](#theme-items).
@@ -7878,7 +7780,7 @@ as wide as the button at least, and a menu button a menu of its items, both draw
   `{"id", "index"}`, the ID being the item's index when it has none) and closes the menu as its
   `hide_on_*` fields say. Picking an option of an option button sets `selected` and emits
   `item_selected` (data `{"index"}`) unless it was selected and `allow_reselect` is off. A check
-  or radio item isn't checked by being picked: as in Godot, the game sets `checked`.
+  or radio item isn't checked by being picked:, the game sets `checked`.
 - Opening and closing emit `about_to_popup` and `popup_hide` from a `PopupList` or menu button;
   moving to an item with the keys emits `id_focused` (data `{"id"}`), or `item_focused` (data
   `{"index"}`) from an option button.
@@ -7899,9 +7801,8 @@ as wide as the button at least, and a menu button a menu of its items, both draw
 
 ### Tooltips and drag and drop
 
-Tooltips and drag and drop are Godot's: a control's `tooltip_text` shows after the pointer rests
-on it, and the `DragAndDrop` component does what a Godot script's `_get_drag_data`,
-`_can_drop_data` and `_drop_data` do. From
+Tooltips and drag and drop: a control's `tooltip_text` shows after the pointer rests
+on it, and the `DragAndDrop` component lets a control give, test and take dragged data. From
 [examples/ui-drag-and-drop](../../examples/ui-drag-and-drop/):
 
 ```json
@@ -7935,26 +7836,24 @@ on it, and the `DragAndDrop` component does what a Godot script's `_get_drag_dat
   rect). The control dragged then emits `drag_end` (data `{"successful"}`). Letting go where
   nothing takes it, a right click or Escape cancels the drag. What a drop means is up to the
   game: read `drop_data` and change the world.
-- A text field's selection drags as Godot's: dropped on another field it moves there, selected,
-  with Ctrl (Command on a Mac) held it is copied, and dropped on its own selection nothing
-  changes. A drop caret shows where it would go.
-- Gameplay code can do the same in C++ with `ui::set_drag_forwarding` (Godot's
-  `set_drag_forwarding`), `ui::set_drag_preview`, `ui::force_drag`, `ui::show_tooltip` and
-  `ui::cancel_tooltip`.
+- A text field's selection drags: dropped on another field it moves there, selected, with Ctrl
+  (Command on a Mac) held it is copied, and dropped on its own selection nothing changes. A drop
+  caret shows where it would go.
+- Gameplay code can do the same in C++ with `ui::set_drag_forwarding`, `ui::set_drag_preview`,
+  `ui::force_drag`, `ui::show_tooltip` and `ui::cancel_tooltip`.
 - [`ui.drag`](commands.md#uidrag) drags one control onto another, [`ui.tooltip`](commands.md#uitooltip)
   shows a tooltip, and `ui.layout` and `frame.summary` report the tooltip shown and the drag
   going on.
 - `ui.layout` and `scene validate` report a `tooltip_text` on a control the pointer passes by, a
   `drag_preview` that isn't a control with no parent, and a `DragAndDrop` on an entity with no
-  `Control`.
+  `Widget`.
 - Not yet: custom tooltip controls (`_make_custom_tooltip`) and dragging between windows.
 
 ### Text fields
 
-`TextField` is Godot's one-line text field. The `gui` system edits it from the tick's
-[input events](commands.md#inputinject) as Godot's `LineEdit::gui_input` does, so the same keys,
-clicks and input methods work on every platform. From
-[examples/text-input](../../examples/text-input/):
+`TextField` is a one-line text field. The `gui` system edits it from the tick's [input
+events](commands.md#inputinject), so the same keys, clicks and input methods work on every
+platform. From [examples/text-input](../../examples/text-input/):
 
 ```json
 "name": {
@@ -7964,11 +7863,11 @@ clicks and input methods work on every platform. From
 }
 ```
 
-- A click, Tab, `ui.focus` or [`ui_text_submit`](project-format.md#input-actions) while it
-  has focus starts editing; focus moved by the arrow keys or a gamepad doesn't, as in Godot.
-  `ui_text_submit` (Enter) emits `text_submitted` and stops editing unless
-  `keep_editing_on_text_submit`; `ui_cancel` (Escape) and losing focus stop it. A field takes
-  focus by default (`focus_mode` `all`).
+- A click, Tab, `ui.focus` or [`ui_text_submit`](project-format.md#input-actions) while it has
+  focus starts editing; focus moved by the arrow keys or a gamepad doesn't. `ui_text_submit`
+  (Enter) emits `text_submitted` and stops editing unless `keep_editing_on_text_submit`;
+  `ui_cancel` (Escape) and losing focus stop it. A field takes focus by default (`focus_mode`
+  `all`).
 - While editing, typed characters (key events with a `unicode` character and no Ctrl, Alt or
   Command) go in at the caret, replacing the selection. The
   [text actions](project-format.md#input-actions) move the caret by character, word and line,
@@ -7980,7 +7879,7 @@ clicks and input methods work on every platform. From
   on-screen keyboard of `virtual_keyboard_type` on phones.
 - `text` and `caret_column` are the truth: the field writes them as it is edited, and setting
   `text` from outside (a command, an animation, gameplay code) starts its undo history again.
-  Undo takes back a tick's typing at a time, as Godot takes back a frame's.
+  Undo takes back a tick's typing at a time.
 - A field emits `text_changed` (data `{"text": string}`, once a tick, after the tick's typing),
   `text_submitted` (`{"text": string}`), `text_change_rejected` (`{"rejected_substring":
   string}`, what `max_length` left out) and `editing_toggled` (`{"toggled_on": bool}`) as world
@@ -7999,9 +7898,8 @@ clicks and input methods work on every platform. From
 
 ### Text fields of several lines
 
-`TextArea` is Godot's text field of several lines. The `gui` system edits it from the tick's
-input events as Godot's `TextEdit::gui_input` does. From
-[examples/text-editor](../../examples/text-editor/):
+`TextArea` is a text field of several lines. The `gui` system edits it from the tick's
+input events. From [examples/text-editor](../../examples/text-editor/):
 
 ```json
 "letter": {
@@ -8030,14 +7928,14 @@ input events as Godot's `TextEdit::gui_input` does. From
   the text doesn't fit, and tabs stop every four spaces. The scroll bars work as a
   `ScrollBar`'s: a click beside the grabber pages, the grabber drags and the wheel over one
   moves an eighth of a page; the caret stays where it is.
-- `text`, `caret_line`, `caret_column`, `scroll_vertical` and `scroll_horizontal` are the
-  truth: the field writes them as it is edited. Text set from outside is set as Godot's
-  `set_text` sets it, as one step undo takes back, and a caret moved from outside drops the
-  selection. Typing is one undo step until a three-second pause or another kind of edit.
+- `text`, `caret_line`, `caret_column`, `scroll_vertical` and `scroll_horizontal` are the truth: the
+  field writes them as it is edited. Text set from outside is set as one step that undo takes back,
+  and a caret moved from outside drops the selection. Typing is one undo step until a three-second
+  pause or another kind of edit.
 - It emits `text_changed` and `caret_changed` (once a tick, after the tick's edits),
-  `lines_edited_from` (`{"from_line": int, "to_line": int}`, from the last line to the first
-  for a removal, as Godot's) for each insertion, removal and change of composition, and
-  `text_set` when text is set from outside, as world events.
+  `lines_edited_from` (`{"from_line": int, "to_line": int}`, from the last line to the first for
+  a removal) for each insertion, removal and change of composition, and `text_set` when text is
+  set from outside, as world events.
 - It draws its `normal` style box (`read_only` when not `editable`), the `focus` box while it has
   focus, `background_color`, the caret's row in `current_line_color` when
   `highlight_current_line`, the selection, the text (`font_readonly_color` when not `editable`,
@@ -8051,8 +7949,8 @@ input events as Godot's `TextEdit::gui_input` does. From
 
 ### Searching and highlighting code
 
-A `TextArea` marks text it is told to look for and colors code, as Godot's `TextEdit` search
-highlights and `SyntaxColors` do:
+A `TextArea` marks text it is told to look for and colors code, with search highlights and
+`SyntaxColors`:
 
 ```json
 "script": {
@@ -8076,25 +7974,24 @@ highlights and `SyntaxColors` do:
   caret, or every match, and `ui.layout` reports the ones in view.
 - With `highlight_all_occurrences`, a selection that isn't only whitespace marks its other
   copies in view, whole words of the same case, in `word_highlighted_color`.
-- A `SyntaxColors` on the entity colors each line as Godot's
-  `CodeHighlighter::_get_line_syntax_highlighting_impl` does: color regions first, from their
-  start key to their end key (over several lines until it comes) or to the line's end, the
-  longest start key tried first; in a region that starts with `"` or `'`, a `\` and the
-  character after it take `symbol_color`. Then keywords, member keywords (not after a `.`), a
-  word before `(` (spaces between allowed) in `function_color`, a word after `.` in
-  `member_variable_color`, symbols, and numbers, with hex digits after `0x`, a decimal point,
-  an `f` and an exponent's `e`. The rest takes the `TextArea`'s font color, and when it isn't
-  `editable` no color is more opaque than `font_readonly_color`. Selected text takes
-  `font_selected_color` when it isn't transparent.
+- A `SyntaxColors` on the entity colors each line: color regions first, from their start key to
+  their end key (over several lines until it comes) or to the line's end, the longest start key
+  tried first; in a region that starts with `"` or `'`, a `\` and the character after it take
+  `symbol_color`. Then keywords, member keywords (not after a `.`), a word before `(` (spaces
+  between allowed) in `function_color`, a word after `.` in `member_variable_color`, symbols,
+  and numbers, with hex digits after `0x`, a decimal point, an `f` and an exponent's `e`. The
+  rest takes the `TextArea`'s font color, and when it isn't `editable` no color is more opaque
+  than `font_readonly_color`. Selected text takes `font_selected_color` when it isn't
+  transparent.
 - `scene validate` reports a `SyntaxColors` with no `TextArea` beside it and color region
-  keys Godot's `add_color_region` refuses: a start or end that isn't all symbols, an empty
+  keys that are refused: a start or end that isn't all symbols, an empty
   start, or two regions with the same start.
 
 ### Gutters and line numbers
 
-A `TextArea` draws columns left of its text, Godot's gutters, and a `CodeEditor` beside it makes
-it a code editor, as Godot's `CodeEdit`: line numbers, breakpoints, bookmarks, executing lines
-and line length guidelines.
+A `TextArea` draws columns left of its text, called gutters, and a `CodeEditor` beside it makes
+it a code editor: line numbers, breakpoints, bookmarks, executing lines and line length
+guidelines.
 
 ```json
 "script": {
@@ -8115,13 +8012,13 @@ and line length guidelines.
   `gutters_line_numbers_min_digits`), drawn with `gutters_draw_line_numbers`. The text starts 2
   pixels after the last gutter drawn. Gutters take the right side when the control is laid out
   right to left.
-- The main gutter draws the `breakpoint` icon on `breakpointed_lines` in `breakpoint_color`,
-  the `bookmark` icon on `bookmarked_lines` in `bookmark_color` and the `executing_line` icon on
-  `executing_lines` in `executing_line_color`, each inset as Godot's
-  `_main_gutter_draw_callback` does. Under the pointer it shows where a click would put a
-  breakpoint (darker) or take one off (lighter), or a bookmark with Shift held. Line numbers are
-  drawn in `line_number_color`, padded to their digits, and `line_length_guidelines` as lines a
-  pixel wide in `line_length_guideline_color`, the first one brightest.
+- The main gutter draws the `breakpoint` icon on `breakpointed_lines` in `breakpoint_color`, the
+  `bookmark` icon on `bookmarked_lines` in `bookmark_color` and the `executing_line` icon on
+  `executing_lines` in `executing_line_color`, each inset. Under the pointer it shows where a
+  click would put a breakpoint (darker) or take one off (lighter), or a bookmark with Shift
+  held. Line numbers are drawn in `line_number_color`, padded to their digits, and
+  `line_length_guidelines` as lines a pixel wide in `line_length_guideline_color`, the first one
+  brightest.
 - The `TextArea`'s own gutters show each entry's `text` (`string`) or `icon` (`icon`, inset a
   sixth of the gutter on each side, keeping its shape) in its `color` on its `line`.
 - A left click or a tap in a gutter emits `gutter_clicked` (`{"line": int, "gutter": string}`).
@@ -8129,11 +8026,11 @@ and line length guidelines.
   emits `breakpoint_toggled` (`{"line": int}`); a click on a line number selects the line, and
   dragging from it selects whole lines.
 - Breakpoints, bookmarks, executing lines and gutter entries stay on their lines as the user
-  types, as Godot keeps them in each line's data: lines inserted above move them down, a new
+  types: lines inserted above move them down, a new
   line at a line's start moves that line's down with it, and a line joined onto the one before
   loses its own. `breakpoint_toggled` is emitted for each line a breakpoint left or came to.
-  Unlike Godot, which clears breakpoints when text is set from outside, they are part of the
-  component and stay as they are then.
+  They are part of the
+  component and stay as they are when text is set from outside.
 - [`ui.layout`](commands.md#uilayout) reports each gutter drawn with its rect on screen and the
   rows' `line_height`. `scene validate` reports a `CodeEditor` with no `TextArea`, a gutter `type`
   other than `string` or `icon`, a negative `width`, and lines below 0 or past the text's last.
@@ -8141,10 +8038,10 @@ and line length guidelines.
 
 ### Accessibility
 
-Controls describe themselves to a screen reader as Godot 4.5's do in
-`NOTIFICATION_ACCESSIBILITY_UPDATE` (`engine/ui/src/accessibility.cpp`): each is an element of
-the accessibility tree with a role, a name, a value, states, its bounds and the actions it takes,
-in the controls' tree. [`ui.accessibility`](commands.md#uiaccessibility) returns the tree and
+Controls describe themselves to a screen reader in `NOTIFICATION_ACCESSIBILITY_UPDATE`
+(`engine/ui/src/accessibility.cpp`): each is an element of the accessibility tree with a role, a
+name, a value, states, its bounds and the actions it takes, in the controls' tree.
+[`ui.accessibility`](commands.md#uiaccessibility) returns the tree and
 [`ui.accessibility_action`](commands.md#uiaccessibility_action) does what a screen reader asks,
 so an agent can check a game can be played without seeing it.
 
@@ -8165,15 +8062,15 @@ so an agent can check a game can be played without seeing it.
 - The control with focus is focused, or while a popup menu is open, its item moved to (or the
   menu).
 - A control is served to a screen reader as project.json's
-  [`ui.accessibility_support`](project-format.md) says, Godot's
-  `accessibility/general/accessibility_support`: `auto` (while one is in use, which the
-  platform's backend reports), `always` or `disabled`. While it is, `focus_mode` `accessibility` takes focus
-  as `all` does, as Godot's `FOCUS_ACCESSIBILITY`.
+  [`ui.accessibility_support`](project-format.md) says:
+  `auto` (while one is in use, which the platform's
+  backend reports), `always` or `disabled`. While it is, `focus_mode` `accessibility` takes focus as
+  `all` does.
 - `ui.accessibility` reports as problems a control that can take focus with no name, an
-  `accessibility_name` holding its class name or a control character (Godot's accessibility
-  warnings), and related controls that aren't controls.
+  `accessibility_name` holding its class name or a control character, and related controls that
+  aren't controls.
 - Games and `slash-cli run` hand the tree to the system's screen reader through
-  [AccessKit](https://github.com/AccessKit/accesskit-c), as Godot's AccessKit driver
+  [AccessKit](https://github.com/AccessKit/accesskit-c)
   (`engine/accessibility`): UI Automation on Windows (Narrator, NVDA, JAWS), VoiceOver on macOS
   and AT-SPI on Linux (Orca), unless `ui.accessibility_support` is `disabled`. Each tick sends
   the elements that changed, with bounds in the window's pixels, and runs what the screen reader
@@ -8206,10 +8103,10 @@ so an agent can check a game can be played without seeing it.
 
 ### Theme items
 
-A control's look comes from theme items, as Godot's default theme gives them: a control uses
-its `theme_override_*` fields, then its [themes](#themes), then the defaults below.
-`ui.layout` and `scene validate` report names its type doesn't have, with the closest one, and
-[`ui.theme`](commands.md#uitheme) lists the items a control uses and where each comes from.
+A control's look comes from theme items: a control uses its `theme_override_*` fields, then its
+[themes](#themes), then the defaults below. `ui.layout` and `scene validate` report names its
+type doesn't have, with the closest one, and [`ui.theme`](commands.md#uitheme) lists the items a
+control uses and where each comes from.
 
 | Type | Kind | Name | Default |
 | --- | --- | --- | --- |
@@ -8218,7 +8115,7 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | color | `font_color` | `[1, 1, 1, 1]` |
 | | color | `font_outline_color` | `[0, 0, 0, 1]` |
 | | color | `font_shadow_color` | `[0, 0, 0, 0]`, no shadow |
-| | constant | `outline_size` | `0`; the outline reaches a quarter of it in pixels, as Godot's |
+| | constant | `outline_size` | `0`; the outline reaches a quarter of it in pixels |
 | | constant | `shadow_offset_x`, `shadow_offset_y` | `1` |
 | | constant | `shadow_outline_size` | `1` |
 | | constant | `line_spacing` | `3` |
@@ -8327,7 +8224,7 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | | constant | `outline_size` | `0` |
 | | constant | `caret_width` | `1` |
 | | constant | `wrap_offset` | `10`, pixels left free at the right of wrapped rows |
-| `CodeEditor` | icon | `breakpoint`, `bookmark`, `executing_line` | Godot's, built in |
+| `CodeEditor` | icon | `breakpoint`, `bookmark`, `executing_line` | Built in |
 | | color | `breakpoint_color` | `[0.9, 0.29, 0.3, 1]` |
 | | color | `bookmark_color` | `[0.5, 0.64, 1, 0.8]` |
 | | color | `executing_line_color` | `[0.98, 0.89, 0.27, 1]` |
@@ -8349,12 +8246,12 @@ its `theme_override_*` fields, then its [themes](#themes), then the defaults bel
 | `GridBox`, `FlowBox` (`HFlowContainer`, `VFlowContainer`) | constant | `h_separation`, `v_separation` | `4` |
 | `MarginBox` | constant | `margin_left`, `margin_top`, `margin_right`, `margin_bottom` | `0` |
 
-`Control`, `ColorFill`, `Picture`, `NineSlice` and `CenterBox` have no theme items.
+`Widget`, `ColorFill`, `Picture`, `NineSlice` and `CenterBox` have no theme items.
 An entity with several UI components has the items of each.
 
 ### Themes
 
-A theme is a `.theme.json` file of items by control type, as Godot's `Theme` resource
+A theme is a `.theme.json` file of items by control type
 (`slash-cli schema theme`):
 
 ```json
@@ -8385,15 +8282,15 @@ A theme is a `.theme.json` file of items by control type, as Godot's `Theme` res
 | `default_font_size` | The font size of every type in this theme that names none |
 | `types` | Items by type: `colors`, `constants`, `fonts`, `font_sizes`, `icons` and `styles`, each by name |
 
-- A type is a control type, with Godot's class names (`Label`, `VBoxContainer`, `Container`,
+- A type is a control type name (`Label`, `VBoxContainer`, `Container`,
   `Range` and so on), or a variation: a name with a `base_type`, which can be another
   variation. A control whose `theme_type_variation` names one uses its items first, then its
   base types', then its own type's.
 - A type's items apply to the types built on it: `StackBox`'s to `HBoxContainer` and
-  `VBoxContainer`, `Container`'s to every container, `Control`'s to every control.
+  `VBoxContainer`, `Container`'s to every container, `Widget`'s to every control.
 - A control looks each item up in its `theme_override_*` fields, then in the themes on its own
   and its parents' `Widget.theme`, nearest first, then in the project's `ui.theme`
-  ([project.json](project-format.md)), then in Godot's default theme. In each theme a type's
+  ([project.json](project-format.md)), then in the default theme. In each theme a type's
   own item comes before the theme's `default_font` and `default_font_size`.
 - `scene validate` checks a theme file for unknown types and item names (with the closest
   ones), base types that lead nowhere or round in a loop, style boxes, icons and font paths. A
@@ -8446,7 +8343,7 @@ these fields:
 ### Fonts
 
 A font is a `.ttf` or `.otf` file (scalable TrueType or OpenType), or a `.font.json` file that
-names one and says how it draws, as Godot's font import options (`slash-cli schema font`):
+names one and says how it draws (`slash-cli schema font`):
 
 ```json
 {
@@ -8470,11 +8367,10 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
 | `language_support` | `{}` | Whether the font is for a language, by BCP 47 tag, such as `{"ja": true, "*": false}`; `*` is any other |
 | `script_support` | `{}` | Whether the font is for a script, by ISO 15924 code, such as `{"Hani": true}`; `*` is any other |
 
-- Each character is drawn by the first font that has it, as Godot's font fallback picks: the
-  font, then its `fallbacks`, those that say they support the text's script and language first,
-  then those for its script, then the rest, each list in order. A font that doesn't list a
-  language or script supports it. The text's language is the label's or button's `language`;
-  its script is the character's own.
+- Each character is drawn by the first font that has it: the font, then its `fallbacks`, those
+  that say they support the text's script and language first, then those for its script, then
+  the rest, each list in order. A font that doesn't list a language or script supports it. The
+  text's language is the label's or button's `language`; its script is the character's own.
 - Where no fallback has a character and both the font and the project allow it
   (`ui.system_font_fallback` in [project.json](project-format.md)), it comes from a font
   installed on the machine: the one CoreText (macOS, iOS), DirectWrite (Windows), fontconfig
@@ -8491,13 +8387,13 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
 
 ## XR
 
-Virtual and augmented reality, as Godot's XR nodes and `XRServer`
+Virtual and augmented reality
 ([`slash/xr/xr.hpp`](../../engine/xr/include/slash/xr/xr.hpp)). An `XROrigin3D` is where the
 player's play space is in the world; the XR nodes under it are placed in its space by the poses
 of the trackers they follow, each tick, by the `xr` system (priority -850, after input and the
 gui). Trackers are kept up to date by an XR interface: sessions use the test headset, a head
 (`head`) and two hand controllers (`left_hand`, `right_hand`, each with the poses `default`,
-`aim`, `grip` and `palm` of Godot's default action map) that [`xr.set`](commands.md#xrset) moves
+`aim`, `grip` and `palm`) that [`xr.set`](commands.md#xrset) moves
 and presses; it starts when project.json's [`xr.openxr.enabled`](project-format.md#xr) is set.
 
 | Component | Fields | Meaning |
@@ -8508,11 +8404,10 @@ and presses; it starts when project.json's [`xr.openxr.enabled`](project-format.
 | `XRAnchor3D` | the same | Something the headset found in the room, such as a table |
 | `XRFace3D` | `face_tracker` (`"/user/face_tracker"`), `target` (`""`) | Drives the blend shapes of a face from a face tracker; see [Face tracking](#face-tracking) |
 
-A node's `Transform3D` becomes the pose's transform with its position times the world scale,
-then the reference frame `center_on_hmd` set applied, as Godot's `XRPose::get_adjusted_transform`.
-A pose that loses tracking leaves its nodes where they were; `show_when_tracked` hides them until
-it comes back. Each node gets its tracker's signals as world events with its ID, as Godot's
-`XRNode3D` and `XRController3D` emit them:
+A node's `Transform3D` becomes the pose's transform with its position times the world scale, then
+the reference frame `center_on_hmd` set applied. A pose that loses tracking leaves its nodes where
+they were; `show_when_tracked` hides them until it comes back. Each node gets its tracker's
+signals as world events with its ID:
 
 | Event | Data | When |
 | --- | --- | --- |
@@ -8522,33 +8417,30 @@ it comes back. Each node gets its tracker's signals as world events with its ID,
 | `input_vector2_changed` | `name`, `value` (`[x, y]`) | A thumbstick moves |
 | `profile_changed` | `role` | The controller's interaction profile changes |
 
-The server's own events have no entity: `interface_added` and `interface_removed`
-(`interface`), `tracker_added`, `tracker_updated` and `tracker_removed` (`tracker`, `type`) and
-`reference_frame_changed`. Gameplay code reads inputs as Godot's `XRController3D` does:
-`xr::is_button_pressed`, `get_float` and `get_vector2` convert between buttons (1 or 0),
-triggers and thumbsticks (a trigger is `[value, 0]`), and `xr::trigger_haptic_pulse` shakes a
-controller. `xr.state` lists what Godot's configuration warnings would say: XR nodes that aren't
-children of an `XROrigin3D`, nodes with no tracker or pose, an `XRCamera3D` without a
-`Camera3D` and an `XROrigin3D` without an `XRCamera3D` child.
+The server's own events have no entity: `interface_added` and `interface_removed` (`interface`),
+`tracker_added`, `tracker_updated` and `tracker_removed` (`tracker`, `type`) and
+`reference_frame_changed`. Gameplay code reads inputs: `xr::is_button_pressed`, `get_float` and
+`get_vector2` convert between buttons (1 or 0), triggers and thumbsticks (a trigger is `[value,
+0]`), and `xr::trigger_haptic_pulse` shakes a controller. `xr.state` lists configuration warnings:
+XR nodes that aren't children of an `XROrigin3D`, nodes with no tracker or pose, an `XRCamera3D`
+without a `Camera3D` and an `XROrigin3D` without an `XRCamera3D` child.
 
-A headset draws a view for each eye, as Godot's `XRInterface` gives them: `xr::views` returns
-each one's place (`get_transform_for_view`: the head's pose with the eye half the distance
-between the eyes to its side, its position times the world scale, under the reference frame and
-the origin) and its field of view as the tangents of its four edges, which
-`render::frustum` makes a projection of with the current camera's `near` and `far`, as Godot's
-`Projection::set_frustum`. The test headset's eyes see 50 degrees out, 40 in and 45 up and down,
-0.064 m apart, in 1024 by 1024 images; `xr.set`'s `ipd` and `render_target_size` change them,
-and `view_configuration` `"mono"` gives one view at the head. [`frame.capture`](commands.md#framecapture)'s
-`xr_view` draws one.
+A headset draws a view for each eye: `xr::views` returns each
+one's place (the head's pose with the eye half the distance between the
+eyes to its side, its position times the world scale, under the reference frame and the origin) and
+its field of view as the tangents of its four edges, which `render::frustum` makes a projection of
+with the current camera's `near` and `far`. The test headset's eyes see 50 degrees out, 40 in and 45
+up and down, 0.064 m apart, in 1024 by 1024 images; `xr.set`'s `ipd` and `render_target_size` change
+them, and `view_configuration` `"mono"` gives one view at the head.
+[`frame.capture`](commands.md#framecapture)'s `xr_view` draws one.
 
 ### Face tracking
 
 A face tracker (type `face`) holds a weight for each of the 143 face shapes of the Unified
-Expressions standard, as Godot's `XRFaceTracker`
-([`slash/xr/face.hpp`](../../engine/xr/include/slash/xr/face.hpp)). An `XRFace3D`
-follows the tracker its `face_tracker` names and, each tick, sets the
-[blend shapes](#blend-shapes) of the `Model3D` on its `target` (an entity ID, else its own
-entity) that stand for face shapes, as Godot's `XRFaceModifier3D`:
+Expressions standard
+([`slash/xr/face.hpp`](../../engine/xr/include/slash/xr/face.hpp)). An `XRFace3D` follows the
+tracker its `face_tracker` names and, each tick, sets the [blend shapes](#blend-shapes) of the
+`Model3D` on its `target` (an entity ID, else its own entity) that stand for face shapes:
 
 - A blend shape stands for a face shape when its name, in any case and with underscores ignored,
   is the shape's name in Unified Expressions (`JawOpen`), Apple ARKit (`jawOpen`,
@@ -8568,16 +8460,16 @@ each blended shape whose parts are all known takes their mean.
 
 ### OpenXR
 
-Games with [`xr.openxr.enabled`](project-format.md#xr) run on the headset's own OpenXR runtime,
-as Godot's `OpenXRInterface` ([`slash/xr/openxr.hpp`](../../engine/xr/include/slash/xr/openxr.hpp)),
+Games with [`xr.openxr.enabled`](project-format.md#xr) run on the headset's own OpenXR runtime
+([`slash/xr/openxr.hpp`](../../engine/xr/include/slash/xr/openxr.hpp)),
 through the Khronos loader (Apache 2.0), which finds the active runtime or the one
 `XR_RUNTIME_JSON` names (or `xr::set_openxr_runtime` and slash-cli's `--openxr-runtime`, which
 also hold in elevated processes on Windows, where the loader ignores the variable); sessions switch to it with `xr.set`'s `interface` `"openxr"`. It
-follows Godot's `OpenXRAPI`: it asks for OpenXR 1.1, then 1.0, and the runtime's form factor and
+asks for OpenXR 1.1, then 1.0, and the runtime's form factor and
 view configuration, starts the session when the runtime says it is ready and ends it when the
 runtime says it is stopping, and waits for a frame each tick. The play space is the reference
 space `reference_space` names; `local_floor` on a runtime without it is the stage's floor under
-`local`, as Godot emulates it. Godot's default action map (`xr::default_action_map`: the
+`local`. The default action map (`xr::default_action_map`: the
 actions `trigger`, `grip`, `primary`, `ax_button`, `haptic` and the rest, bound for the simple,
 Vive, Windows Mixed Reality, Touch, Pico 4, Index, HP Reverb, Odyssey, Vive Cosmos, Vive Focus 3
 and Huawei controllers, each vendor's profile only where the runtime has its extension) reaches
@@ -8588,32 +8480,32 @@ runtime. The session's states are the interface's events, with `interface` `"Ope
 `session_stopping`, `session_loss_pending`, `instance_exiting`, `pose_recentered` and
 `play_area_changed`. `xr.state` reports the runtime, its version and the session's state.
 
-A windowed game draws into the headset, as Godot's OpenXR module does before it makes its
-rendering device: `xr::prepare_openxr_device` makes the instance with the graphics extension
-of the game's [`rendering.driver`](project-format.md) (`XR_KHR_vulkan_enable2`,
+A windowed game draws into the headset: `xr::prepare_openxr_device` makes the instance with the
+graphics extension of the game's [`rendering.driver`](project-format.md) (`XR_KHR_vulkan_enable2`,
 `XR_KHR_D3D12_enable` on Windows, `XR_KHR_metal_enable` on macOS, or `XR_KHR_opengl_enable` for
 `opengl`, with `XR_MNDX_egl_enable` for EGL contexts on Linux; `auto` is Direct3D 12 on Windows,
-Metal on macOS and Vulkan elsewhere), and the render device is made the way the runtime
-asks: on Vulkan the runtime makes the instance and the device and names the GPU, on Direct3D 12
-it names the adapter and on Metal the `MTLDevice`, through hooks a small patch adds to SDL
+Metal on macOS and Vulkan elsewhere), and the render device is made the way the runtime asks: on
+Vulkan the runtime makes the instance and the device and names the GPU, on Direct3D 12 it names the
+adapter and on Metal the `MTLDevice`, through hooks a small patch adds to SDL
 (`cmake/patches/sdl-openxr.cmake`), and on OpenGL the session takes the context SDL made, on WGL,
-GLX or EGL. A Metal session takes the device's command queue, and its swapchains are `MTLTexture`s. The session then makes a swapchain for each view at the
-runtime's recommended size, in the first 8-bit RGBA format the runtime lists, sRGB first. Each
-drawn frame, `xr::begin_openxr_frame` waits for the runtime's frame and acquires the images, the
-game draws each eye into a render target of that size from the eye's place
-(`scene3d::eye_view`), and `xr::end_openxr_frame` copies them into the images and ends the frame
-with a projection layer of the views. The window still shows the current camera. A game with no
-window, or a session, makes a headless session instead, which needs a runtime with
-`XR_MND_headless` and submits frames with no layers; a runtime that can do neither says so.
-`xr.state`'s `openxr` says which driver it draws with (`graphics`). [examples/openxr-runtime](../../examples/openxr-runtime/)
-runs a session on the engine's stand-in runtime.
+GLX or EGL. A Metal session takes the device's command queue, and its swapchains are `MTLTexture`s.
+The session then makes a swapchain for each view at the runtime's recommended size, in the first
+8-bit RGBA format the runtime lists, sRGB first. Each drawn frame, `xr::begin_openxr_frame` waits
+for the runtime's frame and acquires the images, the game draws each eye into a render target of
+that size from the eye's place (`scene3d::eye_view`), and `xr::end_openxr_frame` copies them into
+the images and ends the frame with a projection layer of the views. The window still shows the
+current camera. A game with no window, or a session, makes a headless session instead, which needs a
+runtime with `XR_MND_headless` and submits frames with no layers; a runtime that can do neither says
+so. `xr.state`'s `openxr` says which driver it draws with (`graphics`).
+[examples/openxr-runtime](../../examples/openxr-runtime/) runs a session on the engine's stand-in
+runtime.
 
 On Android (Meta Quest, Pico, Android XR and other standalone headsets) the loader is the same
-Khronos loader, built into the game as Godot's `openxr_loader_for_android` package is: it is given
+Khronos loader, built into the game: it is given
 the app's Java VM and activity (`xrInitializeLoaderKHR`, then `XR_KHR_android_create_instance`)
 and asks the system's runtime broker for the active runtime. The game draws with Vulkan
 (`XR_KHR_vulkan_enable2`), or with `XR_KHR_opengl_es_enable` on the `opengl_es` driver's EGL
-context. An export of a game that enables XR adds what Godot's export adds in XR mode to the
+context. An export of a game that enables XR adds to the
 manifest: the `org.khronos.openxr.permission.OPENXR` and `OPENXR_SYSTEM` permissions, the queries
 for the runtime broker and the runtime's and API layers' services, the
 `android.hardware.vr.headtracking` feature, and the `org.khronos.openxr.intent.category.IMMERSIVE_HMD`
@@ -8624,17 +8516,16 @@ export's `--test` shows.
 
 ## Video
 
-`Video` is Godot's, with AV1 in place of Theora: its `stream` is an IVF file of AV1
-video (what `ffmpeg -c:v libaom-av1` or SVT-AV1 write as `.ivf`), or a WebM or Matroska file
-(`.webm`, `.mkv`) whose first AV1 track is the picture, which dav1d decodes, the same
-pixels on every machine, and turns into RGBA with integer math by the color matrix and range
-its sequence header gives (BT.709 when it gives none). The `video` system (priority 1140)
-plays each player as Godot's `NOTIFICATION_INTERNAL_PROCESS` does: `autoplay` starts it on the
-first tick it sees, the tick it starts shows the frame it starts at, and each tick after moves
-`stream_position` on by the tick's time times `speed_scale`. At the end it starts again with
-`loop`, or stops with `playing` false at the video's length and emits `finished`. Stopped or
-paused, it shows the frame at `stream_position`, so setting the position seeks; decoding goes
-on from the frame before, or from the key frame before when it seeks.
+`Video` plays AV1: its `stream` is an IVF file of AV1 video (what
+`ffmpeg -c:v libaom-av1` or SVT-AV1 write as `.ivf`), or a WebM or Matroska file (`.webm`,
+`.mkv`) whose first AV1 track is the picture, which dav1d decodes, the same pixels on every
+machine, and turns into RGBA with integer math by the color matrix and range its sequence header
+gives (BT.709 when it gives none). The `video` system (priority 1140) plays each player:
+`autoplay` starts it on the first tick it sees, the tick it starts shows the frame it starts at,
+and each tick after moves `stream_position` on by the tick's time times `speed_scale`. At the
+end it starts again with `loop`, or stops with `playing` false at the video's length and emits
+`finished`. Stopped or paused, it shows the frame at `stream_position`, so setting the position
+seeks; decoding goes on from the frame before, or from the key frame before when it seeks.
 
 ```json
 "intro": {"components": {
@@ -8645,10 +8536,10 @@ on from the frame before, or from the key frame before when it seeks.
 
 The player is a control: it draws its frame in its rect, at the video's size (its minimum size)
 or stretched to the rect with `expand`. Anything else that names a texture can show the frame
-too, as Godot's `get_video_texture()`: the texture path `video:<id>` is the frame the player
-with that ID shows, so a `Sprite2D` or a material's texture can be a screen in the world.
-Nothing draws before the first frame is decoded. A stream that doesn't load is a `ui.layout`
-problem at `/components/Video/stream`, which `scene validate` reports.
+too: the texture path `video:<id>` is the frame the player with that ID shows, so a `Sprite2D`
+or a material's texture can be a screen in the world. Nothing draws before the first frame is
+decoded. A stream that doesn't load is a `ui.layout` problem at `/components/Video/stream`,
+which `scene validate` reports.
 
 Frames must be key frames or follow one: a file whose first frame isn't a key frame doesn't
 load. The video system's players, their decoders and frames show in `perf.stats`'s memory as
@@ -8656,13 +8547,13 @@ load. The video system's players, their decoders and frames show in `perf.stats`
 
 ### Sound in videos
 
-A WebM or Matroska file's audio track plays with its picture, as Godot's player plays a
-stream's mix: the `audio` system starts the track `audio_track` names on the player's `bus` at
-`volume_db` and at `stream_position`, pitched by `speed_scale`, holds it while the player is
-paused or stopped and starts it again where the player seeks or loops, so the sound stays
-within a tenth of a second of the picture. `audio.state` lists it among the players with kind
-`Video`, and a track that can't be played is its `error` there. Blocks may be laced
-(Xiph, EBML or fixed) and clusters of unknown size, as live recordings write them.
+A WebM or Matroska file's audio track plays with its picture: the `audio` system starts the
+track `audio_track` names on the player's `bus` at `volume_db` and at `stream_position`, pitched
+by `speed_scale`, holds it while the player is paused or stopped and starts it again where the
+player seeks or loops, so the sound stays within a tenth of a second of the picture.
+`audio.state` lists it among the players with kind `Video`, and a track that can't be played is
+its `error` there. Blocks may be laced (Xiph, EBML or fixed) and clusters of unknown size, as
+live recordings write them.
 
 Opus tracks (`A_OPUS`), which WebM files and most encoders use, play through libopus: its
 `OpusHead` (the track's `CodecPrivate`) sets up the decoder, with its output gain and channel
@@ -8700,7 +8591,7 @@ this way, so frames captured with `frame.capture` become a clip.
 
 ## Audio
 
-Sound follows Godot's `AudioServer` and its players. An `SoundPlayer` plays a sound the
+An `SoundPlayer` plays a sound the
 same wherever its entity is; an `SoundPlayer2D` plays at its entity's `Transform2D`, heard
 from the current `Listener2D`, and an [`SoundPlayer3D`](#3d-sound) at its
 `Transform3D`, heard from the current `Listener3D` or camera. Each plays through a bus of
@@ -8718,41 +8609,41 @@ the project's [bus layout](#bus-layouts), and every bus mixes into Master, which
 ```
 
 - Sound files load as assets and reload when they change: `.wav` files (8, 16, 24 or 32-bit
-  integer or 32-bit float samples, mono or stereo) decode when loaded, as Godot imports them,
+  integer or 32-bit float samples, mono or stereo) decode when loaded,
   and `.ogg` (Vorbis) and `.mp3` files decode as they play. More than two channels mix down to
   two.
 - Each tick, after every other system, the `audio` system (priority 1200) starts and stops
   players, then mixes the tick's share of frames at the project's `audio.mix_rate` (735 frames
   a tick at 60 ticks a second and 44100 Hz). Mixing follows the ticks rather than the sound
   card, so the same ticks always make the same sound, and headless runs mix too.
-- As in Godot, `autoplay` plays when the player is first seen and `playing` plays or stops when
+- `autoplay` plays when the player is first seen and `playing` plays or stops when
   it changes; [`audio.play`](commands.md#audioplay) and `audio.stop` (and `audio::play` and
   `audio::stop` in C++) do so at the next tick. Playing again restarts the sound, or with
   `max_polyphony` over 1, adds a voice and stops the oldest past the limit. Music, generators,
-  polyphonic streams and microphones are monophonic, as in Godot: playing again always starts
-  them over. A new `stream` stops the old one.
+  polyphonic streams and microphones are monophonic: playing again always starts them over. A
+  new `stream` stops the old one.
 - When a player's last sound ends, it sets `playing` to false and emits a `finished` event with
   `{"component": "SoundPlayer"}` (or `SoundPlayer2D`, `SoundPlayer3D`) as its
   data. Music also emits
   a [`clip_changed`](#clip-changes) event for each clip it starts.
-- An `SoundPlayer2D` fades and pans as Godot's `_update_panning`: its volume is times
-  (1 - distance / `max_distance`) ^ `attenuation`, and it pans by its offset from the listener
-  over the viewport's width, times `panning_strength` and half of `audio.panning_strength_2d`.
+- An `SoundPlayer2D` fades and pans: its volume is times (1 - distance / `max_distance`) ^
+  `attenuation`, and it pans by its offset from the listener over the viewport's width, times
+  `panning_strength` and half of `audio.panning_strength_2d`.
 - Volume changes ramp over one mix step of 512 frames, and a stopped sound fades out over one,
-  so neither clicks. Sound starts 64 frames late, Godot's lookahead for those fades.
+  so neither clicks. Sound starts 64 frames late, a lookahead for those fades.
 - The voices are not saved: scenes, snapshots, undo and dry runs keep only the components'
   fields. Plays and stops a failed command or dry run asked for are dropped, as are its bus
   changes.
 
 ### Buses by area
 
-As Godot's `AudioStreamPlayer2D::_get_actual_bus`, a 2D player inside an `Zone2D` with
-`bus_override` plays through the area's `audio_bus_name` instead of its own `bus`, when
-the area's `collision_layer` shares a bit with the player's `zone_mask`. The audio system checks
-each tick, after physics, at the player's position, so a sound moves to the cave's reverb bus as
-it walks in and back as it walks out, fading out of the bus it left over one mix step. With several such areas, the
-first by ID wins (Godot takes the physics server's order). `audio.state` shows the bus each
-player plays through. Godot's reverb bus overrides belong to [3D areas](#3d-sound).
+A 2D player inside an `Zone2D` with `bus_override` plays through the area's `audio_bus_name` instead
+of its own `bus`, when the area's `collision_layer` shares a bit with the player's `zone_mask`. The
+audio system checks each tick, after physics, at the player's position, so a sound moves to the
+cave's reverb bus as it walks in and back as it walks out, fading out of the bus it left over one
+mix step. With several such areas, the first by ID wins.
+`audio.state` shows the bus each player plays through. Reverb bus overrides belong to [3D
+areas](#3d-sound).
 
 ```json
 "cave": {
@@ -8767,7 +8658,7 @@ player plays through. Godot's reverb bus overrides belong to [3D areas](#3d-soun
 ### 3D sound
 
 An `SoundPlayer3D` plays at its entity's `Transform3D`, heard from the current
-`Listener3D`, as Godot's `AudioStreamPlayer3D` hears it, in stereo or
+`Listener3D`, in stereo or
 [surround](#surround-sound). Distances are meters.
 
 ```json
@@ -8798,41 +8689,36 @@ An `SoundPlayer3D` plays at its entity's `Transform3D`, heard from the current
 | | `doppler_tracking` | `std::string` | `"disabled"` | As the player's, for the listener's own speed |
 
 - The listener is the first `Listener3D` by ID with `current` set, else the first one by
-  ID (Godot makes the first listener in a viewport current), else the current `Camera3D`, whose
-  `doppler_tracking` counts as a listener's. With neither, 3D sounds are silent; Godot always
-  has a viewport's camera to hear through.
-- Each tick, after physics, the audio system places every 3D player, as Godot's
-  `_update_panning` does each frame. Its volume is `volume_db` faded by the attenuation model at
-  its distance, at most `max_db`, then times (1 - distance / `max_distance`) when that is set.
-  Each side gets the square root of (1 -+ *s* cos *a*) / 2 of that, where *a* is the angle from
-  the listener's right to the sound, height left out, and *s* grows with `panning_strength`
-  times `audio.panning_strength_3d`, as Godot's `_calc_output_vol_stereo`. In surround it pans
-  over every speaker instead, by Godot's Spcap.
+  ID, else the current `Camera3D`, whose
+  `doppler_tracking` counts as a listener's. With neither, 3D sounds are silent.
+- Each tick, after physics, the audio system places every 3D player each frame. Its volume is
+  `volume_db` faded by the attenuation model at its distance, at most `max_db`, then times (1 -
+  distance / `max_distance`) when that is set. Each side gets the square root of (1 -+ *s* cos *a*)
+  / 2 of that, where *a* is the angle from the listener's right to the sound, height left out, and
+  *s* grows with `panning_strength` times `audio.panning_strength_3d`. In surround it pans over
+  every speaker instead, by Spcap.
 - As distance fades it, a high shelf above `attenuation_filter_cutoff_hz` takes off the faded
   share of `attenuation_filter_db`, so far sounds are muffled, and with an emission angle
   `emission_angle_filter_attenuation_db` more while the listener is outside the cone. That is the
-  shelf's gain; as in Godot, whose filter squares it, the highest frequencies lose twice as many
-  decibels.
-- Past `max_distance` it keeps playing, unheard, and its filter and pitch stay as they were, as
-  Godot's do.
+  shelf's gain;, whose filter squares it, the highest frequencies lose twice as many decibels.
+- Past `max_distance` it keeps playing, unheard, and its filter and pitch stay as they were.
 - With `doppler_tracking`, the player's speed is measured over its last four moves within a
-  fifth of a second, as Godot's `VelocityTracker3D` (counting ticks in both modes), less the
+  fifth of a second (counting ticks in both modes), less the
   listener's when it tracks too. The pitch is `pitch_scale` times 343 / (343 + *v*), where *v* is
   that speed along the line from the listener, positive going away, so it rises as the sound
   comes and falls as it goes, within 1/8 and 8.
 - `audio.state` shows a 3D player's `pitch_scale` with Doppler, its `filter_db` and any `sends`.
 
-As Godot's `_get_overriding_area`, a 3D player inside an `Zone3D` that overrides the bus or has
-a reverb bus, and whose `collision_layer` shares a bit with its `zone_mask`, follows the first
-such area by ID:
+A 3D player inside an `Zone3D` that overrides the bus or has a reverb bus, and whose
+`collision_layer` shares a bit with its `zone_mask`, follows the first such area by ID:
 
 - With `bus_override`, it plays through the area's `audio_bus_name`.
 - With `reverb_bus_enabled`, it also sends `reverb_bus_amount` of itself to `reverb_bus_name`.
   `reverb_bus_uniformity` blends that send from the sound's direction toward the area's nearest
   point to the listener, so a room's echo surrounds a listener inside it.
-- As in Godot, an area with a reverb bus and no bus override plays the sound on the reverb bus
-  alone, and an area with uniformity whose nearest point is farther from the listener than a
-  player's `max_distance` silences it. A bus the layout doesn't have is Master.
+- An area with a reverb bus and no bus override plays the sound on the reverb bus alone, and an
+  area with uniformity whose nearest point is farther from the listener than a player's
+  `max_distance` silences it. A bus the layout doesn't have is Master.
 
 ```json
 "cave": {
@@ -8846,34 +8732,32 @@ such area by ID:
 
 ### Surround sound
 
-Sound mixes for the speakers of the project's `audio.speaker_mode`, as Godot's
-`AudioServer::SpeakerMode`: `stereo`, `surround_31`, `surround_51` or `surround_71`. Its default,
-`auto`, is the output device's (5.1 for six channels, 7.1 for eight or more, stereo otherwise),
-and stereo where nothing plays the sound, as in headless runs and sessions. SDL folds a mix for
-more speakers than the device has, so a 7.1 game plays on headphones too.
-[examples/surround-sound](../../examples/surround-sound/) has a bee flying round the listener.
+Sound mixes for the speakers of the project's `audio.speaker_mode`: `stereo`, `surround_31`,
+`surround_51` or `surround_71`. Its default, `auto`, is the output device's (5.1 for six
+channels, 7.1 for eight or more, stereo otherwise), and stereo where nothing plays the sound, as
+in headless runs and sessions. SDL folds a mix for more speakers than the device has, so a 7.1
+game plays on headphones too. [examples/surround-sound](../../examples/surround-sound/) has a bee
+flying round the listener.
 
 ```json
 "audio": {"speaker_mode": "surround_71"}
 ```
 
-- As in Godot, each bus mixes a buffer per speaker pair: front left and right, then center and
-  LFE (3.1 and up), rear left and right (5.1 and up) and side left and right (7.1). Each pair
-  runs its own copy of the bus's [effects](#effects), and a compressor's `sidechain` listens to
-  the same pair of its bus. Capture, record and spectrum effects that `audio.*` commands read
-  are the front pair's.
+- Each bus mixes a buffer per speaker pair: front left and right, then center and LFE (3.1 and
+  up), rear left and right (5.1 and up) and side left and right (7.1). Each pair runs its own
+  copy of the bus's [effects](#effects), and a compressor's `sidechain` listens to the same pair
+  of its bus. Capture, record and spectrum effects that `audio.*` commands read are the front
+  pair's.
 - An `SoundPlayer`'s `mix_target` picks its speakers: the front pair, every speaker or the
-  center and LFE, at its `volume_db`. Godot plays the LFE at full volume whatever `volume_db`
-  is; here it follows it, as a 3D player's does.
-- An `SoundPlayer2D` plays on the front pair alone, as Godot's.
-- An `SoundPlayer3D` pans over the speakers by Godot's Spcap (speaker-placement
-  correction amplitude panning): each speaker's gain is 0.5 (1 + cos *a*) ^ *t*, where *a* is
-  the angle from the speaker to the sound, height included, over how many speakers face the
-  same way, scaled so the gains keep the sound's power. The tightness *t* is twice
-  `panning_strength` times `audio.panning_strength_3d`, so 1 by default; the speakers face
-  45 degrees off ahead and behind, straight ahead (center) and to each side. The LFE gets all of
-  it, faded with distance as every speaker is. An `Zone3D`'s reverb with uniformity spreads over
-  every speaker alike, as Godot's.
+  center and LFE, at its `volume_db`. The LFE follows `volume_db`, as a 3D player's does.
+- An `SoundPlayer2D` plays on the front pair alone.
+- An `SoundPlayer3D` pans over the speakers by Spcap (speaker-placement correction
+  amplitude panning): each speaker's gain is 0.5 (1 + cos *a*) ^ *t*, where *a* is the angle
+  from the speaker to the sound, height included, over how many speakers face the same way,
+  scaled so the gains keep the sound's power. The tightness *t* is twice `panning_strength`
+  times `audio.panning_strength_3d`, so 1 by default; the speakers face 45 degrees off ahead and
+  behind, straight ahead (center) and to each side. The LFE gets all of it, faded with distance
+  as every speaker is. An `Zone3D`'s reverb with uniformity spreads over every speaker alike.
 - `audio.state` adds `speaker_mode` and each player's `speakers`, and
   [`audio.capture`](commands.md#audiocapture) each speaker's level and `.wav` files with a
   channel for each speaker.
@@ -8881,7 +8765,7 @@ more speakers than the device has, so a 7.1 game plays on headphones too.
 ### Bus layouts
 
 A `.bus_layout.json` file, named by `audio.bus_layout` in [project.json](project-format.md),
-lists the buses, as Godot's `default_bus_layout.tres`. With none, there is one Master bus.
+lists the buses. With none, there is one Master bus.
 
 ```json
 {
@@ -8906,7 +8790,7 @@ lists the buses, as Godot's `default_bus_layout.tres`. With none, there is one M
 | `effects` | `[]` | Up to 16 effects it runs in order on what was mixed into it |
 
 - At most 64 buses. A bus goes quiet (and its effects stop) after two seconds under -60 dB with
-  nothing playing into it, as Godot's, so a reverb's tail still plays out.
+  nothing playing into it, so a reverb's tail still plays out.
 - The layout reloads when its file changes, which starts the buses over. A layout that doesn't
   load is logged, and the last one keeps playing.
 - [`audio.set_bus`](commands.md#audioset_bus) changes a bus's volume, switches and effects'
@@ -8914,56 +8798,55 @@ lists the buses, as Godot's `default_bus_layout.tres`. With none, there is one M
 
 ### Effects
 
-Each effect is a `type` and its settings, by Godot's property names, plus `enabled` (default
-`true`). Settings left out take Godot's defaults, listed here; `slash-cli schema bus_layout`
+Each effect is a `type` and its settings, plus `enabled` (default
+`true`). Settings left out take the defaults listed here; `slash-cli schema bus_layout`
 gives each one's range and meaning.
 
-| Type | Godot's | Settings and defaults |
+| Type | What it does | Settings and defaults |
 | --- | --- | --- |
-| `amplify` | AudioEffectAmplify: changes the volume | `volume_db` 0 |
-| `low_pass_filter` | AudioEffectLowPassFilter: cuts frequencies above the cutoff | `cutoff_hz` 2000, `resonance` 0.5, `db` 6 (6, 12, 18 or 24 dB per octave) |
-| `high_pass_filter` | AudioEffectHighPassFilter: cuts frequencies below the cutoff | as `low_pass_filter` |
-| `band_pass_filter` | AudioEffectBandPassFilter: keeps frequencies near the cutoff | as `low_pass_filter` |
-| `notch_filter` | AudioEffectNotchFilter: cuts frequencies near the cutoff | as `low_pass_filter` |
-| `band_limit_filter` | AudioEffectBandLimitFilter: keeps a band from the cutoff | as `low_pass_filter` |
-| `low_shelf_filter`, `high_shelf_filter` | AudioEffectLowShelfFilter and HighShelfFilter: scale frequencies below or above the cutoff | as `low_pass_filter`, and `gain` 1 |
-| `eq6`, `eq10`, `eq21` | AudioEffectEQ6, EQ10 and EQ21: 6, 10 or 21 bands | `band_db`: dB by band frequency, e.g. `{"1000_hz": -3}`; bands left out are 0 |
-| `delay` | AudioEffectDelay: two echoes and repeating feedback | `dry` 1, `tap1_active` true, `tap1_delay_ms` 250, `tap1_level_db` -6, `tap1_pan` 0.2, `tap2_active` true, `tap2_delay_ms` 500, `tap2_level_db` -12, `tap2_pan` -0.4, `feedback_active` false, `feedback_delay_ms` 340, `feedback_level_db` -6, `feedback_lowpass` 16000 |
-| `reverb` | AudioEffectReverb: the sound of a room | `predelay_msec` 150, `predelay_feedback` 0.4, `room_size` 0.8, `damping` 0.5, `spread` 1, `hipass` 0, `dry` 1, `wet` 0.5 |
-| `chorus` | AudioEffectChorus: delayed, wavering copies | `voice_count` 2, `dry` 1, `wet` 0.5, `voices`: up to 4 of `{delay_ms, rate_hz, depth_ms, level_db, cutoff_hz, pan}`, with Godot's defaults for the first two |
-| `phaser` | AudioEffectPhaser: notches that sweep | `range_min_hz` 440, `range_max_hz` 1600, `rate_hz` 0.5, `feedback` 0.7, `depth` 1 |
-| `distortion` | AudioEffectDistortion: clips or shapes the waveform | `mode` `"clip"` (`clip`, `atan`, `lofi`, `overdrive`, `waveshape`), `pre_gain` 0, `keep_hf_hz` 16000, `drive` 0, `post_gain` 0 |
-| `compressor` | AudioEffectCompressor: turns loud sound down | `threshold` 0, `ratio` 4, `gain` 0, `attack_us` 20, `release_ms` 250, `mix` 1, `sidechain`: a bus whose level drives it instead |
-| `hard_limiter` | AudioEffectHardLimiter: keeps the sound under a ceiling | `ceiling_db` -0.3, `pre_gain_db` 0, `release` 0.1 |
-| `panner` | AudioEffectPanner: moves the sound left or right | `pan` 0 |
-| `stereo_enhance` | AudioEffectStereoEnhance: widens or narrows the stereo image | `pan_pullout` 1, `time_pullout_ms` 0, `surround` 0 |
-| `pitch_shift` | AudioEffectPitchShift: changes the pitch and keeps the speed | `pitch_scale` 1 (0.01 to 16), `oversampling` 4 (4 to 32), `fft_size` 2048 (256, 512, 1024, 2048 or 4096) |
-| `spectrum_analyzer` | AudioEffectSpectrumAnalyzer: measures frequencies, for [`audio.spectrum`](commands.md#audiospectrum) | `buffer_length` 2, `fft_size` 1024 |
-| `capture` | AudioEffectCapture: holds what passes for game code to take | `buffer_length` 0.1 (seconds, 0.01 to 10) |
-| `record` | AudioEffectRecord: records what passes, for [`audio.record`](commands.md#audiorecord) | `format` `"16_bits"` (`8_bits` or `16_bits`) |
+| `amplify` | changes the volume | `volume_db` 0 |
+| `low_pass_filter` | cuts frequencies above the cutoff | `cutoff_hz` 2000, `resonance` 0.5, `db` 6 (6, 12, 18 or 24 dB per octave) |
+| `high_pass_filter` | cuts frequencies below the cutoff | as `low_pass_filter` |
+| `band_pass_filter` | keeps frequencies near the cutoff | as `low_pass_filter` |
+| `notch_filter` | cuts frequencies near the cutoff | as `low_pass_filter` |
+| `band_limit_filter` | keeps a band from the cutoff | as `low_pass_filter` |
+| `low_shelf_filter`, `high_shelf_filter` | scale frequencies below or above the cutoff | as `low_pass_filter`, and `gain` 1 |
+| `eq6`, `eq10`, `eq21` | 6, 10 or 21 bands | `band_db`: dB by band frequency, e.g. `{"1000_hz": -3}`; bands left out are 0 |
+| `delay` | two echoes and repeating feedback | `dry` 1, `tap1_active` true, `tap1_delay_ms` 250, `tap1_level_db` -6, `tap1_pan` 0.2, `tap2_active` true, `tap2_delay_ms` 500, `tap2_level_db` -12, `tap2_pan` -0.4, `feedback_active` false, `feedback_delay_ms` 340, `feedback_level_db` -6, `feedback_lowpass` 16000 |
+| `reverb` | the sound of a room | `predelay_msec` 150, `predelay_feedback` 0.4, `room_size` 0.8, `damping` 0.5, `spread` 1, `hipass` 0, `dry` 1, `wet` 0.5 |
+| `chorus` | delayed, wavering copies | `voice_count` 2, `dry` 1, `wet` 0.5, `voices`: up to 4 of `{delay_ms, rate_hz, depth_ms, level_db, cutoff_hz, pan}`, with defaults for the first two |
+| `phaser` | notches that sweep | `range_min_hz` 440, `range_max_hz` 1600, `rate_hz` 0.5, `feedback` 0.7, `depth` 1 |
+| `distortion` | clips or shapes the waveform | `mode` `"clip"` (`clip`, `atan`, `lofi`, `overdrive`, `waveshape`), `pre_gain` 0, `keep_hf_hz` 16000, `drive` 0, `post_gain` 0 |
+| `compressor` | turns loud sound down | `threshold` 0, `ratio` 4, `gain` 0, `attack_us` 20, `release_ms` 250, `mix` 1, `sidechain`: a bus whose level drives it instead |
+| `hard_limiter` | keeps the sound under a ceiling | `ceiling_db` -0.3, `pre_gain_db` 0, `release` 0.1 |
+| `panner` | moves the sound left or right | `pan` 0 |
+| `stereo_enhance` | widens or narrows the stereo image | `pan_pullout` 1, `time_pullout_ms` 0, `surround` 0 |
+| `pitch_shift` | changes the pitch and keeps the speed | `pitch_scale` 1 (0.01 to 16), `oversampling` 4 (4 to 32), `fft_size` 2048 (256, 512, 1024, 2048 or 4096) |
+| `spectrum_analyzer` | measures frequencies, for [`audio.spectrum`](commands.md#audiospectrum) | `buffer_length` 2, `fft_size` 1024 |
+| `capture` | holds what passes for game code to take | `buffer_length` 0.1 (seconds, 0.01 to 10) |
+| `record` | records what passes, for [`audio.record`](commands.md#audiorecord) | `format` `"16_bits"` (`8_bits` or `16_bits`) |
 
 A misspelled type is an error naming the closest one, and the type a slot names says which
 settings it takes.
 
 - `pitch_shift` is Stephan Bernsee's phase vocoder (`smbPitchShift`, under the Wide Open
-  License), as in Godot: each FFT window of `fft_size` frames is analyzed at `oversampling`
-  overlapping steps, so it adds `fft_size` frames of latency. At a `pitch_scale` of 1 it passes
-  the sound through.
+  License): each FFT window of `fft_size` frames is analyzed at `oversampling` overlapping
+  steps, so it adds `fft_size` frames of latency. At a `pitch_scale` of 1 it passes the sound
+  through.
 - `spectrum_analyzer`, `capture` and `record` pass the sound through unchanged. In C++,
   `audio::spectrum_analyzer`, `audio::capture_effect` and `audio::record_effect` give a slot's
-  running effect (as Godot's `AudioServer::get_bus_effect_instance`), with Godot's
-  `magnitude_for_frequency_range`, `get_buffer`, `frames_available`, `set_recording_active` and
-  `recording` (a `Sound` to play). The spectrum analyzer answers from its newest window of
-  `fft_size` * 2 frames; Godot keeps `buffer_length` seconds of them but reads only the newest
-  too. Capture and record keep running while their bus is silent, so time has no gaps; the
-  spectrum analyzer pauses with its bus. A recording's IMA ADPCM and QOA formats aren't
-  offered: it stays in memory as samples.
+  running effect, with `magnitude_for_frequency_range`, `get_buffer`,
+  `frames_available`, `set_recording_active` and `recording` (a `Sound` to play). The spectrum
+  analyzer answers from its newest window of `fft_size` * 2 frames; it keeps `buffer_length`
+  seconds of them but reads only the newest. Capture and record keep running while their bus
+  is silent, so time has no gaps; the spectrum analyzer pauses with its bus. A recording's IMA
+  ADPCM and QOA formats aren't offered: it stays in memory as samples.
 - `audio.state` shows a capture's `frames_available` (and `discarded_frames`, when its buffer
   filled) and whether a record effect is `recording`, with the `seconds` it holds.
 
 ### Audio streams
 
-A `.audio.json` file is one of eight kinds of stream, each Godot's: a sound with its import
+A `.audio.json` file is one of eight kinds of stream: a sound with its import
 settings, an `AudioStreamRandomizer` (one of several streams each time it plays), an
 `AudioStreamPlaylist` (streams in turn), an `AudioStreamSynchronized` (streams together, as
 layers), an `AudioStreamInteractive` ([music in clips](#interactive-music) that switch as the
@@ -9012,18 +8895,18 @@ name one, as can another file's streams and clips (except a microphone).
   how many times it has played, so a scene makes the same picks every run.
 - A playlist plays each stream for its `beat_count` beats at `bpm` if it has them, else to its
   end, then the next starts as that one fades out under it over `fade_time` seconds. It ignores
-  the streams' own loops, and their pitch: as Godot's, it mixes them at their own speed. Its
-  length is the sum of theirs.
+  the streams' own loops, and their pitch:, it mixes them at their own speed. Its length is the
+  sum of theirs.
 - A synchronized stream starts every layer at once and ends when the last does. Each layer
   plays at its `volume_db`, which a player's `stream_<index>_volume_db` parameter changes
   (index from 0), ramping over 128 frames.
 
 ### Interactive music
 
-As Godot's `AudioStreamInteractive`, interactive music is `clips`, one playing at a time, that a
-player's `switch_to_clip` [parameter](#stream-parameters) switches between. `transitions` say
-when a switch happens and how the clips fade, timed by the beats of the clip it leaves (its
-`bpm`, `beat_count` and `bar_beats`, from its own `.audio.json` file).
+Interactive music is `clips`, one playing at a time, that a player's `switch_to_clip`
+[parameter](#stream-parameters) switches between. `transitions` say when a switch happens and
+how the clips fade, timed by the beats of the clip it leaves (its `bpm`, `beat_count` and
+`bar_beats`, from its own `.audio.json` file).
 
 ```json
 {
@@ -9054,7 +8937,7 @@ when a switch happens and how the clips fade, timed by the beats of the clip it 
 | `filler_clip` | | A clip played once between the two, at full volume |
 | `hold_previous` | `false` | Remember the clip it left, for a `return_to_hold` clip, the clip it goes to included |
 
-- A switch takes the first transition that fits, in Godot's order: from and to both named,
+- A switch takes the first transition that fits, in this order: from and to both named,
   then from named, then to named, then neither. With none, it waits for the next beat and fades
   the last clip out over one. A clip with no `bpm` switches at once for `next_beat` and
   `next_bar`.
@@ -9064,12 +8947,11 @@ when a switch happens and how the clips fade, timed by the beats of the clip it 
 - Two transitions from and to the same clips, a `next_clip` without `"auto_advance":
   "enabled"`, and a name that is no clip are errors; a misspelled name gets a suggestion.
 - A `hold_previous` transition straight into a `return_to_hold` clip goes back to the clip it
-  left. Godot records the hold after reading the clip, so there the clip goes back to an older
-  hold, or ends.
+  left.
 
 ### Stream parameters
 
-A player's `parameters` steer its stream as it plays, as the `parameters/` of Godot's players.
+A player's `parameters` steer its stream as it plays.
 They reach each new playback before it starts, and every playback when they change.
 
 | Parameter | Stream | Meaning |
@@ -9077,18 +8959,16 @@ They reach each new playback before it starts, and every playback when they chan
 | `switch_to_clip` | Interactive music | The clip to switch to, by name. It follows the music: the audio system writes back the clip the music plays or is heading to, so it reads the clip a sting will go on to while the sting plays |
 | `stream_<index>_volume_db` | Synchronized | Layer `<index>`'s volume in dB, from 0 |
 
-- Asking for the clip the music plays, or is heading to, changes nothing; Godot would start it
-  over.
+- Asking for the clip the music plays, or is heading to, changes nothing.
 - [`audio.state`](commands.md#audiostate) names the clip each player's music is playing.
 
 ### Clip changes
 
-Each time a player's music starts a clip, the player emits a `clip_changed` event (Godot has no
-such signal), so gameplay code can follow the music and agents can check it follows the game.
-Interactive music emits one for each clip it starts, its first and a transition's filler
-included, and a playlist for each of its streams. [`step`](commands.md#step) and
-[`run.until`](commands.md#rununtil) list the events of the ticks they ran as `music`, and
-[`playtest.run`](commands.md#playtestrun) sums them up over its runs.
+Each time a player's music starts a clip, the player emits a `clip_changed` event, so gameplay code
+can follow the music and agents can check it follows the game. Interactive music emits one for each
+clip it starts, its first and a transition's filler included, and a playlist for each of its
+streams. [`step`](commands.md#step) and [`run.until`](commands.md#rununtil) list the events of the
+ticks they ran as `music`, and [`playtest.run`](commands.md#playtestrun) sums them up over its runs.
 
 | Field | Meaning |
 | --- | --- |
@@ -9106,15 +8986,14 @@ included, and a playlist for each of its streams. [`step`](commands.md#step) and
 
 Waits are measured in mixed frames, rounded to milliseconds. They can be a few milliseconds off
 the beat, since a sound's position counts the frames it has read ahead and the mixer works in
-steps of 512 frames, as Godot's does; the same ticks always give the same waits.
+steps of 512 frames; the same ticks always give the same waits.
 
 ### Generators and polyphonic streams
 
-A `generator`, as Godot's `AudioStreamGenerator`, plays frames a game's code pushes as it runs:
-a synthesizer, speech from a library, sound decoded from a network. A `polyphonic` stream, as
-Godot's `AudioStreamPolyphonic`, plays streams a game starts on it, many at once on one player,
-each with its own volume and pitch. [examples/generated-audio](../../examples/generated-audio/)
-has both.
+A `generator`, plays frames a game's code pushes as it runs: a synthesizer, speech from a
+library, sound decoded from a network. A `polyphonic` stream, plays streams a game starts on it,
+many at once on one player, each with its own volume and pitch.
+[examples/generated-audio](../../examples/generated-audio/) has both.
 
 ```json
 {"format": 1, "generator": {"buffer_length": 0.1, "mix_rate": 22050}}
@@ -9125,21 +9004,21 @@ has both.
 | --- | --- | --- |
 | `generator.mix_rate_mode` | `"custom"` | The rate frames are pushed at: `output` (the project's `audio.mix_rate`), `input` (the rate microphone input is recorded at, which is the mix rate) or `custom` (`mix_rate`) |
 | `generator.mix_rate` | `44100` | Frames per second pushed, 20 to 192000, with `custom` |
-| `generator.buffer_length` | `0.5` | Seconds of frames it holds, 0.01 to 10; it holds the smallest power of two frames above that, less one, as Godot's ring buffer |
+| `generator.buffer_length` | `0.5` | Seconds of frames it holds, 0.01 to 10; it holds the smallest power of two frames above that, less one |
 | `polyphonic.polyphony` | `32` | Streams that can play at once, 1 to 128 |
 
-- Gameplay code gets a player's playback with `audio::stream_playback(world, entity)`, as
-  Godot's `get_stream_playback`, and its `generator()` or `polyphonic()`. The playback exists
-  from the tick after the player starts (the audio system starts voices after gameplay systems
-  run) until its voice ends, so ask for it each tick.
-- A generator's playback has Godot's `push_frame`, `push_buffer`, `can_push_buffer`,
+- Gameplay code gets a player's playback with `audio::stream_playback(world, entity)`, and its
+  `generator()` or `polyphonic()`. The playback exists from the tick after the player starts
+  (the audio system starts voices after gameplay systems run) until its voice ends, so ask for
+  it each tick.
+- A generator's playback has `push_frame`, `push_buffer`, `can_push_buffer`,
   `frames_available`, `skips` and `clear_buffer`. Push each tick at least the frames the tick
   will mix (`mix_rate` / 60 at 60 ticks a second); a mix that runs out plays silence for the
   rest and counts a skip. Its frames are resampled to the mix rate as other sounds are, which
   delays them by 128 of its frames. It plays until stopped and has no length.
-- A polyphonic playback has Godot's `play_stream` (a `Stream`, from seconds, volume in dB, pitch
+- A polyphonic playback has `play_stream` (a `Stream`, from seconds, volume in dB, pitch
   scale), `set_stream_volume`, `set_stream_pitch_scale`, `is_stream_playing` and `stop_stream`,
-  with Godot's stream IDs (slot and count). A stream starts at the next mix, a stop fades it out
+  with stream IDs (slot and count). A stream starts at the next mix, a stop fades it out
   over one mix step, and a new volume applies at the next mix. It plays until stopped, silent
   when no stream is going. Agents and `audio::play_stream` play a stream on one with
   [`audio.play`](commands.md#audioplay)'s `stream` at the next tick, starting the player if
@@ -9149,13 +9028,12 @@ has both.
 
 ### Microphone
 
-A `microphone` stream, as Godot's `AudioStreamMicrophone`, plays what the microphone records. It
-needs the project's [`audio.input_enabled`](project-format.md), as Godot's
-`audio/driver/enable_input`, and plays only as a player's own `stream`, not inside another
-`.audio.json` file or with `audio.play`'s `stream`. As in Godot's microphone demo, a game
-usually plays it on a muted bus whose effects (a `record`, `capture` or `spectrum_analyzer`)
-hear the player without the speakers playing them back.
-[examples/microphone](../../examples/microphone/) lights lanterns when the player sings.
+A `microphone` stream, plays what the microphone records. It needs the project's
+[`audio.input_enabled`](project-format.md), and plays only as a player's own `stream`, not inside
+another `.audio.json` file or with `audio.play`'s `stream`. A game usually plays it on a muted bus
+whose effects (a `record`, `capture` or `spectrum_analyzer`) hear the player without the speakers
+playing them back. [examples/microphone](../../examples/microphone/) lights lanterns when the player
+sings.
 
 ```json
 {"format": 1, "microphone": {}}
@@ -9167,9 +9045,9 @@ hear the player without the speakers playing them back.
   once and a warning is logged.
 - Each tick, before the tick is mixed, the audio system pushes that tick's frames from the input
   into the server's input buffer, which holds one second at the mix rate. A microphone plays
-  them once 50 ms is recorded, Godot's delay; the mix runs up to a mix step ahead of the ticks,
+  them once 50 ms is recorded; the mix runs up to a mix step ahead of the ticks,
   so the delay heard is a little under that.
-- Gameplay code reads input too, with the server's Godot calls: `set_input_active` (turns input
+- Gameplay code reads input too, with the server's calls: `set_input_active` (turns input
   on for the game; fails without `enable_input`), `input_frames_available`,
   `input_buffer_length_frames` and `input_frames(n)`, which returns the next `n` frames or none
   when fewer are waiting. Frames pushed in a tick are there for gameplay systems the next tick.

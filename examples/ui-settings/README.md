@@ -1,12 +1,11 @@
 # UI settings
 
-Check boxes, check buttons and sliders, as Godot's `CheckBox`, `ToggleSwitch`, `HSlider` and
-`VSlider`. [main.scene.json](main.scene.json) is a settings screen in a 320x180 window
-([project.json](project.json)): Fullscreen and Subtitles check boxes, three check boxes in one
-`button_group` (Low, Medium and High), a V-Sync check button, a volume slider with ticks and a
-vertical brightness slider. [calls.jsonl](calls.jsonl) works it the way an agent does over MCP
-(tools `input_inject`, `ui_press`, `ui_layout`, `events_read`, `frame_summary`) or JSON-RPC, and
-[results.jsonl](results.jsonl) holds the replies.
+Check boxes, check buttons and sliders. [main.scene.json](main.scene.json) is a settings screen
+in a 320x180 window ([project.json](project.json)): Fullscreen and Subtitles check boxes, three
+check boxes in one `button_group` (Low, Medium and High), a V-Sync check button, a volume slider
+with ticks and a vertical brightness slider. [calls.jsonl](calls.jsonl) works it the way an
+agent does over MCP (tools `input_inject`, `ui_press`, `ui_layout`, `events_read`,
+`frame_summary`) or JSON-RPC, and [results.jsonl](results.jsonl) holds the replies.
 
 ```text
 input.inject {"events":[{"type":"mouse_button","button":"left","position":[179,155],"pressed":true},
@@ -21,7 +20,7 @@ events.read {"subscription":"events_1"}
 - `CheckBox` and `ToggleSwitch` are toggle buttons with every field of `Button`; they draw a box
   or a switch beside their text instead of a style box. Check boxes in a `button_group` draw as
   radio buttons, and clicking High turns Medium off.
-- Their icons are theme items (`icons/checked`, `icons/unchecked` and the rest), Godot's
+- Their icons are theme items (`icons/checked`, `icons/unchecked` and the rest), the
   default icons drawn by the engine (`builtin:toggle_on`); `ui.theme` says where each comes
   from, and a theme or `theme_icons` can name a PNG instead.
 - A click on a slider moves the grabber's middle to the pointer and starts a drag; the drag

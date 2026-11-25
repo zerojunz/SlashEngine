@@ -1,7 +1,7 @@
 # ReSTIR: many shadowed lights (research)
 
-A research feature with no commitment to ship ([roadmap](../roadmap.md)). Godot has nothing like
-it; it follows Bitterli, Wyman, Pharr, Shirley, Lefohn and Jarosz's *Spatiotemporal reservoir
+A research feature with no commitment to ship ([roadmap](../roadmap.md)).
+It follows Bitterli, Wyman, Pharr, Shirley, Lefohn and Jarosz's *Spatiotemporal reservoir
 resampling for real-time ray tracing with dynamic direct lighting* (SIGGRAPH 2020), the method
 behind the many-light shadows of recent games. Only the software device draws it for now. Read
 here what it does now, and what it does not do yet.
@@ -10,10 +10,11 @@ Status: current · Updated: 2026-11-20
 
 ## What it does
 
-Forward+ already culls lights into clusters, so each pixel only loops over the omni and spot
-lights that reach it. With many shadowed lights, that loop and the shadow maps are what cost:
-Forward+ has 16 positional shadow slots and ray-traced shadows 8. ReSTIR makes each pixel pay for
-a few lights whatever the count, and gives every light with `shadow` set a ray-traced shadow.
+The clustered renderer already culls lights into clusters, so each pixel only loops over the omni
+and spot lights that reach it. With many shadowed lights, that loop and the shadow maps are what
+cost: the clustered renderer has 16 positional shadow slots and ray-traced shadows 8. ReSTIR
+makes each pixel pay for a few lights whatever the count, and gives every light with `shadow` set
+a ray-traced shadow.
 
 Turn it on in [project.json](project-format.md#ray-tracing):
 

@@ -1,10 +1,10 @@
 # Shadows 3D
 
-3D lights casting shadows, as Godot's do. [main.scene.json](main.scene.json) is a courtyard with
-a crate, a pillar and a ball, seen through a `Camera3D` in a 160x90 window:
+3D lights casting shadows. [main.scene.json](main.scene.json) is a courtyard with a crate, a
+pillar and a ball, seen through a `Camera3D` in a 160x90 window:
 
-- `sun` is a `SunLight3D` with `shadow_enabled`. Its shadow map comes in Godot's default
-  four cascades, sharper near the camera, so the pillar and the crate cast long shadows.
+- `sun` is a `SunLight3D` with `shadow_enabled`. Its shadow map comes in four
+  cascades, sharper near the camera, so the pillar and the crate cast long shadows.
 - `lamp` is an orange `PointLight3D` with `shadow_enabled`. Its shadow map is a cube around it, so
   the ball shades the ground in front of it.
 - [project.json](project.json) sets `rendering.shadows`: a 2048-texel atlas for the

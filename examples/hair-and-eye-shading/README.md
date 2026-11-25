@@ -1,7 +1,7 @@
 # Hair and eye shading
 
-Godot's `StandardMaterial3D` rim, clearcoat and anisotropy, which it shades skin, eyes and hair
-cards with. [main.scene.json](main.scene.json) has three spheres under a sun and a procedural sky,
+`Surface3D`'s rim, clearcoat and anisotropy shade skin, eyes and hair
+cards. [main.scene.json](main.scene.json) has three spheres under a sun and a procedural sky,
 seen in a 160x90 window ([project.json](project.json)):
 
 - `cheek` has a rim (`rim_enabled`, `rim`, `rim_tint`): each light also lights the edges that
@@ -28,5 +28,5 @@ frame.capture {"points":[[22,45],[39,45],[83,40],[125,40],[125,34]]}
   stays the same, the eye's highlight go from white to its blue, and the hair's highlight turn to
   run up and down the sphere: dimmer where it was, brighter above.
 
-The textures Godot also takes for these (`rim_texture`, `clearcoat_texture`,
+The textures that could also drive these (`rim_texture`, `clearcoat_texture`,
 `anisotropy_flowmap`) aren't read yet.

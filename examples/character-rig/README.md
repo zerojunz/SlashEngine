@@ -1,6 +1,6 @@
 # Character rig
 
-A character's model has the whole rig of Godot's humanoid profile: fingers, eyes and a jaw, and a
+A character's model has the whole humanoid rig: fingers, eyes and a jaw, and a
 twist bone along each limb, so hands grip, eyes look and forearms twist without candy-wrapping.
 [characters/ada.character.json](characters/ada.character.json) is an ordinary recipe; the rig
 comes with every character.
@@ -10,7 +10,7 @@ comes with every character.
 
 - `character.place` with `look_at` puts Ada in 3D with three modifier children: `ada_twists`, a
   `BoneCopy3D` giving each arm's and thigh's twist bone half its limb's roll, and
-  `ada_look_left` and `ada_look_right`, Godot's `LookAtModifier3D` on each eye, turned toward
+  `ada_look_left` and `ada_look_right`, a `BoneLookAt3D` on each eye, turned toward
   the lantern within their limits.
 - `model.inspect` lists the model's 64 bones' worth of parts and its animations: a relaxed hand,
   a fist, a grip and a point for each hand, and an open jaw.

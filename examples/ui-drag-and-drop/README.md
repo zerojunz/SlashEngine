@@ -1,12 +1,11 @@
 # UI drag and drop
 
-Tooltips and drag and drop, as Godot's `tooltip_text` and `_get_drag_data`, `_can_drop_data` and
-`_drop_data`. [main.scene.json](main.scene.json) is an inventory in a 320x180 window
-([project.json](project.json)): three slots, a sword in the first and a potion in the second,
-and a trash bin. [main.cpp](main.cpp) adds the game's inventory system, which moves an item when
-it is dropped, then works the inventory the way an agent does over MCP (tools `input_inject`,
-`ui_drag`, `ui_tooltip`, `ui_layout`, `events_read`, `frame_summary`) or JSON-RPC.
-[expected.txt](expected.txt) holds what it prints.
+Tooltips and drag and drop. [main.scene.json](main.scene.json) is an inventory in a 320x180
+window ([project.json](project.json)): three slots, a sword in the first and a potion in the
+second, and a trash bin. [main.cpp](main.cpp) adds the game's inventory system, which moves an
+item when it is dropped, then works the inventory the way an agent does over MCP (tools
+`input_inject`, `ui_drag`, `ui_tooltip`, `ui_layout`, `events_read`, `frame_summary`) or
+JSON-RPC. [expected.txt](expected.txt) holds what it prints.
 
 ```text
 ui.layout {"ids":["sword_ghost"]}

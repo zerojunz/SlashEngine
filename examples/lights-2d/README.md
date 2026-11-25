@@ -1,12 +1,12 @@
 # 2D lights
 
-Lights, shadows and normal maps, as Godot's 2D lighting. In [main.scene.json](main.scene.json),
-a `AmbientTint2D` darkens everything to a night blue, a torch (`PointLight2D`) and the moon
-(`SunLight2D`) light it, the crate's `Occluder2D` casts a shadow from the torch and
-its `normal_texture` bevels its edges, and the neon sign's [material](neon.material.json) is
-`"light_mode": "unshaded"`, so it glows at full brightness. [main.cpp](main.cpp) makes the
-textures, asks `light.sample` how lit some points are, changes the torch's color and asks again,
-then draws the scene into a texture. [expected.txt](expected.txt) holds its output.
+Lights, shadows and normal maps. In [main.scene.json](main.scene.json), a `AmbientTint2D`
+darkens everything to a night blue, a torch (`PointLight2D`) and the moon (`SunLight2D`) light
+it, the crate's `Occluder2D` casts a shadow from the torch and its `normal_texture` bevels its
+edges, and the neon sign's [material](neon.material.json) is `"light_mode": "unshaded"`, so it
+glows at full brightness. [main.cpp](main.cpp) makes the textures, asks `light.sample` how lit
+some points are, changes the torch's color and asks again, then draws the scene into a texture.
+[expected.txt](expected.txt) holds its output.
 
 ```text
 light.sample {"points":[[96,60],[200,90],[300,170]]}
@@ -41,10 +41,10 @@ light.sample {"points":[[96,60],[200,90],[300,170]]}
 - The crate's polygon runs clockwise on screen, and its `cull_mode` is `counter_clockwise`: the
   edges facing the torch are left out, so the shadow starts at the crate's far side and the
   crate's own sprite is lit (`light.sample` with `"id": "crate"`). With `disabled`, the crate
-  would sit in its own shadow, as in Godot.
+  would sit in its own shadow.
 - A normal map makes each pixel face its own way, so light falls on it by its angle. The crate's
   rim faces outward, so its side toward the torch is bright and the far side is dark. Normal
-  maps are OpenGL style, as Godot reads them: green points up. `specular_texture` adds
+  maps are OpenGL style: green points up. `specular_texture` adds
   highlights.
 - `slash-cli scene validate main.scene.json` checks the lights' fields, such as `blend_mode` and
   `shadow_filter`. A light that still can't shine, such as one whose texture is missing, is left

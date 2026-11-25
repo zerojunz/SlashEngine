@@ -1,9 +1,8 @@
 # Compositor effects
 
-A pipeline file, as Godot 4.3's `Compositor` and `CompositorEffect`: it turns the frame's own
-passes off and adds screen passes of the game's own. [main.scene.json](main.scene.json) is a yard
-with a crate and a ball under the sun, and its `Environment3D` names
-[look.pipeline.json](look.pipeline.json), which:
+A pipeline file: it turns the frame's own passes off and adds screen passes of the game's own.
+[main.scene.json](main.scene.json) is a yard with a crate and a ball under the sun, and its
+`Environment3D` names [look.pipeline.json](look.pipeline.json), which:
 
 - turns glow off for this scene, whatever the environment says;
 - inks the edges between things with [outline](fx/outline.material.json) after the opaque meshes
@@ -36,9 +35,8 @@ crate's left edge, one in the sky's top left corner and one in the middle of the
 - A compositor shader reads `SCREEN_TEXTURE` through `screen_texture()`, the depth through
   `depth_texture()` and, for an effect with `needs_normal_roughness`, the prepass's normals and
   roughness through `normal_roughness_texture()`.
-- Effects draw in Forward+ only, as Godot's: the Compatibility renderer and OpenGL draw none.
+- Effects draw in the clustered renderer only: the Compatibility renderer and OpenGL draw none.
 - An effect's `code` names a C++ callback the game registers with
-  `scene3d::add_compositor_code`, which changes the effect before each frame, as Godot's
-  `_render_callback`.
+  `scene3d::add_compositor_code`, which changes the effect before each frame.
 - [Compositor shaders and pipeline files](../../docs/reference/scene-format.md#compositor-shaders-and-pipeline-files)
   in the scene format reference lists the built-ins and the file's fields.
