@@ -8,7 +8,7 @@ of lights, particles or shaders) draws fewer pixels and keeps its UI sharp.
 FidelityFX Super Resolution 1:
 
 ```json
-"rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "fsr_sharpness": 0.2}}
+"rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "sharpness": 0.2}}
 ```
 
 [main.cpp](main.cpp) changes the settings with `display.set`, which `slash-cli run --serve` adds
@@ -19,7 +19,7 @@ for a running game, and samples pixels across the planet's edge and the health b
   scaled; above 1 the world draws larger and is averaged down, always with `bilinear`.
 - `bilinear` stretches the world with filtering, so edges blur over a couple of pixels.
 - `fsr` runs FSR 1's two passes: EASU scales up along the edges it finds, then RCAS sharpens by
-  `fsr_sharpness` stops (0 is the sharpest, 2 the softest).
+  `sharpness` stops (0 is the sharpest, 2 the softest).
 - The health bar is a control, so its edge stays one sharp step whatever the scale. Canvas
   layers above the world stay sharp too; layers below it are scaled with it.
 - `frame.capture` returns the `upscaler` that ran and the `render_size`, and `display.list` and

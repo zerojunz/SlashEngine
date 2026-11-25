@@ -632,6 +632,13 @@ std::array<float, 16> look_at(const std::array<float, 3>& eye, const std::array<
 }
 
 std::optional<RenderMethod> parse_render_method(std::string_view name) {
+    // The names project files used before the methods took their own.
+    if (name == "forward_plus") {
+        return RenderMethod::ForwardPlus;
+    }
+    if (name == "gl_compatibility") {
+        return RenderMethod::Compatibility;
+    }
     const auto index = static_cast<std::size_t>(std::ranges::find(kRenderMethodNames, name) -
                                                 kRenderMethodNames.begin());
     if (index == kRenderMethodNames.size()) {

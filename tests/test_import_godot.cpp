@@ -782,7 +782,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");
     CHECK(settings.find("rendering")->find("driver")->as_string() == "opengl");
-    CHECK(settings.find("rendering")->find("renderer")->as_string() == "gl_compatibility");
+    CHECK(settings.find("rendering")->find("renderer")->as_string() == "compatibility");
     CHECK_FALSE(settings.find("rendering")->find("fallback_to_opengl")->as_bool());
     CHECK(settings.find("physics_2d")->find("gravity")->as_double() == 490.0);
     CHECK(settings.find("physics_2d")->find("linear_damp")->as_double() == 0.5);
@@ -937,7 +937,7 @@ TEST_CASE("importing a Godot scene maps its nodes to entities and components") {
     CHECK(*play.find("Button")->find("button_mask") == parse(R"(["left", "right"])"));
     CHECK(play.find("Button")->find("alignment") == nullptr); // fill has no equivalent
     CHECK(*play.find("Widget")->find("theme_styles")->find("normal") ==
-          parse(R"({"type": "flat", "bg_color": [0.1, 0.1, 0.2, 0.9],
+          parse(R"({"type": "flat", "background_color": [0.1, 0.1, 0.2, 0.9],
                     "corner_radius_top_left": 6, "border_width_bottom": 2})"));
     CHECK(*entity(files, level, "volume").find("Slider") ==
           parse(R"({"max_value": 10.0, "vertical": true})"));
@@ -1056,7 +1056,7 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
         "types": {
             "Button": {"colors": {"font_color": [1.0, 0.9, 0.5, 1.0]},
                        "constants": {"h_separation": 6},
-                       "styles": {"normal": {"type": "flat", "bg_color": [0.2, 0.3, 0.4, 1.0],
+                       "styles": {"normal": {"type": "flat", "background_color": [0.2, 0.3, 0.4, 1.0],
                                              "corner_radius_top_left": 4}}},
             "Title": {"base_type": "Label", "font_sizes": {"font_size": 24}}}})"));
     CHECK(unsupported(plan.report, "theme item styles").find("why")->as_string() ==

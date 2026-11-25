@@ -639,7 +639,7 @@ on its top.
 | `physics/jolt_physics_3d/motion_queries/recovery_iterations`, `recovery_amount`, `use_enhanced_internal_edge_removal` | `physics_3d.recovery_iterations`, `recovery_amount`, `motion_use_enhanced_internal_edge_removal` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |
 | `rendering/textures/canvas_textures/default_texture_filter` | `rendering.texture_filter` |
-| `rendering/renderer/rendering_method` | `rendering.renderer` `gl_compatibility` and `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es`; Forward+ and Mobile draw as `forward_plus` |
+| `rendering/renderer/rendering_method` | `rendering.renderer` `compatibility` and `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es`; Forward+ and Mobile draw as `forward_plus` |
 | `rendering/rendering_device/fallback_to_opengl3` | `rendering.fallback_to_opengl` |
 | `rendering/camera/depth_of_field/*` | `rendering.depth_of_field`: `bokeh_shape`, `bokeh_quality` and `jitter` |
 | `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.ssao` |

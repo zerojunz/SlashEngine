@@ -24,7 +24,7 @@ constexpr std::string_view kPanel = R"({
   "entities": {
     "panel": {"components": {
       "Widget": {"children": ["rows"], "offset_left": 8, "offset_top": 8,
-                  "theme_styles": {"panel": {"bg_color": [0.06, 0.07, 0.09, 0.85],
+                  "theme_styles": {"panel": {"background_color": [0.06, 0.07, 0.09, 0.85],
                                                       "content_margin": 8,
                                                       "corner_radius": 4}}},
       "PanelBox": {}}},

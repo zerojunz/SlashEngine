@@ -38,7 +38,7 @@ Status: current · Updated: 2026-11-22
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and on the web WebGPU where the browser has it, else WebGL 2. `vulkan`, `metal` or `d3d12` asks for one, and `webgpu` asks for the browser's WebGPU (web exports only). The OpenGL drivers are Godot's compatibility renderer: `opengl` is OpenGL 3.3 on Windows, macOS and Linux, and OpenGL ES 3.0 where that doesn't start; `opengl_es` is OpenGL ES 3.0, as Godot's `opengl3_es`, which is all the web (WebGL 2), Android and iOS have, so there both drivers are it. `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
 | `rendering.fallback_to_opengl` | No | `true` | Draw with `opengl` where the driver's GPU backend (`auto`'s, or the one `vulkan`, `metal` or `d3d12` names) doesn't work, as Godot's `rendering_device/fallback_to_opengl3`: an old GPU or driver, a virtual machine, a remote desktop. The game asks before it makes the window, logs a warning when it falls back, and reports `opengl` (or `opengl_es`) as its `renderer` |
-| `rendering.renderer` | No | `forward_plus` | How 3D meshes are lit and their colors finished, as Godot's `rendering/renderer/rendering_method`: see [Rendering methods](#rendering-methods) |
+| `rendering.renderer` | No | `clustered` | How 3D meshes are lit and their colors finished (`forward_plus` and `gl_compatibility`, the old names, still load): see [Rendering methods](#rendering-methods) |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
 | `rendering.shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters: see [Shadows](#shadows) |
@@ -165,14 +165,14 @@ draw at the window's own size on top, so the UI stays sharp while the world cost
 canvas layers below the world are scaled with it.
 
 ```json
-"rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "fsr_sharpness": 0.2}}
+"rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "sharpness": 0.2}}
 ```
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. `fsr2` is FSR 2.2: the camera moves by less than a pixel each frame and the 3D world is rebuilt at the window's size from its frames, its depth and its motion vectors, then sharpened by RCAS. `fsr3` is FSR 3.1's upscaler, which Godot doesn't have: it rebuilds the 3D world from the same inputs with AMD's later passes. `metalfx_spatial` and `metalfx_temporal` are Godot's: Apple's MetalFX spatial scaler over the world, and its temporal scaler rebuilding the 3D world from the same inputs as `fsr2`, on Metal with macOS 13 or iOS 16 and a GPU that has them. Elsewhere they fall back as Godot's do: `metalfx_spatial` to `fsr`, `metalfx_temporal` to `metalfx_spatial` where that runs, else to `fsr2`, and to `fsr2` at a `scale` outside what the GPU's temporal scaler takes. `frame.capture`'s `upscaler` says which ran |
 | `scale` | `1` | The world's size over the window's, 0.25 to 2, as Godot's `scaling_3d/scale`. At `1` with `bilinear` nothing is scaled. Above `1` the world draws larger and is averaged down, always with `bilinear`, as FSR only scales up |
-| `fsr_sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2, for `fsr`, `fsr2` and `fsr3`: `0` is the sharpest, `2` the softest |
+| `sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2, for `fsr`, `fsr2` and `fsr3`: `0` is the sharpest, `2` the softest |
 | `upscaler` | | An upscaler the game adds with `render::add_upscaler` (from its own C++ or an [SDK package's](sdk-format.md) glue code), used instead of `mode` on the GPUs it supports. Lowercase letters, digits and underscores. Where it isn't added or doesn't run, the game logs a warning once and uses `mode` |
 
 The world draws at the window's size in pixels times `scale`, rounded down: a 2560x1440 window at
@@ -237,11 +237,11 @@ their colors are [finished](scene-format.md#worldenvironment), as Godot's render
 
 | Method | Lights | How | Colors |
 | --- | --- | --- | --- |
-| `forward_plus` | 8 directional and 512 omni and spot | Godot's Forward+ clusters: each frame, the CPU sorts the omni and spot lights nearest first and marks the 32-pixel tiles of the screen, and the 32 slices of depth out to the camera's far plane, that each light's range reaches. A pixel adds the directional lights, then only the lights of its tile and slice, so a plaza of hundreds of lanterns costs each pixel the few near it | Linear, in a texture of 16-bit floats: brighter than white glows through up to seven levels, then a pass tonemaps the frame |
-| `gl_compatibility` | The first 64 of any kind, the directional ones first | Godot's Compatibility renderer: every pixel adds each light | Tonemapped as meshes draw, or through an 8-bit texture with glow or adjustments |
+| `clustered` | 8 directional and 512 omni and spot | Godot's Forward+ clusters: each frame, the CPU sorts the omni and spot lights nearest first and marks the 32-pixel tiles of the screen, and the 32 slices of depth out to the camera's far plane, that each light's range reaches. A pixel adds the directional lights, then only the lights of its tile and slice, so a plaza of hundreds of lanterns costs each pixel the few near it | Linear, in a texture of 16-bit floats: brighter than white glows through up to seven levels, then a pass tonemaps the frame |
+| `compatibility` | The first 64 of any kind, the directional ones first | Godot's Compatibility renderer: every pixel adds each light | Tonemapped as meshes draw, or through an 8-bit texture with glow or adjustments |
 
 The OpenGL drivers (`opengl`, `opengl_es`, and WebGL 2 on the web) always draw as
-`gl_compatibility`, as Godot's do. Every other device, and `frame.capture`, draws as the project
+`compatibility`, as Godot's do. Every other device, and `frame.capture`, draws as the project
 says; both methods light a pixel the same where a scene has 64 lights or fewer, and finish its
 color within a step or two of each other where nothing glows and nothing is transparent.
 
@@ -388,7 +388,7 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 
 ## Ray tracing
 
-`rendering.ray_tracing` turns on effects traced by rays in `forward_plus`. Godot 4.6 has none; its
+`rendering.ray_tracing` turns on effects traced by rays in `clustered`. Godot 4.6 has none; its
 master branch has a ray tracing API in its RenderingDevice that its renderer doesn't use yet, so
 these settings are SlashEngine's own. Devices that can't trace rays draw as if they were off.
 
@@ -439,7 +439,7 @@ six narrower ones, which show finer detail and cost more.
 ## Temporal antialiasing
 
 `rendering.anti_aliasing.taa` turns on temporal antialiasing for the 3D world in
-`forward_plus`, as Godot's `rendering/anti_aliasing/quality/use_taa`. Each frame moves the
+`clustered`, as Godot's `rendering/anti_aliasing/quality/use_taa`. Each frame moves the
 camera by less than a pixel, along the next of 16 points of a Halton sequence. Meshes write how
 far each pixel moved since the frame before, from their transforms, skins and the camera's. A
 pass then blends the frame with the frames before it, moved by those motion vectors, and clips
@@ -450,7 +450,7 @@ out over about 16 frames; details thinner than a pixel, which most frames miss, 
 "rendering": {"anti_aliasing": {"taa": true}}
 ```
 
-TAA is off by default, as in Godot. It leaves the 2D canvas, controls and `gl_compatibility`
+TAA is off by default, as in Godot. It leaves the 2D canvas, controls and `compatibility`
 alone (Godot's Compatibility renderer has no TAA), and reflection probes capture without it. A
 frame with no meshes starts the history again. `frame.capture` keeps the history between
 captures, and its `frames` draws several at once.
@@ -461,7 +461,7 @@ captures, and its `frames` draws several at once.
 frame generation does (Godot has none), so a game drawn at 40 frames a second shows 80. The
 world, with the canvas layers below it, draws into a target of its own; the frame halfway
 between it and the one before is made from the 3D world's motion vectors and depth (in
-`forward_plus`) and the optical flow of the two pictures (everywhere, 2D too); then the game's
+`clustered`) and the optical flow of the two pictures (everywhere, 2D too); then the game's
 window shows the made frame, then the drawn one, the world's controls, the layers above and the
 debug overlay drawn over both, so the UI never smears.
 

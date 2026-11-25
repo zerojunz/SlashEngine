@@ -168,7 +168,7 @@ int main() {
     call(session, "frame.capture", points);
 
     // FSR at its softest (sharpness 2 stops): RCAS sharpens less than the project's 0.2.
-    call(session, "display.set", R"({"scaling": {"mode": "fsr", "fsr_sharpness": 2.0}})");
+    call(session, "display.set", R"({"scaling": {"mode": "fsr", "sharpness": 2.0}})");
     call(session, "frame.capture", points);
 
     // The game's own upscaler at a quarter size: blocks of four pixels.

@@ -5,7 +5,7 @@ registers the commands `slash-cli run --serve` adds and calls them as an agent w
 
 - `display.list` lists the displays with their refresh rates, primary first, and the game's
   V-Sync mode and frame cap. Headless runs have no displays.
-- `display.set` changes `vsync_mode` (`disabled`, `enabled`, `adaptive` or `mailbox`) or
+- `display.set` changes `vsync` (`disabled`, `enabled`, `adaptive` or `mailbox`) or
   `max_fps` from the next frame and returns the settings in effect: a mode the GPU lacks falls
   back to `enabled`, and the reply says so. Out-of-range values are refused with their JSON
   Pointer, and nothing changes.

@@ -698,12 +698,13 @@ json::Value project_schema() {
     rendering["properties"]["driver"] = std::move(driver);
     rendering["properties"]["fallback_to_opengl"] = std::move(fallback);
     json::Value method;
-    method["enum"] = json::Array{"forward_plus", "gl_compatibility"};
-    method["default"] = "forward_plus";
+    method["enum"] = json::Array{"clustered", "compatibility"};
+    method["default"] = "clustered";
     method["description"] =
-        "How 3D meshes are lit, as Godot's rendering_method: forward_plus sorts up to 8 "
-        "directional and 512 omni and spot lights into clusters of the screen; gl_compatibility "
-        "shades every pixel with the first 64 lights, as the OpenGL drivers always do.";
+        "How 3D meshes are lit: clustered sorts up to 8 directional and 512 omni and spot lights "
+        "into clusters of the screen; compatibility shades every pixel with the first 64 lights, "
+        "as the OpenGL drivers always do. The old names forward_plus and gl_compatibility load "
+        "as these.";
     rendering["properties"]["renderer"] = std::move(method);
     json::Value texture_filter;
     texture_filter["enum"] = json::Array{"linear", "nearest"};
