@@ -3042,7 +3042,7 @@ textures and a material, [`paint.edit`](commands.md#paintedit) changes it by lay
 | `model` | string | The model it paints; its first mesh's texture coordinates place the texels |
 | `high` | string | A detailed model the mesh maps bake from, as `model.bake_maps`'s `high` |
 | `sprite` | string | An image it paints instead of a model, with `normal_map` (its normal map) and `edge_width` (default 4 pixels) |
-| `size` | integer or `[w, h]` | The textures' size (default 512, or the sprite's); mesh maps need a square |
+| `size` | integer or `[w, h]` | The textures' size (default 1024, or the sprite's); mesh maps need a square |
 | `maps` | object | `rays`, `distances` and `padding` for the mesh map bake |
 | `extends` | string | A stack this one changes, by project path, or a smart material the engine ships (`builtin:paint/worn_painted_metal`, `rusty_iron`, `mossy_stone`, `dusty_wood`, `scuffed_plastic`) |
 | `parameters` | object | Numbers, colors or `=` expressions, read by any setting as `"$name"` or `"=..."` |
