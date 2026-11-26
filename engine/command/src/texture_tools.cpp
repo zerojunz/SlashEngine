@@ -1,15 +1,18 @@
 // texture.inspect, texture.edit and texture.check: reading, changing and checking texture graphs
-// (.texture.json files of "type": "graph") as text, so an agent tunes one without looking at it.
+// (.texture.json files of "type": "graph") as text, so an agent tunes one without looking at it;
+// texture.from_blender: a Blender material's shader nodes as a graph.
 
 #include "procedural.hpp"
 
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/procedural/blender_nodes.hpp"
 #include "slash/procedural/paint.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/procedural/texture_graph.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/blend.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/ragdoll.hpp"
 
@@ -440,6 +443,124 @@ void check_expect(const std::string& file, const json::Value& expect,
     }
 }
 
+// A Blender material's shader nodes as a texture graph: read from the .blend file by running
+// Blender (with the build capability), or from a dump its script wrote, then written by
+// texture.edit, which checks and measures it.
+Reply texture_from_blender(Session& session, const json::Value& params) {
+    const std::string& out = params.find("out")->as_string();
+    if (!procedural::is_texture_path(out) || out.find("::") != std::string::npos) {
+        return param_error(code::kInvalidParams, "/out", "a graph is a .texture.json file");
+    }
+    const json::Value* blend = params.find("blend");
+    const json::Value* nodes = params.find("nodes");
+    if ((blend == nullptr) == (nodes == nullptr)) {
+        return param_error(code::kInvalidParams, blend != nullptr ? "/nodes" : "/blend",
+                           "give a .blend file or the nodes its script wrote, one of them");
+    }
+    std::string text;
+    if (blend != nullptr) {
+        const std::string& path = blend->as_string();
+        if (!path.ends_with(scene3d::kBlendSuffix)) {
+            return param_error(code::kInvalidParams, "/blend",
+                               quoted(path) + " isn't a .blend file");
+        }
+        if (std::ranges::find(session.options().capabilities, Capability::Build) ==
+            session.options().capabilities.end()) {
+            return param_error(code::kPermissionDenied, "/blend",
+                               "running Blender needs the build capability (--allow build)");
+        }
+        if (auto file = session.read_project_file(path); !file || !file.value().has_value()) {
+            return param_error(code::kNotFound, "/blend", "no file " + quoted(path));
+        }
+        scene3d::BlendOptions options;
+        options.project_root = session.options().project_root;
+        auto dumped = scene3d::read_blend_nodes(path, options);
+        if (!dumped) {
+            return param_error(code::kInvalidArgument, "/blend", dumped.error().message);
+        }
+        text = std::move(dumped).value();
+    } else {
+        const std::string& path = nodes->as_string();
+        auto file = session.read_project_file(path);
+        if (!file) {
+            return param_error(code::kInvalidArgument, "/nodes", file.error().message);
+        }
+        const std::optional<std::string>& got = file.value();
+        if (!got.has_value()) {
+            return param_error(code::kNotFound, "/nodes", "no file " + quoted(path));
+        }
+        text = *got;
+    }
+    auto dump = json::parse(text);
+    if (!dump) {
+        return param_error(code::kInvalidArgument, blend != nullptr ? "/blend" : "/nodes",
+                           "its nodes aren't JSON: " + dump.error().message);
+    }
+    const json::Value* material = params.find("material");
+    const json::Value* size = params.find("size");
+    auto converted = procedural::texture_graph_from_blender(
+        dump.value(), material != nullptr ? material->as_string() : std::string(),
+        size != nullptr ? static_cast<std::uint32_t>(size->as_int()) : 1024U);
+    if (!converted) {
+        std::string_view at = blend != nullptr ? "/blend" : "/nodes";
+        if (material != nullptr) {
+            at = "/material";
+        }
+        return param_error(converted.error().code == ErrorCode::NotFound ? code::kNotFound
+                                                                         : code::kInvalidArgument,
+                           at, converted.error().message);
+    }
+    // texture.edit writes it whole: what an older file had that the graph leaves out goes.
+    json::Value patch = converted.value().graph;
+    auto before = session.read_project_file(out);
+    const std::optional<std::string> had_text = before ? before.value() : std::nullopt;
+    if (had_text.has_value()) {
+        if (auto old = json::parse(*had_text); old && old.value().is_object()) {
+            for (const auto& [key, value] : old.value().as_object()) {
+                if (patch.find(key) == nullptr) {
+                    patch[key] = json::Value();
+                }
+            }
+            // Nodes it had are replaced, not merged.
+            if (const json::Value* had = old.value().find("nodes"); had != nullptr) {
+                for (const auto& [key, value] : had->as_object()) {
+                    if (patch.find("nodes")->find(key) == nullptr) {
+                        patch["nodes"][key] = json::Value();
+                    }
+                }
+            }
+        }
+    }
+    json::Value edit;
+    edit["path"] = out;
+    edit["patch"] = std::move(patch);
+    if (const json::Value* measure = params.find("measure"); measure != nullptr) {
+        edit["measure"] = *measure;
+    }
+    Reply reply = session.call("texture.edit", edit);
+    if (!reply.ok) {
+        return reply;
+    }
+    reply.value["material"] = converted.value().material;
+    reply.value["materials"] = json::Array{};
+    for (const std::string& name : procedural::blender_materials(dump.value())) {
+        reply.value["materials"].push_back(name);
+    }
+    json::Array nodes_made;
+    for (const auto& [key, value] : converted.value().graph.find("nodes")->as_object()) {
+        nodes_made.emplace_back(key);
+    }
+    reply.value["nodes"] = std::move(nodes_made);
+    if (!converted.value().warnings.empty()) {
+        json::Array warnings;
+        for (const std::string& warning : converted.value().warnings) {
+            warnings.emplace_back(warning);
+        }
+        reply.value["warnings"] = std::move(warnings);
+    }
+    return reply;
+}
+
 Reply texture_check(Session& session, const json::Value& params) {
     std::vector<std::string> files;
     if (const json::Value* paths = params.find("paths"); paths != nullptr) {
@@ -602,6 +723,35 @@ void register_texture_tools(Registry& registry) {
             },
             json::Array{"path", "patch"}),
         .handler = texture_edit,
+    });
+
+    json::Value size =
+        property("integer", "The graph's width and height in pixels (default 1024).");
+    size["minimum"] = 1;
+    size["maximum"] = 4096;
+    registry.add({
+        .name = "texture.from_blender",
+        .description =
+            "Turns a Blender material's shader nodes into a texture graph (.texture.json) whose "
+            "outputs (albedo, roughness, metallic, normal, emission) fill a material or a layer "
+            "stack's layer. Blender itself reads the .blend file (with the build capability), "
+            "or give the JSON its node script wrote. Nodes with no graph op come back as "
+            "warnings. Written and measured as texture.edit does.",
+        .capabilities = {Edit, Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema(
+            {
+                {"out", property("string", "The .texture.json file to write.")},
+                {"blend", property("string", "A .blend file in the project; runs Blender.")},
+                {"nodes", property("string", "Instead of blend: a JSON file of node trees, as "
+                                             "Blender's node script writes it.")},
+                {"material", property("string", "The material, by name (default the only one).")},
+                {"size", std::move(size)},
+                {"measure",
+                 property("boolean", "Bake and measure the outputs after (default true).")},
+            },
+            json::Array{"out"}),
+        .handler = texture_from_blender,
     });
 
     json::Value paths =

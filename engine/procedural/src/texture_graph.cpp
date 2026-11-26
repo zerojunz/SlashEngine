@@ -274,9 +274,9 @@ json::Value op_schema(const OpSpec& spec) {
         p["phase"] = number_field(0.0F, "Shift in turns of a band.");
         break;
     case GraphOp::Image:
-        p["path"] =
-            node_field("The image file (PNG, JPEG, KTX2 or another texture graph's output).");
-        schema["required"].as_array().emplace_back("path");
+        p["path"] = node_field("The image file (PNG, JPEG, KTX2 or another texture graph's "
+                               "output); or give text.");
+        p["text"] = text_stamp_schema();
         break;
     case GraphOp::Levels:
         p["in"] = pair_field(0.0F, 1.0F, "Input low and high.");
@@ -1143,6 +1143,33 @@ render::GraphImage graph_image_of(const render::Image& image) {
 
 } // namespace
 
+json::Value text_stamp_schema() {
+    const auto text = [](std::string_view description) {
+        return json::Value(
+            json::Object{{"type", "string"}, {"description", std::string(description)}});
+    };
+    const auto numbers = [](int low, int high, std::string_view description) {
+        return json::Value(json::Object{{"type", "array"},
+                                        {"items", json::Object{{"type", "number"}}},
+                                        {"minItems", low},
+                                        {"maxItems", high},
+                                        {"description", std::string(description)}});
+    };
+    json::Value schema;
+    schema["type"] = "object";
+    schema["additionalProperties"] = false;
+    schema["required"] = json::Array{"text"};
+    schema["description"] = "Text drawn with the project's fonts (HarfBuzz shapes any script).";
+    json::Value& p = schema["properties"];
+    p["text"] = text("What it says; a line break starts a line.");
+    p["font"] = text("A font file, project path. Default the engine's.");
+    p["size"] = integer_field(48, "The font's size in pixels.", 4, 512);
+    p["color"] = numbers(3, 4, "Its color, RGB or RGBA, 0 to 1. Default white.");
+    p["at"] = numbers(2, 2, "Image node: its center, 0 to 1 across and down. Default the middle.");
+    p["language"] = text("Its language (BCP 47), which picks fonts and glyphs for it.");
+    return schema;
+}
+
 bool is_texture_graph(const json::Value& doc) {
     const json::Value* type = doc.is_object() ? doc.find("type") : nullptr;
     return type != nullptr && type->is_string() && type->as_string() == kGraphType;
@@ -1257,7 +1284,15 @@ Result<CompiledGraph> compile_texture_graph(const json::Value& doc, const GraphR
             }
         }
         if (spec.op == GraphOp::Image) {
-            const std::string& path = node.find("path")->as_string();
+            const json::Value* text = node.find("text");
+            if ((node.find("path") == nullptr) == (text == nullptr)) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "/nodes/" + json::pointer_escape(name) +
+                                      ": give an image node a path or text, one of them");
+            }
+            const std::string path = text != nullptr
+                                         ? "text:" + json::write(*text, json::Style::Compact)
+                                         : node.find("path")->as_string();
             auto found = image_of.find(path);
             if (found == image_of.end()) {
                 if (program.images.size() >= render::kMaxGraphImages) {
@@ -1267,7 +1302,20 @@ Result<CompiledGraph> compile_texture_graph(const json::Value& doc, const GraphR
                                           std::to_string(render::kMaxGraphImages) + " images");
                 }
                 std::optional<render::GraphImage> made;
-                if (reader.graph_image) {
+                if (text != nullptr) {
+                    if (!reader.text_image) {
+                        return make_error(ErrorCode::InvalidArgument,
+                                          "/nodes/" + json::pointer_escape(name) +
+                                              "/text: nothing draws text here");
+                    }
+                    auto drawn = reader.text_image(*text, program.width, program.height);
+                    if (!drawn) {
+                        return make_error(drawn.error().code,
+                                          "/nodes/" + json::pointer_escape(name) +
+                                              "/text: " + drawn.error().message);
+                    }
+                    made = graph_image_of(drawn.value());
+                } else if (reader.graph_image) {
                     made = reader.graph_image(path);
                 }
                 if (!made) {
@@ -1287,7 +1335,9 @@ Result<CompiledGraph> compile_texture_graph(const json::Value& doc, const GraphR
                 found =
                     image_of.emplace(path, static_cast<std::uint32_t>(program.images.size())).first;
                 program.images.push_back(std::move(*made));
-                out.files.push_back(path);
+                if (text == nullptr) {
+                    out.files.push_back(path);
+                }
             }
             pass.params[0] = static_cast<float>(found->second);
         }

@@ -29,10 +29,11 @@ slash_engine_target(slash_ai)
 
 # The engine's commands as tools for a model, the ai.* commands, storyboard.review and
 # l10n.translate.
-add_library(slash_ai_commands src/commands.cpp src/npc_draft.cpp src/review.cpp src/translate.cpp)
+add_library(slash_ai_commands src/commands.cpp src/npc_draft.cpp src/paint_draft.cpp src/review.cpp
+    src/translate.cpp)
 add_library(slash::ai_commands ALIAS slash_ai_commands)
 
 target_link_libraries(slash_ai_commands
     PUBLIC slash::ai slash::command
-    PRIVATE slash::l10n slash::npc slash::platform slash::storyboard)
+    PRIVATE slash::l10n slash::npc slash::platform slash::procedural slash::storyboard)
 slash_engine_target(slash_ai_commands)

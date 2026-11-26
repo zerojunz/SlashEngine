@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "type": "paint",
+  "sprite": "sprites/shield.png",
+  "edge_width": 3,
+  "seed": 2,
+  "layers": [
+    {"name": "rim", "fill": {"albedo": [0.72, 0.72, 0.75], "metallic": 1, "roughness": 0.3},
+     "mask": {"map": "curvature", "above": 0.8, "softness": 0.05}},
+    {"name": "crest", "fill": {"roughness": 0.5},
+     "decals": [{"text": {"text": "R", "size": 28, "color": [0.9, 0.75, 0.2]},
+                 "at": [32, 30], "size": 24}]},
+    {"name": "rain", "weather": {"age": 0.5, "rain": 1, "dust": 0, "rust": 0.6}}
+  ],
+  "expect": {"mask.rain.rain": [0.2, 0.9], "mask.crest": [0.02, 0.2]}
+}

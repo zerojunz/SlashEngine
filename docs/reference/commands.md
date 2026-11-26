@@ -62,7 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
-| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck), [`paint.edit`](#paintedit), [`paint.bake`](#paintbake), [`paint.preview`](#paintpreview) |
+| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck), [`texture.from_blender`](#texturefrom_blender), [`paint.edit`](#paintedit), [`paint.bake`](#paintbake), [`paint.preview`](#paintpreview), [`paint.draft`](#paintdraft) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
 | Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest), [`foliage.sway`](#foliagesway) |
@@ -747,10 +747,20 @@ or `<stack>.standard_material.json`). The mesh maps its masks read bake first, a
 `texel_density` (texels per unit of the model). When nothing would change it writes nothing and
 returns `"unchanged": true`.
 
+With a [`damage`](scene-format.md#layer-stacks) block, it also bakes the stack once per damage
+state, with the state's value of the parameter, as `<stack>_d<n>_<output>.png` (and a material for
+a model), and writes them into the profile's `states` (`material` on a model, `mesh` on a sprite),
+keeping what else each state holds; `damage` in the reply lists each look and its measures.
+
+With `variant`, it bakes the stack's [`variants`](scene-format.md#layer-stacks) instead: one by
+number, or `"all"`, each as `<stack>_v<n>_<output>.png` with its own material, and returns them in
+`variants`, each with the `parameters` it drew.
+
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `path` | string | | A `.paint.json` file that paints a model or sprite |
 | `parameters` | object | | Values for the stack's parameters, for this bake |
+| `variant` | integer or `"all"` | | A variant to bake, from 1, or all of them |
 
 Needs: `edit` and `filesystem`. From [examples/layer-stacks](../../examples/layer-stacks/):
 
@@ -760,6 +770,81 @@ Needs: `edit` and `filesystem`. From [examples/layer-stacks](../../examples/laye
 
 ```json
 {"masks":{"dirt":0.039,"dust":0.167,"grain":0.356,"iron":0.364,"worn":0.194},"material":"props/crate.standard_material.json","outputs":{"albedo":{"a":1,"b":0.294,"contrast":0.147,"g":0.356,"high":0.621,"low":0.166,"r":0.436,"value":0.368},...},"path":"props/crate.paint.json","size":[256,256],"texel_density":136.533,"textures":{"albedo":"props/crate_albedo.png","normal":"props/crate_normal.png","orm":"props/crate_orm.png"}}
+```
+
+### texture.from_blender
+
+Turns a Blender material's shader nodes into a [texture graph](scene-format.md#texture-graphs):
+the nodes its Principled BSDF (or Diffuse BSDF) reads are followed back and written as the graph's
+ops, Blender's scene-linear colors as sRGB, and the graph's outputs are `albedo`, `roughness`,
+`metallic`, `normal` (where the BSDF's normal is linked) and `emission` (where it glows), so it
+fills a material or a [layer stack](scene-format.md#layer-stacks)'s `graph` layer. The engine
+never reads a `.blend` file: with `blend` it runs the artist's own Blender in the background
+(found as [Blender models](scene-format.md#blender-models) find it), whose script writes every
+material's node tree as JSON; `nodes` reads such a file instead, so it runs without Blender. The
+graph is written by [`texture.edit`](#textureedit), which checks and measures it, as one undo step.
+
+| Blender node | Graph op |
+| --- | --- |
+| Noise Texture, Voronoi Texture | `noise` (Perlin fBm with Detail as octaves; cellular) over `Scale` |
+| Wave, Checker, Brick, Gradient, Image Texture | `waves`, `checker`, `bricks`, `gradient`, `image` |
+| Color Ramp | `gradient_map` |
+| Mix, Mix Color | `blend`, by its blend type |
+| Math | `math` (add, subtract, multiply, divide, minimum, maximum, power, absolute, fraction) |
+| Invert, Hue/Saturation/Value, RGB to BW, Gamma, Clamp, Map Range | `invert`, `hsv`, `grayscale`, `levels`, `clamp`, `remap` |
+| Separate Color, Combine Color | `swizzle`, `merge` |
+| Bump, Normal Map | `normal_from_height`, the map itself |
+| RGB, Value, unlinked inputs | `constant` |
+
+Texture coordinates and mappings are left out (each texture spans the graph once), and a node
+with no graph op reads gray; each is named in `warnings`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `out` | string | | The `.texture.json` file to write |
+| `blend` | string | | A `.blend` file in the project; runs Blender (needs `build`) |
+| `nodes` | string | | Instead of `blend`: the JSON Blender's node script writes |
+| `material` | string | the only one | The material, by name |
+| `size` | integer | `1024` | The graph's width and height |
+| `measure` | boolean | `true` | Bake and measure the outputs, as `texture.edit` does |
+
+Needs: `edit` and `filesystem`, and `build` for `blend`. Returns what `texture.edit` returns, the
+`material`, the `materials` the file holds, the graph's `nodes` and any `warnings`. From
+[examples/blender-shader-nodes](../../examples/blender-shader-nodes/):
+
+```json
+{"nodes": "materials/barrel.nodes.json", "material": "Rusty", "out": "textures/rusty.texture.json", "size": 128}
+```
+
+### paint.draft
+
+Has a model from `providers.json` write a [layer stack](scene-format.md#layer-stacks) from a
+`brief`, or revise the stack at `path` when it exists. The model is told the brief, what the stack
+paints (a model's part and material names and bounds, as [`model.inspect`](#modelinspect) gives
+them, or that it paints a sprite), the smart materials it may `extends`, the storyboard entries in
+`story` whole, the stack it revises and the stack's schema. Each draft is checked as
+[`paint.edit`](#paintedit) checks a stack, against the schema and then compiled against what it
+paints (part names, named points, the maps it reads); the problems go back to the model, which
+tries again, up to `attempts` drafts. Only a draft with no problems is written, by `paint.edit`, as
+one undo step, and the reply is `paint.edit`'s (its layers and measures) with the `attempts`, the
+`model` and its `usage`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.paint.json` file to write; one that exists is revised |
+| `brief` | string | | The look: what it is, its materials, its age and wear |
+| `model` | string | the stack's | The model it paints |
+| `sprite` | string | the stack's | The sprite it paints instead |
+| `story` | array | `[]` | Storyboard entry IDs about it (at most 16), sent whole |
+| `attempts` | integer | `2` | Drafts the model may make (1 to 4) |
+| `role` | string | the `default` role, or the only provider | A role or provider from `providers.json` |
+| `max_tokens` | integer | | The most tokens the model may reply with |
+
+Needs: `read`, `edit`, `filesystem` and `network` (a session without `network` answers only from
+a replay file).
+
+```json
+{"path": "props/stall.paint.json", "brief": "A fish stall's counter, sea-blue paint flaking off weathered pine, salt stains low down.", "model": "props/stall.obj", "story": ["place/harbor"]}
 ```
 
 ### paint.preview

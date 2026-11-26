@@ -7,6 +7,8 @@
 #include "slash/procedural/texture.hpp"
 #include "slash/procedural/texture_graph.hpp"
 #include "slash/render/image.hpp"
+#include "slash/text/text.hpp"
+#include "slash/ui/ui.hpp"
 
 #include <algorithm>
 #include <array>
@@ -321,6 +323,139 @@ json::Value wrap_differences(const render::Image& image) {
     return out;
 }
 
+// Text drawn with the project's fonts, as a graph's image node or a stack's decal asks: white
+// glyph coverage under its color, centered on "at" in a width x height image, or on an image just
+// its size (with a two-pixel margin) when they are 0. Fonts installed on the machine are left
+// out, so it draws the same everywhere.
+Result<render::Image> draw_text_stamp(Session& session, const json::Value& settings,
+                                      std::uint32_t width, std::uint32_t height) {
+    text::Fonts* shared = ui::fonts(session.world());
+    if (shared == nullptr) {
+        return make_error(ErrorCode::InvalidArgument, "nothing draws text here");
+    }
+    text::Fonts fonts(shared->assets());
+    fonts.set_system_fallback(false);
+    text::LayoutOptions options;
+    if (const json::Value* font = settings.find("font"); font != nullptr) {
+        options.font = font->as_string();
+    }
+    if (const json::Value* size = settings.find("size"); size != nullptr) {
+        options.font_size = static_cast<int>(size->as_int());
+    } else {
+        options.font_size = 48;
+    }
+    if (const json::Value* language = settings.find("language"); language != nullptr) {
+        options.language = language->as_string();
+    }
+    auto laid = fonts.layout(settings.find("text")->as_string(), options);
+    if (!laid) {
+        return laid.error();
+    }
+    const text::TextLayout& layout = laid.value();
+    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F};
+    if (const json::Value* given = settings.find("color"); given != nullptr) {
+        for (std::size_t k = 0; k < given->as_array().size() && k < 4; ++k) {
+            color.at(k) = static_cast<float>(given->as_array()[k].as_double());
+        }
+    }
+    const float line_height = layout.metrics.height();
+    const float box_width = layout.width;
+    const float box_height = line_height * static_cast<float>(layout.lines.size());
+    constexpr float kMargin = 2.0F;
+    render::Image out;
+    float left = kMargin;
+    float top = kMargin;
+    if (width == 0 || height == 0) {
+        out.width = std::max(1U, static_cast<std::uint32_t>(std::ceil(box_width + (2 * kMargin))));
+        out.height =
+            std::max(1U, static_cast<std::uint32_t>(std::ceil(box_height + (2 * kMargin))));
+    } else {
+        out.width = width;
+        out.height = height;
+        float u = 0.5F;
+        float v = 0.5F;
+        if (const json::Value* at = settings.find("at"); at != nullptr) {
+            u = static_cast<float>(at->as_array()[0].as_double());
+            v = static_cast<float>(at->as_array()[1].as_double());
+        }
+        left = (u * static_cast<float>(width)) - (box_width * 0.5F);
+        top = (v * static_cast<float>(height)) - (box_height * 0.5F);
+    }
+    out.pixels.resize(std::size_t{out.width} * out.height * 4);
+    std::vector<float> coverage(std::size_t{out.width} * out.height, 0.0F);
+    for (std::size_t l = 0; l < layout.lines.size(); ++l) {
+        const text::Line& line = layout.lines[l];
+        const float pen_x = left + ((box_width - line.width) * 0.5F);
+        const float pen_y = top + (line_height * static_cast<float>(l)) + layout.metrics.ascent;
+        for (std::uint32_t g = 0; g < line.count; ++g) {
+            const text::Glyph& glyph = layout.glyphs[line.first + g];
+            if (glyph.space) {
+                continue;
+            }
+            const auto image = fonts.glyph(glyph.face, glyph.index, layout.font_size);
+            if (!image) {
+                continue;
+            }
+            const auto& placed = *image;
+            const text::FaceInfo info = fonts.face_info(glyph.face);
+            const text::AtlasPage& page = fonts.pages()[placed.page];
+            const float x0 = pen_x + glyph.x + (placed.left * placed.scale);
+            const float y0 = pen_y + glyph.y + (placed.top * placed.scale);
+            const float w = static_cast<float>(placed.width) * placed.scale;
+            const float h = static_cast<float>(placed.height) * placed.scale;
+            const int from_x = std::max(0, static_cast<int>(std::floor(x0)));
+            const int from_y = std::max(0, static_cast<int>(std::floor(y0)));
+            const int to_x =
+                std::min(static_cast<int>(out.width), static_cast<int>(std::ceil(x0 + w)));
+            const int to_y =
+                std::min(static_cast<int>(out.height), static_cast<int>(std::ceil(y0 + h)));
+            for (int y = from_y; y < to_y; ++y) {
+                for (int x = from_x; x < to_x; ++x) {
+                    // The glyph texel under this pixel's center.
+                    const auto tx = static_cast<int>(
+                        std::floor(((static_cast<float>(x) + 0.5F) - x0) / placed.scale));
+                    const auto ty = static_cast<int>(
+                        std::floor(((static_cast<float>(y) + 0.5F) - y0) / placed.scale));
+                    if (tx < 0 || ty < 0 || tx >= static_cast<int>(placed.width) ||
+                        ty >= static_cast<int>(placed.height)) {
+                        continue;
+                    }
+                    const std::size_t texel =
+                        ((std::size_t{placed.y} + static_cast<std::size_t>(ty)) * page.width) +
+                        placed.x + static_cast<std::size_t>(tx);
+                    float cover = 0.0F;
+                    if (info.msdf) {
+                        const std::uint8_t* c = &page.rgba[texel * 4];
+                        const float median =
+                            static_cast<float>(std::max(std::min(c[0], c[1]),
+                                                        std::min(std::max(c[0], c[1]), c[2]))) /
+                            255.0F;
+                        cover =
+                            std::clamp(((median - 0.5F) *
+                                        static_cast<float>(info.msdf_pixel_range) * placed.scale) +
+                                           0.5F,
+                                       0.0F, 1.0F);
+                    } else {
+                        cover = static_cast<float>(page.rgba[(texel * 4) + 3]) / 255.0F;
+                    }
+                    float& into = coverage[(static_cast<std::size_t>(y) * out.width) +
+                                           static_cast<std::size_t>(x)];
+                    into = std::max(into, cover);
+                }
+            }
+        }
+    }
+    for (std::size_t i = 0; i < coverage.size(); ++i) {
+        for (std::size_t k = 0; k < 3; ++k) {
+            out.pixels[(i * 4) + k] = static_cast<std::uint8_t>(
+                std::lround(std::clamp(color.at(k), 0.0F, 1.0F) * 255.0F));
+        }
+        out.pixels[(i * 4) + 3] = static_cast<std::uint8_t>(
+            std::lround(std::clamp(coverage[i] * color[3], 0.0F, 1.0F) * 255.0F));
+    }
+    return out;
+}
+
 // Reads what a graph names from the project: text files, and images decoded as texture paths
 // are (a graph's images may be other graphs' outputs).
 procedural::GraphReader graph_reader(Session& session) {
@@ -339,6 +474,10 @@ procedural::GraphReader graph_reader(Session& session) {
             return bytes.error();
         }
         return procedural::decode_texture(file, bytes.value(), read, procedural::graph_device());
+    };
+    reader.text_image = [&session](const json::Value& settings, std::uint32_t width,
+                                   std::uint32_t height) {
+        return draw_text_stamp(session, settings, width, height);
     };
     return reader;
 }
