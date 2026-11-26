@@ -216,6 +216,7 @@ add_executable(slash_tests
     test_soundtrack_render.cpp
     test_sdk.cpp
     test_server.cpp
+    test_steamworks.cpp
     test_work.cpp
     test_services.cpp
     test_shader.cpp
@@ -311,6 +312,16 @@ add_executable(fake-butler fake_butler.cpp)
 slash_target_warnings(fake-butler)
 add_dependencies(slash_tests fake-butler)
 target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_BUTLER="$<TARGET_FILE:fake-butler>")
+
+# The steamworks package's glue code, compiled against a stand-in for Valve's SDK.
+target_sources(slash_tests PRIVATE ${PROJECT_SOURCE_DIR}/export/sdks/steamworks/src/steamworks.cpp)
+target_include_directories(slash_tests PRIVATE fake_steamworks/public)
+
+# A stand-in for Valve's steamcmd, so the Steam publish tests upload nowhere.
+add_executable(fake-steamcmd fake_steamcmd.cpp)
+slash_target_warnings(fake-steamcmd)
+add_dependencies(slash_tests fake-steamcmd)
+target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_STEAMCMD="$<TARGET_FILE:fake-steamcmd>")
 
 # A stand-in for Blender, so the .blend tests and the blend-models example run without it.
 add_executable(fake-blender fake_blender.cpp)

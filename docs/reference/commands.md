@@ -7378,19 +7378,20 @@ path.
 ### publish.run
 
 Plans or uploads a game's exports to a store, as [`slash-cli publish`](cli.md#publish) does, and
-returns the same result. Only itch.io so far, through butler. Registered next to `export.run`.
+returns the same result: itch.io through butler, Steam through steamcmd. Registered next to
+`export.run`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `store` | string | required | `itch` |
-| `presets` | array of strings | `stores.itch.channels`, else every preset but iOS ones | Presets, or platforms for their defaults, to publish |
+| `store` | string | required | `itch` or `steam` |
+| `presets` | array of strings | `stores.itch.channels`, else every preset but iOS ones; `stores.steam.depots` | Presets, or platforms for their defaults, to publish |
 | `upload` | boolean | `false` | Export and upload the builds. Players can see an upload, so ask the user first. `false` returns the plan |
 | `build` | boolean | `true` | Export each preset before uploading it; `false` uploads what an earlier export left |
 | `version` | string | `project.json`'s | The version the store shows |
 
 Needs: `read`, `filesystem`; an upload also needs `build` and `network`. It changes no scene, so
-there is nothing to undo. Credentials come from the environment (`BUTLER_API_KEY`), never from
-params or files.
+there is nothing to undo. Credentials come from the environment (`BUTLER_API_KEY`,
+`STEAM_USERNAME`), never from params or files.
 
 ```json
 {"store": "itch", "presets": ["windows"]}
@@ -7400,9 +7401,21 @@ params or files.
 {"build":true,"builds":[{"channel":"windows","command":["butler","push","build/export/windows","player/star-courier:windows","--userversion","1.4.0","--if-changed"],"output":"build/export/windows","platform":"windows","preset":"windows","target":"player/star-courier:windows"}],"needs":["butler on PATH or in SLASH_BUTLER_PATH","BUTLER_API_KEY"],"project":"player/star-courier","store":"itch","upload":false,"version":"1.4.0"}
 ```
 
-A request or presets it can't publish, or a machine with no butler or key, fail with `-32002`;
-a failed export or push fails with `-32004`. `data` carries the failed `step`, the `preset`, the
-export's error or butler's `exit_code` and `tail`, and `pushed`: the targets uploaded before it.
+For Steam, the plan is one app build for every depot: each build's `depot`, the `script` an upload
+writes (`path` and `text`) and the steamcmd `command` that runs it.
+
+```json
+{"store": "steam", "presets": ["windows"], "version": "1.4.1-beta"}
+```
+
+```json
+{"app":"1234560","branch":"beta","build":true,"builds":[{"depot":"1234562","output":"build/export/windows","platform":"windows","preset":"windows"}],"command":["steamcmd","+login","$STEAM_USERNAME","+run_app_build",".slash/publish/steam/app_build_1234560.vdf","+quit"],"needs":["steamcmd on PATH or in SLASH_STEAMCMD_PATH","STEAM_USERNAME"],"script":{"path":".slash/publish/steam/app_build_1234560.vdf","text":"\"AppBuild\"\n{\n\t\"AppID\" \"1234560\"\n\t\"Desc\" \"1.4.1-beta\"\n\t\"ContentRoot\" \"../../../\"\n\t\"BuildOutput\" \"output/\"\n\t\"SetLive\" \"beta\"\n\t\"Depots\"\n\t{\n\t\t\"1234562\"\n\t\t{\n\t\t\t\"FileMapping\"\n\t\t\t{\n\t\t\t\t\"LocalPath\" \"build/export/windows/*\"\n\t\t\t\t\"DepotPath\" \".\"\n\t\t\t\t\"recursive\" \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n"},"store":"steam","upload":false,"version":"1.4.1-beta"}
+```
+
+A request or presets it can't publish, or a machine without the store's tool or credentials,
+fail with `-32002`; a failed export or upload fails with `-32004`. `data` carries the failed
+`step`, the `preset`, the export's error or the tool's `exit_code` and `tail`, and, for itch.io,
+`pushed`: the targets uploaded before it.
 
 ```json
 {"code":-32002,"data":{"step":"options"},"message":"\"phone\" builds for ios, which itch.io doesn't take"}
@@ -7474,12 +7487,12 @@ of files the lock pins. A package with Maven dependencies and no up-to-date lock
 
 Adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`. A folder in the project
 is listed where it is; one of the engine's [store packages](services.md#stores) (`storekit`,
-`play-billing`), a git repository or an `https://` `.zip` or `.tar` archive is copied into
+`play-billing`, `steamworks`), a git repository or an `https://` `.zip` or `.tar` archive is copied into
 `sdks/<name>`. Listing a package twice does nothing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | A package folder in the project, `storekit` or `play-billing`, a git repository URL, or an archive's `https://` URL |
+| `source` | string | required | A package folder in the project, `storekit`, `play-billing` or `steamworks`, a git repository URL, or an archive's `https://` URL |
 | `name` | string | the package's name | Folder under `sdks/` for a copied package |
 | `ref` | string | the default branch | Git branch or tag to clone |
 | `sha256` | string | not checked | The archive's SHA-256; a mismatch adds nothing |
