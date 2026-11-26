@@ -110,7 +110,7 @@ int run_app_build(const std::string& user, const std::filesystem::path& script) 
         return 6;
     }
     if (const std::string log = environment("FAKE_STEAMCMD_LOG"); !log.empty()) {
-        std::ofstream out(log, std::ios::app);
+        std::ofstream out(log, std::ios::app | std::ios::binary);
         out << line << '\n';
     }
     std::printf("Successfully finished AppID %s build (BuildID 7654321).\n", app.c_str());

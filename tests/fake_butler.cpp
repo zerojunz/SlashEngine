@@ -60,7 +60,7 @@ int push(const std::vector<std::string>& args) {
         }
     }
     if (const std::string log = environment("FAKE_BUTLER_LOG"); !log.empty()) {
-        std::ofstream out(log, std::ios::app);
+        std::ofstream out(log, std::ios::app | std::ios::binary);
         for (std::size_t i = 1; i < args.size(); ++i) {
             out << args[i] << ' ';
         }
