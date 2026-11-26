@@ -120,8 +120,8 @@ json::Value term_schema() {
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["description"] =
-        "One term of a mask: a map, part, material or graph, then range, breakup, above, "
-        "below and invert in that order.";
+        "One term of a mask: a map, part, material, point, graph or group, then range, "
+        "breakup, above, below and invert in that order.";
     json::Value& p = schema["properties"];
     p["map"] = names_field(kPaintMaps, "A map the model's shape gives each texel.");
     p["axis"] = names_field(kAxes, "world_normal and position: the axis read. Default y.");
@@ -161,6 +161,29 @@ json::Value term_schema() {
     p["invert"] = boolean_field(false, "1 minus the term.");
     p["op"] =
         names_field(kCombine, "How the term joins the terms before it. Default multiply (both).");
+    p["direction"] = point_field(
+        "facing: the way a face turns to read 1, 0 turned away (default up, [0, 1, 0]); streaks: "
+        "the way they run (default down, [0, -1, 0]). On a sprite, y is up the screen.");
+    p["length"] = number_field(8.0F, "streaks: how many times longer than wide.", 1.0, 1000.0);
+    json::Value point;
+    point["type"] = json::Array{"string", "array"};
+    point["items"]["type"] = "number";
+    point["minItems"] = 2;
+    point["maxItems"] = 3;
+    point["description"] = "1 at a point, falling to 0 at radius: a node of the model by name, "
+                           "or a place ([x, y, z] on a model, a sprite's [x, y] pixel).";
+    p["point"] = std::move(point);
+    p["radius"] = number_field(
+        0.0F,
+        "point: how far it reaches, in the model's units or pixels. Default a tenth of "
+        "the size.",
+        0.0, 1e9);
+    json::Value group;
+    group["type"] = "array";
+    group["minItems"] = 1;
+    group["items"]["$ref"] = "#/$defs/term";
+    group["description"] = "Terms joined as a mask of their own, read as one term.";
+    p["group"] = std::move(group);
     return schema;
 }
 
@@ -201,8 +224,9 @@ json::Value layer_schema() {
     json::Value& decal = decals["items"];
     decal["type"] = "object";
     decal["additionalProperties"] = false;
-    decal["required"] = json::Array{"image", "at"};
-    decal["properties"]["image"] = text_field("The image, project path.");
+    decal["required"] = json::Array{"at"};
+    decal["properties"]["image"] = text_field("The image, project path; or give text.");
+    decal["properties"]["text"] = text_stamp_schema();
     decal["properties"]["at"] =
         point_field("Its center: a point on the model, or a sprite's pixel.");
     json::Value direction = point_field("Model: the way it projects. Default [0, 0, -1].");
@@ -262,6 +286,25 @@ json::Value layer_schema() {
     channels["uniqueItems"] = true;
     channels["description"] = "Only these channels; default every one the layer gives.";
     p["channels"] = std::move(channels);
+    json::Value& weather = p["weather"];
+    weather["type"] = "object";
+    weather["additionalProperties"] = false;
+    weather["description"] =
+        "Weathering in one layer: rain streaks down the gravity, rust from edges and crevices, "
+        "dust and moss settling on what faces up and into the wind, each grown by age. Each "
+        "becomes a layer of its own, <name>.rain and so on, under the layer's mask.";
+    weather["properties"]["age"] = setting_field("0 new to 1 old. Default 0.5.");
+    weather["properties"]["rain"] = setting_field("How much rain streaks. Default 1.");
+    weather["properties"]["rust"] = setting_field("How much rust. Default 0.");
+    weather["properties"]["dust"] = setting_field("How much dust settles. Default 1.");
+    weather["properties"]["moss"] = setting_field("How much moss grows. Default 0.");
+    json::Value gravity = point_field("The way down, in the model's space. Default [0, -1, 0].");
+    gravity["minItems"] = 3;
+    weather["properties"]["gravity"] = std::move(gravity);
+    json::Value wind = point_field("The way the wind blows; dust and moss settle on the faces "
+                                   "it blows onto. Default none.");
+    wind["minItems"] = 3;
+    weather["properties"]["wind"] = std::move(wind);
     return schema;
 }
 
@@ -476,6 +519,99 @@ void check_base(const json::Value& doc, std::vector<json::ValidationError>& erro
     }
 }
 
+// Decals of an image or text, weather layers that paint only weather, and variants' ranges
+// over parameters there are.
+void check_flavours(const json::Value& doc, std::vector<json::ValidationError>& errors) {
+    if (const json::Value* layers = doc.find("layers"); layers != nullptr) {
+        for (std::size_t i = 0; i < layers->as_array().size(); ++i) {
+            const json::Value& layer = layers->as_array()[i];
+            const std::string at = "/layers/" + std::to_string(i);
+            if (const json::Value* decals = layer.find("decals"); decals != nullptr) {
+                for (std::size_t d = 0; d < decals->as_array().size(); ++d) {
+                    const json::Value& decal = decals->as_array()[d];
+                    if ((decal.find("image") != nullptr) == (decal.find("text") != nullptr)) {
+                        errors.push_back({at + "/decals/" + std::to_string(d),
+                                          "give a decal an image or text, one of them"});
+                    }
+                }
+            }
+            if (layer.find("weather") != nullptr) {
+                for (const std::string_view key : {"fill", "graph", "decals", "strokes"}) {
+                    if (layer.find(key) != nullptr) {
+                        errors.push_back({at + "/" + std::string(key),
+                                          "a weather layer paints its own; give this its own "
+                                          "layer"});
+                    }
+                }
+            }
+        }
+    }
+    if (const json::Value* damage = doc.find("damage"); damage != nullptr) {
+        if (const json::Value* states = damage->find("states"); states != nullptr) {
+            double last = 1.0;
+            for (std::size_t i = 0; i < states->as_array().size(); ++i) {
+                const double below = states->as_array()[i].find("below")->as_double();
+                if (below <= 0.0 || below >= last) {
+                    std::string at = "/damage/states/";
+                    at += std::to_string(i);
+                    at += "/below";
+                    errors.push_back({std::move(at), "must be above 0 and lower than the state "
+                                                     "before's (and 1)"});
+                }
+                last = below;
+            }
+        }
+        if (const json::Value* profile = damage->find("profile");
+            !profile->as_string().ends_with(".damage.json")) {
+            errors.push_back({"/damage/profile", "a profile is a .damage.json file"});
+        }
+    }
+    if (doc.find("extends") != nullptr) {
+        return; // what it extends may hold the parameters
+    }
+    const json::Value* parameters = doc.find("parameters");
+    std::vector<std::string> names;
+    if (parameters != nullptr) {
+        for (const auto& [name, value] : parameters->as_object()) {
+            names.push_back(name);
+        }
+    }
+    if (const json::Value* damage = doc.find("damage"); damage != nullptr) {
+        const json::Value* given = damage->find("parameter");
+        const std::string name = given != nullptr ? given->as_string() : "wear";
+        if (std::ranges::find(names, name) == names.end()) {
+            std::string message = quoted(name) + " isn't a parameter of the stack";
+            if (const std::string_view near = closest_match(name, names); !near.empty()) {
+                message += " (did you mean " + quoted(near) + "?)";
+            }
+            errors.push_back({given != nullptr ? "/damage/parameter" : "/damage", message});
+        }
+    }
+    const json::Value* variants = doc.find("variants");
+    const json::Value* ranges = variants != nullptr ? variants->find("ranges") : nullptr;
+    if (ranges == nullptr) {
+        return;
+    }
+    for (const auto& [name, range] : ranges->as_object()) {
+        const std::string at = "/variants/ranges/" + json::pointer_escape(name);
+        if (std::ranges::find(names, name) == names.end()) {
+            std::string message = quoted(name) + " isn't a parameter of the stack";
+            if (const std::string_view near = closest_match(name, names); !near.empty()) {
+                message += " (did you mean " + quoted(near) + "?)";
+            }
+            errors.push_back({at, std::move(message)});
+            continue;
+        }
+        const json::Array& ends = range.as_array();
+        const bool numbers = ends[0].is_number() && ends[1].is_number();
+        const bool colors = ends[0].is_array() && ends[1].is_array() &&
+                            ends[0].as_array().size() == ends[1].as_array().size();
+        if (!numbers && !colors) {
+            errors.push_back({at, "give [low, high]: two numbers, or two colors"});
+        }
+    }
+}
+
 // ---- Resolving ----
 
 Result<std::string> read_text(const GraphReader& reader, std::string_view path) {
@@ -612,6 +748,160 @@ std::array<float, 2> repeat_of(const json::Value* value) {
 // What a layer's graph made, at the stack's size: each output's RGBA floats.
 using Baked = std::vector<std::pair<std::string, std::vector<float>>>;
 
+// A setting as text inside an expression: a number, a parameter's name, or an expression in
+// brackets.
+std::string expression_of(const json::Value& value) {
+    if (value.is_number()) {
+        return std::to_string(value.as_double());
+    }
+    const std::string& text = value.as_string();
+    if (text.starts_with('$')) {
+        return text.substr(1);
+    }
+    if (text.starts_with('=')) {
+        return "(" + text.substr(1) + ")";
+    }
+    return text;
+}
+
+json::Array vector_of(const Vec& v) {
+    return json::Array{v.x, v.y, v.z};
+}
+
+// A weather layer as the layers it stands for, bottom to top: rain streaks, rust, dust and
+// moss, each a fill under a mask grown by its amount times the age, inside the layer's own mask.
+// At age 0 none of them shows.
+std::vector<json::Value> weather_layers(const json::Value& layer) {
+    const json::Value& weather = *layer.find("weather");
+    const std::string& name = layer.find("name")->as_string();
+    const auto setting = [&](std::string_view key, double fallback) {
+        const json::Value* given = weather.find(key);
+        return given != nullptr ? *given : json::Value(fallback);
+    };
+    const std::string age = expression_of(setting("age", 0.5));
+    Vec down{0.0F, -1.0F, 0.0F};
+    if (const json::Value* given = weather.find("gravity"); given != nullptr) {
+        down = normalized(point_of(*given));
+    }
+    const Vec up = down * -1.0F;
+    std::optional<Vec> into_wind;
+    if (const json::Value* given = weather.find("wind"); given != nullptr) {
+        into_wind = normalized(point_of(*given)) * -1.0F;
+    }
+    const json::Value* mask = layer.find("mask");
+    const json::Value* opacity = layer.find("opacity");
+
+    std::vector<json::Value> out;
+    // amount * age as an expression, or nothing when the amount is 0.
+    const auto grown = [&](std::string_view key, double fallback) -> std::optional<std::string> {
+        const json::Value amount = setting(key, fallback);
+        if (amount.is_number() && amount.as_double() <= 0.0) {
+            return std::nullopt;
+        }
+        return "(" + expression_of(amount) + " * " + age + ")";
+    };
+    const auto add = [&](std::string_view kind, json::Object fill, json::Array terms,
+                         const std::string& strength, bool windward) {
+        if (windward && into_wind) {
+            terms.emplace_back(json::Object{{"map", "facing"},
+                                            {"direction", vector_of(*into_wind)},
+                                            {"above", 0.45},
+                                            {"softness", 0.15}});
+        }
+        json::Value part;
+        part["name"] = name + "." + std::string(kind);
+        part["fill"] = std::move(fill);
+        if (mask != nullptr) {
+            part["mask"] =
+                json::Array{json::Object{{"group", std::move(terms)}},
+                            json::Object{{"group", mask->is_array() ? *mask : json::Array{*mask}},
+                                         {"op", "multiply"}}};
+        } else {
+            part["mask"] = std::move(terms);
+        }
+        std::string level = strength;
+        if (opacity != nullptr) {
+            level = "(" + expression_of(*opacity) + ") * " + level;
+        }
+        part["opacity"] = "=clamp(" + level + ", 0, 1)";
+        out.push_back(std::move(part));
+    };
+    if (const auto a = grown("rain", 1.0)) {
+        add("rain", json::Object{{"albedo", json::Array{0.2, 0.19, 0.18}}, {"roughness", 0.3}},
+            json::Array{json::Object{{"map", "streaks"},
+                                     {"direction", vector_of(down)},
+                                     {"scale", 30},
+                                     {"length", 10},
+                                     {"above", "=0.62 - " + *a + " * 0.3"},
+                                     {"softness", 0.08}},
+                        json::Object{{"map", "sky"}, {"above", 0.2}, {"softness", 0.2}}},
+            *a + " * 0.8", false);
+    }
+    if (const auto a = grown("rust", 0.0)) {
+        add("rust",
+            json::Object{{"albedo", json::Array{0.42, 0.2, 0.09}},
+                         {"roughness", 0.9},
+                         {"metallic", 0},
+                         {"height", 0.53}},
+            json::Array{
+                json::Object{{"map", "curvature"},
+                             {"above", "=0.88 - " + *a + " * 0.35"},
+                             {"softness", 0.04},
+                             {"breakup",
+                              json::Object{{"amount", "=0.05 + " + *a + " * 0.1"}, {"scale", 20}}}},
+                json::Object{{"map", "ao"},
+                             {"below", "=0.25 + " + *a + " * 0.4"},
+                             {"softness", 0.15},
+                             {"op", "max"}},
+                json::Object{{"map", "streaks"},
+                             {"direction", vector_of(down)},
+                             {"scale", 40},
+                             {"length", 6},
+                             {"seed", 7},
+                             {"above", "=0.8 - " + *a + " * 0.3"},
+                             {"softness", 0.05},
+                             {"op", "max"}},
+                json::Object{{"map", "noise"},
+                             {"scale", 10},
+                             {"seed", 13},
+                             {"above", "=0.62 - " + *a + " * 0.45"},
+                             {"softness", 0.1}}},
+            "clamp(" + *a + " * 4, 0, 1)", false);
+    }
+    if (const auto a = grown("dust", 1.0)) {
+        add("dust", json::Object{{"albedo", json::Array{0.62, 0.58, 0.52}}, {"roughness", 1}},
+            json::Array{json::Object{{"map", "facing"},
+                                     {"direction", vector_of(up)},
+                                     {"above", "=0.92 - " + *a + " * 0.25"},
+                                     {"softness", 0.06},
+                                     {"breakup", json::Object{{"amount", 0.06}, {"scale", 16}}}},
+                        json::Object{{"map", "sky"}, {"above", 0.35}, {"softness", 0.2}}},
+            "clamp(" + *a + " * 4, 0, 1) * (0.3 + " + *a + " * 0.7)", true);
+    }
+    if (const auto a = grown("moss", 0.0)) {
+        add("moss",
+            json::Object{
+                {"albedo", json::Array{0.25, 0.34, 0.12}}, {"roughness", 0.95}, {"height", 0.56}},
+            json::Array{
+                json::Object{
+                    {"group", json::Array{json::Object{{"map", "ao"},
+                                                       {"below", "=0.4 + " + *a + " * 0.4"},
+                                                       {"softness", 0.2}},
+                                          json::Object{{"map", "facing"},
+                                                       {"direction", vector_of(up)},
+                                                       {"above", "=0.95 - " + *a + " * 0.3"},
+                                                       {"softness", 0.1},
+                                                       {"op", "max"}}}}},
+                json::Object{{"map", "noise"},
+                             {"scale", 9},
+                             {"seed", 29},
+                             {"above", "=0.7 - " + *a + " * 0.4"},
+                             {"softness", 0.12}}},
+            "clamp(" + *a + " * 4, 0, 1)", true);
+    }
+    return out;
+}
+
 // Parameters that are colors of three numbers gain an alpha of 1, since the graph's color
 // settings take four.
 json::Object with_alpha(json::Object parameters) {
@@ -635,6 +925,7 @@ public:
             parameters != nullptr && parameters->is_object()) {
             parameters_ = with_alpha(parameters->as_object());
         }
+        detail::read(stack, "seed", seed_);
         const float dx = surface.max[0] - surface.min[0];
         const float dy = surface.max[1] - surface.min[1];
         const float dz = surface.max[2] - surface.min[2];
@@ -652,7 +943,16 @@ public:
                     enabled != nullptr && !enabled->as_bool()) {
                     continue;
                 }
-                if (auto done = add_layer(layer, "/layers/" + std::to_string(i), touched); !done) {
+                const std::string at = "/layers/" + std::to_string(i);
+                if (layer.find("weather") != nullptr) {
+                    for (const json::Value& part : weather_layers(layer)) {
+                        if (auto done = add_layer(part, at + "/weather", touched); !done) {
+                            return done.error();
+                        }
+                    }
+                    continue;
+                }
+                if (auto done = add_layer(layer, at, touched); !done) {
                     return done.error();
                 }
             }
@@ -847,7 +1147,7 @@ private:
 
     [[nodiscard]] std::vector<float> noise(float scale, int seed, int octaves) const {
         NoiseSettings settings;
-        settings.seed = seed;
+        settings.seed = seed + seed_;
         settings.frequency = 1.0F;
         settings.fractal_octaves = octaves;
         const Noise noise(settings);
@@ -982,9 +1282,176 @@ private:
 
     // ---- Masks ----
 
+    // A term, or terms joined in order and clamped: the node holding the mask.
+    Result<std::string> mask_of(const json::Value& given, const std::string& at) {
+        const bool many = given.is_array();
+        const std::size_t count = many ? given.as_array().size() : 1;
+        std::string mask;
+        for (std::size_t k = 0; k < count; ++k) {
+            const json::Value& t = many ? given.as_array()[k] : given;
+            std::string where = at;
+            if (many) {
+                where += "/";
+                where += std::to_string(k);
+            }
+            auto value = term(t, where);
+            if (!value) {
+                return value.error();
+            }
+            if (k == 0) {
+                mask = std::move(value).value();
+                continue;
+            }
+            const json::Value* op = t.find("op");
+            const std::string operation = op != nullptr ? op->as_string() : "multiply";
+            std::string at_op = where;
+            at_op += "/op";
+            mask = math(mask, operation, value.value(), json::Value(), at_op);
+        }
+        if (count > 1) {
+            json::Value node;
+            node["op"] = "clamp";
+            node["input"] = mask;
+            mask = add(std::move(node), at);
+        }
+        return mask;
+    }
+
+    // A direction a term gives, unit length, in the surface's space: on a sprite, whose rows
+    // run down, y up the screen.
+    [[nodiscard]] Vec direction_of(const json::Value& t, Vec fallback) const {
+        Vec d = fallback;
+        if (const json::Value* given = t.find("direction"); given != nullptr) {
+            d = point_of(*given);
+        }
+        if (surface_.sprite) {
+            d.y = -d.y;
+        }
+        const float n = length(d);
+        return n > 0.0F ? d * (1.0F / n) : Vec{0.0F, surface_.sprite ? 1.0F : -1.0F, 0.0F};
+    }
+
+    // How much each texel faces a way: 1 toward it, 0.5 side on, 0 away.
+    [[nodiscard]] std::vector<float> facing(Vec d) const {
+        std::vector<float> out(texels_, 0.0F);
+        for (std::size_t i = 0; i < texels_; ++i) {
+            if (painted(i)) {
+                out[i] = clamp01((dot(normal(i), d) * 0.5F) + 0.5F);
+            }
+        }
+        return out;
+    }
+
+    // Streaks running along d: noise stretched length times along it, strongest on faces side
+    // on to it (walls under rain), none on faces along it.
+    [[nodiscard]] std::vector<float> streaks(Vec d, float scale, float stretch, int seed,
+                                             int octaves) const {
+        NoiseSettings settings;
+        settings.seed = seed + seed_;
+        settings.frequency = 1.0F;
+        settings.fractal_octaves = octaves;
+        const Noise noise(settings);
+        std::vector<float> out(texels_, 0.0F);
+        const float size = surface_.sprite
+                               ? static_cast<float>(std::max(surface_.width, surface_.height))
+                               : diagonal_;
+        const float k = scale / size;
+        const auto rows = static_cast<std::size_t>(surface_.height);
+        const auto run = [&](std::size_t row) {
+            for (std::size_t at = row * surface_.width; at < (row + 1) * surface_.width; ++at) {
+                if (!painted(at)) {
+                    continue;
+                }
+                const Vec p = position(at);
+                const float along = dot(p, d);
+                const Vec across = p - (d * along);
+                const Vec q = (across * k) + (d * (along * k / stretch));
+                const float value = clamp01((noise.get_noise_3d(q.x, q.y, q.z) * 0.5F) + 0.5F);
+                const float side = surface_.sprite ? 1.0F : 1.0F - std::abs(dot(normal(at), d));
+                out[at] = value * side;
+            }
+        };
+        if (pool_ != nullptr) {
+            pool_->parallel_for(rows, run);
+        } else {
+            for (std::size_t row = 0; row < rows; ++row) {
+                run(row);
+            }
+        }
+        return out;
+    }
+
+    // 1 at a point, falling smoothly to 0 at radius.
+    Result<std::string> point_term(const json::Value& t, const std::string& at) {
+        const json::Value& given = *t.find("point");
+        Vec center;
+        if (given.is_string()) {
+            const auto found = surface_.points.find(given.as_string());
+            if (found == surface_.points.end()) {
+                std::vector<std::string> names;
+                names.reserve(surface_.points.size());
+                for (const auto& [name, place] : surface_.points) {
+                    names.push_back(name);
+                }
+                std::string message = quoted(given.as_string()) + " isn't a point of the " +
+                                      (surface_.sprite ? "sprite" : "model");
+                if (const std::string_view near = closest_match(given.as_string(), names);
+                    !near.empty()) {
+                    message += " (did you mean " + quoted(near) + "?)";
+                }
+                return make_error(ErrorCode::InvalidArgument, at + "/point: " + message);
+            }
+            center = {found->second[0], found->second[1], found->second[2]};
+        } else {
+            if (given.as_array().size() != (surface_.sprite ? 2U : 3U)) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  at + "/point: " +
+                                      (surface_.sprite ? "a sprite's pixel is [x, y]"
+                                                       : "a point on the model is [x, y, z]"));
+            }
+            center = point_of(given);
+        }
+        float radius = 0.0F;
+        detail::read(t, "radius", radius);
+        if (radius <= 0.0F) {
+            radius =
+                (surface_.sprite ? static_cast<float>(std::max(surface_.width, surface_.height))
+                                 : diagonal_) *
+                0.1F;
+        }
+        const std::string key = "point:" + std::to_string(center.x) + "," +
+                                std::to_string(center.y) + "," + std::to_string(center.z) + ":" +
+                                std::to_string(radius);
+        return source(
+            key,
+            [&] {
+                std::vector<float> out(texels_, 0.0F);
+                for (std::size_t i = 0; i < texels_; ++i) {
+                    if (painted(i)) {
+                        out[i] =
+                            1.0F - smoothstep(0.0F, 1.0F, length(position(i) - center) / radius);
+                    }
+                }
+                return out;
+            },
+            at);
+    }
+
     Result<std::string> term(const json::Value& t, const std::string& at) {
         std::string value;
-        if (const json::Value* map = t.find("map"); map != nullptr) {
+        if (const json::Value* group = t.find("group"); group != nullptr) {
+            auto made = mask_of(*group, at + "/group");
+            if (!made) {
+                return made.error();
+            }
+            value = std::move(made).value();
+        } else if (t.find("point") != nullptr) {
+            auto made = point_term(t, at);
+            if (!made) {
+                return made.error();
+            }
+            value = std::move(made).value();
+        } else if (const json::Value* map = t.find("map"); map != nullptr) {
             const std::string& name = map->as_string();
             const json::Value* axis_value = t.find("axis");
             const std::string axis_name = axis_value != nullptr ? axis_value->as_string() : "y";
@@ -1040,6 +1507,28 @@ private:
                         return out;
                     },
                     at);
+            } else if (name == "facing") {
+                const Vec d = direction_of(t, {0.0F, 1.0F, 0.0F});
+                value = source(
+                    "facing:" + std::to_string(d.x) + "," + std::to_string(d.y) + "," +
+                        std::to_string(d.z),
+                    [&] { return facing(d); }, at);
+            } else if (name == "streaks") {
+                const Vec d = direction_of(t, {0.0F, -1.0F, 0.0F});
+                float scale = 24.0F;
+                float stretch = 8.0F;
+                int seed = 0;
+                int octaves = 3;
+                detail::read(t, "scale", scale);
+                detail::read(t, "length", stretch);
+                detail::read(t, "seed", seed);
+                detail::read(t, "octaves", octaves);
+                value = source(
+                    "streaks:" + std::to_string(d.x) + "," + std::to_string(d.y) + "," +
+                        std::to_string(d.z) + ":" + std::to_string(scale) + ":" +
+                        std::to_string(stretch) + ":" + std::to_string(seed) + ":" +
+                        std::to_string(octaves),
+                    [&] { return streaks(d, scale, stretch, seed, octaves); }, at);
             } else { // noise
                 float scale = 8.0F;
                 int seed = 0;
@@ -1148,7 +1637,7 @@ private:
                 at);
         } else {
             return make_error(ErrorCode::InvalidArgument,
-                              at + ": give a term a map, part, material or graph");
+                              at + ": give a term a map, part, material, point, graph or group");
         }
 
         if (const json::Value* range = t.find("range"); range != nullptr) {
@@ -1272,17 +1761,30 @@ private:
         for (std::size_t d = 0; d < list.as_array().size(); ++d) {
             const json::Value& decal = list.as_array()[d];
             const std::string where = at + "/" + std::to_string(d);
-            const std::string& path = decal.find("image")->as_string();
-            if (!reader_.image) {
-                return make_error(ErrorCode::InvalidArgument,
-                                  where + "/image: nothing reads images here");
+            Result<render::Image> image = make_error(ErrorCode::InvalidArgument, "");
+            if (const json::Value* text = decal.find("text"); text != nullptr) {
+                if (!reader_.text_image) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      where + "/text: nothing draws text here");
+                }
+                image = reader_.text_image(*text, 0, 0);
+                if (!image) {
+                    return make_error(image.error().code,
+                                      where + "/text: " + image.error().message);
+                }
+            } else {
+                const std::string& path = decal.find("image")->as_string();
+                if (!reader_.image) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      where + "/image: nothing reads images here");
+                }
+                image = reader_.image(path);
+                if (!image) {
+                    return make_error(image.error().code, where + "/image: " + quoted(path) + ": " +
+                                                              image.error().message);
+                }
+                files_.push_back(path);
             }
-            auto image = reader_.image(path);
-            if (!image) {
-                return make_error(image.error().code,
-                                  where + "/image: " + quoted(path) + ": " + image.error().message);
-            }
-            files_.push_back(path);
             const render::Image& picture = image.value();
             const float aspect = picture.width > 0 ? static_cast<float>(picture.height) /
                                                          static_cast<float>(picture.width)
@@ -1542,29 +2044,11 @@ private:
         // The mask: its terms, the decals' alpha, then strokes.
         std::optional<std::string> mask;
         if (const json::Value* given = layer.find("mask"); given != nullptr) {
-            const bool many = given->is_array();
-            const std::size_t count = many ? given->as_array().size() : 1;
-            for (std::size_t k = 0; k < count; ++k) {
-                const json::Value& t = many ? given->as_array()[k] : *given;
-                const std::string where = at + "/mask" + (many ? "/" + std::to_string(k) : "");
-                auto value = term(t, where);
-                if (!value) {
-                    return value.error();
-                }
-                if (!mask) {
-                    mask = value.value();
-                    continue;
-                }
-                const json::Value* op = t.find("op");
-                const std::string operation = op != nullptr ? op->as_string() : "multiply";
-                mask = math(*mask, operation, value.value(), json::Value(), where + "/op");
+            auto made = mask_of(*given, at + "/mask");
+            if (!made) {
+                return made.error();
             }
-            if (count > 1) {
-                json::Value node;
-                node["op"] = "clamp";
-                node["input"] = *mask;
-                mask = add(std::move(node), at + "/mask");
-            }
+            mask = std::move(made).value();
         }
         if (decal_alpha && mask) {
             mask = math(*mask, "multiply", decal_alpha, json::Value(), at + "/decals");
@@ -1740,6 +2224,7 @@ private:
     jobs::Pool* pool_;
     std::size_t texels_;
     float diagonal_ = 1.0F;
+    int seed_ = 0;
     json::Object parameters_;
     json::Value nodes_ = json::Object{};  // NOLINT(readability-redundant-member-init)
     json::Value outputs_ = json::Array{}; // NOLINT(readability-redundant-member-init)
@@ -1844,6 +2329,49 @@ json::Value paint_schema() {
                                       0.0, 64.0);
     p["material"] = text_field("Model: the .standard_material.json paint.bake points at the "
                                "textures. Default beside the stack, named after it.");
+    p["seed"] = integer_field(0, "Added to every noise's seed, so the same stack wears anew.");
+    json::Value& variants = p["variants"];
+    variants["type"] = "object";
+    variants["additionalProperties"] = false;
+    variants["required"] = json::Array{"count"};
+    variants["description"] = "Variants paint.bake makes from the stack: each draws the "
+                              "parameters in ranges by its seed and number, and seeds its noise "
+                              "anew; the same on every machine.";
+    variants["properties"]["count"] = integer_field(4, "How many.", 1, 256);
+    variants["properties"]["seed"] = integer_field(0, "Picks which draws they get.");
+    variants["properties"]["ranges"]["type"] = "object";
+    variants["properties"]["ranges"]["description"] =
+        "Parameters by name, each [low, high]: numbers, or two colors.";
+    variants["properties"]["ranges"]["additionalProperties"]["type"] = "array";
+    variants["properties"]["ranges"]["additionalProperties"]["minItems"] = 2;
+    variants["properties"]["ranges"]["additionalProperties"]["maxItems"] = 2;
+    json::Value& damage = p["damage"];
+    damage["type"] = "object";
+    damage["additionalProperties"] = false;
+    damage["required"] = json::Array{"profile"};
+    damage["description"] =
+        "Wear from damage: paint.bake also bakes the stack at each damage state's value of "
+        "parameter and writes the looks into the profile's states, so a Destructible3D or "
+        "Destructible2D wears as gameplay damages it.";
+    damage["properties"]["profile"] =
+        text_field("The .damage.json profile whose states draw the worn looks; made when missing.");
+    damage["properties"]["parameter"] =
+        text_field("The stack's parameter damage moves. Default \"wear\".");
+    json::Value& states = damage["properties"]["states"];
+    states["type"] = "array";
+    states["minItems"] = 1;
+    states["maxItems"] = 8;
+    states["description"] = "Highest below first. Default [{below 0.66, value 0.5}, {below 0.33, "
+                            "value 1}].";
+    states["items"]["type"] = "object";
+    states["items"]["additionalProperties"] = false;
+    states["items"]["required"] = json::Array{"below", "value"};
+    states["items"]["properties"]["below"] = number_field(
+        0.5F, "The share of its health below which it looks so, between 0 and 1.", 0.0, 1.0);
+    states["items"]["properties"]["value"]["type"] = json::Array{"number", "array"};
+    states["items"]["properties"]["value"]["items"]["type"] = "number";
+    states["items"]["properties"]["value"]["description"] =
+        "The parameter's value in that state: a number or a color.";
     json::Value& expect = p["expect"];
     expect["type"] = "object";
     expect["description"] =
@@ -1867,6 +2395,7 @@ std::vector<json::ValidationError> validate_paint(const json::Value& doc) {
     check_names(doc, errors);
     check_kind(doc, errors);
     check_base(doc, errors);
+    check_flavours(doc, errors);
     return errors;
 }
 
@@ -1992,10 +2521,13 @@ std::vector<std::string> paint_needs(const json::Value& resolved) {
     if (layers == nullptr) {
         return needs;
     }
-    const auto term = [&](const json::Value& t) {
+    std::function<void(const json::Value&)> term = [&](const json::Value& t) {
         if (const json::Value* map = t.find("map");
             map != nullptr && map->is_string() && contains(kGrayMaps, map->as_string())) {
             add_need(needs, map->as_string());
+        }
+        if (const json::Value* group = t.find("group"); group != nullptr && group->is_array()) {
+            std::ranges::for_each(group->as_array(), term);
         }
     };
     for (const json::Value& layer : layers->as_array()) {
@@ -2017,8 +2549,72 @@ std::vector<std::string> paint_needs(const json::Value& resolved) {
                 term(*mask);
             }
         }
+        if (layer.find("weather") != nullptr) {
+            for (const json::Value& part : weather_layers(layer)) {
+                std::ranges::for_each(part.find("mask")->as_array(), term);
+            }
+        }
     }
     return needs;
+}
+
+int paint_variant_count(const json::Value& resolved) {
+    const json::Value* variants = resolved.find("variants");
+    return variants != nullptr ? static_cast<int>(variants->find("count")->as_int()) : 0;
+}
+
+json::Value paint_variant(const json::Value& resolved, int n) {
+    json::Value out = resolved;
+    const json::Value* variants = resolved.find("variants");
+    int seed = 0;
+    int noise_seed = 0;
+    if (variants != nullptr) {
+        detail::read(*variants, "seed", seed);
+    }
+    detail::read(resolved, "seed", noise_seed);
+    // A draw from 0 to 1 for a parameter: splitmix64 over the seed, n and the name's FNV-1a.
+    const auto draw = [&](std::string_view name) {
+        constexpr std::uint64_t kGolden = 0x9E3779B97F4A7C15U;
+        constexpr std::uint64_t kMixA = 0xBF58476D1CE4E5B9U;
+        constexpr std::uint64_t kMixB = 0x94D049BB133111EBU;
+        constexpr std::uint64_t kFnvBasis = 1469598103934665603U;
+        constexpr std::uint64_t kFnvPrime = 1099511628211U;
+        std::uint64_t h = kFnvBasis;
+        for (const char c : name) {
+            h = (h ^ std::uint64_t{static_cast<unsigned char>(c)}) * kFnvPrime;
+        }
+        std::uint64_t x = h ^ (static_cast<std::uint64_t>(seed) * kGolden) ^
+                          (static_cast<std::uint64_t>(n) * kMixA);
+        x += kGolden;
+        x = (x ^ (x >> 30U)) * kMixA;
+        x = (x ^ (x >> 27U)) * kMixB;
+        x ^= x >> 31U;
+        return static_cast<double>(x >> 11U) * 0x1.0p-53;
+    };
+    const auto rounded = [](double v) { return std::round(v * 10000.0) / 10000.0; };
+    const json::Value* ranges = variants != nullptr ? variants->find("ranges") : nullptr;
+    if (ranges != nullptr) {
+        for (const auto& [name, range] : ranges->as_object()) {
+            const double t = draw(name);
+            const json::Value& low = range.as_array()[0];
+            const json::Value& high = range.as_array()[1];
+            if (low.is_number()) {
+                out["parameters"][name] =
+                    rounded(low.as_double() + ((high.as_double() - low.as_double()) * t));
+                continue;
+            }
+            json::Array color;
+            for (std::size_t k = 0; k < low.as_array().size(); ++k) {
+                const double a = low.as_array()[k].as_double();
+                const double b = high.as_array()[k].as_double();
+                color.emplace_back(rounded(a + ((b - a) * t)));
+            }
+            out["parameters"][name] = std::move(color);
+        }
+    }
+    out["seed"] = noise_seed + (n * 7919);
+    out.as_object().erase(std::string("variants"));
+    return out;
 }
 
 Result<PaintSurface> paint_sprite_surface(const render::Image& sprite,

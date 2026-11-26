@@ -14,7 +14,9 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/mesh_maps.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/storyboard/storyboard.hpp"
+#include "slash/world/damage.hpp"
 #include "slash/world/ragdoll.hpp"
 
 #include <algorithm>
@@ -23,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -235,6 +238,40 @@ Result<Prepared> prepare(Session& session, const json::Value& doc, bool write) {
     p.part_names = low.part_names;
     p.material_names = low.material_names;
     out.texel_density = s.texel_density;
+    // Points masks reach by name: each part's middle, then each node's origin.
+    std::vector<std::array<float, 6>> boxes(
+        low.part_names.size(),
+        {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+         std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest(),
+         std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()});
+    for (std::size_t t = 0; t < low.parts.size(); ++t) {
+        std::array<float, 6>& box = boxes.at(low.parts[t]);
+        for (std::size_t k = 0; k < 3; ++k) {
+            const render::Vertex3D& v = low.vertices.at(low.indices.at((t * 3) + k));
+            for (std::size_t c = 0; c < 3; ++c) {
+                box.at(c) = std::min(box.at(c), v.position.at(c));
+                box.at(c + 3) = std::max(box.at(c + 3), v.position.at(c));
+            }
+        }
+    }
+    for (std::size_t part = 0; part < boxes.size(); ++part) {
+        const std::array<float, 6>& box = boxes[part];
+        if (box[0] <= box[3]) {
+            p.points[low.part_names[part]] = {(box[0] + box[3]) * 0.5F, (box[1] + box[4]) * 0.5F,
+                                              (box[2] + box[5]) * 0.5F};
+        }
+    }
+    const scene3d::Model& shape = *loaded.value();
+    if (!shape.nodes.empty()) {
+        const std::vector<world::Affine3D> globals =
+            scene3d::node_globals(shape, scene3d::rest_pose(shape));
+        for (std::size_t n = 0; n < shape.nodes.size() && n < globals.size(); ++n) {
+            const Vec3 origin = globals[n].apply(Vec3{0.0F, 0.0F, 0.0F});
+            p.points[shape.nodes[n].name] = {static_cast<float>(origin.x),
+                                             static_cast<float>(origin.y),
+                                             static_cast<float>(origin.z)};
+        }
+    }
 
     // The mesh maps its masks read, baked as model.bake_maps bakes every map, so a bake of the
     // model at this size serves both.
@@ -368,46 +405,24 @@ Result<void> stage(Session& session, const std::string& file, std::string bytes,
     return {};
 }
 
-Reply paint_bake(Session& session, const json::Value& params) {
-    const std::string& path = params.find("path")->as_string();
-    StackFile read;
-    if (auto failed = read_stack(session, path, "/path", false, read)) {
-        return *failed;
-    }
-    if (const auto errors = procedural::validate_paint(read.doc); !errors.empty()) {
-        return param_error(code::kInvalidArgument, "/path",
-                           quoted(path) + " at " +
-                               (errors.front().path.empty() ? "its top" : errors.front().path) +
-                               ": " + errors.front().message);
-    }
-    auto prepared = prepare(session, read.doc, true);
-    if (!prepared) {
-        return stack_error(path, "/path", prepared.error());
-    }
-    const json::Object overrides = overrides_of(params);
-    auto baked = bake(session, prepared.value(), overrides);
-    if (!baked) {
-        return stack_error(path, overrides.empty() ? "/path" : "/parameters", baked.error());
-    }
-    const Prepared& p = prepared.value();
-    const std::string stem = stem_of(path);
-    json::Value result;
-    result["path"] = path;
-    result["size"] = json::Array{p.surface.width, p.surface.height};
+// Writes a bake's textures beside the stack (stem_<output>.png) and, for a model, points its
+// material at them; adds what it wrote to result.
+Result<void> write_bake(Session& session, const Prepared& p, const Baked& baked,
+                        const std::string& stem, const std::string& suffix, json::Value& result,
+                        bool& changed) {
     json::Value textures = json::Object{};
-    bool changed = false;
-    for (std::size_t i = 0; i < baked.value().compiled.outputs.size(); ++i) {
-        const std::string& name = baked.value().compiled.outputs[i];
-        auto png = render::encode_png(baked.value().images[i]);
+    for (std::size_t i = 0; i < baked.compiled.outputs.size(); ++i) {
+        const std::string& name = baked.compiled.outputs[i];
+        auto png = render::encode_png(baked.images[i]);
         if (!png) {
-            return Reply::failure(png.error());
+            return png.error();
         }
         std::string file = stem;
         file += "_";
         file += name;
         file += ".png";
         if (auto staged = stage(session, file, std::move(png).value(), changed); !staged) {
-            return Reply::failure(staged.error());
+            return staged.error();
         }
         textures[name] = file;
     }
@@ -418,11 +433,15 @@ Reply paint_bake(Session& session, const json::Value& params) {
         std::string material = stem + ".standard_material.json";
         if (const json::Value* given = p.resolved.find("material"); given != nullptr) {
             material = given->as_string();
+            if (!suffix.empty() && material.ends_with(".standard_material.json")) {
+                material.insert(
+                    material.size() - std::string_view(".standard_material.json").size(), suffix);
+            }
         }
         json::Value doc = json::Object{};
         auto before = session.read_project_file(material);
         if (!before) {
-            return Reply::failure(before.error());
+            return before.error();
         }
         if (const std::optional<std::string>& text = before.value(); text.has_value()) {
             auto parsed = json::parse(*text);
@@ -461,11 +480,168 @@ Reply paint_bake(Session& session, const json::Value& params) {
             doc["emission"] = json::Array{0, 0, 0, 1};
         }
         if (auto staged = stage(session, material, json::write(doc), changed); !staged) {
-            return Reply::failure(staged.error());
+            return staged.error();
         }
         result["material"] = material;
     }
-    summarize(baked.value(), p, result);
+    summarize(baked, p, result);
+    return {};
+}
+
+// Wear from damage: the stack baked at each damage state's value of its parameter, beside it as
+// <stem>_d<n>, and the looks written into the profile's states (keeping what else they hold).
+Result<void> bake_damage(Session& session, const Prepared& p, const json::Object& overrides,
+                         const std::string& stem, json::Value& result, bool& changed) {
+    const json::Value& damage = *p.resolved.find("damage");
+    const std::string& profile = damage.find("profile")->as_string();
+    const json::Value* given = damage.find("parameter");
+    const std::string parameter = given != nullptr ? given->as_string() : "wear";
+    json::Value states = json::Array{json::Object{{"below", 0.66}, {"value", 0.5}},
+                                     json::Object{{"below", 0.33}, {"value", 1}}};
+    if (const json::Value* listed = damage.find("states"); listed != nullptr) {
+        states = *listed;
+    }
+
+    json::Value doc = json::Object{{"format", 1}};
+    auto before = session.read_project_file(profile);
+    if (!before) {
+        return before.error();
+    }
+    if (const std::optional<std::string>& text = before.value(); text.has_value()) {
+        auto parsed = json::parse(*text);
+        if (!parsed || !parsed.value().is_object()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/damage/profile: " + quoted(profile) + " isn't a JSON object");
+        }
+        doc = std::move(parsed).value();
+    }
+    const json::Value* had = doc.find("states");
+    json::Array written;
+    json::Array looks;
+    for (std::size_t i = 0; i < states.as_array().size(); ++i) {
+        const json::Value& state = states.as_array()[i];
+        json::Object moved = overrides;
+        moved.insert_or_assign(parameter, *state.find("value"));
+        auto baked = bake(session, p, moved);
+        if (!baked) {
+            return baked.error();
+        }
+        const std::string suffix = "_d" + std::to_string(i + 1);
+        json::Value one;
+        one["below"] = *state.find("below");
+        if (auto done = write_bake(session, p, baked.value(), stem + suffix, suffix, one, changed);
+            !done) {
+            return done.error();
+        }
+        json::Value entry = json::Object{};
+        if (had != nullptr && had->is_array() && i < had->as_array().size() &&
+            had->as_array()[i].is_object()) {
+            entry = had->as_array()[i];
+        }
+        entry["below"] = *state.find("below");
+        if (const json::Value* material = one.find("material")) {
+            entry["material"] = *material;
+        } else {
+            // 2D: a damage state's mesh is the texture it draws.
+            entry["mesh"] = *one.find("textures")->find("albedo");
+        }
+        written.push_back(std::move(entry));
+        looks.push_back(std::move(one));
+    }
+    doc["states"] = std::move(written);
+    if (const auto errors = world::validate_damage(doc); !errors.empty()) {
+        return make_error(ErrorCode::InvalidArgument, "/damage/profile: " + quoted(profile) +
+                                                          " at " + errors.front().path + ": " +
+                                                          errors.front().message);
+    }
+    if (auto staged = stage(session, profile, json::write(doc), changed); !staged) {
+        return staged.error();
+    }
+    result["damage"] = json::Object{{"profile", profile}, {"states", std::move(looks)}};
+    return {};
+}
+
+Reply paint_bake(Session& session, const json::Value& params) {
+    const std::string& path = params.find("path")->as_string();
+    StackFile read;
+    if (auto failed = read_stack(session, path, "/path", false, read)) {
+        return *failed;
+    }
+    if (const auto errors = procedural::validate_paint(read.doc); !errors.empty()) {
+        return param_error(code::kInvalidArgument, "/path",
+                           quoted(path) + " at " +
+                               (errors.front().path.empty() ? "its top" : errors.front().path) +
+                               ": " + errors.front().message);
+    }
+    auto prepared = prepare(session, read.doc, true);
+    if (!prepared) {
+        return stack_error(path, "/path", prepared.error());
+    }
+    const json::Object overrides = overrides_of(params);
+    json::Value result;
+    result["path"] = path;
+    result["size"] = json::Array{prepared.value().surface.width, prepared.value().surface.height};
+    bool changed = false;
+
+    // Variants: one by number, or all of them, each beside the stack as <stem>_v<n>.
+    const json::Value* variant = params.find("variant");
+    if (variant != nullptr) {
+        const int count = procedural::paint_variant_count(prepared.value().resolved);
+        if (count == 0) {
+            return param_error(code::kInvalidArgument, "/variant",
+                               quoted(path) + " has no \"variants\"");
+        }
+        int first = 1;
+        int last = count;
+        if (variant->is_number()) {
+            first = static_cast<int>(variant->as_int());
+            last = first;
+            if (first < 1 || first > count) {
+                return param_error(code::kInvalidArgument, "/variant",
+                                   "the stack has variants 1 to " + std::to_string(count));
+            }
+        }
+        json::Array made;
+        for (int n = first; n <= last; ++n) {
+            Prepared each = prepared.value();
+            each.resolved = procedural::paint_variant(prepared.value().resolved, n);
+            auto baked = bake(session, each, overrides);
+            if (!baked) {
+                return stack_error(path, overrides.empty() ? "/path" : "/parameters",
+                                   baked.error());
+            }
+            const std::string suffix = "_v" + std::to_string(n);
+            json::Value one;
+            one["variant"] = n;
+            if (const json::Value* drawn = each.resolved.find("parameters")) {
+                one["parameters"] = *drawn;
+            }
+            if (auto written = write_bake(session, each, baked.value(), stem_of(path) + suffix,
+                                          suffix, one, changed);
+                !written) {
+                return Reply::failure(written.error());
+            }
+            made.emplace_back(std::move(one));
+        }
+        result["variants"] = std::move(made);
+    } else {
+        auto baked = bake(session, prepared.value(), overrides);
+        if (!baked) {
+            return stack_error(path, overrides.empty() ? "/path" : "/parameters", baked.error());
+        }
+        if (auto written = write_bake(session, prepared.value(), baked.value(), stem_of(path), "",
+                                      result, changed);
+            !written) {
+            return Reply::failure(written.error());
+        }
+        if (prepared.value().resolved.find("damage") != nullptr) {
+            if (auto worn = bake_damage(session, prepared.value(), overrides, stem_of(path), result,
+                                        changed);
+                !worn) {
+                return stack_error(path, "/path", worn.error());
+            }
+        }
+    }
     if (!changed) {
         session.mark_unchanged();
         result["unchanged"] = true;
@@ -1101,6 +1277,11 @@ void register_paint_commands(Registry& registry) {
         .handler = paint_edit,
     });
 
+    json::Value variant;
+    variant["description"] = "A variant of the stack's \"variants\" to bake, 1 to its count, or "
+                             "\"all\"; each writes <stem>_v<n>_<output>.png and its material.";
+    variant["anyOf"] = json::Array{json::Object{{"type", "integer"}, {"minimum", 1}},
+                                   json::Object{{"const", "all"}}};
     registry.add({
         .name = "paint.bake",
         .description =
@@ -1112,7 +1293,9 @@ void register_paint_commands(Registry& registry) {
             "model's texel density.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
-        .params = params_schema({{"path", path}, {"parameters", parameters}}, json::Array{"path"}),
+        .params = params_schema(
+            {{"path", path}, {"parameters", parameters}, {"variant", std::move(variant)}},
+            json::Array{"path"}),
         .handler = paint_bake,
     });
 

@@ -390,6 +390,7 @@ void register_commands(command::Registry& registry) {
     detail::register_review(registry);
     detail::register_translate(registry);
     detail::register_npc_draft(registry);
+    detail::register_paint_draft(registry);
 }
 
 } // namespace slash::ai

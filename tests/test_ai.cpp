@@ -1986,6 +1986,94 @@ TEST_CASE("npc.draft has a model write a brain and sends its problems back until
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE(
+    "paint.draft has a model write a layer stack and sends its problems back until it checks") {
+    const std::string root = "ai_paint_draft_project";
+    std::filesystem::remove_all(root);
+    // Two panels side by side, each its own part.
+    write(root + "/props/panels.obj", R"(o left
+v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0 0
+vt 0.5 0
+vt 0.5 1
+vt 0 1
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1 4/4/1
+o right
+v 1 0 0
+v 2 0 0
+v 2 1 0
+v 1 1 0
+vt 0.5 0
+vt 1 0
+vt 1 1
+vt 0.5 1
+f 5/5/1 6/6/1 7/7/1 8/8/1
+)");
+    // The first draft names a part the model lacks; the second is fixed.
+    const std::string first = R"({"size": 32, "maps": {"rays": 2}, "layers": [
+        {"name": "wood", "fill": {"albedo": [0.4, 0.25, 0.1]}},
+        {"name": "iron", "fill": {"albedo": [0.3, 0.3, 0.3], "metallic": 1},
+         "mask": {"part": "rigth"}}]})";
+    const std::string second = R"(```json
+{"size": 32, "maps": {"rays": 2}, "parameters": {"rust": 0.5}, "layers": [
+  {"name": "wood", "fill": {"albedo": [0.4, 0.25, 0.1]}},
+  {"name": "iron", "fill": {"albedo": [0.3, 0.3, 0.3], "metallic": 1},
+   "mask": {"part": "right"}}]}
+```)";
+    FakeModelServer server({chat_reply(first), chat_reply(second), chat_reply("no stack")});
+    write(root + "/providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "local-model", "url": ")" +
+                                        server.url() + R"("}}})");
+    write(root + "/storyboard/world.json", R"({"format": 1, "entries": {
+        "place/yard": {"name": "Yard", "summary": "Warm browns, rusted iron."}}})");
+    Engine engine(root);
+
+    const json::Value drafted =
+        engine.ok("paint.draft", parse(R"({"path": "props/panels.paint.json",
+        "brief": "An old wooden gate with an iron right panel.", "model": "props/panels.obj",
+        "story": ["place/yard"]})"));
+    CHECK(drafted.find("attempts")->as_int() == 2);
+    CHECK(drafted.find("model")->as_string() == "local-model");
+    CHECK(*drafted.find("layers") == parse(R"(["wood", "iron"])"));
+    CHECK(drafted.find("masks")->find("iron")->as_double() == doctest::Approx(0.5).epsilon(0.05));
+    const json::Value stack = parse(read(root + "/props/panels.paint.json"));
+    CHECK(stack.find("model")->as_string() == "props/panels.obj");
+    CHECK(stack.find("type")->as_string() == "paint");
+
+    // The model heard the brief, the model's parts, the storyboard entry and, the second time,
+    // the first draft's problem with the nearest part.
+    const std::vector<json::Value> bodies = server.bodies();
+    REQUIRE(bodies.size() == 2);
+    const std::string prompt =
+        bodies[0].find("messages")->as_array()[1].find("content")->as_string();
+    CHECK(prompt.find("An old wooden gate") != std::string::npos);
+    CHECK(prompt.find(R"(["left","right"])") != std::string::npos);
+    CHECK(prompt.find("Warm browns") != std::string::npos);
+    const json::Array& again = bodies[1].find("messages")->as_array();
+    REQUIRE(again.size() == 4);
+    const std::string problems = again[3].find("content")->as_string();
+    CHECK(problems.find("/layers/1/mask/part") != std::string::npos);
+    CHECK(problems.find(R"(\"right\")") != std::string::npos);
+
+    // Undo takes the stack away again.
+    engine.ok("undo", parse("{}"));
+    CHECK(!std::filesystem::exists(root + "/props/panels.paint.json"));
+
+    // A model that never makes a stack writes nothing.
+    const command::Reply failed = engine.call("paint.draft", parse(R"({"path": "b.paint.json",
+        "brief": "Rust.", "model": "props/panels.obj", "attempts": 1})"));
+    REQUIRE(!failed.ok);
+    CHECK(failed.data.find("problems")->size() == 1);
+    CHECK(!std::filesystem::exists(root + "/b.paint.json"));
+    CHECK(engine.call("paint.draft", parse(R"({"path": "b.json", "brief": "Rust."})")).message ==
+          "/path: layer stacks are .paint.json files");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("l10n.translate drafts what a locale lacks and keeps only drafts that check") {
     const std::string root = "ai_translate_project";
     std::filesystem::remove_all(root);

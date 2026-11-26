@@ -70,6 +70,17 @@ struct BlendOptions {
 [[nodiscard]] Result<std::string> convert_blend(std::string_view path, std::string_view bytes,
                                                 const BlendOptions& options);
 
+// The Python Blender runs to open source (a .blend file) and write every material's shader
+// node tree to destination as JSON: {"format": 1, "blender": [major, minor], "materials": {name:
+// {"nodes": {name: {"type", "inputs", "outputs", "props", and "ramp" or "image"}}, "links":
+// [{"from", "from_socket", "to", "to_socket"}]}}}, sockets by identifier.
+[[nodiscard]] std::string blend_nodes_script(std::string_view source, std::string_view destination);
+
+// Runs Blender on the .blend file at a project path (relative to options.project_root) and
+// returns its shader nodes as blend_nodes_script writes them, logging to .slash/imported/.
+[[nodiscard]] Result<std::string> read_blend_nodes(std::string_view path,
+                                                   const BlendOptions& options);
+
 // A model built by a script in Blender (blend_build_script).
 struct BlenderScript {
     std::string script;        // Python

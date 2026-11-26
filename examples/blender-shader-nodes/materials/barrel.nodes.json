@@ -1,0 +1,284 @@
+{
+ "blender": [
+  4,
+  2
+ ],
+ "format": 1,
+ "materials": {
+  "Plain": {
+   "links": [],
+   "nodes": {
+    "Principled BSDF": {
+     "inputs": {
+      "Base Color": [
+       0.214,
+       0.0,
+       0.0,
+       1
+      ],
+      "Metallic": 0,
+      "Roughness": 0.3
+     },
+     "outputs": {},
+     "props": {},
+     "type": "ShaderNodeBsdfPrincipled"
+    }
+   }
+  },
+  "Rusty": {
+   "links": [
+    {
+     "from": "Principled BSDF",
+     "from_socket": "BSDF",
+     "to": "Material Output",
+     "to_socket": "Surface"
+    },
+    {
+     "from": "Noise Texture",
+     "from_socket": "Fac",
+     "to": "Color Ramp",
+     "to_socket": "Fac"
+    },
+    {
+     "from": "Color Ramp",
+     "from_socket": "Color",
+     "to": "Mix",
+     "to_socket": "A_Color"
+    },
+    {
+     "from": "Tint",
+     "from_socket": "Color",
+     "to": "Mix",
+     "to_socket": "B_Color"
+    },
+    {
+     "from": "Mix",
+     "from_socket": "Result_Color",
+     "to": "Mix.001",
+     "to_socket": "Color1"
+    },
+    {
+     "from": "Magic Texture",
+     "from_socket": "Color",
+     "to": "Mix.001",
+     "to_socket": "Color2"
+    },
+    {
+     "from": "Mix.001",
+     "from_socket": "Color",
+     "to": "Principled BSDF",
+     "to_socket": "Base Color"
+    },
+    {
+     "from": "Voronoi Texture",
+     "from_socket": "Distance",
+     "to": "Math",
+     "to_socket": "Value"
+    },
+    {
+     "from": "Math",
+     "from_socket": "Value",
+     "to": "Principled BSDF",
+     "to_socket": "Roughness"
+    },
+    {
+     "from": "Noise Texture",
+     "from_socket": "Fac",
+     "to": "Bump",
+     "to_socket": "Height"
+    },
+    {
+     "from": "Bump",
+     "from_socket": "Normal",
+     "to": "Principled BSDF",
+     "to_socket": "Normal"
+    }
+   ],
+   "nodes": {
+    "Bump": {
+     "inputs": {
+      "Distance": 1,
+      "Height": 1,
+      "Strength": 0.4
+     },
+     "outputs": {},
+     "props": {},
+     "type": "ShaderNodeBump"
+    },
+    "Color Ramp": {
+     "inputs": {
+      "Fac": 0.5
+     },
+     "outputs": {},
+     "props": {},
+     "ramp": {
+      "elements": [
+       {
+        "color": [
+         0.05,
+         0.02,
+         0.01,
+         1
+        ],
+        "position": 0.3
+       },
+       {
+        "color": [
+         0.4,
+         0.12,
+         0.03,
+         1
+        ],
+        "position": 0.7
+       }
+      ],
+      "interpolation": "LINEAR"
+     },
+     "type": "ShaderNodeValToRGB"
+    },
+    "Magic Texture": {
+     "inputs": {
+      "Scale": 5
+     },
+     "outputs": {},
+     "props": {},
+     "type": "ShaderNodeTexMagic"
+    },
+    "Material Output": {
+     "inputs": {},
+     "outputs": {},
+     "props": {},
+     "type": "ShaderNodeOutputMaterial"
+    },
+    "Math": {
+     "inputs": {
+      "Value": 0.5,
+      "Value_001": 0.8
+     },
+     "outputs": {},
+     "props": {
+      "operation": "MULTIPLY",
+      "use_clamp": false
+     },
+     "type": "ShaderNodeMath"
+    },
+    "Mix": {
+     "inputs": {
+      "A_Color": [
+       1,
+       1,
+       1,
+       1
+      ],
+      "B_Color": [
+       1,
+       1,
+       1,
+       1
+      ],
+      "Factor_Float": 1
+     },
+     "outputs": {},
+     "props": {
+      "blend_type": "MULTIPLY",
+      "data_type": "RGBA"
+     },
+     "type": "ShaderNodeMix"
+    },
+    "Mix.001": {
+     "inputs": {
+      "Color1": [
+       1,
+       1,
+       1,
+       1
+      ],
+      "Color2": [
+       1,
+       1,
+       1,
+       1
+      ],
+      "Fac": 0.25
+     },
+     "outputs": {},
+     "props": {
+      "blend_type": "MIX"
+     },
+     "type": "ShaderNodeMixRGB"
+    },
+    "Noise Texture": {
+     "inputs": {
+      "Detail": 3,
+      "Distortion": 0,
+      "Lacunarity": 2,
+      "Roughness": 0.6,
+      "Scale": 8,
+      "Vector": [
+       0,
+       0,
+       0
+      ]
+     },
+     "outputs": {},
+     "props": {
+      "noise_dimensions": "3D"
+     },
+     "type": "ShaderNodeTexNoise"
+    },
+    "Principled BSDF": {
+     "inputs": {
+      "Base Color": [
+       0.8,
+       0.8,
+       0.8,
+       1
+      ],
+      "Emission Color": [
+       0,
+       0,
+       0,
+       1
+      ],
+      "Emission Strength": 0,
+      "Metallic": 0.25,
+      "Normal": [
+       0,
+       0,
+       0
+      ],
+      "Roughness": 0.5
+     },
+     "outputs": {},
+     "props": {},
+     "type": "ShaderNodeBsdfPrincipled"
+    },
+    "Tint": {
+     "inputs": {},
+     "outputs": {
+      "Color": [
+       0.214,
+       0.214,
+       0.214,
+       1
+      ]
+     },
+     "props": {},
+     "type": "ShaderNodeRGB"
+    },
+    "Voronoi Texture": {
+     "inputs": {
+      "Randomness": 0.8,
+      "Scale": 12
+     },
+     "outputs": {},
+     "props": {
+      "distance": "EUCLIDEAN",
+      "feature": "F1"
+     },
+     "type": "ShaderNodeTexVoronoi"
+    }
+   }
+  }
+ }
+}
