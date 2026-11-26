@@ -5,6 +5,7 @@
 #include "slash/exporter/export.hpp"
 #include "slash/exporter/forms.hpp"
 #include "slash/exporter/gameplay.hpp"
+#include "slash/exporter/publish.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/library/library.hpp"
@@ -128,6 +129,53 @@ Reply texture_forms(command::Session& session, const json::Value& params) {
         return Reply::failure(result.error());
     }
     return Reply::success(std::move(result).value());
+}
+
+Reply publish_run(command::Session& session, const json::Value& params) {
+    PublishOptions options;
+    options.project = session.options().project_root;
+    options.store = params.find("store")->as_string();
+    options.targets = strings(params.find("presets"));
+    if (const json::Value* upload = params.find("upload"); upload != nullptr) {
+        options.upload = upload->as_bool();
+    }
+    if (const json::Value* build = params.find("build"); build != nullptr) {
+        options.build = build->as_bool();
+    }
+    if (const json::Value* version = params.find("version"); version != nullptr) {
+        options.version = version->as_string();
+    }
+    if (options.upload) {
+        // An upload builds the game and sends it to a store, where players can see it.
+        for (const Capability needed : {Capability::Build, Capability::Network}) {
+            if (!session.allowed(needed)) {
+                Reply reply = Reply::failure(
+                    command::code::kPermissionDenied,
+                    "uploading needs the \"" + std::string(command::to_string(needed)) +
+                        "\" capability, which this session does not grant");
+                reply.data["path"] = "/upload";
+                reply.data["capability"] = command::to_string(needed);
+                return reply;
+            }
+        }
+    }
+    PublishResult result = publish_game(options);
+    if (result.ok) {
+        return Reply::success(std::move(result.json));
+    }
+    json::Value data = std::move(result.json);
+    json::Value error = std::move(data["error"]);
+    data.as_object().erase("error");
+    const std::string& step = error.find("step")->as_string();
+    const int code = step == "options" || step == "setup" ? command::code::kInvalidArgument
+                                                          : command::code::kPlatformFailure;
+    std::string message = error.find("message")->as_string();
+    for (auto& [key, value] : error.as_object()) {
+        if (key != "message") {
+            data[key] = std::move(value);
+        }
+    }
+    return Reply::failure(code, std::move(message), std::move(data));
 }
 
 Reply needs_build(std::string_view what, std::string_view pointer) {
@@ -351,6 +399,40 @@ void register_export_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = std::move(lock_params),
         .handler = sdk_lock,
+    });
+
+    json::Value publish_params;
+    publish_params["type"] = "object";
+    publish_params["additionalProperties"] = false;
+    publish_params["required"] = json::Array{"store"};
+    publish_params["properties"]["store"] = property("string", "The store: itch.");
+    json::Array stores;
+    for (const std::string_view store : kStores) {
+        stores.emplace_back(store);
+    }
+    publish_params["properties"]["store"]["enum"] = std::move(stores);
+    publish_params["properties"]["presets"] =
+        property("array", "Presets, or platforms for their defaults, to publish; default the "
+                          "store's channels in export_presets.json.");
+    publish_params["properties"]["presets"]["items"]["type"] = "string";
+    publish_params["properties"]["upload"] =
+        property("boolean", "Export and upload the builds (needs the build and network "
+                            "capabilities). Players can see an upload, so ask the user first. "
+                            "Default false: return the plan only.");
+    publish_params["properties"]["build"] =
+        property("boolean", "Export each preset before uploading it. false uploads what an "
+                            "earlier export left. Default true.");
+    publish_params["properties"]["version"] =
+        property("string", "The version the store shows; default project.json's.");
+    registry.add({
+        .name = "publish.run",
+        .description = "Publishes exports to a store (itch.io through butler): returns each "
+                       "build's preset, channel, output and push command, and with upload "
+                       "exports and pushes them. Credentials come from the environment.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = std::move(publish_params),
+        .handler = publish_run,
     });
 }
 

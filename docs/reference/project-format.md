@@ -971,6 +971,32 @@ profile in `SLASH_IOS_PROVISIONING_PROFILE`, or else the installed profile (Xcod
 longest, preferring an exact bundle ID to a wildcard: a development profile for debug builds and
 a distribution one (App Store or Ad Hoc) for release.
 
+### Stores
+
+`stores` says where [`slash-cli publish`](cli.md#publish) sends the presets' builds. Only itch.io
+so far:
+
+```json
+{
+  "format": 1,
+  "presets": {"mac": {"platform": "macos"}, "pc": {"platform": "windows"}},
+  "stores": {
+    "itch": {
+      "channels": {"mac": "mac", "pc": "windows", "web": "html5"},
+      "project": "player/star-courier"
+    }
+  }
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `itch.project` | required | The game's itch.io project as `user/game`, from its address `https://user.itch.io/game` |
+| `itch.channels` | every preset but iOS ones, each on its platform's channel | Channels by preset, or by platform (`web` above) for its defaults. A channel is letters, digits, `.`, `_` or `-`; butler tags its downloads by the platform in its name. The platforms' channels are `mac`, `windows`, `linux` (`linux-arm64` for arm64), `html5` and `android` |
+
+A channel must name a preset or a platform, and not an iOS one, since itch.io takes no iOS games.
+Uploads read butler's API key from `BUTLER_API_KEY`, never from the file.
+
 ## Layout
 
 ```text
