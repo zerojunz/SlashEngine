@@ -3,7 +3,7 @@
 Every command the engine registers, with its params, the capabilities it needs and a real example.
 The same commands are available everywhere:
 
-Status: current · Updated: 2026-11-22
+Status: current · Updated: 2026-11-25
 
 | Front end | How to call `entity.create` |
 | --- | --- |
@@ -69,7 +69,7 @@ as `entity.get`, reject it as an unknown param.
 | Hair | [`hair.get`](#hairget) |
 | Damage | [`damage.apply`](#damageapply), [`damage.state`](#damagestate), [`damage.check`](#damagecheck) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
-| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`solid.get`](#csgget) |
+| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.bake_maps`](#modelbake_maps), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`solid.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`blockmap.set`](#gridmapset), [`blockmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
@@ -1627,6 +1627,68 @@ coordinates, when there are any; `collision` counts the result's collision shape
 `{"convex": 6}`, when it has any; `delit` counts the textures `delight` changed and `light` is
 the direction the light it took out came from, in the result's space, when it found one; and
 `unchanged` is `true` when `out` already held the same bytes.
+
+### model.bake_maps
+
+Bakes a [model](scene-format.md#models)'s mesh maps, as Substance Painter's mesh map baker does:
+what its shape says about each texel of its texture, written as PNG files in its texture
+coordinates for [texture graphs](scene-format.md#texture-graphs) to read with `image` nodes and mask
+with. Rays trace on the GPU with `"device": "gpu"` where one traces rays, and on the CPU, its twin,
+elsewhere; both give the same maps but for rounding.
+
+| Map | What a texel holds |
+| --- | --- |
+| `ao` | Ambient occlusion: the share of rays about the normal that meet nothing within `occlusion_distance`, 1 open, 0 shut in |
+| `curvature` | 0.5 flat, toward 1 on convex edges and 0 in concave corners: the angles of the edges within `curvature_radius`, by their length and nearness |
+| `thickness` | How far rays into the mesh (about the opposite of the normal) go before leaving it, over `thickness_distance` |
+| `sky` | The share of rays about the normal that go up and reach the sky: 1 on a top face, 0.5 on a wall, 0 underneath |
+| `world_normal` | The normal in the model's space, as rgb = n / 2 + 0.5 |
+| `position` | The point in the model's box (`position_box`), from its min (0) to its max (1) |
+| `part_id`, `material_id` | A color for each part (node) and material, listed in `parts` and `materials` |
+| `height` | With `high`: how far the high surface lies above (over 0.5) or below the low one, 0 and 1 at `cage_distance` |
+| `normal` | With `high`: the high surface's normal in the low one's tangent frame, OpenGL style (green up), as material normal maps are read |
+
+With `high`, a detailed model, each texel of `path`'s surface sends a ray from `cage_distance` out
+along its normal to as far in, and the other maps come from the high surface where it first meets
+it; a texel whose ray meets nothing keeps `path`'s own surface and counts in `missed`. Each island
+of texels grows by `padding` into the empty ones around it, which stay transparent. The folder's
+`maps.json` keeps the bake's hash (the meshes and the params but `out` and `device`) and its
+result: the same call again returns that result with `"cached": true` and bakes nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The model to bake into: `.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json` (a variant after `::`) |
+| `high` | string | | A detailed model to bake from; needed for `height` and `normal` |
+| `maps` | array | all | The maps to bake; all of them by default, `height` and `normal` only with `high` |
+| `size` | integer | `1024` | Texels wide and high, 16 to 8192 |
+| `uv` | string | `"uv"` | The texture coordinates to bake into: `"uv"` or `"uv2"` |
+| `rays` | integer | `32` | Rays a texel traces for each of `ao`, `sky` and `thickness`, 1 to 1024 |
+| `occlusion_distance` | number | a quarter of the size | How far an occluding surface may be, in the model's units; size is the diagonal of the models' box |
+| `thickness_distance` | number | half the size | The most thickness measured |
+| `curvature_radius` | number | a fiftieth of the size | How far around a point curvature looks |
+| `cage_distance` | number | a twentieth of the size | How far out from `path`'s surface and in rays look for `high`'s |
+| `padding` | integer | `4` | Texels each island grows, 0 to 64 |
+| `out` | string | `path` without its extensions, plus `.maps` | The folder to write `<map>.png` files and `maps.json` into |
+| `device` | string | `"cpu"` | `"gpu"` traces on a GPU that traces rays, else the CPU, and returns which did as `device` |
+
+Needs: `edit`, `filesystem`. Undo takes the files back. A map that needs `high` without it is
+refused (`/maps/<n>`), as is a model whose texture coordinates cover no texel (`/path`): bake into
+the other set, or give it some (`model.cleanup` unwraps surfaces without them).
+
+```json
+{"path": "props/crate.obj", "high": "props/crate_high.obj", "size": 256}
+```
+
+```json
+{"coverage":0.616,"files":["props/crate.maps/ao.png","props/crate.maps/curvature.png","props/crate.maps/thickness.png","props/crate.maps/sky.png","props/crate.maps/world_normal.png","props/crate.maps/position.png","props/crate.maps/part_id.png","props/crate.maps/material_id.png","props/crate.maps/height.png","props/crate.maps/normal.png"],"height_range":0.052,"materials":[{"color":"#f25555","name":"wood"},{"color":"#5583f2","name":"iron"}],"missed":0.0,"out":"props/crate.maps","overlap":0.0,"parts":[{"color":"#f25555","name":"crate"}],"position_box":{"max":[0.3,0.6,0.3],"min":[-0.3,0.0,-0.3]},"size":[256,256],"stats":{"ao":[0.251,0.964,1.0],"curvature":[0.502,0.587,1.0],"height":[0.357,0.41,0.502],"sky":[0.0,0.483,1.0],"thickness":[0.012,0.459,0.922]}}
+```
+
+`files` lists every map written (`maps` names them by map). `coverage` is the share of texels a
+triangle covers, `overlap` the share of those more than one
+covers, where the maps show only one surface, and `missed` the share whose ray met no high
+surface. `stats` gives each gray map's `[min, mean, max]` over the covered texels, 0 to 1, so an
+agent can tell what a map holds without looking at it. `warnings` say when texture coordinates
+overlap or many rays missed, and what to change.
 
 ### model.retarget
 

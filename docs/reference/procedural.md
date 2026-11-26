@@ -2,7 +2,7 @@
 
 Procedural generation: noise, textures, scatter rules and PCG graphs.
 
-Status: current · Updated: 2026-11-22
+Status: current · Updated: 2026-11-25
 
 Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
 
@@ -43,6 +43,12 @@ project validate` run it. `examples/texture-graph-tools` tunes the wall to a bud
 `FNL_STATIC_TABLES`), and the shader tools' compiler has the three files built in. Settings that
 material params (and `time`, as `TIME`) move are found by compiling the graph again with each moved,
 and must follow in a straight line. `examples/live-texture-graphs` flows lava.
+`model.bake_maps` (`engine/command/src/mesh_maps.cpp`) bakes a model's mesh maps for graphs to
+mask with (`slash/scene3d/mesh_maps.hpp`): ambient occlusion, curvature, thickness, sky, world
+normal and position, part and material ids, and from a high model its height and normal, as PNG
+files in a `.maps` folder beside it that `image` nodes read. Rays trace on ray queries where a
+device has them (see [rendering](rendering.md)) and on the CPU twin elsewhere; curvature comes from
+the angles of nearby edges. `examples/mesh-maps` bakes a crate's maps and wears its edges with them.
 
 Gameplay code makes textures and meshes while a game runs: `asset::Assets::put` keeps a value at a
 `made:<name>` path (`asset::is_made_path`) until `drop`, bumping its version when put again so

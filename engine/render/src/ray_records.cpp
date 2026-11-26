@@ -214,7 +214,8 @@ run_lightmap_passes(const LightmapTrace& trace, std::size_t light_count,
                      trace.bounces};
     params.flags = {trace.use_texture_for_bounces ? 1U : 0U, 0, 0, 0};
     params.values = {trace.bias, trace.supersampling, trace.exposure, trace.world_size};
-    params.more = {trace.bounce_indirect_energy, 0.0F, 0.0F, 0.0F};
+    params.more = {trace.bounce_indirect_energy, trace.occlusion_distance, trace.thickness_distance,
+                   trace.cage_distance};
     for (std::size_t c = 0; c < 3; ++c) {
         params.space.at(c) = {trace.probe_space.at(c)[0], trace.probe_space.at(c)[1],
                               trace.probe_space.at(c)[2], 0.0F};
@@ -236,6 +237,9 @@ run_lightmap_passes(const LightmapTrace& trace, std::size_t light_count,
         }
         return {};
     };
+    if (trace.kind != BakeKind::Lightmap) {
+        return each_region(trace.kind == BakeKind::MeshOcclusion ? 3 : 4);
+    }
     if (auto ran = each_region(0); !ran) {
         return ran;
     }

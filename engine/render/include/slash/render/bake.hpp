@@ -1,6 +1,7 @@
 // Parts of this file are ported from Godot Engine (MIT); see THIRD_PARTY.md.
 #pragma once
 
+#include "slash/core/result.hpp"
 #include "slash/render/mesh.hpp"
 
 #include <array>
@@ -47,6 +48,11 @@ struct BakeLight {
     bool static_bake = false; // its light goes into the lightmap, not only into bounces
 };
 
+// What a trace bakes: a lightmap's light, or one of the passes of a mesh map bake
+// (trace_mesh_maps): each texel's ambient occlusion, sky and thickness, or where its ray from the
+// cage meets the triangles.
+enum class BakeKind : std::uint8_t { Lightmap, MeshOcclusion, MeshHits };
+
 // What a bake's light is traced over. Each atlas layer holds a float4 a texel, slice by slice and
 // row by row: the materials' albedo (alpha too) and emission, and each texel's place in the world
 // and normal, where the raster put them (a normal of zero length marks an empty texel).
@@ -86,6 +92,11 @@ struct LightmapTrace {
     std::span<const std::array<float, 3>> probe_points;
     std::uint32_t probe_rays = 512;
     std::array<std::array<float, 3>, 3> probe_space{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+    // A mesh map bake's pass, which trace_mesh_maps sets with how far its rays reach.
+    BakeKind kind = BakeKind::Lightmap;
+    float occlusion_distance = 1.0F;
+    float thickness_distance = 1.0F;
+    float cage_distance = 0.0F;
 };
 
 // What comes back: each texel's direct light for bounces and its light (direct from lights that
@@ -95,5 +106,45 @@ struct LightmapTraced {
     std::vector<std::array<float, 4>> accum;
     std::vector<std::array<std::array<float, 3>, 9>> probe_sh;
 };
+
+// A mesh map bake's rays (scene3d's bake_mesh_maps, its CPU twin), traced on the GPU: from each
+// texel of a width by height map that a triangle covers, at its point and normal, against the
+// triangles, which every ray meets from either side.
+struct MeshMapTrace {
+    std::vector<BakeVertex> vertices; // their positions and normals
+    std::vector<std::uint32_t> indices;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    // A float4 a texel, row by row: its point (xyz), and its normal, of zero length for a texel
+    // no triangle covers.
+    std::span<const std::array<float, 4>> position;
+    std::span<const std::array<float, 4>> normal;
+    // MeshOcclusion: rays cosine-weighted about the normal (about its opposite for thickness),
+    // rays of each kind a texel. MeshHits: the one ray from cage_distance out along the normal
+    // to cage_distance in.
+    BakeKind kind = BakeKind::MeshOcclusion;
+    std::uint32_t rays = 32;
+    float bias = 0.0001F;            // how near a hit may be
+    float occlusion_distance = 1.0F; // how far an occluding surface may be
+    float thickness_distance = 1.0F; // the most thickness measured
+    float sky_distance = 1.0F;       // how far a ray goes to reach the sky
+    float cage_distance = 0.0F;
+    std::uint32_t region_texels = 512U * 512U; // the texels a dispatch traces at most
+};
+
+// A float4 a texel. MeshOcclusion: the share of rays that leave unoccluded, that reach the sky
+// above (going up), and the mean distance through the mesh over thickness_distance. MeshHits:
+// the triangle met plus 1 (0 for none, a float), the hit's barycentrics y and z, and how far
+// from the cage it is.
+struct MeshMapTraced {
+    std::vector<std::array<float, 4>> texels;
+};
+
+class RenderDevice;
+
+// Traces a mesh map bake's rays on the device's GPU (RenderDevice::trace_lightmap), waiting for
+// them. An error with ErrorCode::NotFound on a device that doesn't trace rays.
+[[nodiscard]] Result<MeshMapTraced> trace_mesh_maps(RenderDevice& device,
+                                                    const MeshMapTrace& trace);
 
 } // namespace slash::render
