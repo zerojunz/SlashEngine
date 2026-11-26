@@ -6,6 +6,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/procedural/paint.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/procedural/texture_graph.hpp"
 #include "slash/render/image.hpp"
@@ -453,7 +454,8 @@ Reply texture_check(Session& session, const json::Value& params) {
             return Reply::failure(listed.error());
         }
         for (const std::string& file : listed.value()) {
-            if (file.ends_with(procedural::kTextureSuffix)) {
+            if (file.ends_with(procedural::kTextureSuffix) ||
+                file.ends_with(procedural::kPaintSuffix)) {
                 files.push_back(file);
             }
         }
@@ -464,8 +466,18 @@ Reply texture_check(Session& session, const json::Value& params) {
     std::vector<std::string> graphs;
     for (std::size_t i = 0; i < files.size(); ++i) {
         const std::string& file = files[i];
-        GraphFile read;
         const bool named = params.find("paths") != nullptr;
+        if (file.ends_with(procedural::kPaintSuffix)) {
+            if (check_paint_file(session, file, errors)) {
+                ++checked;
+                graphs.push_back(file);
+            } else if (named) {
+                return param_error(code::kInvalidArgument, "/paths/" + std::to_string(i),
+                                   quoted(file) + R"( is not a paint stack ("type": "paint"))");
+            }
+            continue;
+        }
+        GraphFile read;
         if (auto failed = read_graph(session, file, "/paths/" + std::to_string(i), false, read)) {
             if (named) {
                 return *failed;
@@ -505,6 +517,15 @@ Reply texture_check(Session& session, const json::Value& params) {
             storyboard::check_textures(
                 loaded.value().entries, graphs,
                 [&session](std::string_view path) -> std::optional<storyboard::Texture> {
+                    if (path.ends_with(procedural::kPaintSuffix)) {
+                        auto albedo = paint_albedo(session, std::string(path));
+                        if (!albedo) {
+                            return std::nullopt;
+                        }
+                        return storyboard::Texture{.width = albedo->width,
+                                                   .height = albedo->height,
+                                                   .pixels = std::move(albedo->pixels)};
+                    }
                     auto text = session.read_project_file(path);
                     if (!text || !text.value()) {
                         return std::nullopt;
@@ -583,14 +604,16 @@ void register_texture_tools(Registry& registry) {
         .handler = texture_edit,
     });
 
-    json::Value paths = property("array", "Graph files to check (default: every one).");
+    json::Value paths =
+        property("array", "Graph and paint stack files to check (default: every one).");
     paths["items"]["type"] = "string";
     registry.add({
         .name = "texture.check",
         .description =
-            "Checks the project's texture graphs: every error in each, what it reads, its "
-            "outputs against its own \"expect\" ranges, and its texture against the "
-            "storyboard's palettes and budgets. Returns problems with file and JSON Pointer.",
+            "Checks the project's texture graphs and paint stacks (.paint.json): every error in "
+            "each, what it reads, its bake against its own \"expect\" ranges, and its texture "
+            "(a stack's albedo) against the storyboard's palettes and budgets. Returns problems "
+            "with file and JSON Pointer.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"paths", std::move(paths)}}),

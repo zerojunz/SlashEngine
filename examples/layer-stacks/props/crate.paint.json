@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "type": "paint",
+  "model": "props/crate.obj",
+  "high": "props/crate_high.obj",
+  "size": 256,
+  "parameters": {"wear": 0.5, "dust": 0.6},
+  "layers": [
+    {"name": "wood", "fill": {"albedo": [0.42, 0.27, 0.15], "roughness": 0.7}},
+    {"name": "grain", "fill": {"albedo": [0.33, 0.2, 0.1]},
+     "mask": {"map": "noise", "scale": 24, "seed": 5, "above": 0.55, "softness": 0.1}},
+    {"name": "iron", "fill": {"albedo": [0.3, 0.3, 0.32], "metallic": 1, "roughness": 0.45},
+     "mask": {"map": "height", "above": 0.45, "softness": 0.02}},
+    {"name": "worn", "fill": {"albedo": [0.62, 0.62, 0.64], "metallic": 1, "roughness": 0.25},
+     "mask": [{"map": "height", "above": 0.45, "softness": 0.02},
+              {"map": "curvature", "above": "=0.8 - wear * 0.25", "softness": 0.03,
+               "breakup": {"amount": 0.1, "scale": 18}, "op": "multiply"}]},
+    {"name": "dirt", "fill": {"albedo": [0.2, 0.16, 0.12], "roughness": 0.95},
+     "mask": {"map": "ao", "below": 0.7, "softness": 0.2}},
+    {"name": "dust", "fill": {"albedo": [0.62, 0.58, 0.52], "roughness": 1},
+     "mask": {"map": "world_normal", "axis": "y", "above": "=0.85 - dust * 0.5",
+              "softness": 0.1, "breakup": {"amount": 0.15, "scale": 14}},
+     "opacity": "=0.4 + dust * 0.6"}
+  ],
+  "expect": {"albedo.value": [0.15, 0.45], "orm.b": [0.1, 0.8], "mask.dust": [0.05, 0.4]}
+}

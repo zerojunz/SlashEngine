@@ -7,6 +7,7 @@ add_library(slash_command
     src/live.cpp
     src/mcp.cpp
     src/mesh_maps.cpp
+    src/paint.cpp
     src/model_cleanup.cpp
     src/navigation.cpp
     src/npc.cpp

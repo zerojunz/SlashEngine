@@ -36,7 +36,7 @@ inline constexpr std::uint32_t kNoGraphSlot = 0xFFFFFFFFU;
 // The most slots, passes and images a program holds.
 inline constexpr std::uint32_t kMaxGraphSlots = 32;
 inline constexpr std::uint32_t kMaxGraphPasses = 512;
-inline constexpr std::uint32_t kMaxGraphImages = 8;
+inline constexpr std::uint32_t kMaxGraphImages = 64;
 // The largest side a graph bakes at, and the most bytes its slots and images may take.
 inline constexpr std::uint32_t kMaxGraphSize = 4096;
 inline constexpr std::uint64_t kMaxGraphBytes = std::uint64_t{1} << 30U;

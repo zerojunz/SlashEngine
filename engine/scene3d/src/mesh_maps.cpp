@@ -874,4 +874,121 @@ Result<MeshMapBake> bake_mesh_maps(const MeshMapMesh& low, const MeshMapMesh* hi
     return out;
 }
 
+Result<MeshMapSurface> mesh_map_surface(const MeshMapMesh& low, std::uint32_t width,
+                                        std::uint32_t height, std::uint32_t padding) {
+    if (width == 0 || height == 0 || width > kMaxSize || height > kMaxSize) {
+        return Error{ErrorCode::InvalidArgument, "mesh maps are 1 to 8192 texels wide and high"};
+    }
+    if (auto checked = check_mesh(low, "low"); !checked) {
+        return checked.error();
+    }
+    MeshMapSurface out;
+    out.width = width;
+    out.height = height;
+    const std::size_t texels = std::size_t{width} * height;
+    out.covered.assign(texels, 0);
+    out.position.assign(texels, Vec3{});
+    out.normal.assign(texels, Vec3{});
+    out.part.assign(texels, -1);
+    out.material.assign(texels, -1);
+    Box box;
+    box.add(low);
+    out.min = box.min;
+    out.max = box.max;
+
+    double uv_area = 0.0;
+    double area = 0.0;
+    std::size_t covered = 0;
+    const std::size_t triangles = low.indices.size() / 3;
+    for (std::size_t tri = 0; tri < triangles; ++tri) {
+        const render::Vertex3D& a = low.vertices[low.indices[tri * 3]];
+        const render::Vertex3D& b = low.vertices[low.indices[(tri * 3) + 1]];
+        const render::Vertex3D& c = low.vertices[low.indices[(tri * 3) + 2]];
+        const Vec3 pa = vec(a.position);
+        const Vec3 pb = vec(b.position);
+        const Vec3 pc = vec(c.position);
+        area += 0.5 * static_cast<double>(length(cross(pb - pa, pc - pa)));
+        const double du1 = static_cast<double>(b.uv[0]) - a.uv[0];
+        const double dv1 = static_cast<double>(b.uv[1]) - a.uv[1];
+        const double du2 = static_cast<double>(c.uv[0]) - a.uv[0];
+        const double dv2 = static_cast<double>(c.uv[1]) - a.uv[1];
+        uv_area += 0.5 * std::abs((du1 * dv2) - (du2 * dv1));
+        std::array<Point2, 3> s{};
+        for (std::size_t k = 0; k < 3; ++k) {
+            const render::Vertex3D& v = low.vertices[low.indices[(tri * 3) + k]];
+            s.at(k) = {v.uv[0] * static_cast<float>(width), v.uv[1] * static_cast<float>(height)};
+        }
+        fill_triangle(
+            s, static_cast<int>(width), static_cast<int>(height), [&](int x, int y, Vec3 w) {
+                const std::size_t at =
+                    (static_cast<std::size_t>(y) * width) + static_cast<std::size_t>(x);
+                if (out.covered[at] != 0) {
+                    return;
+                }
+                const Vec3 n = normalize(lerp3(vec(a.normal), vec(b.normal), vec(c.normal), w));
+                if (length(n) == 0.0F) {
+                    return;
+                }
+                out.covered[at] = 1;
+                out.position[at] = lerp3(pa, pb, pc, w);
+                out.normal[at] = n;
+                out.part[at] = static_cast<std::int32_t>(low.parts[tri]);
+                out.material[at] = static_cast<std::int32_t>(low.materials[tri]);
+                ++covered;
+            });
+    }
+    if (covered == 0) {
+        return Error{ErrorCode::InvalidArgument,
+                     "no triangle of the mesh covers a texel of its texture coordinates; unwrap "
+                     "the mesh"};
+    }
+    out.coverage = static_cast<float>(covered) / static_cast<float>(texels);
+    out.texel_density =
+        area > 0.0 ? static_cast<float>(std::sqrt(uv_area * static_cast<double>(texels) / area))
+                   : 0.0F;
+
+    // Padding, as dilate grows the baked maps: each empty texel next to filled ones takes the
+    // first of them, left, right, up, down, then the corners, a texel a round.
+    const auto w = static_cast<int>(width);
+    const auto h = static_cast<int>(height);
+    constexpr std::array<std::array<int, 2>, 8> kAround{
+        {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}}};
+    std::vector<std::uint8_t> before;
+    for (std::uint32_t round = 0; round < padding; ++round) {
+        before = out.covered;
+        bool grew = false;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const std::size_t at =
+                    (static_cast<std::size_t>(y) * width) + static_cast<std::size_t>(x);
+                if (before[at] != 0) {
+                    continue;
+                }
+                for (const auto& d : kAround) {
+                    const int nx = x + d[0];
+                    const int ny = y + d[1];
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                        continue;
+                    }
+                    const std::size_t from =
+                        (static_cast<std::size_t>(ny) * width) + static_cast<std::size_t>(nx);
+                    if (before[from] != 0) {
+                        out.covered[at] = 2;
+                        out.position[at] = out.position[from];
+                        out.normal[at] = out.normal[from];
+                        out.part[at] = out.part[from];
+                        out.material[at] = out.material[from];
+                        grew = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!grew) {
+            break;
+        }
+    }
+    return out;
+}
+
 } // namespace slash::scene3d
