@@ -335,7 +335,8 @@ Usage:
   slash-cli sdk add <source>         Add an SDK package (a folder with sdk.json) to
                                      project.json's "sdks", so exports link it: a folder in
                                      the project where it is; any other folder, a built-in
-                                     store's package (storekit, play-billing), a git
+                                     store's package (storekit, play-billing,
+                                     steamworks), a git
                                      repository or an https:// .zip or .tar archive is copied
                                      into sdks/<name>
       --project <dir>                Game folder with project.json (default ".")

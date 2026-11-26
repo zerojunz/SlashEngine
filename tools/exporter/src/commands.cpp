@@ -361,9 +361,9 @@ void register_export_commands(command::Registry& registry) {
     add_params["required"] = json::Array{"source"};
     add_params["properties"]["source"] =
         property("string", "A package folder in the project (added where it is), a built-in "
-                           "store's package (storekit, play-billing), a git repository URL, or "
-                           "the https:// URL of a .zip or .tar archive (copied into sdks/; URLs "
-                           "need the build capability).");
+                           "store's package (storekit, play-billing, steamworks), a git "
+                           "repository URL, or the https:// URL of a .zip or .tar archive "
+                           "(copied into sdks/; URLs need the build capability).");
     add_params["properties"]["name"] =
         property("string", "Folder under sdks/ for a copied package; default its name.");
     add_params["properties"]["ref"] = property("string", "Git branch or tag to clone.");

@@ -739,6 +739,48 @@ TEST_CASE("the engine's store packages: StoreKit and Google Play Billing") {
     fs::remove_all(folder);
 }
 
+TEST_CASE("the engine's Steamworks package links the developer's own SDK") {
+    const auto folder = exporter::builtin_sdk("steamworks");
+    REQUIRE(folder);
+    auto sdk = exporter::load_sdk(*folder);
+    REQUIRE_MESSAGE(sdk.ok(), (sdk.ok() ? std::string() : sdk.error().message));
+    CHECK(sdk.value().platforms.size() == 3);
+
+    // The SDK is the developer's copy, wherever STEAMWORKS_SDK says it is.
+    const fs::path steam = fs::absolute("sdk_steamworks_copy");
+    fs::remove_all(steam);
+    write(steam / "public" / "steam" / "steam_api.h", "");
+    write(steam / "redistributable_bin" / "win64" / "steam_api64.lib", "");
+    write(steam / "redistributable_bin" / "win64" / "steam_api64.dll", "");
+    write(steam / "redistributable_bin" / "linux64" / "libsteam_api.so", elf_shared_object());
+    const ScopedVariable variable("STEAMWORKS_SDK", steam.string());
+    REQUIRE(sdk.value().downloads.size() == 1);
+    auto found = exporter::fetch_download(sdk.value().downloads[0], *folder, steam / "cache");
+    REQUIRE_MESSAGE(found.ok(), (found.ok() ? std::string() : found.error().message));
+    CHECK(fs::equivalent(found.value(), steam));
+    exporter::SdkPlaces places;
+    places.downloads["steam"] = found.value();
+    std::vector<exporter::SdkProblem> problems;
+    const exporter::ResolvedSdk windows =
+        exporter::resolve_sdk(sdk.value(), "windows", "x86_64", places, true, problems);
+    CHECK(describe(problems).empty());
+    REQUIRE(windows.include.size() == 1);
+    CHECK(windows.include[0].ends_with("public"));
+    REQUIRE(windows.libraries.size() == 1);
+    CHECK(windows.libraries[0].ends_with("win64/steam_api64.lib"));
+    REQUIRE(windows.files.size() == 1);
+    CHECK(windows.files[0].ends_with("win64/steam_api64.dll"));
+    REQUIRE(windows.sources.size() == 1);
+    CHECK(windows.sources[0].ends_with("/steamworks.cpp"));
+    CHECK(windows.register_function == "slash_steamworks::register_backends");
+    const exporter::ResolvedSdk linux_sdk =
+        exporter::resolve_sdk(sdk.value(), "linux", "x86_64", places, true, problems);
+    CHECK(describe(problems).empty());
+    REQUIRE(linux_sdk.libraries.size() == 1);
+    CHECK(linux_sdk.libraries[0].ends_with("linux64/libsteam_api.so"));
+    fs::remove_all(steam);
+}
+
 #ifndef _WIN32
 TEST_CASE("SDK downloads are fetched once, checked against their SHA-256 and unpacked") {
     const fs::path folder = fs::absolute("sdk_downloads");

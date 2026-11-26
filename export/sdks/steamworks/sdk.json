@@ -1,0 +1,52 @@
+{
+  "description": "Valve's Steamworks API as the game's games backend on Windows, macOS and Linux: the Steam player, achievements, leaderboards and the Steam overlay. It links the developer's own copy of the Steamworks SDK, found through STEAMWORKS_SDK.",
+  "downloads": {
+    "steam": {
+      "path": "${STEAMWORKS_SDK}"
+    }
+  },
+  "format": 1,
+  "license": "Proprietary",
+  "name": "steamworks",
+  "platforms": {
+    "linux": {
+      "include": [
+        "{steam}/public"
+      ],
+      "libraries": [
+        "{steam}/redistributable_bin/linux64/libsteam_api.so"
+      ],
+      "sources": [
+        "src"
+      ]
+    },
+    "macos": {
+      "include": [
+        "{steam}/public"
+      ],
+      "libraries": [
+        "{steam}/redistributable_bin/osx/libsteam_api.dylib"
+      ],
+      "sources": [
+        "src"
+      ]
+    },
+    "windows": {
+      "files": [
+        "{steam}/redistributable_bin/win64/steam_api64.dll"
+      ],
+      "include": [
+        "{steam}/public"
+      ],
+      "libraries": [
+        "{steam}/redistributable_bin/win64/steam_api64.lib"
+      ],
+      "sources": [
+        "src"
+      ]
+    }
+  },
+  "register": "slash_steamworks::register_backends",
+  "vendor": "Valve",
+  "version": "1"
+}

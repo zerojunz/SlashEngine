@@ -255,6 +255,29 @@ in.
 | `scores_failed` | The leaderboard | `error` | Loading them failed |
 | `games_ui_closed` | | | The player closed the achievements or leaderboards screen |
 
+### Steam
+
+The engine's `steamworks` package is a games backend for Windows, macOS and Linux games sold on
+Steam. It links the developer's own copy of the [Steamworks SDK](https://partner.steamgames.com/doc/sdk),
+downloaded from Steamworks (behind its login) and found through `STEAMWORKS_SDK`, the SDK's
+`sdk` folder, at export time; `steam_api64.dll` and `libsteam_api` ship beside the game.
+
+```bash
+slash-cli sdk add steamworks --project my-game
+STEAMWORKS_SDK=~/steamworks/sdk slash-cli export windows --project my-game
+```
+
+| Service | Through Steam |
+| --- | --- |
+| Signing in | The Steam user running the game, by Steam ID and persona name. Steam signs them in, so it fails only when Steam isn't running or the game wasn't started from it (outside Steam, a `steam_appid.txt` with the app id beside the game lets it start) |
+| Achievements | By their names, which must be their API names in Steamworks. `steps` show as Steam's progress notification and unlock the achievement when all are done; Steam keeps the counts in stats of its own, so `achievements_loaded` gives unlocked ones only |
+| Leaderboards | By their names, which must be their names in Steamworks, with scores kept by the leaderboard's own sort. Scores are 32-bit; `load_scores` loads `all_time` only, with the player's own entry, and `friends` gives the player's friends with their global ranks |
+| Screens | `show_achievements` opens the overlay's achievements page and `show_leaderboards` its stats page; `games_ui_closed` arrives when the overlay closes |
+| Cloud saves | Steam Auto-Cloud, which needs no code: in Steamworks, sync the game's user folder, the one named after `project.json`'s `name` under the roots `WinAppDataRoaming`, `MacAppSupport` and `LinuxXdgDataHome` |
+
+The backend's name is `steam`. Steam calls finish through the SDK's manual callback dispatch,
+polled at the start of each tick on the game's thread.
+
 ## Consent
 
 `ConsentState` holds two answers, each `unknown`, `granted` or `denied`: `analytics` gates
