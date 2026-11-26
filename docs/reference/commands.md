@@ -7378,20 +7378,22 @@ path.
 ### publish.run
 
 Plans or uploads a game's exports to a store, as [`slash-cli publish`](cli.md#publish) does, and
-returns the same result: itch.io through butler, Steam through steamcmd. Registered next to
+returns the same result: itch.io through butler, Steam through steamcmd, the Epic Games Store
+through BuildPatchTool, GOG through its Pipeline Builder. Registered next to
 `export.run`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `store` | string | required | `itch` or `steam` |
-| `presets` | array of strings | `stores.itch.channels`, else every preset but iOS ones; `stores.steam.depots` | Presets, or platforms for their defaults, to publish |
+| `store` | string | required | `itch`, `steam`, `epic` or `gog` |
+| `presets` | array of strings | `stores.itch.channels`, else every preset but iOS ones; `stores.steam.depots`; `stores.epic.artifacts`; `stores.gog.presets`, else every Windows and macOS preset | Presets, or platforms for their defaults, to publish |
 | `upload` | boolean | `false` | Export and upload the builds. Players can see an upload, so ask the user first. `false` returns the plan |
 | `build` | boolean | `true` | Export each preset before uploading it; `false` uploads what an earlier export left |
 | `version` | string | `project.json`'s | The version the store shows |
 
 Needs: `read`, `filesystem`; an upload also needs `build` and `network`. It changes no scene, so
 there is nothing to undo. Credentials come from the environment (`BUTLER_API_KEY`,
-`STEAM_USERNAME`), never from params or files.
+`STEAM_USERNAME`, `EPIC_CLIENT_ID` and `EPIC_CLIENT_SECRET`, `GOG_USERNAME` and
+`GOG_PASSWORD`), never from params or files.
 
 ```json
 {"store": "itch", "presets": ["windows"]}
@@ -7410,6 +7412,29 @@ writes (`path` and `text`) and the steamcmd `command` that runs it.
 
 ```json
 {"app":"1234560","branch":"beta","build":true,"builds":[{"depot":"1234562","output":"build/export/windows","platform":"windows","preset":"windows"}],"command":["steamcmd","+login","$STEAM_USERNAME","+run_app_build",".slash/publish/steam/app_build_1234560.vdf","+quit"],"needs":["steamcmd on PATH or in SLASH_STEAMCMD_PATH","STEAM_USERNAME"],"script":{"path":".slash/publish/steam/app_build_1234560.vdf","text":"\"AppBuild\"\n{\n\t\"AppID\" \"1234560\"\n\t\"Desc\" \"1.4.1-beta\"\n\t\"ContentRoot\" \"../../../\"\n\t\"BuildOutput\" \"output/\"\n\t\"SetLive\" \"beta\"\n\t\"Depots\"\n\t{\n\t\t\"1234562\"\n\t\t{\n\t\t\t\"FileMapping\"\n\t\t\t{\n\t\t\t\t\"LocalPath\" \"build/export/windows/*\"\n\t\t\t\t\"DepotPath\" \".\"\n\t\t\t\t\"recursive\" \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n"},"store":"steam","upload":false,"version":"1.4.1-beta"}
+```
+
+For the Epic Games Store, each build has its `artifact`, the `build_version` it goes up as (the
+version and its platform), the `app_launch` program and its BuildPatchTool `commands`: the upload,
+then the label when `stores.epic.label` is set.
+
+```json
+{"store": "epic", "presets": ["windows"], "version": "1.4.1"}
+```
+
+```json
+{"build":true,"builds":[{"app_launch":"StarCourier.exe","artifact":"4a7d1c0e9b2f4e6a8c3d5b1f7e9a2c4d","build_version":"1.4.1-Windows","commands":[["BuildPatchTool","-OrganizationId=o-7rq2xk9mzw3c","-ProductId=b81e5f3a0c6d4792a1e8f4b7c2d9e605","-ArtifactId=4a7d1c0e9b2f4e6a8c3d5b1f7e9a2c4d","-ClientId=$EPIC_CLIENT_ID","-ClientSecretEnvVar=EPIC_CLIENT_SECRET","-mode=UploadBinary","-BuildRoot=build/export/windows","-CloudDir=.slash/publish/epic/cloud","-BuildVersion=1.4.1-Windows","-AppLaunch=StarCourier.exe","-AppArgs="],["BuildPatchTool","-OrganizationId=o-7rq2xk9mzw3c","-ProductId=b81e5f3a0c6d4792a1e8f4b7c2d9e605","-ArtifactId=4a7d1c0e9b2f4e6a8c3d5b1f7e9a2c4d","-ClientId=$EPIC_CLIENT_ID","-ClientSecretEnvVar=EPIC_CLIENT_SECRET","-mode=LabelBinary","-BuildVersion=1.4.1-Windows","-Label=Live","-Platform=Windows","-SandboxId=e3c9a7f1b5d2486e9a0c7f3b1d5e8a24"]],"output":"build/export/windows","platform":"windows","preset":"windows"}],"label":"Live","needs":["BuildPatchTool on PATH or in SLASH_BUILDPATCHTOOL_PATH","EPIC_CLIENT_ID","EPIC_CLIENT_SECRET"],"organization":"o-7rq2xk9mzw3c","product":"b81e5f3a0c6d4792a1e8f4b7c2d9e605","sandbox":"e3c9a7f1b5d2486e9a0c7f3b1d5e8a24","store":"epic","upload":false,"version":"1.4.1"}
+```
+
+For GOG, each build has the Pipeline Builder `project` an upload writes (`path` and `json`) and
+the `command` that builds and uploads it.
+
+```json
+{"store": "gog", "presets": ["windows"], "version": "1.4.1"}
+```
+
+```json
+{"branch":"staging","build":true,"builds":[{"command":["GOGGalaxyPipelineBuilder","build-game",".slash/publish/gog/windows.json","--username","$GOG_USERNAME","--password","$GOG_PASSWORD","--version","1.4.1","--branch","staging"],"output":"build/export/windows","platform":"windows","preset":"windows","project":{"json":{"project":{"baseProductId":"1207658924","clientId":"","clientSecret":"","dependencies":[],"installDirectory":"Star Courier","name":"Star Courier","platform":"windows","products":[{"depots":[{"folder":"build/export/windows","languages":["en-US","de-DE"],"name":"Star Courier (windows)"}],"name":"Star Courier","productId":"1207658924","tasks":[{"category":"game","isHidden":false,"isPrimary":true,"languages":["*"],"name":"Star Courier","path":"StarCourier.exe","type":"FileTask"}]}],"scriptInterpreter":true,"version":"1.4.1"}},"path":".slash/publish/gog/windows.json"}}],"needs":["GOGGalaxyPipelineBuilder on PATH or in SLASH_GOG_PIPELINE_BUILDER_PATH","GOG_USERNAME","GOG_PASSWORD"],"product":"1207658924","store":"gog","upload":false,"version":"1.4.1"}
 ```
 
 A request or presets it can't publish, or a machine without the store's tool or credentials,
@@ -7487,12 +7512,12 @@ of files the lock pins. A package with Maven dependencies and no up-to-date lock
 
 Adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`. A folder in the project
 is listed where it is; one of the engine's [store packages](services.md#stores) (`storekit`,
-`play-billing`, `steamworks`), a git repository or an `https://` `.zip` or `.tar` archive is copied into
+`play-billing`, `steamworks`, `eos`, `galaxy`), a git repository or an `https://` `.zip` or `.tar` archive is copied into
 `sdks/<name>`. Listing a package twice does nothing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | A package folder in the project, `storekit`, `play-billing` or `steamworks`, a git repository URL, or an archive's `https://` URL |
+| `source` | string | required | A package folder in the project, `storekit`, `play-billing`, `steamworks`, `eos` or `galaxy`, a git repository URL, or an archive's `https://` URL |
 | `name` | string | the package's name | Folder under `sdks/` for a copied package |
 | `ref` | string | the default branch | Git branch or tag to clone |
 | `sha256` | string | not checked | The archive's SHA-256; a mismatch adds nothing |
