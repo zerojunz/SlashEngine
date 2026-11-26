@@ -6,6 +6,7 @@ add_library(slash_procedural
     src/foliage.cpp
     src/gradient.cpp
     src/noise.cpp
+    src/paint.cpp
     src/pcg.cpp
     src/scatter.cpp
     src/texture.cpp

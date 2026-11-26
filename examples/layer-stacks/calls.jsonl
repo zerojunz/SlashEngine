@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"paint.bake","params":{"path":"props/crate.paint.json"}}
+{"jsonrpc":"2.0","id":2,"method":"paint.bake","params":{"path":"props/crate.paint.json"}}
+{"jsonrpc":"2.0","id":3,"method":"paint.edit","params":{"path":"props/crate.paint.json","layers":{"moss":{"fill":{"albedo":[0.25,0.34,0.12],"roughness":0.95,"height":0.6},"mask":{"map":"ao","below":0.8,"softness":0.2,"breakup":{"amount":0.2,"scale":10}},"below":"dust"}}}}
+{"jsonrpc":"2.0","id":4,"method":"paint.preview","params":{"path":"props/crate.paint.json","views":2,"out":"build/crate_preview.png"}}
+{"jsonrpc":"2.0","id":5,"method":"paint.bake","params":{"path":"props/crate_rusty.paint.json","parameters":{"wear":1}}}
+{"jsonrpc":"2.0","id":6,"method":"paint.bake","params":{"path":"sprites/shield.paint.json"}}
+{"jsonrpc":"2.0","id":7,"method":"texture.check","params":{}}

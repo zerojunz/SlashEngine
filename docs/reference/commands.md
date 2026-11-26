@@ -62,7 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
-| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck) |
+| Textures | [`texture.generate`](#texturegenerate), [`texture.inspect`](#textureinspect), [`texture.edit`](#textureedit), [`texture.check`](#texturecheck), [`paint.edit`](#paintedit), [`paint.bake`](#paintbake), [`paint.preview`](#paintpreview) |
 | Scatter | [`scatter.run`](#scatterrun) |
 | Procedural graphs | [`pcg.run`](#pcgrun), [`pcg.preview`](#pcgpreview), [`pcg.check`](#pcgcheck) |
 | Foliage | [`foliage.paint`](#foliagepaint), [`foliage.erase`](#foliageerase), [`foliage.get`](#foliageget), [`foliage.harvest`](#foliageharvest), [`foliage.sway`](#foliagesway) |
@@ -687,12 +687,13 @@ A misspelled input fails with the closest node, as
 
 ### texture.check
 
-Checks texture graphs: each one validates and bakes, keeps the ranges in its `expect`, and its
-first output, the texture its bare path names, keeps the storyboard's
-[palettes and budgets](storyboard-format.md) that cover it. `expect` keys are
+Checks texture graphs and [layer stacks](scene-format.md#layer-stacks): each one validates and
+bakes, keeps the ranges in its `expect`, and a graph's first output, the texture its bare path
+names, keeps the storyboard's [palettes and budgets](storyboard-format.md) that cover it. A
+stack's `expect` also takes `"mask.<layer>"`, the share of the texture a layer's mask covers. `expect` keys are
 `"<output>.<measure>"`, each a `[min, max]` range or, for `tiles`, `true` or `false`; an unknown
-output or measure is an error with the closest name. With no `paths` it checks every graph in the
-project outside `build/`. [`test.run`](#testrun) and `slash-cli project validate` run it with the
+output or measure is an error with the closest name. With no `paths` it checks every graph and stack in
+the project outside `build/`. [`test.run`](#testrun) and `slash-cli project validate` run it with the
 project's other checks.
 
 | Param | Type | Default | Meaning |
@@ -705,6 +706,77 @@ JSON `path` and `message`:
 ```json
 {"checked":1,"errors":[{"file":"textures/wall.texture.json","message":"\"albedo\"'s value is 0.276, outside [0.3, 0.45]","path":"/expect/albedo.value"},{"file":"textures/wall.texture.json","message":"is 64x32 pixels; budget/walls allows 32 on a side","path":""}]}
 ```
+
+### paint.edit
+
+Changes a [layer stack](scene-format.md#layer-stacks) (`.paint.json`), or makes one: its fields
+by JSON Merge Patch and its layers by name, so an agent adds, changes, moves or removes one layer
+without rewriting the list. The result must validate and bake, or nothing is written; it returns
+the changed JSON Pointers, the layers in order and, when the stack paints a model or a sprite,
+each texture's measures (as [`texture.edit`](#textureedit)'s, over the painted texels) and each
+mask's coverage (`masks`, from 0 to 1). Undo puts the file back, and `dry_run` writes nothing.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.paint.json` file |
+| `patch` | object | | A merge patch over the stack's fields other than `layers` |
+| `layers` | object | | Layers by name: a merge patch over each, a new name adding a layer on top, or `null` removing one. In a patch, `above` or `below` a layer's name moves it there, and `add_strokes` and `add_decals` append to its lists |
+| `measure` | boolean | `true` | Whether to bake and measure |
+
+Needs: `edit` and `filesystem`. From [examples/layer-stacks](../../examples/layer-stacks/):
+
+```json
+{"path": "props/crate.paint.json", "layers": {"moss": {"fill": {"albedo": [0.25, 0.34, 0.12], "roughness": 0.95, "height": 0.6}, "mask": {"map": "ao", "below": 0.8, "softness": 0.2, "breakup": {"amount": 0.2, "scale": 10}}, "below": "dust"}}}
+```
+
+```json
+{"changed":["/layers/moss"],"layers":["wood","grain","iron","worn","dirt","moss","dust"],"masks":{"dirt":0.039,"dust":0.167,"grain":0.356,"iron":0.364,"moss":0.091,"worn":0.194},"outputs":{"albedo":{"a":1,"b":0.291,"contrast":0.141,"g":0.364,"high":0.621,"low":0.219,"r":0.431,"value":0.373},"height":{...},"normal":{...},"orm":{...}},"path":"props/crate.paint.json","texel_density":136.533}
+```
+
+A mask reading a map the stack doesn't have (`height` with no `high` model, `alpha` on a model)
+fails at its pointer, and a misspelled layer in `above` or `below` names the closest.
+
+### paint.bake
+
+Bakes a layer stack into PNG files beside it, `<stack>_<output>.png` (`albedo`, `orm`, `normal`,
+and `height` and `emission` where a layer paints them), and, for a model, writes a
+[`.standard_material.json`](scene-format.md#material-files) that draws them (the stack's `material`,
+or `<stack>.standard_material.json`). The mesh maps its masks read bake first, as
+[`model.bake_maps`](#modelbake_maps) bakes them and into the same cached folder. Returns the
+`textures`, the `material`, each texture's measures, each mask's coverage and, for a model, its
+`texel_density` (texels per unit of the model). When nothing would change it writes nothing and
+returns `"unchanged": true`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.paint.json` file that paints a model or sprite |
+| `parameters` | object | | Values for the stack's parameters, for this bake |
+
+Needs: `edit` and `filesystem`. From [examples/layer-stacks](../../examples/layer-stacks/):
+
+```json
+{"path": "props/crate.paint.json"}
+```
+
+```json
+{"masks":{"dirt":0.039,"dust":0.167,"grain":0.356,"iron":0.364,"worn":0.194},"material":"props/crate.standard_material.json","outputs":{"albedo":{"a":1,"b":0.294,"contrast":0.147,"g":0.356,"high":0.621,"low":0.166,"r":0.436,"value":0.368},...},"path":"props/crate.paint.json","size":[256,256],"texel_density":136.533,"textures":{"albedo":"props/crate_albedo.png","normal":"props/crate_normal.png","orm":"props/crate_orm.png"}}
+```
+
+### paint.preview
+
+Bakes a layer stack in memory and draws it: a model lit on a gray stage from `views` cameras
+round it at three quarters, a sprite over gray. Returns what [`paint.bake`](#paintbake) returns
+but the files, and each view's measures in `views`; with `out`, the views side by side as a PNG.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.paint.json` file |
+| `parameters` | object | | Values for the stack's parameters, for this preview |
+| `views` | integer | `4` | Views round a model, 1 to 8 |
+| `size` | `[w, h]` | `[160, 160]` | Each view's size in pixels, 16 to 1024 |
+| `out` | string | | A `.png` file to write the views to |
+
+Needs: `read`, and `filesystem` for `out`.
 
 ## Scatter
 

@@ -116,4 +116,31 @@ struct MeshMapBake {
                                                  const MeshMapSettings& settings,
                                                  jobs::Pool* pool = nullptr);
 
+// Where each texel of a model's texture coordinates lies on its low mesh, with no rays traced:
+// what paint stacks place strokes and decals by and mask parts and materials with. Texels no
+// triangle covers but padding reaches take their nearest covered neighbor's values, as the
+// baked maps' padding does.
+struct MeshMapSurface {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    // 1 where a triangle covers a texel, 2 where padding reaches it, 0 elsewhere.
+    std::vector<std::uint8_t> covered;
+    std::vector<Vec3> position;         // in the model's space
+    std::vector<Vec3> normal;           // unit, in the model's space
+    std::vector<std::int32_t> part;     // into MeshMapMesh::part_names; -1 where uncovered
+    std::vector<std::int32_t> material; // into MeshMapMesh::material_names; -1 where uncovered
+    Vec3 min;                           // the mesh's box
+    Vec3 max;
+    float coverage = 0.0F; // the share of texels a triangle covers
+    // Texels a unit of the model's surface takes along each side: the square root of the
+    // texels' area in texture coordinates over the triangles' area.
+    float texel_density = 0.0F;
+};
+
+// The low mesh rastered into its first texture coordinates at width x height, grown by padding
+// texels. Fails for sizes over 8192 or a mesh with no triangle covering a texel.
+[[nodiscard]] Result<MeshMapSurface> mesh_map_surface(const MeshMapMesh& low, std::uint32_t width,
+                                                      std::uint32_t height,
+                                                      std::uint32_t padding = 4);
+
 } // namespace slash::scene3d

@@ -4,7 +4,7 @@ This is the plan for SlashEngine from today to launch and beyond. It has no date
 order is the plan, and each item carries a status instead. It is drawn from the approved
 [design](design.md), whose milestone list and feature parity table it tracks.
 
-Status: current · Updated: 2026-11-22
+Status: current · Updated: 2026-11-25
 
 ## Status words
 
@@ -1429,7 +1429,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
               normal and position, part and material IDs, sky exposure, high to low height and
               normal) on ray queries
-        - [ ] Layer stacks: `.paint.json` layers, masks over mesh maps and part names, strokes
+        - [x] Layer stacks: `.paint.json` layers, masks over mesh maps and part names, strokes
               and decals as data, smart materials, and `paint.edit`, `paint.bake` and
               `paint.preview`, on models and sprites
         - [ ] Weathering, wear from damage, text and logo stamps, seeded variants, drafts from a

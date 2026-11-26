@@ -1835,7 +1835,7 @@ compile_material_shader(const CanvasMaterial& material, const world::FileReader&
     if (!doc) {
         return make_error(ErrorCode::InvalidArgument, material.shader + ": " + doc.error().message);
     }
-    const procedural::GraphReader reader{.text = read, .image = {}};
+    const procedural::GraphReader reader{.text = read, .image = {}, .graph_image = {}};
     auto made =
         procedural::texture_graph_shader(doc.value(), reader, material.shader_type, source.params);
     if (!made) {

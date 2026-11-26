@@ -16,6 +16,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -133,7 +135,10 @@ json::Array id_list(const std::vector<std::string>& names) {
     return out;
 }
 
-Reply model_bake_maps(Session& session, const json::Value& params) {
+} // namespace
+
+Reply bake_model_maps(Session& session, const json::Value& params, bool write,
+                      std::map<std::string, render::Image, std::less<>>* images) {
     const std::string& path = params.find("path")->as_string();
     if (!scene3d::is_model_path(path)) {
         return param_error(code::kInvalidParams, "/path",
@@ -242,10 +247,29 @@ Reply model_bake_maps(Session& session, const json::Value& params) {
                         all_there = all_there && bytes && bytes.value();
                     }
                 }
+                if (all_there && images != nullptr) {
+                    for (const auto& [name, file] : result->find("maps")->as_object()) {
+                        auto bytes = session.read_project_file(file.as_string());
+                        if (!bytes) {
+                            all_there = false;
+                            break;
+                        }
+                        const std::optional<std::string>& text = bytes.value();
+                        if (!text.has_value()) {
+                            all_there = false;
+                            break;
+                        }
+                        auto image = render::decode_image(*text);
+                        if (!image) {
+                            all_there = false;
+                            break;
+                        }
+                        images->insert_or_assign(name, std::move(image).value());
+                    }
+                }
                 if (all_there) {
                     json::Value cached = *result;
                     cached["cached"] = true;
-                    session.mark_unchanged();
                     return Reply::success(std::move(cached));
                 }
             }
@@ -282,6 +306,9 @@ Reply model_bake_maps(Session& session, const json::Value& params) {
     json::Value stats;
     std::vector<std::pair<std::string, std::string>> writes;
     for (const scene3d::MeshMapImage& map : bake.maps) {
+        if (images != nullptr) {
+            images->insert_or_assign(std::string(scene3d::mesh_map_name(map.map)), map.image);
+        }
         auto png = render::encode_png(map.image);
         if (!png) {
             return Reply::failure(png.error());
@@ -330,6 +357,9 @@ Reply model_bake_maps(Session& session, const json::Value& params) {
         result["device"] = bake.traced_on_gpu ? "gpu" : "cpu";
     }
 
+    if (!write) {
+        return Reply::success(std::move(result));
+    }
     json::Value manifest;
     manifest["format"] = 1;
     manifest["hash"] = key;
@@ -359,10 +389,20 @@ Reply model_bake_maps(Session& session, const json::Value& params) {
         changed = true;
     }
     if (!changed) {
-        session.mark_unchanged();
         result["unchanged"] = true;
     }
     return Reply::success(std::move(result));
+}
+
+namespace {
+
+Reply model_bake_maps(Session& session, const json::Value& params) {
+    Reply reply = bake_model_maps(session, params, true, nullptr);
+    if (reply.ok &&
+        (reply.value.find("cached") != nullptr || reply.value.find("unchanged") != nullptr)) {
+        session.mark_unchanged();
+    }
+    return reply;
 }
 
 } // namespace

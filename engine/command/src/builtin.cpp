@@ -8911,6 +8911,7 @@ void register_builtin_commands(Registry& registry) {
     register_procedural_commands(registry);
     register_texture_tools(registry);
     register_mesh_map_commands(registry);
+    register_paint_commands(registry);
     register_scatter_commands(registry);
     register_pcg_commands(registry);
     register_hair_commands(registry);
