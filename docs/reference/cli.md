@@ -939,26 +939,30 @@ was wrong, and exits with 2:
 
 ### publish
 
-Publishes a game's exports to a store, so players can download them. Only itch.io so far.
+Publishes a game's exports to a store, so players can download them: itch.io or Steam.
 
 ```bash
 slash-cli publish <store> [options]
 ```
 
-`<store>` is `itch`. [`export_presets.json`](project-format.md#stores)'s `stores.itch` names the
-game's itch.io project and each preset's channel. Without `--upload`, publish prints the plan and
-changes nothing: each build's `preset`, `platform`, `channel`, `target` (`user/game:channel`),
-`output` folder and the `command` an upload runs, plus what an upload `needs`. The
+`<store>` is `itch` or `steam`. [`export_presets.json`](project-format.md#stores)'s `stores`
+section says where builds go: `stores.itch` names the game's itch.io project and each preset's
+channel, `stores.steam` the game's app id, each preset's depot and the branch builds are set live
+on. Without `--upload`, publish prints the plan and changes nothing: each build's `preset`,
+`platform`, `output` folder and where it goes, the `command` an upload runs, and what an upload
+`needs`. The
 [`publish.run`](commands.md#publishrun) command does the same over MCP, JSON-RPC and REST.
 
 | Flag | Meaning |
 | --- | --- |
-| `--preset <name>` | A preset, or a platform for its defaults, to publish; repeat for more (default: `stores.itch.channels`, else every preset but iOS ones) |
+| `--preset <name>` | A preset, or a platform for its defaults, to publish; repeat for more (default: `stores.itch.channels`, else every preset but iOS ones; `stores.steam.depots`) |
 | `--upload` | Export each build and upload it. Players can see an upload, so an agent asks first |
 | `--no-build` | Upload what earlier exports left in the presets' output folders instead of exporting again |
-| `--version <version>` | The version itch.io shows (default: `project.json`'s `version`) |
+| `--version <version>` | The version the store shows: itch.io's user version, the Steam build's description (default: `project.json`'s `version`) |
 | `--project <dir>` | Game folder with `project.json` (default `.`) |
 | `--engine <dir>` | Engine sources, as for [export](#export) |
+
+#### itch.io
 
 An upload runs [butler](https://itch.io/docs/butler/), itch.io's upload tool, as a program of its
 own: `butler push <output> <user/game:channel> --userversion <version> --if-changed`, after
@@ -980,6 +984,32 @@ The first build that fails stops the publish. Its error names the step: `options
 or the presets were wrong, exit 2), `setup` (no butler or no key), `export` (with the export's
 error in `export`) or `push` (with butler's `exit_code` and `tail`). `pushed` lists the targets
 uploaded before it.
+
+#### Steam
+
+Steam takes every depot in one app build, so a publish to Steam exports every preset first, then
+writes one [app build script](https://partner.steamgames.com/doc/sdk/uploading) to
+`.slash/publish/steam/app_build_<app>.vdf` and runs
+[steamcmd](https://developer.valvesoftware.com/wiki/SteamCMD), Valve's command-line Steam client,
+as a program of its own: `steamcmd +login <account> +run_app_build <script> +quit`. The script
+maps each preset's output folder to its depot, uses the version as the build's description and,
+with `stores.steam.branch`, sets the build live on that branch; its paths are relative to it, so
+the plan's `script.text` is exactly what an upload writes. Only Windows, macOS and Linux presets
+can go to Steam.
+
+steamcmd is found in `SLASH_STEAMCMD_PATH`, else on `PATH` (as `steamcmd` or `steamcmd.sh`), and
+signs in as the Steamworks account in `STEAM_USERNAME`; both are checked before anything is built.
+No password is passed: sign the account in once by hand with `steamcmd +login <account>`, where
+Steam Guard asks for its code, and steamcmd keeps the login. steamcmd's output goes to
+`.slash/publish/steam.log` and its last lines into `push.tail`, with the new build's
+`push.build_id`.
+
+```bash
+slash-cli publish steam --preset windows
+```
+
+A failed upload, or one whose output doesn't say the build finished, fails with steamcmd's
+`exit_code` and `tail`.
 
 ### sdk
 
@@ -1237,3 +1267,5 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `ANDROID_SERIAL` | The device or emulator `export --test` uses when several are connected |
 | `BUTLER_API_KEY` | The itch.io API key butler uploads with, for [`publish itch --upload`](#publish) |
 | `SLASH_BUTLER_PATH` | butler's program, when it isn't on `PATH` |
+| `STEAM_USERNAME` | The Steamworks account steamcmd signs in as, for [`publish steam --upload`](#publish); sign it in once by hand so steamcmd keeps its login |
+| `SLASH_STEAMCMD_PATH` | steamcmd's program, when it isn't on `PATH` |

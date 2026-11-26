@@ -315,3 +315,159 @@ TEST_CASE("publish.run plans without asking and uploads only with the capabiliti
           command::code::kInvalidParams);
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("export presets say which Steam depot takes each build") {
+    CHECK(exporter::steam_takes("windows"));
+    CHECK(exporter::steam_takes("linux"));
+    CHECK_FALSE(exporter::steam_takes("web"));
+
+    const json::Value good = parse(R"({"format": 1, "presets": {"pc": {"platform": "windows"}},
+        "stores": {"steam": {"app": "480", "depots": {"pc": "481", "macos": "482"},
+                             "branch": "beta"}}})");
+    CHECK(exporter::validate_presets(good).empty());
+    const exporter::Stores stores = exporter::parse_stores(good);
+    REQUIRE(stores.steam.has_value());
+    CHECK(stores.steam->app == "480");
+    CHECK(stores.steam->depots.at("macos") == "482");
+    CHECK(stores.steam->branch == "beta");
+
+    // Ids are digits, each depot names a desktop preset or platform, and builds can't be set live
+    // on the default branch from here.
+    const json::Value bad = parse(R"({"format": 1, "presets": {"phone": {"platform": "ios"}},
+        "stores": {"steam": {"app": "app-480", "branch": "default",
+                             "depots": {"pc": "481", "windows": "x1", "phone": "483",
+                                        "web": "484"}}}})");
+    std::vector<std::string> paths;
+    for (const auto& error : exporter::validate_presets(bad)) {
+        paths.push_back(error.path + " " + error.message);
+    }
+    CHECK(paths ==
+          std::vector<std::string>{
+              "/stores/steam/app expected the app id's digits, from Steamworks",
+              "/stores/steam/depots/pc no preset or platform called \"pc\"",
+              "/stores/steam/depots/phone Steam takes Windows, macOS and Linux builds, not ios "
+              "ones",
+              "/stores/steam/depots/web Steam takes Windows, macOS and Linux builds, not web ones",
+              "/stores/steam/depots/windows expected the depot id's digits, from Steamworks",
+              "/stores/steam/branch Steam sets the default branch live only from Steamworks: "
+              "leave branch out and set the build live there"});
+    CHECK_FALSE(exporter::validate_presets(parse(R"({"format": 1, "presets": {},
+        "stores": {"steam": {"app": "480"}}})"))
+                    .empty());
+}
+
+TEST_CASE("publish plans one Steam app build for every depot") {
+    const std::string root = "publish_steam_plan_project";
+    write_game(root, R"({"steam": {"app": "480", "branch": "beta",
+        "depots": {"mac-release": "481", "pc": "482", "pi": "483"}}})");
+    exporter::PublishOptions options;
+    options.store = "steam";
+    options.project = root;
+
+    exporter::PublishResult plan = exporter::publish_game(options);
+    REQUIRE_MESSAGE(plan.ok, json::write(plan.json));
+    CHECK(plan.json.find("app")->as_string() == "480");
+    CHECK(plan.json.find("branch")->as_string() == "beta");
+    const json::Value& builds = *plan.json.find("builds");
+    CHECK(field(builds, "preset") == std::vector<std::string>{"mac-release", "pc", "pi"});
+    CHECK(field(builds, "depot") == std::vector<std::string>{"481", "482", "483"});
+    CHECK(field(builds, "output") ==
+          std::vector<std::string>{"build/export/mac-release", "dist/pc", "build/export/pi"});
+    CHECK(plan.json.find("script")->find("path")->as_string() ==
+          ".slash/publish/steam/app_build_480.vdf");
+    const std::string script = plan.json.find("script")->find("text")->as_string();
+    CHECK(contains(script, "\"AppID\" \"480\""));
+    CHECK(contains(script, "\"Desc\" \"1.2.0\""));
+    CHECK(contains(script, "\"SetLive\" \"beta\""));
+    CHECK(contains(script, "\"482\"\n\t\t{\n\t\t\t\"FileMapping\"\n\t\t\t{\n\t\t\t\t\"LocalPath\" "
+                           "\"dist/pc/*\""));
+    CHECK(*plan.json.find("command") ==
+          parse(R"(["steamcmd", "+login", "$STEAM_USERNAME", "+run_app_build",
+                    ".slash/publish/steam/app_build_480.vdf", "+quit"])"));
+    CHECK(*plan.json.find("needs") ==
+          parse(R"(["steamcmd on PATH or in SLASH_STEAMCMD_PATH", "STEAM_USERNAME"])"));
+
+    // Named presets take their depot by name, else by their platform's.
+    write_game(root, R"({"steam": {"app": "480", "depots": {"windows": "482"}}})");
+    options.targets = {"pc"};
+    plan = exporter::publish_game(options);
+    REQUIRE(plan.ok);
+    CHECK(field(*plan.json.find("builds"), "depot") == std::vector<std::string>{"482"});
+    CHECK(plan.json.find("branch") == nullptr);
+
+    // What the plan can't publish.
+    options.targets = {"phone"};
+    CHECK(contains(json::write(exporter::publish_game(options).json), "which Steam doesn't take"));
+    options.targets = {"pc", "windows"};
+    CHECK(contains(json::write(exporter::publish_game(options).json),
+                   "two builds go to Steam depot 482"));
+    options.targets = {"mac-release"};
+    CHECK(contains(json::write(exporter::publish_game(options).json),
+                   "\\\"mac-release\\\" has no Steam depot"));
+    write_game(root, R"({"itch": {"project": "player/space-game"}})");
+    options.targets.clear();
+    CHECK(contains(json::write(exporter::publish_game(options).json), "has no stores.steam"));
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("publish uploads exports to Steam through steamcmd") {
+    const std::string root = "publish_steam_upload_project";
+    write_game(root, R"({"steam": {"app": "480", "depots": {"mac-release": "481", "pc": "482"}}})");
+    const std::filesystem::path log = std::filesystem::absolute(root + "-steamcmd.log");
+    std::filesystem::remove(log);
+    Variable steamcmd(std::string(exporter::kSteamcmdPath), root + "/no-steamcmd");
+    Variable user(std::string(exporter::kSteamUser), "");
+    Variable record("FAKE_STEAMCMD_LOG", log.string());
+    Variable refuse("FAKE_STEAMCMD_FAIL", "");
+    exporter::PublishOptions options;
+    options.store = "steam";
+    options.project = root;
+    options.upload = true;
+    options.build = false;
+
+    // steamcmd and the account come from the environment, before anything is built.
+    exporter::PublishResult result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    CHECK(result.json.find("error")->find("step")->as_string() == "setup");
+    CHECK(contains(result.json.find("error")->find("message")->as_string(),
+                   "SLASH_STEAMCMD_PATH names"));
+    steamcmd.set(SLASH_FAKE_STEAMCMD);
+    result = exporter::publish_game(options);
+    CHECK(contains(result.json.find("error")->find("message")->as_string(), "STEAM_USERNAME"));
+    user.set("builder");
+
+    // With no export there, nothing is uploaded.
+    result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    CHECK(contains(result.json.find("error")->find("message")->as_string(),
+                   "there's no export of \"mac-release\""));
+
+    // The outputs earlier exports left go up in one app build.
+    REQUIRE(slash::platform::create_directories(root + "/build/export/mac-release/Space Game.app")
+                .ok());
+    REQUIRE(slash::platform::write_file(
+                root + "/build/export/mac-release/Space Game.app/Info.plist", "<plist/>")
+                .ok());
+    REQUIRE(slash::platform::create_directories(root + "/dist/pc").ok());
+    REQUIRE(slash::platform::write_file(root + "/dist/pc/Space Game.exe", "MZ").ok());
+    REQUIRE(slash::platform::write_file(root + "/dist/pc/game.pck", "data").ok());
+    result = exporter::publish_game(options);
+    REQUIRE_MESSAGE(result.ok, json::write(result.json));
+    CHECK(result.json.find("push")->find("build_id")->as_string() == "7654321");
+    CHECK(std::filesystem::exists(root + "/.slash/publish/steam/app_build_480.vdf"));
+    std::string line;
+    std::istringstream lines(read(log));
+    std::getline(lines, line);
+    CHECK(line == "builder 480 481 1 482 2");
+
+    // A build Steam refuses fails the publish, with steamcmd's words.
+    refuse.set("Invalid depot ID");
+    result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    const json::Value& error = *result.json.find("error");
+    CHECK(error.find("step")->as_string() == "push");
+    CHECK(contains(error.find("tail")->as_string(), "Invalid depot ID"));
+    CHECK(std::filesystem::exists(root + "/.slash/publish/steam.log"));
+    std::filesystem::remove_all(root);
+    std::filesystem::remove(log);
+}

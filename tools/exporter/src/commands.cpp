@@ -405,7 +405,8 @@ void register_export_commands(command::Registry& registry) {
     publish_params["type"] = "object";
     publish_params["additionalProperties"] = false;
     publish_params["required"] = json::Array{"store"};
-    publish_params["properties"]["store"] = property("string", "The store: itch.");
+    publish_params["properties"]["store"] =
+        property("string", "The store: itch (itch.io) or steam.");
     json::Array stores;
     for (const std::string_view store : kStores) {
         stores.emplace_back(store);
@@ -413,7 +414,7 @@ void register_export_commands(command::Registry& registry) {
     publish_params["properties"]["store"]["enum"] = std::move(stores);
     publish_params["properties"]["presets"] =
         property("array", "Presets, or platforms for their defaults, to publish; default the "
-                          "store's channels in export_presets.json.");
+                          "store's channels or depots in export_presets.json.");
     publish_params["properties"]["presets"]["items"]["type"] = "string";
     publish_params["properties"]["upload"] =
         property("boolean", "Export and upload the builds (needs the build and network "
@@ -426,9 +427,10 @@ void register_export_commands(command::Registry& registry) {
         property("string", "The version the store shows; default project.json's.");
     registry.add({
         .name = "publish.run",
-        .description = "Publishes exports to a store (itch.io through butler): returns each "
-                       "build's preset, channel, output and push command, and with upload "
-                       "exports and pushes them. Credentials come from the environment.",
+        .description = "Publishes exports to a store (itch.io through butler, Steam through "
+                       "steamcmd): returns the plan, each build's preset, channel or depot and "
+                       "output with the upload command, and with upload exports and uploads "
+                       "them. Credentials come from the environment.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(publish_params),

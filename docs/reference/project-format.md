@@ -973,8 +973,8 @@ a distribution one (App Store or Ad Hoc) for release.
 
 ### Stores
 
-`stores` says where [`slash-cli publish`](cli.md#publish) sends the presets' builds. Only itch.io
-so far:
+`stores` says where [`slash-cli publish`](cli.md#publish) sends the presets' builds, by store:
+itch.io and Steam so far.
 
 ```json
 {
@@ -984,6 +984,11 @@ so far:
     "itch": {
       "channels": {"mac": "mac", "pc": "windows", "web": "html5"},
       "project": "player/star-courier"
+    },
+    "steam": {
+      "app": "1234560",
+      "branch": "beta",
+      "depots": {"mac": "1234561", "windows": "1234562"}
     }
   }
 }
@@ -993,9 +998,14 @@ so far:
 | --- | --- | --- |
 | `itch.project` | required | The game's itch.io project as `user/game`, from its address `https://user.itch.io/game` |
 | `itch.channels` | every preset but iOS ones, each on its platform's channel | Channels by preset, or by platform (`web` above) for its defaults. A channel is letters, digits, `.`, `_` or `-`; butler tags its downloads by the platform in its name. The platforms' channels are `mac`, `windows`, `linux` (`linux-arm64` for arm64), `html5` and `android` |
+| `steam.app` | required | The game's Steam app id, from Steamworks |
+| `steam.depots` | required | Depot ids by preset, or by platform (`windows` above) for its presets, from the app's Depots page. Steam takes Windows, macOS and Linux builds |
+| `steam.branch` | none | The branch each build is set live on, such as `beta`: letters, digits, `.`, `_` or `-`. Steam sets the default branch live only from Steamworks, so `default` is refused; without a branch, builds wait in Steamworks to be set live |
 
-A channel must name a preset or a platform, and not an iOS one, since itch.io takes no iOS games.
-Uploads read butler's API key from `BUTLER_API_KEY`, never from the file.
+A channel must name a preset or a platform, and not an iOS one, since itch.io takes no iOS games;
+a depot must name a Windows, macOS or Linux preset or platform. Credentials never go in the file:
+uploads read butler's API key from `BUTLER_API_KEY` and the Steamworks account steamcmd signs in
+as from `STEAM_USERNAME`.
 
 ## Layout
 

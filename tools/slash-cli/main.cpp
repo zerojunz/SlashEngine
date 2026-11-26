@@ -320,12 +320,13 @@ Usage:
       --test                         Run the exported game headless afterwards, if possible
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli publish <store>          Publish exports to a store: itch (through butler,
-                                     with its key in BUTLER_API_KEY). Prints the plan
-                                     (each build's preset, channel and push command)
-                                     unless --upload is given
+                                     with its key in BUTLER_API_KEY) or steam (through
+                                     steamcmd, signed in as STEAM_USERNAME). Prints the
+                                     plan (each build's preset, channel or depot, and the
+                                     upload command) unless --upload is given
       --preset <name>                A preset or platform to publish; repeat for more
                                      (default: export_presets.json's stores.<store>
-                                     channels, else every preset the store takes)
+                                     channels or depots, else every preset itch.io takes)
       --upload                       Export each build and upload it; players can see it
       --no-build                     Upload what earlier exports left instead of exporting
       --version <version>            The version the store shows (default: project.json's)
@@ -3375,7 +3376,7 @@ int cmd_publish(const std::vector<std::string>& args) {
         }
     }
     if (options.store.empty()) {
-        return usage_error("publish needs a store: itch");
+        return usage_error("publish needs a store: itch or steam");
     }
     const slash::exporter::PublishResult result = slash::exporter::publish_game(options);
     print(result.json);
