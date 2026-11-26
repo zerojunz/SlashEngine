@@ -191,6 +191,7 @@ add_executable(slash_tests
     test_pcg.cpp
     test_procedural.cpp
     test_project_map.cpp
+    test_publish.cpp
     test_ragdoll.cpp
     test_ragdoll_profiles.cpp
     test_ray_records.cpp
@@ -304,6 +305,12 @@ slash_target_warnings(fake-assetripper)
 add_dependencies(slash_tests fake-assetripper)
 target_compile_definitions(slash_tests PRIVATE
     SLASH_FAKE_ASSETRIPPER="$<TARGET_FILE:fake-assetripper>")
+
+# A stand-in for itch.io's butler, so the publish tests upload nowhere.
+add_executable(fake-butler fake_butler.cpp)
+slash_target_warnings(fake-butler)
+add_dependencies(slash_tests fake-butler)
+target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_BUTLER="$<TARGET_FILE:fake-butler>")
 
 # A stand-in for Blender, so the .blend tests and the blend-models example run without it.
 add_executable(fake-blender fake_blender.cpp)

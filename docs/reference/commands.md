@@ -108,7 +108,7 @@ as `entity.get`, reject it as an unknown param.
 | Observe | [`events.subscribe`](#eventssubscribe), [`events.read`](#eventsread), [`events.unsubscribe`](#eventsunsubscribe), [`log.tail`](#logtail), [`frame.capture`](#framecapture), [`frame.summary`](#framesummary), [`canvas.convert`](#canvasconvert) |
 | Display | [`display.list`](#displaylist), [`display.set`](#displayset), [`perf.stats`](#perfstats), [`debug.overlay`](#debugoverlay) |
 | Import | [`project.import`](#projectimport) |
-| Export | [`export.run`](#exportrun), [`texture.forms`](#textureforms), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
+| Export | [`export.run`](#exportrun), [`publish.run`](#publishrun), [`texture.forms`](#textureforms), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
 | Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.style`](#assetstyle), [`asset.review`](#assetreview), [`asset.sync`](#assetsync) |
@@ -7373,6 +7373,39 @@ path.
 
 ```json
 {"code":-32002,"data":{"step":"options"},"message":"no preset or platform called \"macso\"; did you mean \"macos\"?"}
+```
+
+### publish.run
+
+Plans or uploads a game's exports to a store, as [`slash-cli publish`](cli.md#publish) does, and
+returns the same result. Only itch.io so far, through butler. Registered next to `export.run`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `store` | string | required | `itch` |
+| `presets` | array of strings | `stores.itch.channels`, else every preset but iOS ones | Presets, or platforms for their defaults, to publish |
+| `upload` | boolean | `false` | Export and upload the builds. Players can see an upload, so ask the user first. `false` returns the plan |
+| `build` | boolean | `true` | Export each preset before uploading it; `false` uploads what an earlier export left |
+| `version` | string | `project.json`'s | The version the store shows |
+
+Needs: `read`, `filesystem`; an upload also needs `build` and `network`. It changes no scene, so
+there is nothing to undo. Credentials come from the environment (`BUTLER_API_KEY`), never from
+params or files.
+
+```json
+{"store": "itch", "presets": ["windows"]}
+```
+
+```json
+{"build":true,"builds":[{"channel":"windows","command":["butler","push","build/export/windows","player/star-courier:windows","--userversion","1.4.0","--if-changed"],"output":"build/export/windows","platform":"windows","preset":"windows","target":"player/star-courier:windows"}],"needs":["butler on PATH or in SLASH_BUTLER_PATH","BUTLER_API_KEY"],"project":"player/star-courier","store":"itch","upload":false,"version":"1.4.0"}
+```
+
+A request or presets it can't publish, or a machine with no butler or key, fail with `-32002`;
+a failed export or push fails with `-32004`. `data` carries the failed `step`, the `preset`, the
+export's error or butler's `exit_code` and `tail`, and `pushed`: the targets uploaded before it.
+
+```json
+{"code":-32002,"data":{"step":"options"},"message":"\"phone\" builds for ios, which itch.io doesn't take"}
 ```
 
 ### texture.forms

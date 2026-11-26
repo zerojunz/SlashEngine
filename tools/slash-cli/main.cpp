@@ -36,6 +36,7 @@
 #include "slash/exporter/gameplay.hpp"
 #include "slash/exporter/icons.hpp"
 #include "slash/exporter/presets.hpp"
+#include "slash/exporter/publish.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
 #include "slash/gameplay/host.hpp"
@@ -317,6 +318,18 @@ Usage:
                                      <project>/build/export/<preset>)
       --debug                        Debug build instead of Release
       --test                         Run the exported game headless afterwards, if possible
+      --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
+  slash-cli publish <store>          Publish exports to a store: itch (through butler,
+                                     with its key in BUTLER_API_KEY). Prints the plan
+                                     (each build's preset, channel and push command)
+                                     unless --upload is given
+      --preset <name>                A preset or platform to publish; repeat for more
+                                     (default: export_presets.json's stores.<store>
+                                     channels, else every preset the store takes)
+      --upload                       Export each build and upload it; players can see it
+      --no-build                     Upload what earlier exports left instead of exporting
+      --version <version>            The version the store shows (default: project.json's)
+      --project <dir>                Game folder with project.json (default ".")
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli sdk add <source>         Add an SDK package (a folder with sdk.json) to
                                      project.json's "sdks", so exports link it: a folder in
@@ -3338,6 +3351,40 @@ int cmd_export(const std::vector<std::string>& args) {
     return result.ok ? kExitOk : kExitFailure;
 }
 
+int cmd_publish(const std::vector<std::string>& args) {
+    slash::exporter::PublishOptions options;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        const bool has_value = i + 1 < args.size();
+        if (arg == "--upload") {
+            options.upload = true;
+        } else if (arg == "--no-build") {
+            options.build = false;
+        } else if (arg == "--preset" && has_value) {
+            options.targets.push_back(args[++i]);
+        } else if (arg == "--version" && has_value) {
+            options.version = args[++i];
+        } else if (arg == "--project" && has_value) {
+            options.project = args[++i];
+        } else if (arg == "--engine" && has_value) {
+            options.engine = args[++i];
+        } else if (options.store.empty() && !arg.starts_with("--")) {
+            options.store = arg;
+        } else {
+            return usage_error("unexpected argument for publish: " + arg);
+        }
+    }
+    if (options.store.empty()) {
+        return usage_error("publish needs a store: itch");
+    }
+    const slash::exporter::PublishResult result = slash::exporter::publish_game(options);
+    print(result.json);
+    if (const json::Value* error = result.json.find("error"); error != nullptr) {
+        return error->find("step")->as_string() == "options" ? kExitUsage : kExitFailure;
+    }
+    return kExitOk;
+}
+
 json::Value toolchain_json(const slash::exporter::Toolchain& toolchain) {
     json::Value item;
     item["name"] = toolchain.name;
@@ -3700,6 +3747,9 @@ int main(int argc, char** argv) {
     }
     if (name == "export") {
         return cmd_export(args);
+    }
+    if (name == "publish") {
+        return cmd_publish(args);
     }
     if (name == "sdk") {
         return cmd_sdk(args);

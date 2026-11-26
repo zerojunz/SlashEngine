@@ -6,8 +6,9 @@ namespace slash::exporter {
 
 // Adds export.run, which exports the session's project with a preset or a platform's defaults;
 // gameplay.build, which compiles its gameplay code and swaps it into the session's world
-// (SessionOptions::gameplay); and sdk.check and sdk.add for its SDK packages. Builds and
-// downloads need the build and filesystem capabilities. Tools register them next to the built-in
+// (SessionOptions::gameplay); sdk.check and sdk.add for its SDK packages; and publish.run, which
+// plans or uploads its exports to a store. Builds and downloads need the build and filesystem
+// capabilities, and uploads the network one too. Tools register them next to the built-in
 // commands; a running game doesn't, since a build would stall its loop. A running game reloads
 // the gameplay library when another program rebuilds it.
 void register_export_commands(command::Registry& registry);

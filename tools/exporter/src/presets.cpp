@@ -1,6 +1,7 @@
 #include "slash/exporter/presets.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/exporter/publish.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/project.hpp"
 
@@ -439,6 +440,7 @@ json::Value presets_schema() {
     schema["required"] = json::Array{"format", "presets"};
     schema["properties"]["format"] = std::move(format);
     schema["properties"]["presets"] = std::move(presets);
+    schema["properties"]["stores"] = stores_schema();
     return schema;
 }
 
@@ -452,6 +454,9 @@ std::vector<json::ValidationError> validate_presets(const json::Value& presets) 
     }
     for (const auto& [name, preset] : presets.find("presets")->as_object()) {
         check_preset(name, preset, errors);
+    }
+    for (json::ValidationError& error : validate_stores(presets)) {
+        errors.push_back(std::move(error));
     }
     return errors;
 }
