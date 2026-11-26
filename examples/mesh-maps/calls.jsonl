@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"method":"model.bake_maps","params":{"path":"props/crate.obj","high":"props/crate_high.obj","size":256}}
+{"jsonrpc":"2.0","id":2,"method":"model.bake_maps","params":{"path":"props/crate.obj","high":"props/crate_high.obj","size":256}}
+{"jsonrpc":"2.0","id":3,"method":"model.bake_maps","params":{"path":"props/crate_high.obj","size":128,"maps":["ao","curvature","part_id","material_id"]}}
+{"jsonrpc":"2.0","id":4,"method":"texture.generate","params":{"path":"textures/crate.texture.json","out":"build/crate.png"}}

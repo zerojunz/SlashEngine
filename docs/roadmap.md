@@ -1426,7 +1426,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] `texture.inspect`, `texture.edit` and `texture.check` for graphs
         - [x] Live graphs: a graph compiled to a spatial or canvas shader, its parameters
               uniforms that animations and gameplay code drive
-        - [ ] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
+        - [x] Mesh map bakes: `model.bake_maps` (ambient occlusion, curvature, thickness, world
               normal and position, part and material IDs, sky exposure, high to low height and
               normal) on ray queries
         - [ ] Layer stacks: `.paint.json` layers, masks over mesh maps and part names, strokes

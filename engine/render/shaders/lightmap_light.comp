@@ -10,8 +10,11 @@
 // the query stops looking beyond them. The random numbers and the order light is summed in are the
 // CPU's, so a bake comes out as the CPU's but for rounding.
 //
-// Built as three pipelines by kPass: 0 the direct light of a region of a slice's texels, 1 a pass
+// Built as five pipelines by kPass: 0 the direct light of a region of a slice's texels, 1 a pass
 // of their bounces, adding to accum, 2 a pass of the light probes' rays, adding to probe_sums.
+// 3 and 4 are a mesh map bake's (render::trace_mesh_maps), the twin of scene3d's
+// src/mesh_maps.cpp: 3 each texel's ambient occlusion, sky and thickness, 4 where its ray from
+// the cage meets the triangles, both into light_source.
 //
 // GLSL rather than HLSL, as glslang's HLSL has no ray queries; cmake/compile_ray_shaders.cmake
 // compiles it into lightmap_light_shaders.hpp.
@@ -39,7 +42,8 @@ layout(set = 0, binding = 1, std430) readonly buffer Params {
     uvec4 flags;  // 1 to take bounces' direct light from light_source, then the texels of
                   // the slice this dispatch lights: the first and the one after its last
     vec4 values;  // the bias, the supersampling, the exposure, the world's size
-    vec4 more;    // the bounces' indirect energy
+    vec4 more;    // the bounces' indirect energy; a mesh map bake's occlusion distance,
+                  // thickness distance and cage distance
     vec4 space[3]; // the probes' space, a column each
 };
 
@@ -678,6 +682,65 @@ void probe_pass(uint probe) {
     }
 }
 
+// ---- Mesh maps
+
+// The share of rays cosine-weighted about the normal that meet nothing within the occlusion
+// distance, the share that go up and meet nothing on the way to the sky, and the mean distance
+// rays about the opposite of the normal go before leaving the mesh, at most the thickness
+// distance, over it: each kind with random numbers of its own.
+void mesh_occlusion_pass(int x, int y) {
+    uint at = texel_at(0, x, y);
+    vec3 normal = normals[at].xyz;
+    if (length(normal) < 0.5) {
+        return;
+    }
+    vec3 position = positions[at].xyz;
+    uint rays = max(counts.z, 1u);
+    uint noise = random_seed(uint(x), uint(y), 1u);
+    float open = 0.0;
+    for (uint i = 0u; i < rays; ++i) {
+        vec3 ray_dir = ray_dir_from_normal(normal, noise);
+        if (trace(position, position + (ray_dir * more.y)).kind == kMiss) {
+            open += 1.0;
+        }
+    }
+    noise = random_seed(uint(x), uint(y), 2u);
+    float sky = 0.0;
+    for (uint i = 0u; i < rays; ++i) {
+        vec3 ray_dir = ray_dir_from_normal(normal, noise);
+        if (ray_dir.y > 0.0 && trace(position, position + (ray_dir * values.w)).kind == kMiss) {
+            sky += 1.0;
+        }
+    }
+    noise = random_seed(uint(x), uint(y), 3u);
+    float through = 0.0;
+    for (uint i = 0u; i < rays; ++i) {
+        vec3 ray_dir = ray_dir_from_normal(normal * -1.0, noise);
+        Hit hit = trace(position, position + (ray_dir * more.z));
+        through += hit.kind == kMiss ? more.z : min(hit.distance, more.z);
+    }
+    float count = float(rays);
+    light_source[at] = vec4(open / count, sky / count, through / (count * more.z), 1.0);
+}
+
+// The nearest triangle a ray from the cage distance out along the normal to as far in meets.
+void mesh_hits_pass(int x, int y) {
+    uint at = texel_at(0, x, y);
+    vec3 normal = normals[at].xyz;
+    if (length(normal) < 0.5) {
+        return;
+    }
+    vec3 position = positions[at].xyz;
+    vec3 outside = position + (normal * more.w);
+    Hit hit = trace(outside, position - (normal * more.w));
+    if (hit.kind == kMiss) {
+        light_source[at] = vec4(0.0);
+        return;
+    }
+    light_source[at] =
+        vec4(float(hit.triangle + 1u), hit.barycentric.y, hit.barycentric.z, hit.distance);
+}
+
 void main() {
     uint id = gl_GlobalInvocationID.x;
     if (kPass == 2u) {
@@ -694,7 +757,11 @@ void main() {
     int y = int(id / size.x);
     if (kPass == 0u) {
         direct_pass(int(step.x), x, y);
-    } else {
+    } else if (kPass == 1u) {
         bounce_pass(int(step.x), x, y);
+    } else if (kPass == 3u) {
+        mesh_occlusion_pass(x, y);
+    } else {
+        mesh_hits_pass(x, y);
     }
 }

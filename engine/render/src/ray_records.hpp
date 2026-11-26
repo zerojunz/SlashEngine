@@ -37,8 +37,8 @@ inline constexpr std::uint8_t kRaySeeMask = 1;
 inline constexpr std::uint8_t kRayCastMask = 2;
 
 // shaders/lightmap_light.comp's passes (its kPass): the direct light, a pass of bounces, a pass
-// of the probes' rays.
-inline constexpr std::size_t kBakePasses = 3;
+// of the probes' rays, then a mesh map bake's occlusion and its hits from the cage.
+inline constexpr std::size_t kBakePasses = 5;
 inline constexpr std::uint32_t kBakeGroupSize = 64;
 
 // The uniforms of shaders/ray_shadows.comp's Frame, in std140.
@@ -165,7 +165,8 @@ void lightmap_inputs(const LightmapTrace& trace, LightmapInputs& out);
 [[nodiscard]] std::size_t lightmap_probe_bytes(const LightmapTrace& trace);
 // Runs a trace's dispatches in order, each pass over count invocations with the params set for
 // it: each slice's texels a region at a time for the direct light, then each pass of bounces,
-// then each pass of the probes' rays.
+// then each pass of the probes' rays; for a mesh map bake's trace, its one pass a region at a
+// time.
 Result<void>
 run_lightmap_passes(const LightmapTrace& trace, std::size_t light_count,
                     const std::function<Result<void>(std::size_t pass, std::uint32_t count,
