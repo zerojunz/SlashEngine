@@ -1456,9 +1456,11 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         itch.io with one command:
         - [x] `slash-cli publish` and the `publish` command: itch.io through butler (MIT, run as
               a program of its own), channels per preset, the API key from the environment
-        - [ ] Steam: SteamPipe build files from the presets and uploads through steamcmd, and a
-              built-in `steamworks` SDK package (the developer's own copy of the SDK) backing
-              achievements, leaderboards, cloud saves and the overlay
+        - [x] Steam: SteamPipe app build scripts from the presets, depots per preset and a
+              branch to set live, uploaded through steamcmd signed in from the environment
+        - [x] Steam's services: a built-in `steamworks` SDK package (the developer's own copy of
+              the SDK) backing achievements, leaderboards and the overlay, with cloud saves
+              through Steam Auto-Cloud on the game's user folder
         - [ ] The Epic Games Store: uploads through BuildPatchTool and a built-in `eos` SDK
               package backing the same services
         - [ ] GOG: builds made and uploaded through GOG's Pipeline Builder, and a built-in

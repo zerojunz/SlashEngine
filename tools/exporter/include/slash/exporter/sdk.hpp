@@ -269,9 +269,11 @@ struct SdkPlaces {
                                      const std::string& log_path = {});
 
 // The packages the engine ships for stores that are part of a platform, by the name sdk.add
-// takes: "storekit" (Apple's StoreKit on iOS and macOS) and "play-billing" (Google Play Billing,
-// whose library sdk lock fetches). Their glue code is the engine's own.
-inline constexpr std::array<std::string_view, 2> kBuiltinSdks = {"storekit", "play-billing"};
+// takes: "storekit" (Apple's StoreKit on iOS and macOS), "play-billing" (Google Play Billing,
+// whose library sdk lock fetches) and "steamworks" (Steam's achievements, leaderboards and
+// overlay, from the developer's copy of the Steamworks SDK). Their glue code is the engine's own.
+inline constexpr std::array<std::string_view, 3> kBuiltinSdks = {"storekit", "play-billing",
+                                                                 "steamworks"};
 
 // A built-in package's folder in the engine (export/sdks/<name>), or nullopt if name isn't one
 // or the engine's files can't be found.
