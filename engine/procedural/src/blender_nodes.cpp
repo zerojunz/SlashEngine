@@ -279,7 +279,7 @@ private:
 
     // The node an input reads: what is linked to the first of sockets the node has, else its
     // value as a constant.
-    std::string input(std::string_view name, std::initializer_list<std::string_view> sockets,
+    std::string input(std::string_view name, const std::vector<std::string_view>& sockets,
                       Kind kind) {
         for (const std::string_view socket : sockets) {
             if (const json::Value* link = linked(name, socket); link != nullptr) {
@@ -326,7 +326,7 @@ private:
         return made;
     }
 
-    void settings_linked(std::string_view name, std::initializer_list<std::string_view> sockets) {
+    void settings_linked(std::string_view name, const std::vector<std::string_view>& sockets) {
         for (const std::string_view socket : sockets) {
             if (linked(name, socket) != nullptr) {
                 warn("\"" + std::string(name) + "\"'s " + std::string(socket) +
@@ -529,8 +529,8 @@ private:
             return mapped;
         }
         if (type == "ShaderNodeMixRGB" || type == "ShaderNodeMix") {
-            std::initializer_list<std::string_view> a{"Color1", "A_Color"};
-            std::initializer_list<std::string_view> b{"Color2", "B_Color"};
+            std::vector<std::string_view> a{"Color1", "A_Color"};
+            std::vector<std::string_view> b{"Color2", "B_Color"};
             if (type == "ShaderNodeMix" && prop(name, "data_type") == "FLOAT") {
                 a = {"A_Float"};
                 b = {"B_Float"};
@@ -627,8 +627,7 @@ private:
         }
         if (type == "ShaderNodeCombineColor" || type == "ShaderNodeCombineRGB") {
             json::Value op = json::Object{{"op", "merge"}};
-            const std::array<std::pair<std::string_view, std::initializer_list<std::string_view>>,
-                             3>
+            const std::array<std::pair<std::string_view, std::vector<std::string_view>>, 3>
                 channels{
                     {{"red", {"Red", "R"}}, {"green", {"Green", "G"}}, {"blue", {"Blue", "B"}}}};
             for (const auto& [channel, sockets] : channels) {

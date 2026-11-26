@@ -23,9 +23,8 @@ struct BlenderGraph {
 
 // The graph of a material in a node dump (all of them when material is empty and the dump has
 // one), at size x size pixels. A material that isn't there names the nearest.
-[[nodiscard]] Result<BlenderGraph> texture_graph_from_blender(const json::Value& dump,
-                                                              std::string_view material,
-                                                              std::uint32_t size);
+[[nodiscard]] Result<BlenderGraph>
+texture_graph_from_blender(const json::Value& dump, std::string_view material, std::uint32_t size);
 
 // The materials a node dump holds, by name.
 [[nodiscard]] std::vector<std::string> blender_materials(const json::Value& dump);
