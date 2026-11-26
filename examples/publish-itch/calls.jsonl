@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","id":1,"method":"publish.run","params":{"store":"itch"}}
+{"jsonrpc":"2.0","id":2,"method":"publish.run","params":{"store":"itch","presets":["windows"],"version":"1.4.1-beta"}}
+{"jsonrpc":"2.0","id":3,"method":"publish.run","params":{"store":"itch","presets":["phone"]}}

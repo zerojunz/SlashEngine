@@ -15,6 +15,7 @@ add_library(slash_exporter
     src/maven.cpp
     src/plugins.cpp
     src/presets.cpp
+    src/publish.cpp
     src/sdk.cpp
     src/steps.cpp
     src/toolchains.cpp

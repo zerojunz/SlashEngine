@@ -937,6 +937,50 @@ was wrong, and exits with 2:
 {"error":{"message":"no preset or platform called \"web-relase\"; did you mean \"web-release\"?","step":"options"}}
 ```
 
+### publish
+
+Publishes a game's exports to a store, so players can download them. Only itch.io so far.
+
+```bash
+slash-cli publish <store> [options]
+```
+
+`<store>` is `itch`. [`export_presets.json`](project-format.md#stores)'s `stores.itch` names the
+game's itch.io project and each preset's channel. Without `--upload`, publish prints the plan and
+changes nothing: each build's `preset`, `platform`, `channel`, `target` (`user/game:channel`),
+`output` folder and the `command` an upload runs, plus what an upload `needs`. The
+[`publish.run`](commands.md#publishrun) command does the same over MCP, JSON-RPC and REST.
+
+| Flag | Meaning |
+| --- | --- |
+| `--preset <name>` | A preset, or a platform for its defaults, to publish; repeat for more (default: `stores.itch.channels`, else every preset but iOS ones) |
+| `--upload` | Export each build and upload it. Players can see an upload, so an agent asks first |
+| `--no-build` | Upload what earlier exports left in the presets' output folders instead of exporting again |
+| `--version <version>` | The version itch.io shows (default: `project.json`'s `version`) |
+| `--project <dir>` | Game folder with `project.json` (default `.`) |
+| `--engine <dir>` | Engine sources, as for [export](#export) |
+
+An upload runs [butler](https://itch.io/docs/butler/), itch.io's upload tool, as a program of its
+own: `butler push <output> <user/game:channel> --userversion <version> --if-changed`, after
+exporting the preset as [export](#export) does. butler is found in `SLASH_BUTLER_PATH`, else on
+`PATH`, and reads its API key from `BUTLER_API_KEY`; both are checked before anything is built.
+butler uploads only what changed since the channel's last build. Each push's output goes to
+`.slash/publish/itch-<preset>.log` and its last lines into the build's `push.tail`; each build
+that was exported also carries the [export](#export)'s result in `export`.
+
+```bash
+slash-cli publish itch --preset windows
+```
+
+```json
+{"build":true,"builds":[{"channel":"windows","command":["butler","push","build/export/windows","player/star-courier:windows","--userversion","1.4.0","--if-changed"],"output":"build/export/windows","platform":"windows","preset":"windows","target":"player/star-courier:windows"}],"needs":["butler on PATH or in SLASH_BUTLER_PATH","BUTLER_API_KEY"],"project":"player/star-courier","store":"itch","upload":false,"version":"1.4.0"}
+```
+
+The first build that fails stops the publish. Its error names the step: `options` (the request
+or the presets were wrong, exit 2), `setup` (no butler or no key), `export` (with the export's
+error in `export`) or `push` (with butler's `exit_code` and `tail`). `pushed` lists the targets
+uploaded before it.
+
 ### sdk
 
 ```bash
@@ -1191,3 +1235,5 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `ANDROID_HOME`, `ANDROID_NDK_HOME`, `JAVA_HOME` | Where Android exports find the SDK, the NDK and the JDK, before the ones [`toolchain install android`](#toolchain) installed and Android Studio's |
 | `ANDROID_USER_HOME` | The folder holding `debug.keystore` (default `~/.android`) |
 | `ANDROID_SERIAL` | The device or emulator `export --test` uses when several are connected |
+| `BUTLER_API_KEY` | The itch.io API key butler uploads with, for [`publish itch --upload`](#publish) |
+| `SLASH_BUTLER_PATH` | butler's program, when it isn't on `PATH` |

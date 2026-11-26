@@ -4,7 +4,7 @@ This is the plan for SlashEngine from today to launch and beyond. It has no date
 order is the plan, and each item carries a status instead. It is drawn from the approved
 [design](design.md), whose milestone list and feature parity table it tracks.
 
-Status: current · Updated: 2026-11-25
+Status: current · Updated: 2026-11-26
 
 ## Status words
 
@@ -1454,7 +1454,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               `slash-mcp --watch`, so a person checks in from a phone by asking any agent
 25. [ ] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store, GOG and
         itch.io with one command:
-        - [ ] `slash-cli publish` and the `publish` command: itch.io through butler (MIT, run as
+        - [x] `slash-cli publish` and the `publish` command: itch.io through butler (MIT, run as
               a program of its own), channels per preset, the API key from the environment
         - [ ] Steam: SteamPipe build files from the presets and uploads through steamcmd, and a
               built-in `steamworks` SDK package (the developer's own copy of the SDK) backing

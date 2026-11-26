@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "presets": {
+    "mac": {"platform": "macos", "macos": {"notarize": false}},
+    "phone": {"platform": "ios"},
+    "steam-deck": {"platform": "linux"},
+    "windows": {"platform": "windows", "windows": {"sign": true}}
+  },
+  "stores": {
+    "itch": {
+      "channels": {"mac": "mac", "steam-deck": "linux", "web": "html5", "windows": "windows"},
+      "project": "player/star-courier"
+    }
+  }
+}
