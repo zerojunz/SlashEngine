@@ -110,10 +110,6 @@ struct Project {
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3 frame
     // generation (canvas::CanvasOptions::generate).
     bool frame_generation = false;
-    // rendering.frame_generator and rendering.generated_frames: the game's frame generator that
-    // makes those frames ("" for the engine's own), and how many it makes between two drawn ones.
-    std::string frame_generator;
-    std::uint32_t generated_frames = 1;
     // rendering.textures.decals.filter: how decals' textures are filtered.
     render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
     // The render scale and how the world scales to the screen.
@@ -181,11 +177,20 @@ struct Project {
     std::vector<std::string> plugins;
     // Folders of SDK packages (tools/exporter's slash/exporter/sdk.hpp), which exports link.
     std::vector<std::string> sdks;
+    // rendering.frame_generator: the game's frame generator that makes frame_generation's frames
+    // ("" for the engine's own); generated_frames below is how many it makes between two drawn
+    // ones.
+    std::string frame_generator;
+    // rendering.latency_reduction: the vendor's latency reduction the game's SDK package adds
+    // (render::add_latency_reducer), such as NVIDIA Reflex; "" for none.
+    std::string latency_reduction;
     // The job system's worker threads (slash/core/jobs.hpp): -1 for one per CPU core.
     int max_threads = -1;
     // rendering.reflections.sky_samples: the samples the sky's radiance and reflection probes are
     // blurred with.
     std::uint32_t ggx_samples = 32;
+    // rendering.generated_frames: how many frames frame_generator makes between two drawn ones.
+    std::uint32_t generated_frames = 1;
 
     // The identifier to use: id, or the default derived from the name.
     [[nodiscard]] std::string bundle_id() const;
