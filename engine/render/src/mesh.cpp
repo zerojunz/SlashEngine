@@ -712,6 +712,10 @@ RayTracing3D ray_tracing(const json::Value& rendering) {
         out.many_light_samples =
             static_cast<std::uint32_t>(std::clamp(samples->as_double(), 1.0, 4.0));
     }
+    if (const json::Value* denoiser = found->find("denoiser");
+        denoiser != nullptr && denoiser->is_string()) {
+        out.denoiser = denoiser->as_string();
+    }
     return out;
 }
 

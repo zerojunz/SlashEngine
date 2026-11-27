@@ -43,6 +43,7 @@ add_library(slash_render
     src/compositor.cpp
     src/d3d12_rays.cpp
     src/decal.cpp
+    src/denoiser.cpp
     src/device.cpp
     src/forward_post.cpp
     src/frame_graph.cpp

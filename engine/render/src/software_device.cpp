@@ -30,6 +30,7 @@
 #include "volumetric_fog.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/render/denoiser.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/frame_generator.hpp"
 #include "slash/render/image.hpp"
@@ -277,6 +278,25 @@ struct FrameGenerationState {
     Mat4 camera = detail::kNoCamera;
 };
 
+// A target's game denoiser (denoiser.hpp): the one made (added names it), the size its history is
+// at, and whether a failure of it was logged.
+struct DenoiserState {
+    std::string added;
+    std::unique_ptr<Denoiser> denoiser;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool failed = false;
+};
+
+// A ray-traced pass's values for a game's denoiser: channels of them a pixel, from first of the
+// stride a pixel holds.
+struct NoisyPass {
+    std::vector<float>* values = nullptr;
+    std::size_t stride = 0;
+    std::size_t first = 0;
+    std::size_t channels = 0;
+};
+
 // A frame's camera with FSR 2, for draw_meshes: its jitter, the camera the frame before was seen
 // from without its jitter, and where the prepass's motion vectors go.
 struct Fsr2Camera {
@@ -425,6 +445,7 @@ public:
         std::erase_if(path_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(frame_generation_states_,
                       [&](const auto& entry) { return entry.first == texture; });
+        std::erase_if(denoiser_states_, [&](const auto& entry) { return entry.first == texture; });
     }
 
     [[nodiscard]] bool ray_tracing() const override { return true; }
@@ -2344,12 +2365,39 @@ private:
                     ray_reflections = detail::run_ray_reflections(
                         paths, bindings, *reflection, rays, prepass_depth, normals.values, pool_);
                 }
+                // The game's denoiser takes the ambient light as traced, unsmoothed.
+                const std::optional<DenoiserInfo> denoiser =
+                    !scene.capture ? choose_denoiser(scene.ray_tracing.denoiser, *this)
+                                   : std::nullopt;
                 if (gi) {
                     ray_light = detail::run_ray_gi(paths, bindings, *gi, rays, prepass_depth,
-                                                   normals.values, pool_);
+                                                   normals.values, pool_, !denoiser.has_value());
                     maps.gi = ray_light;
                     maps.ao_width = target.width();
                     lights->screen[3] = 1.0F;
+                }
+                if (denoiser && (!traced.empty() || occlusion || reflection || gi)) {
+                    const auto pass = [](std::vector<float>& values, bool traces,
+                                         std::size_t stride, std::size_t first,
+                                         std::size_t channels) {
+                        return traces ? NoisyPass{.values = &values,
+                                                  .stride = stride,
+                                                  .first = first,
+                                                  .channels = channels}
+                                      : NoisyPass{};
+                    };
+                    const std::array<NoisyPass, 5> passes{
+                        pass(ray_shadows, !traced.empty(), kMaxRayShadowLights, 0, 4),
+                        pass(ray_shadows, !traced.empty(), kMaxRayShadowLights, 4, 4),
+                        pass(ao.values, occlusion.has_value(), 1, 0, 1),
+                        pass(ray_reflections, reflection.has_value(), 4, 0, 4),
+                        pass(ray_light, gi.has_value(), 3, 0, 3)};
+                    denoise_rays(*denoiser, scene, target.width(), target.height(),
+                                 {.depth = prepass_depth,
+                                  .normals = normals.values,
+                                  .motion = motion ? std::span<const float>(velocity)
+                                                   : std::span<const float>{}},
+                                 passes);
                 }
                 if (sdfgi) {
                     // The cascades follow the camera and are made from the frame's triangles, then
@@ -2442,6 +2490,111 @@ private:
     }
 
     // target's frames for frame generation, made empty when it has none.
+    // The prepass's results a game's denoiser takes beside the passes: a float a pixel of depth,
+    // four of normals and roughness, and two of motion (none where the frame draws none).
+    struct DenoiseGuides {
+        std::span<const float> depth;
+        std::span<const float> normals;
+        std::span<const float> motion;
+    };
+
+    // Hands the frame's ray-traced passes to the game's denoiser as four floats a pixel (shadows'
+    // two halves, the occlusion, the reflections, then the ambient light; an empty texture for a
+    // pass not traced), with the guides as they are, then takes back what it wrote, as the GPU
+    // stores half floats. Where it
+    // fails the passes keep their values, and the failure is logged once.
+    void denoise_rays(const DenoiserInfo& info, const Scene3D& scene, std::uint32_t width,
+                      std::uint32_t height, const DenoiseGuides& guides,
+                      std::span<const NoisyPass, 5> passes) {
+        const std::size_t pixels = std::size_t{width} * height;
+        const auto four = [&](std::span<const float> values, std::size_t stride, std::size_t first,
+                              std::size_t channels) {
+            std::vector<float> out(pixels * 4, 0.0F);
+            for (std::size_t at = 0; at < pixels; ++at) {
+                for (std::size_t c = 0; c < channels; ++c) {
+                    out[(at * 4) + c] = values[(at * stride) + first + c];
+                }
+            }
+            return out;
+        };
+        std::vector<float> depth(guides.depth.begin(), guides.depth.end());
+        std::vector<float> normals(guides.normals.begin(), guides.normals.end());
+        std::vector<float> motion(guides.motion.begin(), guides.motion.end());
+        std::array<std::vector<float>, 5> noisy;
+        for (std::size_t i = 0; i < passes.size(); ++i) {
+            const NoisyPass& pass = passes[i];
+            if (pass.values != nullptr) {
+                noisy.at(i) = four(*pass.values, pass.stride, pass.first, pass.channels);
+            }
+        }
+        const auto texture = [&](std::vector<float>& values) {
+            return values.empty()
+                       ? NativeTexture{}
+                       : NativeTexture{.width = width, .height = height, .pixels = values};
+        };
+        DenoiserState& state = denoiser_state(frame_.target);
+        bool fresh = false;
+        if (state.added != info.name || state.denoiser == nullptr) {
+            state.denoiser = info.make();
+            state.added = state.denoiser != nullptr ? info.name : std::string();
+            state.failed = false;
+            fresh = true;
+        }
+        if (state.denoiser == nullptr) {
+            if (!state.failed) {
+                log::warn("the denoiser made nothing; the rays light the frame as traced",
+                          {{"denoiser", info.name}});
+                state.failed = true;
+            }
+            return;
+        }
+        const DenoiseFrame frame{.device = {.backend = Backend::Software},
+                                 .commands = nullptr,
+                                 .width = width,
+                                 .height = height,
+                                 .depth = texture(depth),
+                                 .normals = texture(normals),
+                                 .motion = texture(motion),
+                                 .shadows = {texture(noisy[0]), texture(noisy[1])},
+                                 .occlusion = texture(noisy[2]),
+                                 .reflections = texture(noisy[3]),
+                                 .ambient_light = texture(noisy[4]),
+                                 .reset = fresh || state.width != width || state.height != height,
+                                 .projection = scene.projection,
+                                 .camera = scene.camera};
+        state.width = width;
+        state.height = height;
+        if (auto denoised = state.denoiser->denoise(frame); !denoised) {
+            if (!state.failed) {
+                log::warn("the denoiser failed; the rays light the frame as traced",
+                          {{"denoiser", info.name}, {"error", denoised.error().message}});
+                state.failed = true;
+            }
+            return;
+        }
+        for (std::size_t i = 0; i < passes.size(); ++i) {
+            const NoisyPass& pass = passes[i];
+            if (pass.values == nullptr) {
+                continue;
+            }
+            for (std::size_t at = 0; at < pixels; ++at) {
+                for (std::size_t c = 0; c < pass.channels; ++c) {
+                    (*pass.values)[(at * pass.stride) + pass.first + c] =
+                        detail::round_half(noisy.at(i)[(at * 4) + c]);
+                }
+            }
+        }
+    }
+
+    DenoiserState& denoiser_state(TextureId target) {
+        for (auto& [id, state] : denoiser_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return denoiser_states_.emplace_back(target, DenoiserState{}).second;
+    }
+
     FrameGenerationState& frame_generation_state(TextureId target) {
         for (auto& [id, state] : frame_generation_states_) {
             if (id == target) {
@@ -3526,6 +3679,7 @@ private:
     std::vector<std::pair<TextureId, detail::RestirState>> restir_states_;
     std::vector<std::pair<TextureId, PathState>> path_states_;
     std::vector<std::pair<TextureId, FrameGenerationState>> frame_generation_states_;
+    std::vector<std::pair<TextureId, DenoiserState>> denoiser_states_;
     std::uint64_t writes_ = 0; // texture writes so far, for Texture::written
     jobs::Pool* pool_ = nullptr;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;

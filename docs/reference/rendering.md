@@ -512,6 +512,27 @@ software device, `tests/test_ray_records.cpp` the MSL and HLSL to their GLSL and
 HLSL, `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
 `examples/ray-traced-reflections-3d` a hall's floor and `examples/ray-traced-gi-3d` a room's walls.
 
+A game's own denoiser for those passes (DLSS Ray Reconstruction, NVIDIA's NRD, AMD's FidelityFX
+denoisers, from an SDK package) is a `render::DenoiserInfo` added with `add_denoiser`
+(`slash/render/denoiser.hpp`): a name, `supports` and `make`. `rendering.ray_tracing.denoiser`
+(`RayTracing3D::denoiser`) names it, and each frame that traces rays outside a probe's captures
+the device asks `choose_denoiser` (added, a device whose `ray_tracing()` is true, and `supports`
+agrees). Then, after the rays and before the mesh pass reads them, it makes one for the target
+(kept until the target goes) and hands it a `render::DenoiseFrame`: the prepass's depth and
+normals with roughness, the motion vectors where the frame draws them (TAA, FSR 2, frame
+generation; else empty), the shadows' two textures, the occlusion, the reflections and the
+ambient light (empty for a pass not traced), whether its history starts over (its first frame,
+or a change of size) and the camera. It denoises them in place. The ambient light comes as traced:
+`run_ray_gi`'s `smooth` is off on the software device, and the GPU device copies `ray_light.comp`'s
+traced texture (the fifth of `RayTargets::outputs`) rather than its smoothed one. On the GPU
+device the textures are native objects with the command buffer, in the state shaders sample them
+in, as `TemporalFrame`'s (`denoise_rays` in `gpu_device.cpp`, then `SDL_SlashGPURestoreState`);
+the software device hands four float pixels a texture and takes the results back as half floats
+(`denoise_rays` in `software_device.cpp`). A denoiser that makes nothing or fails is logged once,
+and the frame is lit from the passes as they are (on the GPU, with the engine's smoothed ambient
+light). `tests/test_denoiser.cpp` checks the software device, and the GPU device where it traces
+rays; `examples/ray-denoiser` adds one.
+
 TAA (project.json's `rendering.anti_aliasing.taa`, `Scene3D::use_taa`),
 in the clustered renderer only. `src/taa.hpp` holds what devices share: the jitter (`taa_jitter`,
 Halton bases 2 and 3 over 16 frames, `jittered`), the mesh passes' camera with the frame before's

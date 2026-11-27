@@ -1,0 +1,10 @@
+traced     77777777777772222222233333777777
+denoising two frames:
+  smooth: 32x32, reset
+  shadows   grain   9 ->   5
+  occlusion grain  23 ->   7
+  smooth: 32x32
+  shadows   grain   9 ->   5
+  occlusion grain  23 ->   7
+denoised   77777777777772222224444556677777
+missing    as traced

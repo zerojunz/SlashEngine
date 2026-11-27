@@ -401,6 +401,7 @@ rays draw as if they were off.
 | `many_lights` | `false` | Lights each opaque pixel's omni and spot lights by [ReSTIR](restir.md): a few lights a pixel, resampled from its cluster's, last frame's and its neighbors', each with one shadow ray. Research: only the software device draws it; others light every light as before |
 | `many_light_candidates` | `8` | Lights a pixel draws from its cluster each frame, from 1 to 32 |
 | `many_light_samples` | `1` | Reservoirs a pixel keeps, each a light and a shadow ray, from 1 to 4: more is less noisy |
+| `denoiser` | `""` | A denoiser a game's [SDK package](sdk-format.md) adds (DLSS Ray Reconstruction, NRD, FidelityFX), by name, for the shadows, occlusion, reflections and ambient light the rays trace; it denoises them before the frame is lit from them, where it runs. None, or one not added or that doesn't run on the device, keeps the engine's own smoothing |
 
 ## Reflection probes
 
