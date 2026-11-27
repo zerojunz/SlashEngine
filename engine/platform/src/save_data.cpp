@@ -14,6 +14,26 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+
+// Mounts the browser's IndexedDB over the save folder and reads it back, then tells the engine
+// saves are ready (slash_save_data_read).
+// NOLINTBEGIN
+// clang-format off
+EM_JS_DEPS(slash_save_data, "$UTF8ToString,$FS,$IDBFS");
+EM_JS(void, slash_save_data_mount, (const char* path), {
+    var folder = UTF8ToString(path);
+    if (folder.endsWith('/')) {
+        folder = folder.slice(0, -1);
+    }
+    try {
+        FS.mkdirTree(folder);
+        FS.mount(IDBFS, {}, folder);
+    } catch (error) {
+    }
+    FS.syncfs(true, function(error) { _slash_save_data_read(); });
+});
+// clang-format on
+// NOLINTEND
 #endif
 
 namespace slash::platform {
@@ -133,21 +153,7 @@ void set_save_folder(std::string folder, std::string game_version) {
         return;
     }
     ready() = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg): Emscripten's own macro
-    EM_ASM(
-        {
-            var folder = UTF8ToString($0);
-            if (folder.endsWith('/')) {
-                folder = folder.slice(0, -1);
-            }
-            try {
-                FS.mkdirTree(folder);
-                FS.mount(IDBFS, {}, folder);
-            } catch (error) {
-            }
-            FS.syncfs(true, function(error) { _slash_save_data_read(); });
-        },
-        path.c_str());
+    slash_save_data_mount(path.c_str());
 #endif
 }
 
