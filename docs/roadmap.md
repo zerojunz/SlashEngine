@@ -1472,7 +1472,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
               Generation, XeSS Frame Generation, FSR's) at the point frames are shown, in place of
               the engine's own
-        - [ ] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
+        - [x] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
         - [ ] A denoiser hook with the ray-traced passes' inputs, for DLSS Ray Reconstruction
 27. [ ] Launch gaps (2026-11-22), from audits against Unreal Engine 5, last in the
         queue:

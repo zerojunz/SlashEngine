@@ -2818,7 +2818,15 @@ public:
         }
         SDL_EndGPURenderPass(pass);
         count_generated_frame();
+        // Submitting a frame for the window presents it.
+        const bool shown = frame_.target == TextureId::None;
+        if (shown) {
+            presenting(false);
+        }
         const bool submitted = SDL_SubmitGPUCommandBuffer(commands);
+        if (shown) {
+            presenting(true);
+        }
         ++stats_.frames;
         finish_frame();
         if (!submitted) {

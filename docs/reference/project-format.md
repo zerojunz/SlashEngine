@@ -490,6 +490,25 @@ earliest first, then the drawn frame
 [examples/frame-generator](../../examples/frame-generator/)). `display.set` changes both while
 the game runs.
 
+## Latency reduction
+
+`rendering.latency_reduction` names a latency reducer the game adds from a vendor's SDK (NVIDIA
+Reflex, AMD Anti-Lag 2, Intel XeLL) with `render::add_latency_reducer`, from its own C++ or an
+[SDK package's](sdk-format.md) glue code:
+
+```json
+"rendering": {"latency_reduction": "reflex"}
+```
+
+It is `""` (none) by default. The game makes it for its render device when it starts, after the
+SDK packages register; each frame it calls the reducer's `sleep`, which waits so input is read as
+late as it can be, then marks `simulation_start`, `input_sample`, `simulation_end`,
+`render_submit_start` and `render_submit_end`, and the GPU and OpenGL devices mark
+`present_start` and `present_end` around handing the frame to the display. Where it isn't added
+or its `supports` says no, the game logs a warning and runs without it; a test run's summary says
+whether it started (`latency_reduction`)
+([examples/latency-reduction](../../examples/latency-reduction/)).
+
 ## Texture forms
 
 `rendering.textures` says how exports ship textures.

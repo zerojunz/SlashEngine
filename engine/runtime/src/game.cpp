@@ -246,6 +246,22 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     if (backends.ads || !backends.analytics.empty() || backends.purchases || backends.games) {
         services::set_backends(game->world_, std::move(backends));
     }
+    // The vendor's latency reduction, which the SDK packages' register functions added.
+    if (const std::string& name = game->project_.latency_reduction; !name.empty()) {
+        auto reducer = render::make_latency_reducer(name, *game->renderer_);
+        if (reducer) {
+            game->latency_ = std::move(reducer).value();
+            Game* const self = game.get();
+            game->renderer_->on_present([self](bool after) {
+                self->latency_->mark(after ? render::LatencyMarker::PresentEnd
+                                           : render::LatencyMarker::PresentStart,
+                                     self->latency_frame_);
+            });
+        } else {
+            log::warn("the latency reduction didn't start",
+                      {{"latency_reduction", name}, {"error", reducer.error().message}});
+        }
+    }
     log::info("game started", {{"name", game->project_.name},
                                {"scene", game->project_.main_scene},
                                {"entities", game->world_.size()},
@@ -374,6 +390,19 @@ Game::~Game() {
 }
 
 bool Game::frame() {
+    // A vendor's latency reduction waits before the frame, then times its parts.
+    ++latency_frame_;
+    const auto mark = [this](render::LatencyMarker marker) {
+        if (latency_ != nullptr) {
+            latency_->mark(marker, latency_frame_);
+        }
+    };
+    if (latency_ != nullptr) {
+        latency_->sleep(latency_frame_);
+    }
+    mark(render::LatencyMarker::SimulationStart);
+    // The loop reads the frame's events first.
+    mark(render::LatencyMarker::InputSample);
     if (gameplay_ != nullptr) {
         (void)gameplay_->poll();
     }
@@ -395,9 +424,12 @@ bool Game::frame() {
             screen_reader_->update(world_);
         }
     });
+    mark(render::LatencyMarker::SimulationEnd);
     // The frame that runs the last tick is drawn too.
     if (running || loop_->stats().ticks != ticks) {
+        mark(render::LatencyMarker::RenderSubmitStart);
         draw();
+        mark(render::LatencyMarker::RenderSubmitEnd);
     }
     return running;
 }
@@ -503,6 +535,9 @@ json::Value Game::summary() const {
     summary["quit_requested"] = loop_->stats().quit_requested;
     summary["headless"] = platform_.headless();
     summary["renderer"] = render::backend_name(renderer_->backend());
+    if (!project_.latency_reduction.empty()) {
+        summary["latency_reduction"] = latency_ != nullptr;
+    }
     summary["sprites"] = canvas_->sprites_drawn();
     json::Value backends = services::backends_json(world_);
     if (backends.find("ads")->as_string() != "none" ||

@@ -19,6 +19,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace slash::jobs {
@@ -795,6 +796,17 @@ public:
                           "Vulkan and Direct3D 12 and the OpenGL devices can");
     }
 
+    // Calls callback just before a frame for the window is handed to the display (false) and
+    // just after (true), for a vendor's latency markers (latency.hpp); empty stops it. The GPU
+    // device and the OpenGL devices present, so they call it; the others have no window to.
+    void on_present(std::function<void(bool after)> callback) { on_present_ = std::move(callback); }
+    // What a device calls around presenting a frame.
+    void presenting(bool after) const {
+        if (on_present_) {
+            on_present_(after);
+        }
+    }
+
 protected:
     // Gives a mesh made here the box round it from low to high in place of its vertices', until
     // its vertices change: fill_particle_mesh's box (ParticleMeshDraw3D::box_low and box_high).
@@ -804,6 +816,7 @@ protected:
 private:
     detail::ParticleStore3D particles_3d_;
     std::vector<Vertex3D> particle_vertices_;
+    std::function<void(bool after)> on_present_;
 };
 
 // What an OpenXR runtime asks of the GPU device it shows. On Vulkan the runtime makes the instance

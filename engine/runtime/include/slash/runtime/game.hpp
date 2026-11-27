@@ -10,6 +10,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/plugin/plugins.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/latency.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/services/endpoint.hpp"
 #include "slash/services/services.hpp"
@@ -90,7 +91,8 @@ public:
     // backends. "sprites" counts the sprites the last frame drew, or would have drawn on the
     // null device, so a headless run shows whether every sprite can draw. A project that enables
     // XR adds "xr": in a window {"headset", "graphics"} or {"headset": false, "error"}, and
-    // headless {"runtime"} with the "error" when no OpenXR runtime is found.
+    // headless {"runtime"} with the "error" when no OpenXR runtime is found. A project that names
+    // rendering.latency_reduction adds "latency_reduction": whether it started.
     [[nodiscard]] json::Value summary() const;
 
     [[nodiscard]] const Project& project() const noexcept { return project_; }
@@ -129,6 +131,10 @@ private:
     std::unique_ptr<accessibility::Backend> screen_reader_;
     // Declared after the platform, so it lets go of the window before the window closes.
     std::unique_ptr<render::RenderDevice> renderer_;
+    // The vendor's latency reduction rendering.latency_reduction names, when it started, and the
+    // frame its markers are for.
+    std::unique_ptr<render::LatencyReducer> latency_;
+    std::uint64_t latency_frame_ = 0;
     // Declared after the device, so its textures go before the device does.
     std::unique_ptr<canvas::CanvasRenderer> canvas_;
     std::unique_ptr<platform::Loop> loop_;

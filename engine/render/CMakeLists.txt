@@ -55,6 +55,7 @@ add_library(slash_render
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
     src/image.cpp
+    src/latency.cpp
     src/light.cpp
     src/light_units.cpp
     src/material.cpp
