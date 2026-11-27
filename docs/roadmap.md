@@ -1452,7 +1452,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Steering: `work pause` and `work note`, and the agent's own `work.plan`
         - [x] Remote viewing through agents: `work.view`, `work.timeline`, `work.report` and
               `slash-mcp --watch`, so a person checks in from a phone by asking any agent
-25. [ ] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store, GOG and
+25. [x] Publishing to stores (2026-11-22): exports go to Steam, the Epic Games Store, GOG and
         itch.io with one command:
         - [x] `slash-cli publish` and the `publish` command: itch.io through butler (MIT, run as
               a program of its own), channels per preset, the API key from the environment
@@ -1461,11 +1461,12 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Steam's services: a built-in `steamworks` SDK package (the developer's own copy of
               the SDK) backing achievements, leaderboards and the overlay, with cloud saves
               through Steam Auto-Cloud on the game's user folder
-        - [ ] The Epic Games Store: uploads through BuildPatchTool and a built-in `eos` SDK
-              package backing the same services
-        - [ ] GOG: builds made and uploaded through GOG's Pipeline Builder, and a built-in
-              `galaxy` SDK package (the developer's own copy of the GOG Galaxy SDK) backing the
-              same services
+        - [x] The Epic Games Store: uploads through BuildPatchTool, a build version per platform
+              and a label to set builds live, and a built-in `eos` SDK package (the developer's
+              own copy of the EOS SDK) backing sign-in, achievements and leaderboards
+        - [x] GOG: builds made and uploaded through GOG's Pipeline Builder (a project per
+              build, to a private branch), and a built-in `galaxy` SDK package (the developer's
+              own copy of the GOG Galaxy SDK) backing sign-in, achievements and leaderboards
 26. [ ] Vendor frame generation, latency and denoiser hooks (2026-11-22): interfaces a game's SDK
         package fills, as the temporal upscaler hook does, with no vendor code in the repository:
         - [ ] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
@@ -1581,7 +1582,7 @@ are in [design.md](design.md#feature-coverage).
 | Procedural generation | FastNoiseLite noise, noise and gradient textures, scatter rules agents write, and procedural content imported from other tools | 8 | Done |
 | Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Done: graphs, live graphs, mesh maps, layer stacks, weathering, text stamps, variants, wear from damage, drafts and Blender node import |
 | Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Done: the journal, `slash-cli watch`, the watch page, checkpoints, steering and remote viewing through agents (`work.view`, `work.timeline`, `work.report`, `slash-mcp --watch`) |
-| Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Next |
+| Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Done: `slash-cli publish` to itch.io, Steam, the Epic Games Store and GOG, and the `steamworks`, `eos` and `galaxy` packages |
 | Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Next |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |

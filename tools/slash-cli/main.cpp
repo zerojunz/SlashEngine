@@ -320,13 +320,19 @@ Usage:
       --test                         Run the exported game headless afterwards, if possible
       --engine <dir>                 Engine sources (default: SLASH_ENGINE_DIR or built in)
   slash-cli publish <store>          Publish exports to a store: itch (through butler,
-                                     with its key in BUTLER_API_KEY) or steam (through
-                                     steamcmd, signed in as STEAM_USERNAME). Prints the
-                                     plan (each build's preset, channel or depot, and the
-                                     upload command) unless --upload is given
+                                     with its key in BUTLER_API_KEY), steam (through
+                                     steamcmd, signed in as STEAM_USERNAME), epic
+                                     (through BuildPatchTool, as the client in
+                                     EPIC_CLIENT_ID and EPIC_CLIENT_SECRET) or gog
+                                     (through Pipeline Builder, signed in as
+                                     GOG_USERNAME with GOG_PASSWORD). Prints the
+                                     plan (each build's preset, channel, depot or
+                                     artifact, and the upload command) unless --upload
+                                     is given
       --preset <name>                A preset or platform to publish; repeat for more
                                      (default: export_presets.json's stores.<store>
-                                     channels or depots, else every preset itch.io takes)
+                                     channels, depots, artifacts or presets, else
+                                     every preset the store takes)
       --upload                       Export each build and upload it; players can see it
       --no-build                     Upload what earlier exports left instead of exporting
       --version <version>            The version the store shows (default: project.json's)
@@ -336,7 +342,7 @@ Usage:
                                      project.json's "sdks", so exports link it: a folder in
                                      the project where it is; any other folder, a built-in
                                      store's package (storekit, play-billing,
-                                     steamworks), a git
+                                     steamworks, eos, galaxy), a git
                                      repository or an https:// .zip or .tar archive is copied
                                      into sdks/<name>
       --project <dir>                Game folder with project.json (default ".")
@@ -3377,7 +3383,7 @@ int cmd_publish(const std::vector<std::string>& args) {
         }
     }
     if (options.store.empty()) {
-        return usage_error("publish needs a store: itch or steam");
+        return usage_error("publish needs a store: itch, steam, epic or gog");
     }
     const slash::exporter::PublishResult result = slash::exporter::publish_game(options);
     print(result.json);

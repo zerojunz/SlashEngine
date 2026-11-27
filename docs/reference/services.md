@@ -278,6 +278,62 @@ STEAMWORKS_SDK=~/steamworks/sdk slash-cli export windows --project my-game
 The backend's name is `steam`. Steam calls finish through the SDK's manual callback dispatch,
 polled at the start of each tick on the game's thread.
 
+### Epic Games Store
+
+The engine's `eos` package is a games backend for Windows, macOS and Linux (x86_64) games, sold
+on the Epic Games Store or anywhere else, through Epic Online Services. It links the developer's
+own copy of the [EOS SDK](https://dev.epicgames.com/docs/epic-online-services), downloaded from
+the Epic Developer Portal and found through `EOS_SDK`, the SDK's `SDK` folder, at export time;
+the `EOSSDK` library ships beside the game. The game's ids come from the environment at export
+time, from the product's pages in the Portal: `EOS_PRODUCT_ID`, `EOS_SANDBOX_ID`,
+`EOS_DEPLOYMENT_ID`, and `EOS_CLIENT_ID` and `EOS_CLIENT_SECRET` of a client with the GameClient
+policy made for the game, whose secret Epic expects to ship in it (never the BuildPatchTool
+client that [publish epic](cli.md#publish) uploads with). `EOS_PRODUCT_NAME` names the game in
+EOS's logs.
+
+```bash
+slash-cli sdk add eos --project my-game
+EOS_SDK=~/eos/SDK EOS_PRODUCT_ID=... EOS_SANDBOX_ID=... EOS_DEPLOYMENT_ID=... \
+    EOS_CLIENT_ID=... EOS_CLIENT_SECRET=... slash-cli export windows --project my-game
+```
+
+| Service | Through Epic Online Services |
+| --- | --- |
+| Signing in | The Epic account, then the game's services with that account's ID token, by product user id and display name; a player new to the game gets a product user. A game the Epic Games Launcher starts signs in with the launcher's exchange code (`-AUTH_PASSWORD` with `-AUTH_TYPE=exchangecode`); elsewhere the login EOS kept from the last time signs the player in, and when the game asks (`interactive`), Epic's account portal opens |
+| Achievements | By their names, which must be their ids in the Portal. `steps` go to the stat named like the achievement (make it with the `LATEST` or `MAX` aggregation, and give the achievement a threshold on it), and all of them unlock it; `achievements_loaded` gives unlocked ones and ones with progress |
+| Leaderboards | By their names, which must be their ids in the Portal, each ranking the stat named like it; a score is ingested into that stat, so the stat's aggregation keeps the best. Scores are 32-bit; `load_scores` loads `all_time` (the time window set in the Portal) `global` ranks, with the player's own entry |
+| Screens | EOS has no achievements or leaderboards screens, so `show_achievements` and `show_leaderboards` report `games_ui_closed` at once; games draw their own |
+
+The backend's name is `epic`. EOS calls finish in their callbacks, which `EOS_Platform_Tick`
+runs at the start of each tick on the game's thread. Exported without the ids, EOS doesn't start
+and every call fails, naming the keys to set.
+
+### GOG
+
+The engine's `galaxy` package is a games backend for Windows and macOS games sold on GOG. It
+links the developer's own copy of the [GOG Galaxy SDK](https://docs.gog.com/sdk/), downloaded
+from the GOG Developer Portal and found through `GOG_GALAXY_SDK`, the SDK's folder (with
+`Include` and `Libraries`), at export time; `Galaxy64.dll` and `libGalaxy64.dylib` ship beside
+the game. The game's client comes from the environment at export time, from its page in the
+Portal: `GOG_GALAXY_CLIENT_ID` and `GOG_GALAXY_CLIENT_SECRET`, which GOG expects to ship in the
+game.
+
+```bash
+slash-cli sdk add galaxy --project my-game
+GOG_GALAXY_SDK=~/gog/galaxy-sdk GOG_GALAXY_CLIENT_ID=... GOG_GALAXY_CLIENT_SECRET=... \
+    slash-cli export windows --project my-game
+```
+
+| Service | Through GOG Galaxy |
+| --- | --- |
+| Signing in | The GOG Galaxy client's player, by Galaxy ID and persona name. Galaxy signs them in, so it fails only when the game wasn't started from GOG Galaxy, or Galaxy isn't running and signed in |
+| Achievements | By their names, which must be their API keys in the Portal. `steps` go to the stat named like the achievement, and all of them unlock it; `achievements_loaded` gives unlocked ones and ones with steps in their stat |
+| Leaderboards | By their names, which must be their API keys in the Portal, with scores kept by the leaderboard's own sort: a score no better than the player's best is reported as submitted and leaves the best. Scores are 32-bit; `load_scores` loads `all_time` `global` ranks, with the player's own entry |
+| Screens | GOG's overlay has no achievements or leaderboards screens, so `show_achievements` and `show_leaderboards` report `games_ui_closed` at once; games draw their own |
+
+The backend's name is `gog`. Galaxy calls finish in listeners, which `galaxy::api::ProcessData`
+runs at the start of each tick on the game's thread.
+
 ## Consent
 
 `ConsentState` holds two answers, each `unknown`, `granted` or `denied`: `analytics` gates

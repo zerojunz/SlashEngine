@@ -974,7 +974,7 @@ a distribution one (App Store or Ad Hoc) for release.
 ### Stores
 
 `stores` says where [`slash-cli publish`](cli.md#publish) sends the presets' builds, by store:
-itch.io and Steam so far.
+itch.io, Steam, the Epic Games Store and GOG.
 
 ```json
 {
@@ -989,6 +989,19 @@ itch.io and Steam so far.
       "app": "1234560",
       "branch": "beta",
       "depots": {"mac": "1234561", "windows": "1234562"}
+    },
+    "epic": {
+      "artifacts": {"mac": "4a7d1c0e9b2f4e6a", "windows": "4a7d1c0e9b2f4e6a"},
+      "label": "Live",
+      "organization": "o-7rq2xk9mzw3c",
+      "product": "b81e5f3a0c6d4792",
+      "sandbox": "e3c9a7f1b5d2486e"
+    },
+    "gog": {
+      "branch": "staging",
+      "languages": ["en-US"],
+      "presets": ["mac", "pc"],
+      "product": "1207658924"
     }
   }
 }
@@ -1001,11 +1014,22 @@ itch.io and Steam so far.
 | `steam.app` | required | The game's Steam app id, from Steamworks |
 | `steam.depots` | required | Depot ids by preset, or by platform (`windows` above) for its presets, from the app's Depots page. Steam takes Windows, macOS and Linux builds |
 | `steam.branch` | none | The branch each build is set live on, such as `beta`: letters, digits, `.`, `_` or `-`. Steam sets the default branch live only from Steamworks, so `default` is refused; without a branch, builds wait in Steamworks to be set live |
+| `epic.organization` | required | The organization id, from the Epic Developer Portal |
+| `epic.product` | required | The game's product id |
+| `epic.artifacts` | required | Artifact ids by preset, or by platform (`windows` above) for its presets. One artifact can hold a Windows and a macOS build, each uploaded as the version with its platform after it. The Epic Games Store takes Windows and macOS builds |
+| `epic.label` | none | The label set on each upload, such as `Live`, which sets it live in the sandbox: letters, digits, `.`, `_` or `-`. Without one, builds wait in the Portal to be labelled |
+| `epic.sandbox` | with `label` | The sandbox id the label is set in; `label` and `sandbox` go together |
+| `gog.product` | required | The game's product id, from the GOG Developer Portal |
+| `gog.presets` | every Windows and macOS preset | Presets, or platforms for their presets, to publish; GOG keeps one build per platform |
+| `gog.languages` | `["en-US"]` | The languages the game's depot holds, as codes such as `en-US` |
+| `gog.branch` | none | The private branch each build is published to, such as `staging`: letters, digits, `.`, `_` or `-`. Pipeline Builder publishes to private branches only, so `master` is refused; without a branch, builds wait in the Developer Portal to be published |
 
 A channel must name a preset or a platform, and not an iOS one, since itch.io takes no iOS games;
-a depot must name a Windows, macOS or Linux preset or platform. Credentials never go in the file:
-uploads read butler's API key from `BUTLER_API_KEY` and the Steamworks account steamcmd signs in
-as from `STEAM_USERNAME`.
+a depot must name a Windows, macOS or Linux preset or platform, and an artifact a Windows or
+macOS one, as must GOG's presets. Ids are letters, digits, `-` or `_`. Credentials never go in the file: uploads read
+butler's API key from `BUTLER_API_KEY`, the Steamworks account steamcmd signs in as from
+`STEAM_USERNAME`, the BuildPatchTool client from `EPIC_CLIENT_ID` and `EPIC_CLIENT_SECRET`, and
+the GOG account from `GOG_USERNAME` and `GOG_PASSWORD`.
 
 ## Layout
 

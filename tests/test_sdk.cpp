@@ -781,6 +781,98 @@ TEST_CASE("the engine's Steamworks package links the developer's own SDK") {
     fs::remove_all(steam);
 }
 
+TEST_CASE("the engine's EOS package links the developer's own SDK with the game's ids") {
+    const auto folder = exporter::builtin_sdk("eos");
+    REQUIRE(folder);
+    auto sdk = exporter::load_sdk(*folder);
+    REQUIRE_MESSAGE(sdk.ok(), (sdk.ok() ? std::string() : sdk.error().message));
+    CHECK(sdk.value().platforms.size() == 3);
+
+    // The SDK is the developer's copy, wherever EOS_SDK says it is; the ids come from the
+    // environment at export time.
+    const fs::path eos = fs::absolute("sdk_eos_copy");
+    fs::remove_all(eos);
+    write(eos / "Include" / "eos_sdk.h", "");
+    write(eos / "Lib" / "EOSSDK-Win64-Shipping.lib", "");
+    write(eos / "Bin" / "EOSSDK-Win64-Shipping.dll", "");
+    write(eos / "Bin" / "libEOSSDK-Linux-Shipping.so", elf_shared_object());
+    const ScopedVariable variable("EOS_SDK", eos.string());
+    const ScopedVariable product("EOS_PRODUCT_ID", "p1");
+    const ScopedVariable sandbox("EOS_SANDBOX_ID", "s1");
+    const ScopedVariable deployment("EOS_DEPLOYMENT_ID", "d1");
+    const ScopedVariable client("EOS_CLIENT_ID", "c1");
+    const ScopedVariable secret("EOS_CLIENT_SECRET", "k1");
+    REQUIRE(sdk.value().downloads.size() == 1);
+    auto found = exporter::fetch_download(sdk.value().downloads[0], *folder, eos / "cache");
+    REQUIRE_MESSAGE(found.ok(), (found.ok() ? std::string() : found.error().message));
+    exporter::SdkPlaces places;
+    places.downloads["eos"] = found.value();
+    std::vector<exporter::SdkProblem> problems;
+    places.keys = exporter::sdk_keys(sdk.value(), problems);
+    CHECK(describe(problems).empty());
+    const exporter::ResolvedSdk windows =
+        exporter::resolve_sdk(sdk.value(), "windows", "x86_64", places, true, problems);
+    CHECK(describe(problems).empty());
+    REQUIRE(windows.include.size() == 1);
+    CHECK(windows.include[0].ends_with("Include"));
+    REQUIRE(windows.libraries.size() == 1);
+    CHECK(windows.libraries[0].ends_with("Lib/EOSSDK-Win64-Shipping.lib"));
+    REQUIRE(windows.files.size() == 1);
+    CHECK(windows.files[0].ends_with("Bin/EOSSDK-Win64-Shipping.dll"));
+    CHECK(windows.system_libraries == std::vector<std::string>{"shell32"});
+    REQUIRE(windows.sources.size() == 1);
+    CHECK(windows.sources[0].ends_with("/eos.cpp"));
+    CHECK(windows.register_function == "slash_eos::register_backends");
+    CHECK(std::ranges::find(windows.defines, "SLASH_EOS_PRODUCT_ID=\"p1\"") !=
+          windows.defines.end());
+    CHECK(std::ranges::find(windows.defines, "SLASH_EOS_PRODUCT_NAME=\"\"") !=
+          windows.defines.end());
+    const exporter::ResolvedSdk linux_sdk =
+        exporter::resolve_sdk(sdk.value(), "linux", "x86_64", places, true, problems);
+    CHECK(describe(problems).empty());
+    REQUIRE(linux_sdk.libraries.size() == 1);
+    CHECK(linux_sdk.libraries[0].ends_with("Bin/libEOSSDK-Linux-Shipping.so"));
+    fs::remove_all(eos);
+}
+
+TEST_CASE("the engine's GOG Galaxy package links the developer's own SDK") {
+    const auto folder = exporter::builtin_sdk("galaxy");
+    REQUIRE(folder);
+    auto sdk = exporter::load_sdk(*folder);
+    REQUIRE_MESSAGE(sdk.ok(), (sdk.ok() ? std::string() : sdk.error().message));
+    CHECK(sdk.value().platforms.size() == 2);
+
+    const fs::path galaxy = fs::absolute("sdk_galaxy_copy");
+    fs::remove_all(galaxy);
+    write(galaxy / "Include" / "galaxy" / "GalaxyApi.h", "");
+    write(galaxy / "Libraries" / "Galaxy64.lib", "");
+    write(galaxy / "Libraries" / "Galaxy64.dll", "");
+    const ScopedVariable variable("GOG_GALAXY_SDK", galaxy.string());
+    const ScopedVariable client("GOG_GALAXY_CLIENT_ID", "48767653913349277");
+    const ScopedVariable secret("GOG_GALAXY_CLIENT_SECRET", "k1");
+    REQUIRE(sdk.value().downloads.size() == 1);
+    auto found = exporter::fetch_download(sdk.value().downloads[0], *folder, galaxy / "cache");
+    REQUIRE_MESSAGE(found.ok(), (found.ok() ? std::string() : found.error().message));
+    exporter::SdkPlaces places;
+    places.downloads["galaxy"] = found.value();
+    std::vector<exporter::SdkProblem> problems;
+    places.keys = exporter::sdk_keys(sdk.value(), problems);
+    CHECK(describe(problems).empty());
+    const exporter::ResolvedSdk windows =
+        exporter::resolve_sdk(sdk.value(), "windows", "x86_64", places, true, problems);
+    CHECK(describe(problems).empty());
+    REQUIRE(windows.libraries.size() == 1);
+    CHECK(windows.libraries[0].ends_with("Libraries/Galaxy64.lib"));
+    REQUIRE(windows.files.size() == 1);
+    CHECK(windows.files[0].ends_with("Libraries/Galaxy64.dll"));
+    REQUIRE(windows.sources.size() == 1);
+    CHECK(windows.sources[0].ends_with("/galaxy.cpp"));
+    CHECK(windows.register_function == "slash_galaxy::register_backends");
+    CHECK(std::ranges::find(windows.defines, "SLASH_GALAXY_CLIENT_ID=\"48767653913349277\"") !=
+          windows.defines.end());
+    fs::remove_all(galaxy);
+}
+
 #ifndef _WIN32
 TEST_CASE("SDK downloads are fetched once, checked against their SHA-256 and unpacked") {
     const fs::path folder = fs::absolute("sdk_downloads");

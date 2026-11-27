@@ -1,0 +1,100 @@
+{
+  "description": "Epic Online Services as the game's games backend on Windows, macOS and Linux: the Epic player, achievements (with steps kept in stats) and leaderboards ranked by stats. It links the developer's own copy of the EOS SDK, found through EOS_SDK, with the game's ids from the environment.",
+  "downloads": {
+    "eos": {
+      "path": "${EOS_SDK}"
+    }
+  },
+  "format": 1,
+  "keys": {
+    "EOS_CLIENT_ID": {
+      "description": "The id of a client with the GameClient policy, made for the game (never the BuildPatchTool client)."
+    },
+    "EOS_CLIENT_SECRET": {
+      "description": "That client's secret. Epic expects a game client's secret to ship in the game; its policy limits what it can do."
+    },
+    "EOS_DEPLOYMENT_ID": {
+      "description": "The deployment of that sandbox the game uses."
+    },
+    "EOS_PRODUCT_ID": {
+      "description": "The game's product id, from the Epic Developer Portal's Product Settings."
+    },
+    "EOS_PRODUCT_NAME": {
+      "description": "The game's name in EOS's logs. Default: Game.",
+      "optional": true
+    },
+    "EOS_SANDBOX_ID": {
+      "description": "The sandbox the game runs in, such as the Live sandbox's id."
+    }
+  },
+  "license": "Proprietary",
+  "name": "eos",
+  "platforms": {
+    "linux": {
+      "defines": [
+        "SLASH_EOS_PRODUCT_ID=\"${EOS_PRODUCT_ID}\"",
+        "SLASH_EOS_SANDBOX_ID=\"${EOS_SANDBOX_ID}\"",
+        "SLASH_EOS_DEPLOYMENT_ID=\"${EOS_DEPLOYMENT_ID}\"",
+        "SLASH_EOS_CLIENT_ID=\"${EOS_CLIENT_ID}\"",
+        "SLASH_EOS_CLIENT_SECRET=\"${EOS_CLIENT_SECRET}\"",
+        "SLASH_EOS_PRODUCT_NAME=\"${EOS_PRODUCT_NAME}\""
+      ],
+      "include": [
+        "{eos}/Include"
+      ],
+      "libraries": [
+        "{eos}/Bin/libEOSSDK-Linux-Shipping.so"
+      ],
+      "sources": [
+        "src"
+      ]
+    },
+    "macos": {
+      "defines": [
+        "SLASH_EOS_PRODUCT_ID=\"${EOS_PRODUCT_ID}\"",
+        "SLASH_EOS_SANDBOX_ID=\"${EOS_SANDBOX_ID}\"",
+        "SLASH_EOS_DEPLOYMENT_ID=\"${EOS_DEPLOYMENT_ID}\"",
+        "SLASH_EOS_CLIENT_ID=\"${EOS_CLIENT_ID}\"",
+        "SLASH_EOS_CLIENT_SECRET=\"${EOS_CLIENT_SECRET}\"",
+        "SLASH_EOS_PRODUCT_NAME=\"${EOS_PRODUCT_NAME}\""
+      ],
+      "include": [
+        "{eos}/Include"
+      ],
+      "libraries": [
+        "{eos}/Bin/libEOSSDK-Mac-Shipping.dylib"
+      ],
+      "sources": [
+        "src"
+      ]
+    },
+    "windows": {
+      "defines": [
+        "SLASH_EOS_PRODUCT_ID=\"${EOS_PRODUCT_ID}\"",
+        "SLASH_EOS_SANDBOX_ID=\"${EOS_SANDBOX_ID}\"",
+        "SLASH_EOS_DEPLOYMENT_ID=\"${EOS_DEPLOYMENT_ID}\"",
+        "SLASH_EOS_CLIENT_ID=\"${EOS_CLIENT_ID}\"",
+        "SLASH_EOS_CLIENT_SECRET=\"${EOS_CLIENT_SECRET}\"",
+        "SLASH_EOS_PRODUCT_NAME=\"${EOS_PRODUCT_NAME}\""
+      ],
+      "files": [
+        "{eos}/Bin/EOSSDK-Win64-Shipping.dll"
+      ],
+      "include": [
+        "{eos}/Include"
+      ],
+      "libraries": [
+        "{eos}/Lib/EOSSDK-Win64-Shipping.lib"
+      ],
+      "sources": [
+        "src"
+      ],
+      "system_libraries": [
+        "shell32"
+      ]
+    }
+  },
+  "register": "slash_eos::register_backends",
+  "vendor": "Epic Games",
+  "version": "1"
+}

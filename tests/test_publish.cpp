@@ -471,3 +471,320 @@ TEST_CASE("publish uploads exports to Steam through steamcmd") {
     std::filesystem::remove_all(root);
     std::filesystem::remove(log);
 }
+
+TEST_CASE("export presets say which Epic Games Store artifact takes each build") {
+    CHECK(exporter::epic_platform("windows") == "Windows");
+    CHECK(exporter::epic_platform("macos") == "Mac");
+    CHECK(exporter::epic_platform("linux").empty());
+
+    const json::Value good = parse(R"({"format": 1, "presets": {"pc": {"platform": "windows"}},
+        "stores": {"epic": {"organization": "o-abc", "product": "p1",
+                            "artifacts": {"pc": "a1", "macos": "a1"},
+                            "label": "Live", "sandbox": "s1"}}})");
+    CHECK(exporter::validate_presets(good).empty());
+    const exporter::Stores stores = exporter::parse_stores(good);
+    REQUIRE(stores.epic.has_value());
+    CHECK(stores.epic->organization == "o-abc");
+    CHECK(stores.epic->artifacts.at("pc") == "a1");
+    CHECK(stores.epic->label == "Live");
+    CHECK(stores.epic->sandbox == "s1");
+
+    // Ids are the Portal's, artifacts name Windows or macOS builds, and a label needs its sandbox.
+    const json::Value bad = parse(R"({"format": 1, "presets": {"pi": {"platform": "linux"}},
+        "stores": {"epic": {"organization": "o abc", "product": "p1", "label": "Live!",
+                            "artifacts": {"pc": "a1", "pi": "a2", "windows": "a/3"}}}})");
+    std::vector<std::string> paths;
+    for (const auto& error : exporter::validate_presets(bad)) {
+        paths.push_back(error.path + " " + error.message);
+    }
+    CHECK(paths ==
+          std::vector<std::string>{
+              "/stores/epic/organization expected the id from the Epic Developer Portal: "
+              "letters, digits, '-' or '_'",
+              "/stores/epic/artifacts/pc no preset or platform called \"pc\"",
+              "/stores/epic/artifacts/pi the Epic Games Store takes Windows and macOS builds, "
+              "not linux ones",
+              "/stores/epic/artifacts/windows expected the artifact id from the Epic Developer "
+              "Portal: letters, digits, '-' or '_'",
+              "/stores/epic/label labels are letters, digits, '.', '_' or '-', such as Live",
+              "/stores/epic label and sandbox go together: a label sets builds live in a "
+              "sandbox, such as Live in the game's Live sandbox"});
+    CHECK_FALSE(exporter::validate_presets(parse(R"({"format": 1, "presets": {},
+        "stores": {"epic": {"organization": "o-abc", "product": "p1"}}})"))
+                    .empty());
+}
+
+TEST_CASE("publish plans each build's Epic Games Store upload and label") {
+    const std::string root = "publish_epic_plan_project";
+    write_game(root, R"({"epic": {"organization": "o-abc", "product": "p1",
+        "artifacts": {"mac-release": "a1", "windows": "a1"}, "label": "Live", "sandbox": "s1"}})");
+    exporter::PublishOptions options;
+    options.store = "epic";
+    options.project = root;
+
+    exporter::PublishResult plan = exporter::publish_game(options);
+    REQUIRE_MESSAGE(plan.ok, json::write(plan.json));
+    CHECK(plan.json.find("organization")->as_string() == "o-abc");
+    CHECK(plan.json.find("label")->as_string() == "Live");
+    const json::Value& builds = *plan.json.find("builds");
+    CHECK(field(builds, "preset") == std::vector<std::string>{"mac-release", "windows"});
+    CHECK(field(builds, "artifact") == std::vector<std::string>{"a1", "a1"});
+    // One artifact takes both platforms, each under a version of its own.
+    CHECK(field(builds, "build_version") == std::vector<std::string>{"1.2.0-Mac", "1.2.0-Windows"});
+    CHECK(field(builds, "app_launch") ==
+          std::vector<std::string>{"SpaceGame.app/Contents/MacOS/SpaceGame", "SpaceGame.exe"});
+    const json::Value& commands = *builds.as_array()[1].find("commands");
+    CHECK(commands == parse(R"([["BuildPatchTool", "-OrganizationId=o-abc", "-ProductId=p1",
+                     "-ArtifactId=a1", "-ClientId=$EPIC_CLIENT_ID",
+                     "-ClientSecretEnvVar=EPIC_CLIENT_SECRET", "-mode=UploadBinary",
+                     "-BuildRoot=build/export/windows", "-CloudDir=.slash/publish/epic/cloud",
+                     "-BuildVersion=1.2.0-Windows", "-AppLaunch=SpaceGame.exe", "-AppArgs="],
+                    ["BuildPatchTool", "-OrganizationId=o-abc", "-ProductId=p1",
+                     "-ArtifactId=a1", "-ClientId=$EPIC_CLIENT_ID",
+                     "-ClientSecretEnvVar=EPIC_CLIENT_SECRET", "-mode=LabelBinary",
+                     "-BuildVersion=1.2.0-Windows", "-Label=Live", "-Platform=Windows",
+                     "-SandboxId=s1"]])"));
+    CHECK(*plan.json.find("needs") ==
+          parse(R"(["BuildPatchTool on PATH or in SLASH_BUILDPATCHTOOL_PATH", "EPIC_CLIENT_ID",
+                    "EPIC_CLIENT_SECRET"])"));
+
+    // Without a label, builds are only uploaded.
+    write_game(root, R"({"epic": {"organization": "o-abc", "product": "p1",
+        "artifacts": {"pc": "a2"}}})");
+    options.version = "2.0";
+    plan = exporter::publish_game(options);
+    REQUIRE(plan.ok);
+    CHECK(plan.json.find("label") == nullptr);
+    const json::Value& pc = plan.json.find("builds")->as_array()[0];
+    CHECK(pc.find("build_version")->as_string() == "2.0-Windows");
+    CHECK(pc.find("commands")->as_array().size() == 1);
+
+    // What the plan can't publish.
+    options.targets = {"pi"};
+    CHECK(contains(json::write(exporter::publish_game(options).json),
+                   "which the Epic Games Store doesn't take"));
+    options.targets = {"pc", "pc"};
+    CHECK(contains(json::write(exporter::publish_game(options).json),
+                   "two builds go to Epic artifact a2 as 2.0-Windows"));
+    options.targets = {"mac-release"};
+    CHECK(contains(json::write(exporter::publish_game(options).json),
+                   "\\\"mac-release\\\" has no Epic Games Store artifact"));
+    write_game(root, R"({"itch": {"project": "player/space-game"}})");
+    options.targets.clear();
+    CHECK(contains(json::write(exporter::publish_game(options).json), "has no stores.epic"));
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("publish uploads exports to the Epic Games Store through BuildPatchTool") {
+    const std::string root = "publish_epic_upload_project";
+    write_game(root, R"({"epic": {"organization": "o-abc", "product": "p1",
+        "artifacts": {"mac-release": "a1", "pc": "a1"}, "label": "Live", "sandbox": "s1"}})");
+    const std::filesystem::path log = std::filesystem::absolute(root + "-bpt.log");
+    std::filesystem::remove(log);
+    Variable tool(std::string(exporter::kBuildPatchToolPath), root + "/no-tool");
+    Variable client(std::string(exporter::kEpicClientId), "");
+    Variable secret(std::string(exporter::kEpicClientSecret), "");
+    Variable record("FAKE_BUILDPATCHTOOL_LOG", log.string());
+    Variable refuse("FAKE_BUILDPATCHTOOL_FAIL", "");
+    exporter::PublishOptions options;
+    options.store = "epic";
+    options.project = root;
+    options.upload = true;
+    options.build = false;
+
+    // BuildPatchTool and its client come from the environment, before anything is built.
+    exporter::PublishResult result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    CHECK(result.json.find("error")->find("step")->as_string() == "setup");
+    CHECK(contains(result.json.find("error")->find("message")->as_string(),
+                   "SLASH_BUILDPATCHTOOL_PATH names"));
+    tool.set(SLASH_FAKE_BUILD_PATCH_TOOL);
+    client.set("client1");
+    result = exporter::publish_game(options);
+    CHECK(contains(result.json.find("error")->find("message")->as_string(), "EPIC_CLIENT_SECRET"));
+    secret.set("hidden");
+
+    // With no export there, nothing is uploaded.
+    result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    CHECK(contains(result.json.find("error")->find("message")->as_string(),
+                   "there's no export of \"mac-release\""));
+
+    // The outputs earlier exports left go up one by one, each labelled live.
+    const std::string app = root + "/build/export/mac-release/SpaceGame.app/Contents";
+    REQUIRE(slash::platform::create_directories(app + "/MacOS").ok());
+    REQUIRE(slash::platform::write_file(app + "/MacOS/SpaceGame", "game").ok());
+    REQUIRE(slash::platform::write_file(app + "/Info.plist", "<plist/>").ok());
+    REQUIRE(slash::platform::create_directories(root + "/dist/pc").ok());
+    REQUIRE(slash::platform::write_file(root + "/dist/pc/SpaceGame.exe", "MZ").ok());
+    result = exporter::publish_game(options);
+    REQUIRE_MESSAGE(result.ok, json::write(result.json));
+    std::vector<std::string> lines;
+    std::istringstream text(read(log));
+    for (std::string line; std::getline(text, line);) {
+        lines.push_back(line);
+    }
+    CHECK(lines == std::vector<std::string>{
+                       "upload client1 a1 1.2.0-Mac 2 SpaceGame.app/Contents/MacOS/SpaceGame",
+                       "label a1 1.2.0-Mac Live Mac s1",
+                       "upload client1 a1 1.2.0-Windows 1 SpaceGame.exe",
+                       "label a1 1.2.0-Windows Live Windows s1"});
+    const json::Value& pushed = *result.json.find("builds")->as_array()[1].find("push");
+    CHECK(contains(pushed.find("tail")->as_string(), "Labeled binary 1.2.0-Windows"));
+    // The secret stays in its variable, out of every command line.
+    CHECK_FALSE(contains(json::write(result.json), "hidden"));
+
+    // A label Epic refuses fails the publish, saying the upload went up.
+    refuse.set("LabelBinary");
+    result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    const json::Value& error = *result.json.find("error");
+    CHECK(error.find("step")->as_string() == "push");
+    CHECK(contains(error.find("message")->as_string(), "couldn't label it Live"));
+    CHECK(contains(error.find("tail")->as_string(), "LabelBinary was refused"));
+    CHECK(*result.json.find("pushed") == parse(R"(["artifact a1 as 1.2.0-Mac"])"));
+    std::filesystem::remove_all(root);
+    std::filesystem::remove(log);
+}
+
+TEST_CASE("export presets say what GOG takes") {
+    CHECK(exporter::gog_platform("windows") == "windows");
+    CHECK(exporter::gog_platform("macos") == "osx");
+    CHECK(exporter::gog_platform("linux").empty());
+
+    const json::Value good = parse(R"({"format": 1, "presets": {"pc": {"platform": "windows"}},
+        "stores": {"gog": {"product": "1207658924", "presets": ["pc", "macos"],
+                           "languages": ["en-US", "pl-PL"], "branch": "staging"}}})");
+    CHECK(exporter::validate_presets(good).empty());
+    const exporter::Stores stores = exporter::parse_stores(good);
+    REQUIRE(stores.gog.has_value());
+    CHECK(stores.gog->product == "1207658924");
+    CHECK(stores.gog->presets == std::vector<std::string>{"pc", "macos"});
+    CHECK(stores.gog->languages == std::vector<std::string>{"en-US", "pl-PL"});
+    CHECK(stores.gog->branch == "staging");
+    CHECK(exporter::parse_stores(parse(R"({"format": 1, "presets": {},
+        "stores": {"gog": {"product": "1"}}})"))
+              .gog->languages == std::vector<std::string>{"en-US"});
+
+    // The id is digits, presets are Windows or macOS ones, and master is set live in the Portal.
+    const json::Value bad = parse(R"({"format": 1, "presets": {"pi": {"platform": "linux"}},
+        "stores": {"gog": {"product": "gog-1", "presets": ["pc", "pi"],
+                           "languages": ["en US"], "branch": "Master"}}})");
+    std::vector<std::string> paths;
+    for (const auto& error : exporter::validate_presets(bad)) {
+        paths.push_back(error.path + " " + error.message);
+    }
+    CHECK(paths ==
+          std::vector<std::string>{
+              "/stores/gog/product expected the product id's digits, from the GOG Developer "
+              "Portal",
+              "/stores/gog/presets/0 no preset or platform called \"pc\"",
+              "/stores/gog/presets/1 GOG takes Windows and macOS builds, not linux ones",
+              "/stores/gog/languages/0 expected a language code, such as en-US",
+              "/stores/gog/branch Pipeline Builder publishes to private branches only: leave "
+              "branch out and publish the build to master in the Developer Portal"});
+}
+
+TEST_CASE("publish plans a Pipeline Builder project for each GOG build") {
+    const std::string root = "publish_gog_plan_project";
+    write_game(root, R"({"gog": {"product": "1207658924", "branch": "staging"}})");
+    exporter::PublishOptions options;
+    options.store = "gog";
+    options.project = root;
+
+    // Without presets listed, every Windows and macOS preset goes.
+    exporter::PublishResult plan = exporter::publish_game(options);
+    REQUIRE_MESSAGE(plan.ok, json::write(plan.json));
+    CHECK(plan.json.find("product")->as_string() == "1207658924");
+    CHECK(plan.json.find("branch")->as_string() == "staging");
+    const json::Value& builds = *plan.json.find("builds");
+    CHECK(field(builds, "preset") == std::vector<std::string>{"mac-release", "pc"});
+    const json::Value& pc = builds.as_array()[1];
+    CHECK(pc.find("project")->find("path")->as_string() == ".slash/publish/gog/pc.json");
+    CHECK(*pc.find("project")->find("json") == parse(R"x({"project": {
+        "baseProductId": "1207658924", "clientId": "", "clientSecret": "",
+        "dependencies": [], "installDirectory": "Space Game", "name": "Space Game",
+        "platform": "windows", "scriptInterpreter": true, "version": "1.2.0",
+        "products": [{"name": "Space Game", "productId": "1207658924",
+            "depots": [{"folder": "dist/pc", "languages": ["en-US"],
+                        "name": "Space Game (windows)"}],
+            "tasks": [{"type": "FileTask", "category": "game", "name": "Space Game",
+                       "path": "SpaceGame.exe", "isPrimary": true, "isHidden": false,
+                       "languages": ["*"]}]}]}})x"));
+    CHECK(*pc.find("command") ==
+          parse(R"(["GOGGalaxyPipelineBuilder", "build-game", ".slash/publish/gog/pc.json",
+                    "--username", "$GOG_USERNAME", "--password", "$GOG_PASSWORD",
+                    "--version", "1.2.0", "--branch", "staging"])"));
+    CHECK(builds.as_array()[0]
+              .find("project")
+              ->find("json")
+              ->find("project")
+              ->find("platform")
+              ->as_string() == "osx");
+    CHECK(*plan.json.find("needs") ==
+          parse(R"(["GOGGalaxyPipelineBuilder on PATH or in SLASH_GOG_PIPELINE_BUILDER_PATH",
+                    "GOG_USERNAME", "GOG_PASSWORD"])"));
+
+    // What the plan can't publish.
+    options.targets = {"pi"};
+    CHECK(contains(json::write(exporter::publish_game(options).json), "which GOG doesn't take"));
+    options.targets = {"pc", "windows"};
+    CHECK(
+        contains(json::write(exporter::publish_game(options).json), "two builds are for windows"));
+    write_game(root, R"({"steam": {"app": "480", "depots": {"pc": "481"}}})");
+    options.targets.clear();
+    CHECK(contains(json::write(exporter::publish_game(options).json), "has no stores.gog"));
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("publish uploads exports to GOG through Pipeline Builder") {
+    const std::string root = "publish_gog_upload_project";
+    write_game(root, R"({"gog": {"product": "1207658924", "presets": ["pc"]}})");
+    const std::filesystem::path log = std::filesystem::absolute(root + "-pb.log");
+    std::filesystem::remove(log);
+    Variable builder(std::string(exporter::kGogPipelineBuilderPath), root + "/no-builder");
+    Variable user(std::string(exporter::kGogUser), "");
+    Variable password(std::string(exporter::kGogPassword), "");
+    Variable record("FAKE_PIPELINE_BUILDER_LOG", log.string());
+    Variable refuse("FAKE_PIPELINE_BUILDER_FAIL", "");
+    exporter::PublishOptions options;
+    options.store = "gog";
+    options.project = root;
+    options.upload = true;
+    options.build = false;
+
+    // Pipeline Builder and the account come from the environment, before anything is built.
+    exporter::PublishResult result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    CHECK(result.json.find("error")->find("step")->as_string() == "setup");
+    CHECK(contains(result.json.find("error")->find("message")->as_string(),
+                   "SLASH_GOG_PIPELINE_BUILDER_PATH names"));
+    builder.set(SLASH_FAKE_PIPELINE_BUILDER);
+    user.set("builder");
+    result = exporter::publish_game(options);
+    CHECK(contains(result.json.find("error")->find("message")->as_string(), "GOG_PASSWORD"));
+    password.set("hunter22");
+
+    // The output an earlier export left goes up with the project written beside it.
+    REQUIRE(slash::platform::create_directories(root + "/dist/pc").ok());
+    REQUIRE(slash::platform::write_file(root + "/dist/pc/SpaceGame.exe", "MZ").ok());
+    REQUIRE(slash::platform::write_file(root + "/dist/pc/game.pck", "data").ok());
+    result = exporter::publish_game(options);
+    REQUIRE_MESSAGE(result.ok, json::write(result.json));
+    CHECK(std::filesystem::exists(root + "/.slash/publish/gog/pc.json"));
+    std::string line;
+    std::istringstream lines(read(log));
+    std::getline(lines, line);
+    CHECK(line == "builder windows 1207658924 1.2.0 2 SpaceGame.exe");
+
+    // A refused upload fails the publish, with the password taken out of the tool's words.
+    refuse.set("wrong password");
+    result = exporter::publish_game(options);
+    REQUIRE_FALSE(result.ok);
+    const json::Value& error = *result.json.find("error");
+    CHECK(error.find("step")->as_string() == "push");
+    CHECK(contains(error.find("tail")->as_string(), "Signing in as builder with ***"));
+    CHECK_FALSE(contains(json::write(result.json), "hunter22"));
+    std::filesystem::remove_all(root);
+    std::filesystem::remove(log);
+}
