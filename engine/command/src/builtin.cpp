@@ -33,6 +33,7 @@
 #include "slash/command/place.hpp"
 #include "slash/command/ragdoll.hpp"
 #include "slash/command/replay.hpp"
+#include "slash/command/save.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
 #include "slash/command/style.hpp"
@@ -8922,6 +8923,7 @@ void register_builtin_commands(Registry& registry) {
     register_lightmap_commands(registry);
     register_model_cleanup_commands(registry);
     register_services_commands(registry);
+    register_save_commands(registry);
     register_l10n_commands(registry);
     register_net_commands(registry);
     register_xr_commands(registry);

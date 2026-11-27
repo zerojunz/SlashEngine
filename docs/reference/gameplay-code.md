@@ -2,7 +2,7 @@
 
 Writing and reloading a game's own C++ code.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-26
 
 A game's own components and systems are plain C++ in the folders and files `project.json`'s
 `gameplay.sources` names (`src` in games `slash-cli init` makes), registered in one
@@ -75,3 +75,25 @@ otherwise its library ships in the data on Windows and Linux, in Frameworks on m
 static library on iOS and the web. `examples/plugins` is a plugin in C, built by
 `examples/CMakeLists.txt` from `addons/<p>/<p>.c`, which `tests/test_plugin.cpp` also loads and
 links in, and CI's export jobs compile into the empty game.
+
+## Save data
+
+Game code keeps the player's progress in save slots (`slash/platform/save_data.hpp`), as Unreal's
+save game slots: `platform::save_game(slot, data)` writes a slot of JSON whole, `load_game(slot)`
+reads it back with the game version that wrote it and when, `save_slots()` lists them newest
+first for a load menu, and `has_save` and `delete_save` check and empty one. A slot's name is 1
+to 64 lowercase letters, digits, `_` and `-`. Each is `<slot>.save.json` in the save folder,
+`{"format": 1, "game_version", "saved", "data"}`, written beside itself first and then moved
+into place, so a crash mid-save leaves the last save; a file in a later format, or one that isn't
+a save, is refused rather than misread.
+
+`runtime::Game::start` sets the process's save folder (`set_save_folder`, with project.json's
+`version`): the player's folder for the game in a window (`user_save_folder`: `SDL_GetPrefPath`
+by the project's name, then `saves/`), and the project's `.slash/saves/` for a headless run, so
+tests and playtests never touch a player's saves. Sessions that write files set the project's
+too, where the [`save.*` commands](commands.md#save-data) read and seed slots for an agent. On
+the web the folder is the browser's IndexedDB (IDBFS, linked with `-lidbfs.js`): it is read back
+when the game starts, `save_data_ready()` turning true once it is in, and written back after
+each save. The `SaveStore` overloads work on any other folder. `tests/test_save_data.cpp` checks
+slots, the folder a game and a session set and the commands; `examples/save-data` saves, loads
+and lists slots in a headless game.

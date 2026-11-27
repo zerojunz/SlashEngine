@@ -30,6 +30,7 @@ add_library(slash_command
     src/reference.cpp
     src/replay.cpp
     src/rpc.cpp
+    src/save.cpp
     src/l10n.cpp
     src/l10n_check.cpp
     src/l10n_extract.cpp

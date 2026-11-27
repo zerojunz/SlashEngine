@@ -1477,7 +1477,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
 27. [ ] Launch gaps (2026-11-22), from audits against Unreal Engine 5, last in the
         queue:
         - [x] Exports ship the engine's third-party notices (`licenses/slashengine/`)
-        - [ ] Save data for game code
+        - [x] Save data for game code
         - [ ] WebRTC peers
         - [ ] Gamepad rumble, gyro and controller button glyphs
         - [ ] HTTP requests from game code

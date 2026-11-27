@@ -21,6 +21,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/platform/save_data.hpp"
 #include "slash/plugin/plugins.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/cluster_streaming.hpp"
@@ -81,6 +82,12 @@ json::Value read_project(const std::string& project_root) {
     }
     world::upgrade_settings(project.value());
     return std::move(project).value();
+}
+
+// The project's version, as its saves record it: "0.1.0" if it names none.
+std::string project_version(const json::Value& project) {
+    const json::Value* version = project.is_object() ? project.find("version") : nullptr;
+    return version != nullptr && version->is_string() ? version->as_string() : "0.1.0";
 }
 
 // The project's physics_2d settings, or the defaults if it has none or they don't validate.
@@ -334,6 +341,11 @@ Session::Session(const world::ComponentRegistry& component_registry,
         project_stamp_ = platform::file_stamp(file.value());
     }
     const json::Value project = read_project(options_.project_root);
+    // Game code saving in the session saves in the project's folder, as save.* reads it.
+    if (options_.write_files) {
+        platform::set_save_folder(platform::project_save_folder(options_.project_root),
+                                  project_version(project));
+    }
     // The job system's threads, if nothing has started it yet.
     jobs::configure(max_threads(project));
     canvas::install(world_, assets_);

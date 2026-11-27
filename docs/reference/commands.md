@@ -93,6 +93,7 @@ as `entity.get`, reject it as an unknown param.
 | Video | [`video.encode`](#videoencode) |
 | Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract), [`l10n.check`](#l10ncheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
+| Save data | [`save.list`](#savelist), [`save.read`](#saveread), [`save.write`](#savewrite), [`save.delete`](#savedelete) |
 | Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose) |
 | XR | [`xr.state`](#xrstate), [`xr.set`](#xrset) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit), [`style.mark`](#stylemark), [`style.check`](#stylecheck) |
@@ -5250,6 +5251,72 @@ and `replayed` when the answer came from the replay file.
 ```json
 {"drafted":2,"drafts":[{"forms":["Opcje"],"message":"Options"},{"forms":["Dziękujemy za zakupy!"],"message":"Thanks for shopping!"}],"file":"translations/pl.po","locale":"pl","model":"local-model","replayed":true,"review":"fuzzy","usage":{"input_tokens":412,"output_tokens":38}}
 ```
+
+## Save data
+
+The game's save slots in the project's `.slash/saves/`, where game code saves
+(`platform::save_game`, see [gameplay-code.md](gameplay-code.md#save-data)) in sessions and
+headless runs, so an agent can check what a playtest saved, or seed a save for one to load. A
+slot is 1 to 64 lowercase letters, digits, `_` and `-`. The examples here are from
+[examples/save-data](../../examples/save-data/).
+
+### save.list
+
+Lists the slots that hold saves, newest first (by name where two were saved in the same second),
+each with the game version that wrote it, when (UTC) and its size in bytes. No params.
+
+Needs: `read`.
+
+```json
+{"slots":[{"bytes":167,"game_version":"1.4.0","saved":"2026-11-26T20:10:44Z","slot":"slot-1"}]}
+```
+
+### save.read
+
+Returns what a slot holds: the game's `data`, the `game_version` that wrote it and when it was
+`saved`. An empty slot fails with not found; a file that isn't a save, or one written in a later
+save format, with invalid params.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `slot` | string | required | The slot |
+
+Needs: `read`.
+
+```json
+{"slot": "slot-1"}
+```
+
+```json
+{"data":{"health":72,"inventory":["key","lantern"],"level":3},"game_version":"1.4.0","saved":"2026-11-26T20:10:44Z","slot":"slot-1"}
+```
+
+### save.write
+
+Writes data to a slot as the game's `save_game` does, replacing what it held, with project.json's
+`version` as the game version. Returns the slot, `game_version` and `saved`. Sessions that don't
+write files (tests) refuse it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `slot` | string | required | The slot |
+| `data` | any JSON | required | The game's data |
+
+Needs: `filesystem`.
+
+```json
+{"slot": "boss-fight", "data": {"level": 9, "health": 100}}
+```
+
+### save.delete
+
+Empties a slot; `deleted` says whether it held a save.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `slot` | string | required | The slot |
+
+Needs: `filesystem`.
 
 ## Services
 

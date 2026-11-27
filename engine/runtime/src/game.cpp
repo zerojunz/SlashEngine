@@ -10,6 +10,7 @@
 #include "slash/net/multiplayer.hpp"
 #include "slash/npc/npc.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/platform/save_data.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/ui/ui.hpp"
@@ -124,6 +125,14 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 
     auto game = std::unique_ptr<Game>(
         new Game(std::move(project).value(), std::move(platform).value(), data_dir));
+    // Save data (slash/platform/save_data.hpp) goes in the player's folder for the game; a
+    // headless run's, a test's or a playtest's in the project's, so they never touch a player's.
+    std::string saves =
+        options.headless ? std::string() : platform::user_save_folder(game->project_.name);
+    if (saves.empty()) {
+        saves = platform::project_save_folder(data_dir);
+    }
+    platform::set_save_folder(std::move(saves), game->project_.version);
     if (options.gameplay != nullptr) {
         game->gameplay_ = std::make_unique<gameplay::Host>(game->components_, options.gameplay);
     } else if (!game->project_.gameplay_sources.empty()) {
