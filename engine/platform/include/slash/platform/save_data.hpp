@@ -9,13 +9,13 @@
 #include <vector>
 
 // Save data for game code: named slots of JSON, each one file in the game's save folder, as
-// Unreal's save game slots. A running game's folder is the player's own (the system's folder for the game's data, by the project's name,
-// then saves/); headless runs, tests and the tools' sessions use the project's .slash/saves/, so
-// an agent's playtests never touch a player's saves and an agent can read what a playtest saved
-// (the save.* commands). A slot is written whole, to a file beside it first and then moved into
-// place, so a crash mid-save leaves the last save. On the web the folder is kept in the browser's
-// IndexedDB, read back when the game starts (save_data_ready says when) and written after each
-// change.
+// Unreal's save game slots. A running game's folder is the player's own (the system's folder for
+// the game's data, by the project's name, then saves/); headless runs, tests and the tools'
+// sessions use the project's .slash/saves/, so an agent's playtests never touch a player's saves
+// and an agent can read what a playtest saved (the save.* commands). A slot is written whole, to a
+// file beside it first and then moved into place, so a crash mid-save leaves the last save. On the
+// web the folder is kept in the browser's IndexedDB, read back when the game starts
+// (save_data_ready says when) and written after each change.
 namespace slash::platform {
 
 // The format a save file is written in: {"format", "game_version", "saved", "data"}.
