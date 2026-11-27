@@ -990,6 +990,14 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash scripts/check-owner-name.sh ${{ github.event_name == 'pull_request' && '--pr' || '' }}
 
+      # Credentials and signing files in the new commits (a pull request's, or a push's), redacted
+      # in the log; see the script for what it looks for.
+      - name: Secret scan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/check-secrets.sh --range
+
       # The Ubuntu runners come with toolchains this build never uses (.NET, Swift, GHC,
       # PowerShell, CodeQL, PyPy, and the Android SDK where the job doesn't export for Android),
       # which leave too little disk for a Debug build with its dependencies: jobs have run out

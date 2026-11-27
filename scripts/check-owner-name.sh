@@ -7,8 +7,9 @@
 #
 # Usage:
 #   scripts/check-owner-name.sh                 check tracked files (git grep, whole words, case-sensitive)
-#   scripts/check-owner-name.sh --pr            also check PR_TITLE, PR_BODY and the commit messages in
-#                                               BASE_SHA..HEAD_SHA (set by CI from the pull_request event)
+#   scripts/check-owner-name.sh --pr            also check PR_TITLE, PR_BODY and the commit messages, author
+#                                               and committer names and e-mails in BASE_SHA..HEAD_SHA (set by
+#                                               CI from the pull_request event)
 #   scripts/check-owner-name.sh --text FILE     check one text file (e.g. a PR body draft) and nothing else
 # Exempt: third-party licence texts and author lists (other people who share the name). Extra exempt
 # pathspecs, one per line, go in .owner-name-exempt at the repo root.
@@ -54,6 +55,15 @@ else
     printf '%s\n' "${PR_BODY:-}" | scan_text "the PR body"
     if [ -n "${BASE_SHA:-}" ] && [ -n "${HEAD_SHA:-}" ]; then
       git -C "$root" log --format='%H %B' "$BASE_SHA..$HEAD_SHA" 2>/dev/null | scan_text "commit messages ($BASE_SHA..$HEAD_SHA)"
+      # Authors and committers by hash only: the log mustn't repeat the name it found.
+      authors=$(git -C "$root" log --format='%h %an <%ae> %cn <%ce>' "$BASE_SHA..$HEAD_SHA" 2>/dev/null \
+        | { grep -w -E "$PAT"; git -C "$root" log --format='%h %an <%ae> %cn <%ce>' "$BASE_SHA..$HEAD_SHA" \
+            | grep -i -E "$PAT_ANY"; } | cut -d' ' -f1 | sort -u || true)
+      if [ -n "$authors" ]; then
+        echo "check-owner-name: the owner's name is these commits' author or committer: $(echo "$authors" | tr '\n' ' ')"
+        echo "  commit with a noreply identity (git config user.name, user.email) and recommit them"
+        fail=1
+      fi
     fi
   fi
 fi
