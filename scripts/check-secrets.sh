@@ -67,7 +67,7 @@ esac
 # A commit made on a machine with no user.email set records the login and host name
 # (name@Someones-MacBook.local): personal details, not a credential, but they don't belong either.
 if [ "$log_opts" != "--all" ]; then
-  local_mail='@(.*\.(local|lan|localdomain|home|internal)|\(none\)|localhost)$'
+  local_mail='@(.*[.](local|lan|localdomain|home|internal)|[(]none[)]|localhost)$'
   hosts=$(git log --format='%h %ae %ce' "$log_opts" 2>/dev/null \
     | awk -v re="$local_mail" 'BEGIN { IGNORECASE = 1 } tolower($2) ~ re || tolower($3) ~ re { print $1 }')
   if [ -n "$hosts" ]; then
@@ -100,10 +100,15 @@ if [ -z "$gitleaks" ]; then
 fi
 
 if [ "$log_opts" = "--all" ] || [ -n "$(git rev-list "$log_opts" 2>/dev/null | head -n 1)" ]; then
-  if ! "$gitleaks" git --no-banner --redact --exit-code 1 --config .gitleaks.toml \
-      --log-opts="$log_opts" --log-level warn .; then
+  "$gitleaks" git --no-banner --redact --exit-code 3 --config .gitleaks.toml \
+    --log-opts="$log_opts" --log-level warn .
+  status=$?
+  if [ $status -eq 3 ]; then
     echo "check-secrets: gitleaks found a credential in $log_opts (rotate it, then drop it from the branch)"
     fail=1
+  elif [ $status -ne 0 ]; then
+    echo "check-secrets: gitleaks couldn't run (exit $status)" >&2
+    exit 2
   fi
 fi
 
