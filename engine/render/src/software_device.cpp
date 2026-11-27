@@ -31,6 +31,7 @@
 
 #include "slash/core/log.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/frame_generator.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
@@ -262,6 +263,18 @@ struct FrameGenerationState {
     bool primed = false;
     std::uint64_t generated_from = 0;
     detail::FrameGenerationHistory history;
+    // For the game's frame generator (RenderDevice::generate_frames): the one made (added names
+    // it), and the last frame's depth and motion vectors at the render size (kept_width x
+    // kept_height; empty for a frame that drew no meshes for it), with its camera.
+    std::string added;
+    std::unique_ptr<FrameGenerator> generator;
+    std::uint32_t kept_width = 0;
+    std::uint32_t kept_height = 0;
+    std::vector<float> kept_depth;
+    std::vector<float> kept_motion;
+    bool kept_now = false;
+    Mat4 projection = detail::kNoCamera;
+    Mat4 camera = detail::kNoCamera;
 };
 
 // A frame's camera with FSR 2, for draw_meshes: its jitter, the camera the frame before was seen
@@ -936,6 +949,113 @@ public:
                                      state.history, made.image.pixels);
         state.generated_from = state.frames;
         made.written = ++writes_;
+        return {};
+    }
+
+    Result<void> generate_frames(TextureId target, std::span<const TextureId> into,
+                                 std::string_view generator) override {
+        if (generator.empty()) {
+            return RenderDevice::generate_frames(target, into, generator);
+        }
+        if (in_frame_) {
+            return detail::frame_in_progress("generate_frames");
+        }
+        if (!textures_.contains(target)) {
+            return detail::unknown_texture(target);
+        }
+        if (!textures_.at(target).desc.render_target) {
+            return detail::not_a_render_target(target);
+        }
+        const Image& shown = textures_.at(target).image;
+        if (into.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frames writes into at least one render target");
+        }
+        for (const TextureId id : into) {
+            const auto it = textures_.find(id);
+            if (it == textures_.end()) {
+                return detail::unknown_texture(id);
+            }
+            if (!it->second.desc.render_target) {
+                return detail::not_a_render_target(id);
+            }
+            if (id == target) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "generate_frames writes into other render targets than target");
+            }
+            if (it->second.image.width != shown.width || it->second.image.height != shown.height) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "generate_frames writes into render targets of target's size");
+            }
+        }
+        const std::optional<FrameGeneratorInfo> info = find_frame_generator(generator);
+        if (!info) {
+            return make_error(ErrorCode::NotFound,
+                              "no frame generator is named " + std::string(generator));
+        }
+        if (into.size() > info->max_frames) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "frame generator " + info->name + " makes at most " +
+                                  std::to_string(info->max_frames) + " frames between two");
+        }
+        FrameGenerationState* state = &frame_generation_state(target);
+        bool fresh = false;
+        if (state->added != generator) {
+            state->generator = info->make();
+            if (state->generator == nullptr) {
+                state->added.clear();
+                return make_error(ErrorCode::InvalidArgument,
+                                  "frame generator " + info->name + " made nothing");
+            }
+            state->added = info->name;
+            fresh = true;
+        }
+        const std::size_t pixels = std::size_t{shown.width} * shown.height;
+        std::vector<float> color(pixels * 4);
+        for (std::size_t i = 0; i < color.size(); ++i) {
+            color[i] = static_cast<float>(shown.pixels[i]) / 255.0F;
+        }
+        std::vector<std::vector<float>> outputs(into.size(), std::vector<float>(pixels * 4, 0.0F));
+        std::vector<NativeTexture> written;
+        written.reserve(outputs.size());
+        for (std::vector<float>& output : outputs) {
+            written.push_back({.width = shown.width, .height = shown.height, .pixels = output});
+        }
+        const bool kept = state->kept_width != 0;
+        const std::uint32_t render_width = kept ? state->kept_width : shown.width;
+        const std::uint32_t render_height = kept ? state->kept_height : shown.height;
+        const GeneratedFrames frames{
+            .device = {.backend = Backend::Software},
+            .commands = nullptr,
+            .size = {.render_width = render_width,
+                     .render_height = render_height,
+                     .output_width = shown.width,
+                     .output_height = shown.height},
+            .color = {.width = shown.width, .height = shown.height, .pixels = color},
+            .depth = state->kept_depth.empty() ? NativeTexture{}
+                                               : NativeTexture{.width = state->kept_width,
+                                                               .height = state->kept_height,
+                                                               .pixels = state->kept_depth},
+            .motion = state->kept_motion.empty() ? NativeTexture{}
+                                                 : NativeTexture{.width = state->kept_width,
+                                                                 .height = state->kept_height,
+                                                                 .pixels = state->kept_motion},
+            .outputs = written,
+            .reset = fresh || state->frames == 0 || state->generated_from + 1 != state->frames,
+            .projection = state->projection,
+            .camera = state->camera};
+        if (auto made = state->generator->generate(frames); !made) {
+            return made;
+        }
+        for (std::size_t i = 0; i < into.size(); ++i) {
+            Texture& made = textures_.at(into[i]);
+            for (std::size_t p = 0; p < made.image.pixels.size(); ++p) {
+                made.image.pixels[p] = static_cast<std::uint8_t>(
+                    std::lround(std::clamp(outputs[i][p], 0.0F, 1.0F) * 255.0F));
+            }
+            made.written = ++writes_;
+        }
+        state->generated_from = state->frames;
         return {};
     }
 
@@ -2304,6 +2424,10 @@ private:
                  .camera = detail::frame_generation_camera(scene.projection)},
                 shown.width, shown.height);
             generation->prepared_now = true;
+            if (!scene.frame_generator.empty()) {
+                keep_for_generator(*generation, prepass_depth, velocity, target.width(),
+                                   target.height());
+            }
         }
         if (taa_history != nullptr) {
             resolve_taa(*target.hdr, prepass_depth, std::move(velocity), *taa_history,
@@ -2325,6 +2449,18 @@ private:
             }
         }
         return frame_generation_states_.emplace_back(target, FrameGenerationState{}).second;
+    }
+
+    // Keeps a frame's prepass for the game's frame generator, at width x height: its depth and
+    // motion vectors.
+    static void keep_for_generator(FrameGenerationState& state, std::span<const float> depth,
+                                   std::span<const float> motion, std::uint32_t width,
+                                   std::uint32_t height) {
+        state.kept_width = width;
+        state.kept_height = height;
+        state.kept_depth.assign(depth.begin(), depth.end());
+        state.kept_motion.assign(motion.begin(), motion.end());
+        state.kept_now = true;
     }
 
     // The prepare pass of a frame of width x height that drew no meshes for frame generation:
@@ -2370,6 +2506,15 @@ private:
                                           state->primed ? &state->view_projection : nullptr);
         }
         state->prepared_now = false;
+        if (!state->kept_now) {
+            state->kept_width = 0;
+            state->kept_height = 0;
+            state->kept_depth.clear();
+            state->kept_motion.clear();
+        }
+        state->kept_now = false;
+        state->projection = scene != nullptr ? scene->projection : detail::kNoCamera;
+        state->camera = scene != nullptr ? scene->camera : detail::kNoCamera;
         state->primed = scene != nullptr;
         if (scene != nullptr) {
             state->view_projection = multiply(scene->projection, scene->camera);

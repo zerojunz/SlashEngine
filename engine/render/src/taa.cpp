@@ -20,6 +20,19 @@ bool frame_generation(const json::Value& rendering) {
     return found != nullptr && found->is_bool() && found->as_bool();
 }
 
+std::string frame_generator(const json::Value& rendering) {
+    const json::Value* found = rendering.is_object() ? rendering.find("frame_generator") : nullptr;
+    return found != nullptr && found->is_string() ? found->as_string() : std::string{};
+}
+
+std::uint32_t generated_frames(const json::Value& rendering) {
+    const json::Value* found = rendering.is_object() ? rendering.find("generated_frames") : nullptr;
+    if (found == nullptr || !found->is_integral()) {
+        return 1;
+    }
+    return static_cast<std::uint32_t>(std::clamp<std::int64_t>(found->as_int(), 1, 3));
+}
+
 } // namespace slash::render
 
 // The CPU twin of shaders/taa.hlsl, as taa_resolve (MIT, Copyright (c) 2016-2022 Panos Karabelas,

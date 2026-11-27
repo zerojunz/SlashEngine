@@ -574,7 +574,7 @@ target of its own (`scene3d::Renderer::set_frame_generation` gives its meshes th
 from the frame before), generates from it, and draws the generated frame, then the drawn one, into
 the window with the controls, the canvases above and the overlay over both;
 `CanvasOptions::between_frames` paces them, which `runtime::Game` and `slash-cli run` do with
-`platform::Loop::wait_half_frame` where V-Sync doesn't. `tests/test_generated_frames.cpp` reads
+`platform::Loop::wait_frame_part` where V-Sync doesn't. `tests/test_generated_frames.cpp` reads
 the frames shown.
 
 MetalFX is the scaling modes `metalfx_spatial` and `metalfx_temporal`: Apple's
@@ -596,6 +596,25 @@ it (`SDL_SlashGPURestoreState`); the software device hands it float pixels
 (`upscale_temporal` in `software_device.cpp`, motion from `run_fsr2_dilate`).
 `tests/test_temporal_upscaler.cpp` checks both, copying with Vulkan or Direct3D 12 commands
 where those run. `examples/temporal-upscaler` adds one.
+
+A game's own frame generator (DLSS Frame Generation and Multi Frame Generation, XeSS Frame
+Generation, from an SDK package) is a `render::FrameGeneratorInfo` added with
+`add_frame_generator` (`slash/render/frame_generator.hpp`): a name, `max_frames` (1 to 3, the
+frames it makes between two drawn ones), `supports` and `make`. `rendering.frame_generator` names
+it and `CanvasRenderer` asks `choose_frame_generator` each frame: where the device runs game
+generators (`runs_frame_generators`: the GPU device on Vulkan, Direct3D 12 and Metal, and the
+software device) and `supports` agrees, the scene's `Scene3D::frame_generator` makes its frame
+keep copies of the prepass's depth and motion vectors (`keep_for_generator` in both devices), and
+`RenderDevice::generate_frames(target, into, name)` hands the generator a
+`render::GeneratedFrames`: the drawn frame, depth and motion at the render size (empty for a frame
+with no 3D), the outputs earliest first, whether its history starts over, and the camera. On the
+GPU device those are native objects with the command buffer, in the state shaders sample them
+in, as `TemporalFrame`'s; the software device hands float pixels and writes the outputs back as
+8 bits a channel. The renderer then shows each output and the drawn frame, calling
+`CanvasOptions::between_frames` with the parts a drawn frame shows as, which games pace with
+`platform::Loop::wait_frame_part`. Elsewhere the engine's own FSR 3 generation makes one frame.
+`tests/test_frame_generator.cpp` checks both devices and the renderer; `examples/frame-generator`
+adds one that makes three frames.
 
 Decals are the clustered renderer's `Decal` (`render::Decals3D`, `Scene3D::decals`; the
 `Decal` component, gathered by `scene3d::Renderer::add_decals`). `src/decal.hpp` holds what

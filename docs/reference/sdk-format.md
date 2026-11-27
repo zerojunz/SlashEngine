@@ -262,7 +262,14 @@ FSR 4) is marked `temporal` and made by `make_temporal`: a `render::TemporalUpsc
 device runs in FSR 2's place, handing it the native device, command buffer and the frame's
 color, depth, motion vectors and output as Vulkan, Direct3D 12 or Metal objects, the form
 vendors' libraries take ([project-format.md](project-format.md#render-scale),
-[examples/temporal-upscaler](../../examples/temporal-upscaler/)).
+[examples/temporal-upscaler](../../examples/temporal-upscaler/)). A frame generator (DLSS Frame
+Generation or Multi Frame Generation, XeSS Frame Generation) is a `render::FrameGenerator` added
+with `render::add_frame_generator`
+([slash/render/frame_generator.hpp](../../engine/render/include/slash/render/frame_generator.hpp)),
+with the most frames it makes between two drawn ones; the game names it in
+[`rendering.frame_generator`](project-format.md#frame-generation), and the device hands it the
+drawn frame, its depth and motion vectors and the frames to write as native objects
+([examples/frame-generator](../../examples/frame-generator/)).
 
 ## In project.json and presets
 

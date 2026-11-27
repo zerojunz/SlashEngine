@@ -9,6 +9,7 @@
 #include "slash/procedural/foliage.hpp"
 #include "slash/procedural/texture.hpp"
 #include "slash/procedural/texture_graph.hpp"
+#include "slash/render/frame_generator.hpp"
 #include "slash/scene3d/fluid.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/ui/ui.hpp"
@@ -1315,8 +1316,9 @@ struct CanvasRenderer::Submission {
     std::size_t tiles = 0;
     std::size_t particles = 0;
     std::size_t shadows = 0;
-    // Show a generated frame before the drawn one (CanvasOptions::generate).
-    bool generate = false;
+    // Show generated frames before the drawn one (CanvasOptions::generate), made with this
+    // frame generator; nullopt for none.
+    std::optional<render::FrameGeneratorChoice> generate;
     // The grid the world's picture shows through when distortions bend it, or none.
     std::span<const render::Vertex2D> distortion;
     std::size_t distortions = 0;
@@ -1324,12 +1326,20 @@ struct CanvasRenderer::Submission {
 
 namespace {
 
-// Readies the 3D renderer for a frame and says whether the frame is generated from: where the
-// settings ask for it and the device makes frames, not for a path-traced world or a headset's eye.
-bool ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& device,
-                   const Settings& settings, const CanvasOptions& options, bool traced) {
+// Readies the 3D renderer for a frame and says what generates frames from it, if anything: where
+// the settings ask for it and the device makes frames, not for a path-traced world or a headset's
+// eye.
+std::optional<render::FrameGeneratorChoice>
+ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& device,
+              const Settings& settings, const CanvasOptions& options, bool traced) {
     const bool generate = options.generate && settings.frame_generation &&
                           device.generates_frames() && !traced && !options.view3d;
+    render::FrameGeneratorChoice choice;
+    if (generate) {
+        choice = render::choose_frame_generator(settings.frame_generator, settings.generated_frames,
+                                                device);
+    }
+    scene3d.set_frame_generator(choice.name);
     scene3d.set_tick_seconds(settings.tick_seconds);
     scene3d.set_view(options.view3d);
     scene3d.set_frame_generation(generate);
@@ -1338,7 +1348,7 @@ bool ready_scene3d(scene3d::Renderer& scene3d, const render::RenderDevice& devic
     scene3d.set_cluster_streaming(settings.cluster_streaming);
     scene3d.set_ggx_samples(settings.ggx_samples);
     scene3d.set_probe_update_speed(settings.probe_update_speed);
-    return generate;
+    return generate ? std::optional(choice) : std::nullopt;
 }
 
 } // namespace
@@ -2363,7 +2373,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     if (traced) {
         fsr2.reset();
     }
-    const bool generate = ready_scene3d(scene3d_, *device_, settings(world), options, traced);
+    const std::optional<render::FrameGeneratorChoice> generate =
+        ready_scene3d(scene3d_, *device_, settings(world), options, traced);
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
@@ -3625,14 +3636,23 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     const std::span<const render::Vertex2D> shown_mesh =
         distort ? submission.distortion : std::span<const render::Vertex2D>(screen);
 
-    // Frame generation: the world's picture goes into the first of its targets, and the frame
-    // halfway between it and the one before into the second, shown first.
+    // Frame generation: the world's picture goes into the first of its targets, and the frames
+    // between it and the one before into the next ones, shown first, earliest first.
     generated_ = false;
-    std::optional<Backdrop> generated;
+    std::vector<Backdrop> generated;
     const bool generate = submission.generate && output_width > 0 && output_height > 0;
-    if (generate && generation_size_ != std::array{output_width, output_height}) {
+    const std::uint32_t frames = generate ? submission.generate->frames : 0;
+    if (generate) {
+        generator_ = submission.generate->name.empty() ? std::string(render::kFsr3FrameGeneration)
+                                                       : submission.generate->name;
+    } else {
+        generator_.clear();
+    }
+    if (generate && (generation_size_ != std::array{output_width, output_height} ||
+                     generation_targets_.at(frames) == render::TextureId::None)) {
         release_generation_targets();
-        for (render::TextureId& target : generation_targets_) {
+        for (std::size_t i = 0; i <= frames; ++i) {
+            render::TextureId& target = generation_targets_.at(i);
             auto made = device_->create_texture({.width = output_width,
                                                  .height = output_height,
                                                  .filter = render::Filter::Nearest,
@@ -3667,9 +3687,13 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         }
         picture = Backdrop{.texture = generation_targets_[0], .material = {}};
         frame.view = render::pixel_projection(view_width, view_height);
-        if (auto made = device_->generate_frame(generation_targets_[0], generation_targets_[1]);
+        const std::span<const render::TextureId> into(&generation_targets_.at(1), frames);
+        if (auto made =
+                device_->generate_frames(generation_targets_[0], into, submission.generate->name);
             made) {
-            generated = Backdrop{.texture = generation_targets_[1], .material = {}};
+            for (const render::TextureId target : into) {
+                generated.push_back(Backdrop{.texture = target, .material = {}});
+            }
         } else if (warned_.insert("frame generation").second) {
             log::warn("generating a frame failed", {{"error", made.error().message}});
         }
@@ -3730,14 +3754,14 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         }
         return began.value();
     };
-    if (generated) {
-        if (auto shown = show(generated); !shown) {
+    for (const Backdrop& shown_generated : generated) {
+        if (auto shown = show(shown_generated); !shown) {
             return shown.error();
         }
         generated_ = true;
         ++frames_generated_;
         if (options.between_frames) {
-            options.between_frames();
+            options.between_frames(static_cast<std::uint32_t>(generated.size()) + 1);
         }
     }
     const Result<bool> began = show(picture);

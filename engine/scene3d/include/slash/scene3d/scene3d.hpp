@@ -300,6 +300,9 @@ public:
     // Whether frames keep their prepass for frame generation (render::Scene3D::frame_generation),
     // their meshes given the transforms they were drawn at in the last frame, as with use_taa.
     void set_frame_generation(bool on) { frame_generation_ = on; }
+    // The game's frame generator those frames are made with (render::Scene3D::frame_generator);
+    // empty for the engine's own.
+    void set_frame_generator(std::string name) { frame_generator_ = std::move(name); }
     // Whether virtualized surfaces leave out of the camera's draw the clusters it can't see (out
     // of view, seen from behind, or hidden by occluders). A path-traced frame turns it off, since
     // its paths see every cluster; frames with ray-traced effects or SDFGI never cull them.
@@ -406,6 +409,7 @@ public:
 private:
     std::optional<CameraView> view_;
     bool frame_generation_ = false;
+    std::string frame_generator_;
     bool cluster_culling_ = true;
     ClusterStreamingSettings cluster_streaming_;
     double probe_update_speed_ = 15.0;

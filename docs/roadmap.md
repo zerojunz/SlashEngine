@@ -1469,7 +1469,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
               own copy of the GOG Galaxy SDK) backing sign-in, achievements and leaderboards
 26. [ ] Vendor frame generation, latency and denoiser hooks (2026-11-22): interfaces a game's SDK
         package fills, as the temporal upscaler hook does, with no vendor code in the repository:
-        - [ ] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
+        - [x] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
               Generation, XeSS Frame Generation, FSR's) at the point frames are shown, in place of
               the engine's own
         - [ ] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
