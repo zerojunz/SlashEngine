@@ -451,7 +451,7 @@ Float3 light_ray(const Float3& normal, std::uint32_t x, std::uint32_t y, std::ui
 
 std::vector<float> run_ray_gi(const PathScene& scene, const PathTextures& textures, const RayGI& gi,
                               const RayShadowFrame& frame, std::span<const float> depth,
-                              std::span<const float> normals, jobs::Pool* pool) {
+                              std::span<const float> normals, jobs::Pool* pool, bool smooth) {
     const std::size_t pixels = std::size_t{frame.width} * frame.height;
     std::vector<std::optional<RaySurface>> surfaces(pixels);
     std::vector<float> distances(pixels, 0.0F);
@@ -491,9 +491,17 @@ std::vector<float> run_ray_gi(const PathScene& scene, const PathTextures& textur
             traced[at] = scale(sum, 1.0F / static_cast<float>(gi.samples));
         }
     });
+    std::vector<float> out(pixels * 3, 0.0F);
+    if (!smooth) {
+        for (std::size_t at = 0; at < pixels; ++at) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                out[(at * 3) + c] = round_half(traced[at].at(c));
+            }
+        }
+        return out;
+    }
     // Smoothed across the neighbors on the same surface, weighed by how alike their normals are
     // and how near they are to its plane.
-    std::vector<float> out(pixels * 3, 0.0F);
     each_row([&](std::size_t y) {
         for (std::uint32_t x = 0; x < frame.width; ++x) {
             const std::size_t at = (y * frame.width) + x;

@@ -87,10 +87,10 @@ struct Project {
     // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera, as
     // rendering.occlusion_culling.
     render::OcclusionCulling occlusion_culling{};
-    // rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
-    render::RayTracing3D ray_tracing{};
     // What the window shows behind everything, as RGBA from 0 to 1: a default gray.
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
+    // The job system's worker threads (slash/core/jobs.hpp): -1 for one per CPU core.
+    int max_threads = -1;
     // How sprites that inherit their filter are sampled: "linear" or "nearest".
     std::string texture_filter = "linear";
     // The GPU backend: "auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "webgpu" or
@@ -184,8 +184,8 @@ struct Project {
     // rendering.latency_reduction: the vendor's latency reduction the game's SDK package adds
     // (render::add_latency_reducer), such as NVIDIA Reflex; "" for none.
     std::string latency_reduction;
-    // The job system's worker threads (slash/core/jobs.hpp): -1 for one per CPU core.
-    int max_threads = -1;
+    // rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
+    render::RayTracing3D ray_tracing{};
     // rendering.reflections.sky_samples: the samples the sky's radiance and reflection probes are
     // blurred with.
     std::uint32_t ggx_samples = 32;

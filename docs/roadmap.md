@@ -27,9 +27,9 @@ ID as Actions secrets ([CONTRIBUTING.md](../CONTRIBUTING.md#releases)).
 
 The [agent-built worlds](#agent-built-worlds-and-smart-npcs) tool set is done too: its first 22
 items, from planning NPCs to procedural graphs that drive every tool, in 2D and 3D, ship in the
-launch release. Items 23 to 26, textures agents author as graphs and layer stacks, watching
+launch release, as do items 23 to 26: textures agents author as graphs and layer stacks, watching
 agents work, publishing to Steam, the Epic Games Store, GOG and itch.io, and hooks for vendors'
-frame generation, latency reduction and denoisers, are next and ship in it too.
+frame generation, latency reduction and denoisers.
 
 The engine builds and is tested on macOS, Linux and Windows. It covers the 2D and 3D feature
 sets, networking, XR, localization, video, accessibility, procedural generation and platform
@@ -1467,13 +1467,13 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] GOG: builds made and uploaded through GOG's Pipeline Builder (a project per
               build, to a private branch), and a built-in `galaxy` SDK package (the developer's
               own copy of the GOG Galaxy SDK) backing sign-in, achievements and leaderboards
-26. [ ] Vendor frame generation, latency and denoiser hooks (2026-11-22): interfaces a game's SDK
+26. [x] Vendor frame generation, latency and denoiser hooks (2026-11-22): interfaces a game's SDK
         package fills, as the temporal upscaler hook does, with no vendor code in the repository:
         - [x] Frame generation from a vendor's SDK (DLSS Frame Generation and Multi Frame
               Generation, XeSS Frame Generation, FSR's) at the point frames are shown, in place of
               the engine's own
         - [x] Latency markers for NVIDIA Reflex, AMD Anti-Lag 2 and Intel XeLL
-        - [ ] A denoiser hook with the ray-traced passes' inputs, for DLSS Ray Reconstruction
+        - [x] A denoiser hook with the ray-traced passes' inputs, for DLSS Ray Reconstruction
 27. [ ] Launch gaps (2026-11-22), from audits against Unreal Engine 5, last in the
         queue:
         - [x] Exports ship the engine's third-party notices (`licenses/slashengine/`)
@@ -1583,7 +1583,7 @@ are in [design.md](design.md#feature-coverage).
 | Texture authoring | Texture graphs baked or live, mesh map bakes and layer stacks agents write, after Substance Designer and Painter | Launch | Done: graphs, live graphs, mesh maps, layer stacks, weathering, text stamps, variants, wear from damage, drafts and Blender node import |
 | Watching agents work | A journal of every session, a live window and page, checkpoints, pausing and notes, and remote viewing through agents | Launch | Done: the journal, `slash-cli watch`, the watch page, checkpoints, steering and remote viewing through agents (`work.view`, `work.timeline`, `work.report`, `slash-mcp --watch`) |
 | Store publishing | Exports uploaded to Steam, the Epic Games Store, GOG and itch.io, with Steamworks, Epic Online Services and GOG Galaxy behind the services API | Launch | Done: `slash-cli publish` to itch.io, Steam, the Epic Games Store and GOG, and the `steamworks`, `eos` and `galaxy` packages |
-| Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Next |
+| Vendor frame generation | Hooks for DLSS, XeSS and FSR frame generation, Reflex, Anti-Lag 2 and XeLL latency markers and DLSS Ray Reconstruction, filled by a game's SDK packages | Launch | Done: `rendering.frame_generator`, `rendering.latency_reduction` and `rendering.ray_tracing.denoiser`, each filled by `add_frame_generator`, `add_latency_reducer` or `add_denoiser` |
 | Large worlds | Double-precision transforms, world streaming | After launch | Done: the double-precision build, camera-relative 3D drawing and world streaming |
 | Cinematics | Timeline tracks for cameras and events | After launch | Done: bezier, animation and audio tracks, camera cuts, markers and `animation.seek` |
 | Cloth and soft bodies | Jolt soft bodies | After launch | Done: `SoftBody3D` on Jolt, with pins, attachments and pressure |

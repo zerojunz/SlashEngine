@@ -1008,13 +1008,16 @@ struct RayTracing3D {
     bool many_lights = false;
     std::uint32_t many_light_candidates = 8; // 1 to 32
     std::uint32_t many_light_samples = 1;    // 1 to 4
+    // The game's denoiser for the shadows, occlusion, reflections and ambient light the rays trace
+    // (denoiser.hpp), by name; none when empty.
+    std::string denoiser;
 
     bool operator==(const RayTracing3D&) const = default;
 };
 // Reads project.json's rendering object's ray_tracing: shadows, shadow_samples,
 // ambient_occlusion, ambient_occlusion_samples, reflections, reflection_samples,
-// global_illumination, global_illumination_samples, many_lights, many_light_candidates and
-// many_light_samples. What is missing
+// global_illumination, global_illumination_samples, many_lights, many_light_candidates,
+// many_light_samples and denoiser. What is missing
 // or of the wrong type keeps its default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 

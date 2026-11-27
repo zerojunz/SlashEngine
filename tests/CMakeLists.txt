@@ -96,6 +96,7 @@ add_executable(slash_tests
     test_fsr3.cpp
     test_frame_generation.cpp
     test_generated_frames.cpp
+    test_denoiser.cpp
     test_frame_generator.cpp
     test_frame_summary.cpp
     test_gameplay.cpp

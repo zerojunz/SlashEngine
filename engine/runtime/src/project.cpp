@@ -506,6 +506,15 @@ json::Value ray_tracing_schema() {
     out["properties"]["many_lights"] = std::move(many);
     out["properties"]["many_light_candidates"] = std::move(many_candidates);
     out["properties"]["many_light_samples"] = std::move(many_samples);
+    json::Value denoiser;
+    denoiser["type"] = "string";
+    denoiser["pattern"] = "^[a-z0-9_]*$";
+    denoiser["default"] = "";
+    denoiser["description"] =
+        "A denoiser a game's SDK package adds (DLSS Ray Reconstruction, NRD, FidelityFX), by "
+        "name, for the shadows, occlusion, reflections and ambient light the rays trace, where it "
+        "runs; none, or one that isn't added or doesn't run, keeps the engine's own smoothing.";
+    out["properties"]["denoiser"] = std::move(denoiser);
     return out;
 }
 
