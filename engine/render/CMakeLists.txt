@@ -47,6 +47,7 @@ add_library(slash_render
     src/forward_post.cpp
     src/frame_graph.cpp
     src/frame_generation.cpp
+    src/frame_generator.cpp
     src/fsr2.cpp
     src/fsr3.cpp
     src/gl_device.cpp

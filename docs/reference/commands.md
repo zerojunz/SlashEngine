@@ -7045,7 +7045,10 @@ offer, fastest first, for an options menu. A refresh rate of `0` means the syste
 frame used (`none` when the world drew at full size), and its `render_size`. `frame_generation`
 says whether it is `enabled` (`rendering.frame_generation` in
 [project-format.md](project-format.md#frame-generation)), whether the last frame showed a made
-frame first (`in_effect`) and how many `frames` have been made. `path_trace` is
+frame first (`in_effect`) and how many `frames` have been made; with a game's frame generator
+named (`rendering.frame_generator`), its `generator` and `generated_frames`, and
+`generator_in_effect`, the one the last frame used (`fsr3` where the game's doesn't run).
+`path_trace` is
 `null` while the game draws its world live, and while `display.set` has it path traced, its
 `samples` and `bounces` with `path_samples`, the paths each pixel of the last frame held: `0` on
 a device that doesn't trace rays (`slash-cli run` leaves `path_trace` out of games that can't).
@@ -7071,6 +7074,8 @@ the next frame, as a game's options menu would, and returns the settings in effe
 | `max_fps` | integer, 0 to 1000 | unchanged | Frames per second at most; `0` means no cap |
 | `scaling` | object | unchanged | The render scale: any of `mode`, `scale`, `sharpness` and `upscaler`, as `rendering.scaling` in [project-format.md](project-format.md#render-scale); fields left out stay as they are |
 | `frame_generation` | boolean | unchanged | Show a frame made between each two drawn ones, as `rendering.frame_generation` in [project-format.md](project-format.md#frame-generation) |
+| `frame_generator` | string | unchanged | The game's frame generator that makes them, as `rendering.frame_generator`; `""` or `"fsr3"` for the engine's own |
+| `generated_frames` | integer, 1 to 3 | unchanged | Frames the game's frame generator makes between each two drawn ones, as `rendering.generated_frames` |
 | `path_trace` | object or `null` | unchanged | Path trace the 3D world in the game's window: `samples` paths a pixel each frame (1 to 4096, default 16) and `bounces` (0 to 32, default 4), fields left out staying as they are; `null` draws it live again |
 
 The old names `vsync_mode` and `scaling.fsr_sharpness` still work ([renamed names](renamed-names.md#command-params)).

@@ -296,6 +296,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .occlusion_culling = project_.occlusion_culling,
                                   .ray_tracing = project_.ray_tracing,
                                   .frame_generation = project_.frame_generation,
+                                  .frame_generator = project_.frame_generator,
+                                  .generated_frames = project_.generated_frames,
                                   .ggx_samples = project_.ggx_samples,
                                   .probe_update_speed = project_.probe_update_speed});
     ui::set_settings(
@@ -423,10 +425,10 @@ void Game::draw() {
     // A frame generated between the last two shows first, half a frame before the drawn one,
     // where V-Sync doesn't pace them. The browser shows one frame a callback, so the web has none.
     options.generate = !platform_.headless();
-    options.between_frames = [this] {
+    options.between_frames = [this](std::uint32_t frames) {
         const render::VsyncMode vsync = renderer_->vsync();
         if (vsync == render::VsyncMode::Disabled || vsync == render::VsyncMode::Mailbox) {
-            loop_->wait_half_frame();
+            loop_->wait_frame_part(frames);
         }
     };
 #endif

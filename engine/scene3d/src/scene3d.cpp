@@ -4576,6 +4576,7 @@ std::optional<Frame3D> Renderer::prepare(
     frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
     frame.scene.use_taa = use_taa;
     frame.scene.frame_generation = frame_generation_;
+    frame.scene.frame_generator = frame_generator_;
     frame.scene.ray_tracing = ray_tracing;
     frame.scene.fsr2 = fsr2;
     lights_ = frame.scene.lights.size();

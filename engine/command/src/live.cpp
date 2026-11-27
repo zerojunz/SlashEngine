@@ -10,6 +10,7 @@
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/frame_generator.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/render/upscaler.hpp"
 
@@ -112,9 +113,18 @@ json::Value frame_settings(const LiveGame& game, const Session& session) {
     out["scaling"] = std::move(scaling);
     // Frame generation, whether the last frame showed a generated one and how many have shown.
     json::Value generation;
-    generation["enabled"] = canvas::settings(session.world()).frame_generation;
+    const canvas::Settings& shown = canvas::settings(session.world());
+    generation["enabled"] = shown.frame_generation;
+    if (shown.frame_generation && !shown.frame_generator.empty()) {
+        generation["generator"] = shown.frame_generator;
+        generation["generated_frames"] = shown.generated_frames;
+    }
     if (game.canvas != nullptr) {
         generation["in_effect"] = game.canvas->generated();
+        if (shown.frame_generation && !shown.frame_generator.empty() &&
+            !game.canvas->frame_generator().empty()) {
+            generation["generator_in_effect"] = game.canvas->frame_generator();
+        }
         generation["frames"] = game.canvas->frames_generated();
     }
     out["frame_generation"] = std::move(generation);
@@ -215,11 +225,17 @@ Reply display_set(const LiveGame& game, Session& session, const json::Value& par
     if (const json::Value* max_fps = params.find("max_fps"); max_fps != nullptr) {
         game.loop->set_max_fps(static_cast<int>(max_fps->as_int()));
     }
+    canvas::Settings settings = canvas::settings(session.world());
     if (const json::Value* generation = params.find("frame_generation"); generation != nullptr) {
-        canvas::Settings settings = canvas::settings(session.world());
         settings.frame_generation = generation->as_bool();
-        canvas::set_settings(session.world(), settings);
     }
+    if (const json::Value* generator = params.find("frame_generator"); generator != nullptr) {
+        settings.frame_generator = generator->as_string();
+    }
+    if (const json::Value* frames = params.find("generated_frames"); frames != nullptr) {
+        settings.generated_frames = static_cast<std::uint32_t>(frames->as_int());
+    }
+    canvas::set_settings(session.world(), settings);
     return Reply::success(frame_settings(game, session));
 }
 
@@ -271,6 +287,14 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     json::Value vsync_mode = property("string", "How frames wait for the display. Unsupported "
                                                 "modes fall back to enabled.");
     vsync_mode["enum"] = json::Array{"disabled", "enabled", "adaptive", "mailbox"};
+    json::Value frame_generator = property(
+        "string", "The frame generator that makes them: one the game's SDK package adds, such as "
+                  "DLSS Frame Generation, where it runs; \"\" or \"fsr3\" for the engine's own.");
+    frame_generator["pattern"] = "^[a-z0-9_]*$";
+    json::Value generated_frames =
+        property("integer", "Frames the game's frame generator makes between two drawn ones.");
+    generated_frames["minimum"] = 1;
+    generated_frames["maximum"] = render::kMaxGeneratedFrames;
     json::Value max_fps = property("integer", "Frames per second at most; 0 means no cap.");
     max_fps["minimum"] = 0;
     max_fps["maximum"] = platform::kMaxFps;
@@ -329,6 +353,8 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
             {"path_trace", std::move(path_trace)},
             {"frame_generation",
              property("boolean", "Show a frame made between each two drawn ones (FSR 3).")},
+            {"frame_generator", std::move(frame_generator)},
+            {"generated_frames", std::move(generated_frames)},
         }),
         .handler = [game](Session& session,
                           const json::Value& params) { return display_set(game, session, params); },

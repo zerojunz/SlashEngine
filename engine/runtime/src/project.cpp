@@ -747,6 +747,25 @@ json::Value project_schema() {
         "pictures. The UI draws over both. Windowed games on the GPU devices; not on the web or "
         "OpenGL.";
     rendering["properties"]["frame_generation"] = std::move(frame_generation);
+    json::Value frame_generator;
+    frame_generator["type"] = "string";
+    frame_generator["pattern"] = "^[a-z0-9_]*$";
+    frame_generator["default"] = "";
+    frame_generator["description"] =
+        "With frame_generation, the frame generator that makes the frames: one a game's SDK "
+        "package "
+        "adds, such as DLSS Frame Generation, where it runs (the GPU device on Vulkan, Direct3D 12 "
+        "and Metal), else the engine's own. \"\" or \"fsr3\" for the engine's own.";
+    rendering["properties"]["frame_generator"] = std::move(frame_generator);
+    json::Value generated_frames;
+    generated_frames["type"] = "integer";
+    generated_frames["minimum"] = 1;
+    generated_frames["maximum"] = 3;
+    generated_frames["default"] = 1;
+    generated_frames["description"] =
+        "How many frames frame_generator makes between each two drawn ones, as DLSS's Multi Frame "
+        "Generation, at most as many as it can. The engine's own makes one.";
+    rendering["properties"]["generated_frames"] = std::move(generated_frames);
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -1183,6 +1202,8 @@ Result<Project> parse_project(const json::Value& given) {
         out.sdfgi = render::sdfgi_settings_from_json(*rendering);
         out.use_taa = render::use_taa(*rendering);
         out.frame_generation = render::frame_generation(*rendering);
+        out.frame_generator = render::frame_generator(*rendering);
+        out.generated_frames = render::generated_frames(*rendering);
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         out.cluster_streaming = scene3d::cluster_streaming_settings(*rendering);

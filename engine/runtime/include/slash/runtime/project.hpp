@@ -110,6 +110,10 @@ struct Project {
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3 frame
     // generation (canvas::CanvasOptions::generate).
     bool frame_generation = false;
+    // rendering.frame_generator and rendering.generated_frames: the game's frame generator that
+    // makes those frames ("" for the engine's own), and how many it makes between two drawn ones.
+    std::string frame_generator;
+    std::uint32_t generated_frames = 1;
     // rendering.textures.decals.filter: how decals' textures are filtered.
     render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
     // The render scale and how the world scales to the screen.

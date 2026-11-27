@@ -98,16 +98,18 @@ void Loop::record_frame(double start, int ticks) {
     }
 }
 
-void Loop::wait_half_frame() {
+void Loop::wait_frame_part(std::uint32_t parts) {
 #ifndef __EMSCRIPTEN__
-    if (platform_->headless()) {
+    if (platform_->headless() || parts < 2) {
         return;
     }
     const double period =
         options_.max_fps > 0 ? 1.0 / options_.max_fps : frame_stats().frame_ms_avg / 1e3;
     if (period > 0.0) {
-        SDL_DelayPrecise(static_cast<Uint64>(period * 0.5 * 1e9));
+        SDL_DelayPrecise(static_cast<Uint64>(period / static_cast<double>(parts) * 1e9));
     }
+#else
+    (void)parts;
 #endif
 }
 
