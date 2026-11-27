@@ -766,6 +766,16 @@ json::Value project_schema() {
         "How many frames frame_generator makes between each two drawn ones, as DLSS's Multi Frame "
         "Generation, at most as many as it can. The engine's own makes one.";
     rendering["properties"]["generated_frames"] = std::move(generated_frames);
+    json::Value latency_reduction;
+    latency_reduction["type"] = "string";
+    latency_reduction["pattern"] = "^[a-z0-9_]*$";
+    latency_reduction["default"] = "";
+    latency_reduction["description"] =
+        "The latency reduction a game's SDK package adds from a vendor's SDK, such as NVIDIA "
+        "Reflex, AMD Anti-Lag 2 or Intel XeLL: each frame waits as it says, and marks where its "
+        "simulation, input, drawing and present are. \"\" for none; where it doesn't run, the "
+        "game logs a warning and runs without it.";
+    rendering["properties"]["latency_reduction"] = std::move(latency_reduction);
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -1204,6 +1214,10 @@ Result<Project> parse_project(const json::Value& given) {
         out.frame_generation = render::frame_generation(*rendering);
         out.frame_generator = render::frame_generator(*rendering);
         out.generated_frames = render::generated_frames(*rendering);
+        if (const json::Value* latency = rendering->find("latency_reduction");
+            latency != nullptr && latency->is_string()) {
+            out.latency_reduction = latency->as_string();
+        }
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         out.cluster_streaming = scene3d::cluster_streaming_settings(*rendering);

@@ -1,0 +1,14 @@
+made for the null device
+frame 1: sleep
+frame 1: simulation_start
+frame 1: input_sample
+frame 1: simulation_end
+frame 1: render_submit_start
+frame 1: render_submit_end
+frame 2: sleep
+frame 2: simulation_start
+frame 2: input_sample
+frame 2: simulation_end
+frame 2: render_submit_start
+frame 2: render_submit_end
+started: yes

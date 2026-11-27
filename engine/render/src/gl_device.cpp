@@ -1250,7 +1250,10 @@ public:
             gl_.bind_framebuffer(gl::kDrawFramebuffer, 0);
             gl_.blit_framebuffer(0, 0, w, h, 0, h, w, 0, gl::kColorBufferBit, gl::kNearest);
             gl_.bind_framebuffer(gl::kFramebuffer, 0);
-            if (!SDL_GL_SwapWindow(window_)) {
+            presenting(false);
+            const bool swapped = SDL_GL_SwapWindow(window_);
+            presenting(true);
+            if (!swapped) {
                 finish_frame();
                 return sdl_error("showing the frame failed");
             }

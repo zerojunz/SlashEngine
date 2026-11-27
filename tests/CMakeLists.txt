@@ -117,6 +117,7 @@ add_executable(slash_tests
     test_json.cpp
     test_json_schema.cpp
     test_l10n.cpp
+    test_latency.cpp
     test_library.cpp
     test_library_music.cpp
     test_library_team.cpp

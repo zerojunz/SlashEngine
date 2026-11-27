@@ -269,7 +269,13 @@ with `render::add_frame_generator`
 with the most frames it makes between two drawn ones; the game names it in
 [`rendering.frame_generator`](project-format.md#frame-generation), and the device hands it the
 drawn frame, its depth and motion vectors and the frames to write as native objects
-([examples/frame-generator](../../examples/frame-generator/)).
+([examples/frame-generator](../../examples/frame-generator/)). A latency reducer (NVIDIA Reflex,
+AMD Anti-Lag 2, Intel XeLL) is a `render::LatencyReducer` added with `render::add_latency_reducer`
+([slash/render/latency.hpp](../../engine/render/include/slash/render/latency.hpp)), made for the
+native device; the game named in
+[`rendering.latency_reduction`](project-format.md#latency-reduction) calls its `sleep` before
+each frame and its `mark` at the frame's simulation, input, render submission and present
+([examples/latency-reduction](../../examples/latency-reduction/)).
 
 ## In project.json and presets
 
