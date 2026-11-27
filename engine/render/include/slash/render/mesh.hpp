@@ -766,6 +766,12 @@ struct SdfgiSettings {
 // Whether project.json's rendering object turns on frame generation: frame_generation, a frame made
 // between each two drawn ones (RenderDevice::generate_frame).
 [[nodiscard]] bool frame_generation(const json::Value& rendering);
+// project.json's rendering.frame_generator: the game's frame generator that makes those frames
+// (frame_generator.hpp), "" (the default) or "fsr3" for the engine's own.
+[[nodiscard]] std::string frame_generator(const json::Value& rendering);
+// project.json's rendering.generated_frames: how many frames a game's frame generator makes
+// between each two drawn ones, 1 (the default) to 3.
+[[nodiscard]] std::uint32_t generated_frames(const json::Value& rendering);
 
 // How a reflection probe lights what is inside it: not at all, by the blurriest level of its cube
 // along each pixel's normal, or by a color.
@@ -1091,6 +1097,10 @@ struct Scene3D {
     // depth and motion vectors so RenderDevice::generate_frame can make the frame halfway between
     // it and the target's frame before.
     bool frame_generation = false;
+    // With frame_generation, the game's frame generator that makes those frames
+    // (frame_generator.hpp, RenderDevice::generate_frames), for which the frame keeps its depth
+    // and motion vectors; empty for the engine's own.
+    std::string frame_generator;
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
     // Set for a frame whose 3D is path traced (PathTrace3D).

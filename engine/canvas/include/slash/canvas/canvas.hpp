@@ -193,16 +193,19 @@ struct CanvasOptions {
     // When set, filled with what the frame draws of the world: its items, what couldn't draw
     // and the controls' layout. Collision shapes and the overlay are left out.
     FrameContents* contents = nullptr;
-    // Shows a generated frame before each drawn one where the settings' frame_generation asks
-    // and the device generates frames (RenderDevice::generate_frame): the world, with the
-    // canvases below it, draws into a target of the renderer's, the frame halfway between it and
-    // the last one is made from it, and each is drawn into options.target in turn, the world's
-    // controls, the canvases above and the overlay over both. Games and slash-cli run set it
-    // for their windows.
+    // Shows generated frames before each drawn one where the settings' frame_generation asks
+    // and the device generates frames (RenderDevice::generate_frames): the world, with the
+    // canvases below it, draws into a target of the renderer's, the frames between it and the
+    // last one are made from it (one halfway with the engine's own, as many as the settings'
+    // generated_frames with a game's frame generator), and each is drawn into options.target in
+    // turn, the world's controls, the canvases above and the overlay over them all. Games and
+    // slash-cli run set it for their windows.
     bool generate = false;
-    // Called between the generated frame and the drawn one, to pace them (as
-    // platform::Loop::wait_half_frame).
-    std::function<void()> between_frames{}; // NOLINT(readability-redundant-member-init)
+    // Called after each generated frame, before the next frame shows, to pace them: with the
+    // frames each drawn one shows as (2 for one generated frame), each to show for that part of
+    // a frame (as platform::Loop::wait_frame_part).
+    // NOLINTNEXTLINE(readability-redundant-member-init)
+    std::function<void(std::uint32_t frames)> between_frames{};
 };
 
 // A point on the screen in a canvas's pixels: in the world's, through the current camera, or in
@@ -305,6 +308,9 @@ public:
     // the last frame drawn showed one.
     [[nodiscard]] std::uint64_t frames_generated() const noexcept { return frames_generated_; }
     [[nodiscard]] bool generated() const noexcept { return generated_; }
+    // The frame generator the last frame asked for ("fsr3" for the engine's own), or "" when it
+    // generated none.
+    [[nodiscard]] const std::string& frame_generator() const noexcept { return generator_; }
     // How many ScreenDistortion3D and ScreenDistortion2D components bent the last frame
     // (distortion.hpp).
     [[nodiscard]] std::size_t distortions_drawn() const noexcept { return distortions_drawn_; }
@@ -523,10 +529,13 @@ private:
     std::unique_ptr<render::Upscaler> upscaler_;
     std::string upscaler_name_;
     Scaled scaled_;
-    // Frame generation's targets at the output size: what the world draws into, and the frame
-    // generated from it.
-    std::array<render::TextureId, 2> generation_targets_{render::TextureId::None,
-                                                         render::TextureId::None};
+    // Frame generation's targets at the output size: what the world draws into, and the frames
+    // generated from it (up to render::kMaxGeneratedFrames), None past those made.
+    std::array<render::TextureId, 4> generation_targets_{
+        render::TextureId::None, render::TextureId::None, render::TextureId::None,
+        render::TextureId::None};
+    // The frame generator the last frame generated with ("fsr3" for the engine's own), or "".
+    std::string generator_;
     std::array<std::uint32_t, 2> generation_size_{};
     // What the world draws into when distortions bend it, at the output size.
     render::TextureId distortion_target_ = render::TextureId::None;
@@ -597,6 +606,11 @@ struct Settings {
     // rendering.frame_generation: a frame made between each two drawn ones, as AMD's FSR 3
     // frame generation (CanvasOptions::generate).
     bool frame_generation = false;
+    // rendering.frame_generator and rendering.generated_frames: the game's frame generator that
+    // makes those frames, where it runs (render::choose_frame_generator), and how many it makes
+    // between two drawn ones; else the engine's own makes one.
+    std::string frame_generator;
+    std::uint32_t generated_frames = 1;
     // rendering.reflections.sky_samples: the samples the sky's radiance and
     // reflection probes are blurred with.
     std::uint32_t ggx_samples = 32;

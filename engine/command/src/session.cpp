@@ -273,6 +273,8 @@ canvas::Settings canvas_settings(const json::Value& project) {
         settings.sdfgi = render::sdfgi_settings_from_json(*rendering);
         settings.use_taa = render::use_taa(*rendering);
         settings.frame_generation = render::frame_generation(*rendering);
+        settings.frame_generator = render::frame_generator(*rendering);
+        settings.generated_frames = render::generated_frames(*rendering);
         settings.decal_filter = render::decal_filter(*rendering);
         settings.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         settings.cluster_streaming = scene3d::cluster_streaming_settings(*rendering);

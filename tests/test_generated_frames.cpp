@@ -166,7 +166,7 @@ TEST_CASE("A generated frame shows before each drawn one, the controls drawn ove
     std::vector<render::Image> generated;
     canvas::CanvasOptions options{.target = target.value(), .width = 64.0F, .height = 64.0F};
     options.generate = true;
-    options.between_frames = [&] {
+    options.between_frames = [&](std::uint32_t /*frames*/) {
         auto shown = device->read_texture(target.value());
         REQUIRE(shown.ok());
         generated.push_back(std::move(shown).value());

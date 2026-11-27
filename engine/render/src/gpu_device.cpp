@@ -86,6 +86,7 @@
 #include "volumetric_fog_sky_shaders.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/render/frame_generator.hpp"
 #include "slash/render/image.hpp"
 
 #include <SDL3/SDL.h>
@@ -214,6 +215,18 @@ struct GenerationFrames {
     std::array<Float4, 4> still_reprojection{};
     Mat4 view_projection{};
     bool primed = false;
+    // For the game's frame generator (RenderDevice::generate_frames): the one made (added names
+    // it), and copies of the last frame's prepass depth and motion vectors at kept_size (kept; not
+    // for a frame that drew no meshes for it), with its camera.
+    std::string added;
+    std::unique_ptr<FrameGenerator> generator;
+    SDL_GPUTexture* kept_depth = nullptr;
+    SDL_GPUTexture* kept_motion = nullptr;
+    std::array<std::uint32_t, 2> kept_size{};
+    bool kept_now = false;
+    bool kept = false;
+    Mat4 scene_projection = kNoCamera;
+    Mat4 scene_camera = kNoCamera;
 };
 
 // A target's frames before for FSR 2: its clock, the last one's camera without its jitter, and two
@@ -3048,6 +3061,105 @@ public:
         return {};
     }
 
+    Result<void> generate_frames(TextureId target, std::span<const TextureId> into,
+                                 std::string_view generator) override {
+        if (generator.empty()) {
+            return RenderDevice::generate_frames(target, into, generator);
+        }
+        if (in_frame_) {
+            return frame_in_progress("generate_frames");
+        }
+        const auto shown_it = textures_.find(target);
+        if (shown_it == textures_.end()) {
+            return unknown_texture(target);
+        }
+        if (!shown_it->second.desc.render_target) {
+            return not_a_render_target(target);
+        }
+        const Texture& shown = shown_it->second;
+        if (into.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "generate_frames writes into at least one render target");
+        }
+        std::vector<NativeTexture> outputs;
+        outputs.reserve(into.size());
+        for (const TextureId id : into) {
+            const auto it = textures_.find(id);
+            if (it == textures_.end()) {
+                return unknown_texture(id);
+            }
+            if (!it->second.desc.render_target) {
+                return not_a_render_target(id);
+            }
+            if (id == target) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "generate_frames writes into other render targets than target");
+            }
+            if (it->second.desc.width != shown.desc.width ||
+                it->second.desc.height != shown.desc.height) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "generate_frames writes into render targets of target's size");
+            }
+            outputs.push_back(
+                native_texture(device_, it->second.gpu, shown.desc.width, shown.desc.height));
+        }
+        const std::optional<FrameGeneratorInfo> info = find_frame_generator(generator);
+        if (!info) {
+            return make_error(ErrorCode::NotFound,
+                              "no frame generator is named " + std::string(generator));
+        }
+        if (into.size() > info->max_frames) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "frame generator " + info->name + " makes at most " +
+                                  std::to_string(info->max_frames) + " frames between two");
+        }
+        GenerationFrames& frames = generation_frames(target);
+        bool fresh = false;
+        if (frames.added != generator) {
+            frames.generator = info->make();
+            if (frames.generator == nullptr) {
+                frames.added.clear();
+                return make_error(ErrorCode::InvalidArgument,
+                                  "frame generator " + info->name + " made nothing");
+            }
+            frames.added = info->name;
+            fresh = true;
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("generating frames failed");
+        }
+        const std::array<std::uint32_t, 2> render =
+            frames.kept ? frames.kept_size : std::array{shown.desc.width, shown.desc.height};
+        const GeneratedFrames generated{
+            .device = detail::native_device(device_, backend_),
+            .commands = SDL_SlashGPUNativeCommandBuffer(commands),
+            .size = {.render_width = render[0],
+                     .render_height = render[1],
+                     .output_width = shown.desc.width,
+                     .output_height = shown.desc.height},
+            .color = native_texture(device_, shown.gpu, shown.desc.width, shown.desc.height),
+            .depth = frames.kept ? native_texture(device_, frames.kept_depth, render[0], render[1])
+                                 : NativeTexture{},
+            .motion = frames.kept
+                          ? native_texture(device_, frames.kept_motion, render[0], render[1])
+                          : NativeTexture{},
+            .outputs = outputs,
+            .reset = fresh || frames.frames == 0 || frames.generated_from + 1 != frames.frames,
+            .projection = frames.scene_projection,
+            .camera = frames.scene_camera};
+        Result<void> made = frames.generator->generate(generated);
+        SDL_SlashGPURestoreState(commands);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("generating frames failed");
+        }
+        if (!made) {
+            return made;
+        }
+        frames.generated_from = frames.frames;
+        return {};
+    }
+
     Result<void> metalfx_spatial(TextureId source, TextureId target) override {
         if (!metalfx_.spatial) {
             return RenderDevice::metalfx_spatial(source, target);
@@ -4989,6 +5101,13 @@ private:
                                    generation->camera, false),
                                prepass_.depth, targets[1].texture);
                 generation->prepared_now = true;
+                if (!scene.frame_generator.empty()) {
+                    if (auto kept = keep_for_generator(commands, *generation, targets[1].texture);
+                        !kept) {
+                        log::error("keeping a frame for the frame generator failed",
+                                   {{"error", kept.error().message}});
+                    }
+                }
             }
             const std::optional<RayOcclusion> occlusion =
                 traced ? ray_occlusion(scene) : std::nullopt;
@@ -7121,6 +7240,55 @@ private:
         if (frames.velocity != nullptr) {
             pending_release_.push_back(std::exchange(frames.velocity, nullptr));
         }
+        for (SDL_GPUTexture** kept : {&frames.kept_depth, &frames.kept_motion}) {
+            if (*kept != nullptr) {
+                pending_release_.push_back(std::exchange(*kept, nullptr));
+            }
+        }
+    }
+
+    // Copies the prepass's depth and motion (the frame's motion vectors) for the game's frame
+    // generator into frames' textures of their own, which the next frame's prepass doesn't touch.
+    Result<void> keep_for_generator(SDL_GPUCommandBuffer* commands, GenerationFrames& frames,
+                                    SDL_GPUTexture* motion) {
+        const std::array<std::uint32_t, 2> size{prepass_.width, prepass_.height};
+        if (frames.kept_depth == nullptr || frames.kept_size != size) {
+            for (SDL_GPUTexture** kept : {&frames.kept_depth, &frames.kept_motion}) {
+                if (*kept != nullptr) {
+                    pending_release_.push_back(std::exchange(*kept, nullptr));
+                }
+            }
+            auto depth = pass_texture(size[0], size[1], depth_format_,
+                                      SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, 1,
+                                      "the frame generator's depth");
+            if (!depth) {
+                return depth.error();
+            }
+            frames.kept_depth = depth.value();
+            auto vectors =
+                pass_texture(size[0], size[1], kVelocityFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                             1, "the frame generator's motion vectors");
+            if (!vectors) {
+                return vectors.error();
+            }
+            frames.kept_motion = vectors.value();
+            frames.kept_size = size;
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const std::array<std::pair<SDL_GPUTexture*, SDL_GPUTexture*>, 2> copies{{
+            {prepass_.depth, frames.kept_depth},
+            {motion, frames.kept_motion},
+        }};
+        for (const auto& [source, destination] : copies) {
+            SDL_GPUTextureLocation from{};
+            from.texture = source;
+            SDL_GPUTextureLocation to{};
+            to.texture = destination;
+            SDL_CopyGPUTextureToTexture(copy, &from, &to, size[0], size[1], 1, false);
+        }
+        SDL_EndGPUCopyPass(copy);
+        frames.kept_now = true;
+        return {};
     }
 
     void forget_generation_frames(TextureId target) {
@@ -7241,6 +7409,10 @@ private:
                 frame_generation_camera(scene != nullptr ? scene->projection : kNoCamera);
         }
         frames->prepared_now = false;
+        frames->kept = frames->kept_now;
+        frames->kept_now = false;
+        frames->scene_projection = scene != nullptr ? scene->projection : kNoCamera;
+        frames->scene_camera = scene != nullptr ? scene->camera : kNoCamera;
         frames->primed = scene != nullptr;
         if (scene != nullptr) {
             frames->view_projection = multiply(scene->projection, scene->camera);

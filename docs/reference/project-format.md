@@ -469,6 +469,27 @@ The made frame adds half a frame of latency, as AMD's does, so it suits games al
 frames a second. [`display.set`](commands.md#displayset)'s `frame_generation` turns it on and off
 while the game runs.
 
+`rendering.frame_generator` names a frame generator the game adds from a vendor's SDK (DLSS Frame
+Generation, DLSS Multi Frame Generation, XeSS Frame Generation) with `render::add_frame_generator`,
+from its own C++ or an [SDK package's](sdk-format.md) glue code, and `rendering.generated_frames`
+how many frames it makes between each two drawn ones, 1 to 3 (at most as many as it can):
+
+```json
+"rendering": {"frame_generation": true, "frame_generator": "dlss_g", "generated_frames": 3}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `frame_generator` | `""` | The frame generator that makes the frames, lowercase letters, digits and underscores. `""` or `"fsr3"` is the engine's own. A game's runs on the GPU device on Vulkan, Direct3D 12 and Metal (and the software device), where its `supports` says it does; elsewhere the engine's own makes one frame |
+| `generated_frames` | `1` | Frames a game's frame generator makes between each two drawn ones, 1 to 3; each shows for an equal part of the frame. The engine's own makes one |
+
+The device hands the generator the drawn frame, the 3D world's depth and motion vectors at the
+render size and the targets to write as the native API's objects, and the window shows them
+earliest first, then the drawn frame
+([rendering.md](rendering.md),
+[examples/frame-generator](../../examples/frame-generator/)). `display.set` changes both while
+the game runs.
+
 ## Texture forms
 
 `rendering.textures` says how exports ship textures.

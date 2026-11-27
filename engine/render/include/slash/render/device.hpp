@@ -757,6 +757,25 @@ public:
     // Whether generate_frame works: on the software, GPU and WebGPU devices, not the OpenGL and
     // null ones.
     [[nodiscard]] virtual bool generates_frames() const { return false; }
+    // Writes into into's render targets, each of target's size, the frames between target's last
+    // two, earliest first (into[i] is (i + 1) / (into.size() + 1) of the way), outside any frame:
+    // with the game's frame generator named generator (frame_generator.hpp), as many as it makes,
+    // on a device that runs them (runs_frame_generators); with "" the engine's own, one
+    // (generate_frame). A generator's failure is returned, and into's targets hold what they did.
+    [[nodiscard]] virtual Result<void>
+    generate_frames(TextureId target, std::span<const TextureId> into, std::string_view generator) {
+        if (!generator.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "this device doesn't run a game's frame generators: the software "
+                              "device and the GPU device on Vulkan, Direct3D 12 and Metal do");
+        }
+        if (into.size() != 1) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the engine's frame generation makes one frame between two; a "
+                              "game's frame generator makes more");
+        }
+        return generate_frame(target, into.front());
+    }
 
     // The device's native objects, as an OpenXR runtime's session binds them: the GPU device's,
     // else empty.
