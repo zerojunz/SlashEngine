@@ -26,7 +26,7 @@ keywords = ["apple", "app-specific", "app specific", "app_specific", "notar", "a
 [[rules]]
 id = "pkcs12-base64"
 description = "A base64 certificate bundle with its private key"
-regex = '''\bMII[A-Za-z0-9+/]{1500,}={0,2}'''
+regex = '''\bMII[A-Za-z0-9+/]{1000,}={0,2}'''
 keywords = ["mii"]
 
 [allowlist]
