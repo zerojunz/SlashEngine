@@ -275,7 +275,13 @@ AMD Anti-Lag 2, Intel XeLL) is a `render::LatencyReducer` added with `render::ad
 native device; the game named in
 [`rendering.latency_reduction`](project-format.md#latency-reduction) calls its `sleep` before
 each frame and its `mark` at the frame's simulation, input, render submission and present
-([examples/latency-reduction](../../examples/latency-reduction/)).
+([examples/latency-reduction](../../examples/latency-reduction/)). A denoiser (DLSS Ray
+Reconstruction, NRD, FidelityFX) is a `render::Denoiser` added with `render::add_denoiser`
+([slash/render/denoiser.hpp](../../engine/render/include/slash/render/denoiser.hpp)); the game
+names it in [`rendering.ray_tracing.denoiser`](project-format.md#ray-tracing), and each frame
+that traces rays the device hands it the ray-traced shadows, occlusion, reflections and ambient
+light to denoise in place, with the prepass's depth, normals and motion vectors, as native
+objects ([examples/ray-denoiser](../../examples/ray-denoiser/)).
 
 ## In project.json and presets
 

@@ -165,11 +165,12 @@ struct RayGI {
 // The frame's ray-traced ambient light through scene, as half floats, three a pixel in rows from
 // the top: the light its rays bring back (path_reflection where they meet something, else
 // path_environment), averaged, then smoothed over the pixels within two of it, each weighed by how
-// alike its normal is and how near it is to the pixel's plane; 0 where a pixel has no surface. As
-// run_ray_shadows takes depth and normals.
+// alike its normal is and how near it is to the pixel's plane (unless smooth is false, for a
+// game's denoiser); 0 where a pixel has no surface. As run_ray_shadows takes depth and normals.
 [[nodiscard]] std::vector<float> run_ray_gi(const PathScene& scene, const PathTextures& textures,
                                             const RayGI& gi, const RayShadowFrame& frame,
                                             std::span<const float> depth,
-                                            std::span<const float> normals, jobs::Pool* pool);
+                                            std::span<const float> normals, jobs::Pool* pool,
+                                            bool smooth = true);
 
 } // namespace slash::render::detail

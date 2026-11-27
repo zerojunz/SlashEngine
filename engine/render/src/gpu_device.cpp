@@ -86,6 +86,7 @@
 #include "volumetric_fog_sky_shaders.hpp"
 
 #include "slash/core/log.hpp"
+#include "slash/render/denoiser.hpp"
 #include "slash/render/frame_generator.hpp"
 #include "slash/render/image.hpp"
 
@@ -192,6 +193,16 @@ struct TaaHistory {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool primed = false;
+};
+
+// A target's game denoiser (denoiser.hpp): the one made (added names it), the size its history is
+// at, and whether a failure of it was logged.
+struct DenoiserState {
+    std::string added;
+    std::unique_ptr<Denoiser> denoiser;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool failed = false;
 };
 
 // A target's frames for frame generation (frame_generation.hpp): the two buffers its passes work
@@ -819,6 +830,7 @@ public:
         while (!generation_frames_.empty()) {
             forget_generation_frames(generation_frames_.back().first);
         }
+        denoiser_states_.clear();
         if (generation_pipeline_ != nullptr) {
             SDL_ReleaseGPUComputePipeline(device_, generation_pipeline_);
         }
@@ -1082,6 +1094,7 @@ public:
         forget_fog_frames(texture);
         forget_sdfgi_frames(texture);
         forget_generation_frames(texture);
+        std::erase_if(denoiser_states_, [&](const auto& entry) { return entry.first == texture; });
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -5127,7 +5140,7 @@ private:
                 bool reflected = false;
                 bool lit = false;
                 if (trace_rays(commands, scene, traced_lights, occlusion, camera.view_projection,
-                               reflected, lit)) {
+                               motion ? targets[1].texture : nullptr, reflected, lit)) {
                     lights->screen[2] = traced_lights.empty() ? 0.0F : 1.0F;
                     lights->screen[3] = lit ? 1.0F : 0.0F;
                     if (traced_reflections && !reflected) {
@@ -6037,14 +6050,15 @@ private:
     }
 
     // After the prepass: the frame's lights' shadows, its occlusion, its reflections and its
-    // ambient light traced through its draws, into the screen array's layers 2 and 3, 0, 1 and 4,
-    // with reflected and lit set to whether there were reflections and ambient light to trace.
-    // False, with the shadow maps left to light the frame and no occlusion, reflections or
-    // ambient light, where the rays failed.
+    // ambient light traced through its draws, denoised by the game's denoiser where it names one
+    // that runs here (with the prepass's motion vectors, or none), into the screen array's layers
+    // 2 and 3, 0, 1 and 4, with reflected and lit set to whether there were reflections and
+    // ambient light to trace. False, with the shadow maps left to light the frame and no
+    // occlusion, reflections or ambient light, where the rays failed.
     bool trace_rays(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
                     std::span<const RayShadowLight> lights,
                     const std::optional<RayOcclusion>& occlusion, const Mat4& view_projection,
-                    bool& reflected, bool& lit) {
+                    SDL_GPUTexture* motion, bool& reflected, bool& lit) {
         RayWork work{.lights = lights,
                      .occlusion = occlusion,
                      .reflection = ray_reflection(scene),
@@ -6088,6 +6102,13 @@ private:
             }
             return false;
         }
+        // The game's denoiser takes the ambient light as traced, before the engine smooths it.
+        const std::optional<DenoiserInfo> denoiser =
+            scene.capture ? std::nullopt : choose_denoiser(scene.ray_tracing.denoiser, *this);
+        const bool denoised =
+            denoiser && denoise_rays(commands, *denoiser, scene, motion,
+                                     {!lights.empty(), occlusion.has_value(),
+                                      work.reflection.has_value(), work.gi.has_value()});
         if (!lights.empty()) {
             copy_to_screen(commands, ray_shadows_.textures[0], 2);
             copy_to_screen(commands, ray_shadows_.textures[1], 3);
@@ -6099,9 +6120,78 @@ private:
             copy_to_screen(commands, ray_shadows_.textures[3], 1);
         }
         if (work.gi) {
-            copy_to_screen(commands, ray_shadows_.textures[5], 4);
+            copy_to_screen(commands, ray_shadows_.textures[denoised ? 4 : 5], 4);
         }
         return true;
+    }
+
+    // Hands the frame's ray-traced passes (those traced: shadows, occlusion, reflections and
+    // ambient light) to the game's denoiser to denoise in place, with the prepass's depth and
+    // normals and motion (or none). False where it made nothing or failed, which is logged once.
+    bool denoise_rays(SDL_GPUCommandBuffer* commands, const DenoiserInfo& info,
+                      const Scene3D& scene, SDL_GPUTexture* motion,
+                      const std::array<bool, 4>& traced) {
+        DenoiserState& state = denoiser_state(frame_.target);
+        bool fresh = false;
+        if (state.added != info.name || state.denoiser == nullptr) {
+            state.denoiser = info.make();
+            state.added = state.denoiser != nullptr ? info.name : std::string();
+            state.failed = false;
+            fresh = true;
+        }
+        if (state.denoiser == nullptr) {
+            if (!state.failed) {
+                log::warn("the denoiser made nothing; the rays light the frame as the engine "
+                          "smooths them",
+                          {{"denoiser", info.name}});
+                state.failed = true;
+            }
+            return false;
+        }
+        const auto texture = [&](SDL_GPUTexture* gpu, bool used) {
+            return used && gpu != nullptr
+                       ? native_texture(device_, gpu, scene_width_, scene_height_)
+                       : NativeTexture{};
+        };
+        const std::array<SDL_GPUTexture*, 6>& passes = ray_shadows_.textures;
+        const DenoiseFrame frame{
+            .device = detail::native_device(device_, backend_),
+            .commands = SDL_SlashGPUNativeCommandBuffer(commands),
+            .width = scene_width_,
+            .height = scene_height_,
+            .depth = texture(prepass_.depth, true),
+            .normals = texture(prepass_.normals, true),
+            .motion = texture(motion, true),
+            .shadows = {texture(passes[0], traced[0]), texture(passes[1], traced[0])},
+            .occlusion = texture(passes[2], traced[1]),
+            .reflections = texture(passes[3], traced[2]),
+            .ambient_light = texture(passes[4], traced[3]),
+            .reset = fresh || state.width != scene_width_ || state.height != scene_height_,
+            .projection = scene.projection,
+            .camera = scene.camera};
+        state.width = scene_width_;
+        state.height = scene_height_;
+        const Result<void> denoised = state.denoiser->denoise(frame);
+        SDL_SlashGPURestoreState(commands);
+        if (!denoised) {
+            if (!state.failed) {
+                log::warn("the denoiser failed; the rays light the frame as the engine smooths "
+                          "them",
+                          {{"denoiser", info.name}, {"error", denoised.error().message}});
+                state.failed = true;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    DenoiserState& denoiser_state(TextureId target) {
+        for (auto& [id, state] : denoiser_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return denoiser_states_.emplace_back(target, DenoiserState{}).second;
     }
 
     // The normal-roughness prepass's normals and depth for a frame of width x height, which
@@ -9749,6 +9839,7 @@ private:
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>>
         generation_draw_pipelines_;
     std::vector<std::pair<TextureId, GenerationFrames>> generation_frames_;
+    std::vector<std::pair<TextureId, DenoiserState>> denoiser_states_;
     SDL_GPUComputePipeline* fog_pipeline_ = nullptr;
     // SDFGI's passes, its voxelization and the gather's stages (vertex, fragment) and pipeline.
     SDL_GPUComputePipeline* sdfgi_pipeline_ = nullptr;
