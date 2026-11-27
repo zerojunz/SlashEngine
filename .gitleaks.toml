@@ -1,0 +1,35 @@
+# gitleaks config for scripts/check-secrets.sh: gitleaks' own rules, plus the credentials this
+# project's release, benchmark, export and store-publishing steps read from environment variables.
+title = "SlashEngine secret scan"
+
+[extend]
+useDefault = true
+
+# A value written next to one of the credential variables, in a shell script, YAML, JSON or a doc.
+# References ($VAR, ${{ secrets.VAR }}, <placeholder>, %VAR%) aren't values and don't match.
+[[rules]]
+id = "slash-credential-variable"
+description = "A credential written into a file instead of read from its environment variable"
+regex = '''\b(?:APPLE_(?:ID|APP_PASSWORD|TEAM_ID|DEVELOPER_ID_CERTIFICATE(?:_PASSWORD)?|API_KEY(?:_ID)?|API_ISSUER)|BENCH_(?:ANTHROPIC_)?API_KEY|BUTLER_API_KEY|STEAM_(?:USERNAME|PASSWORD)|EPIC_CLIENT_(?:ID|SECRET)|GOG_(?:USERNAME|PASSWORD|BRANCH_PASSWORD)|SLASH_[A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN))\b["']?\s*[:=]\s*["']?([^\s"'$<{%(\-][^\s"']{5,})'''
+secretGroup = 1
+keywords = ["apple_", "bench_", "butler_api_key", "steam_", "epic_client_", "gog_", "password", "secret", "token"]
+
+# An Apple app-specific password (xxxx-xxxx-xxxx-xxxx) near a word that says what it is.
+[[rules]]
+id = "apple-app-specific-password"
+description = "An Apple app-specific password, as notarytool uses"
+regex = '''(?i)(?:apple|app[_ -]?specific|notar|app_password|altool)[^\n]{0,40}?\b([a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4})\b'''
+secretGroup = 1
+keywords = ["apple", "app-specific", "app specific", "app_specific", "notar", "app_password", "altool"]
+
+# A .p12/.pfx bundle (certificate and private key, such as a Developer ID export) in base64.
+[[rules]]
+id = "pkcs12-base64"
+description = "A base64 certificate bundle with its private key"
+regex = '''\bMII[A-Za-z0-9+/]{1500,}={0,2}'''
+keywords = ["mii"]
+
+[allowlist]
+description = "Throwaway values the CI jobs make up, and this file's own patterns"
+paths = ['''^\.gitleaks\.toml$''']
+stopwords = ["ci-only", "changeme", "example", "placeholder", "dummy", "fake", "redacted"]
