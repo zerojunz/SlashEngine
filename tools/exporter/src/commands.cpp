@@ -361,7 +361,8 @@ void register_export_commands(command::Registry& registry) {
     add_params["required"] = json::Array{"source"};
     add_params["properties"]["source"] =
         property("string", "A package folder in the project (added where it is), a built-in "
-                           "store's package (storekit, play-billing, steamworks), a git "
+                           "store's package (storekit, play-billing, steamworks, eos, galaxy), a "
+                           "git "
                            "repository URL, or the https:// URL of a .zip or .tar archive "
                            "(copied into sdks/; URLs need the build capability).");
     add_params["properties"]["name"] =
@@ -406,7 +407,7 @@ void register_export_commands(command::Registry& registry) {
     publish_params["additionalProperties"] = false;
     publish_params["required"] = json::Array{"store"};
     publish_params["properties"]["store"] =
-        property("string", "The store: itch (itch.io) or steam.");
+        property("string", "The store: itch (itch.io), steam, epic (the Epic Games Store) or gog.");
     json::Array stores;
     for (const std::string_view store : kStores) {
         stores.emplace_back(store);
@@ -414,7 +415,7 @@ void register_export_commands(command::Registry& registry) {
     publish_params["properties"]["store"]["enum"] = std::move(stores);
     publish_params["properties"]["presets"] =
         property("array", "Presets, or platforms for their defaults, to publish; default the "
-                          "store's channels or depots in export_presets.json.");
+                          "store's channels, depots, artifacts or presets in export_presets.json.");
     publish_params["properties"]["presets"]["items"]["type"] = "string";
     publish_params["properties"]["upload"] =
         property("boolean", "Export and upload the builds (needs the build and network "
@@ -428,9 +429,11 @@ void register_export_commands(command::Registry& registry) {
     registry.add({
         .name = "publish.run",
         .description = "Publishes exports to a store (itch.io through butler, Steam through "
-                       "steamcmd): returns the plan, each build's preset, channel or depot and "
-                       "output with the upload command, and with upload exports and uploads "
-                       "them. Credentials come from the environment.",
+                       "steamcmd, the Epic Games Store through BuildPatchTool, GOG through its "
+                       "Pipeline Builder): returns the plan, "
+                       "each build's preset, channel, depot or artifact and output with the "
+                       "upload command, and with upload exports and uploads them. Credentials "
+                       "come from the environment.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(publish_params),

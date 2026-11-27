@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "presets": {
+    "mac": {"platform": "macos", "macos": {"notarize": false}},
+    "steam-deck": {"platform": "linux"},
+    "windows": {"platform": "windows", "windows": {"sign": true}}
+  },
+  "stores": {
+    "gog": {
+      "branch": "staging",
+      "languages": ["en-US", "de-DE"],
+      "product": "1207658924"
+    }
+  }
+}

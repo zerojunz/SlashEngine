@@ -1,0 +1,57 @@
+{
+  "description": "The GOG Galaxy SDK as the game's games backend on Windows and macOS: the GOG player, achievements (with steps kept in stats) and leaderboards. It links the developer's own copy of the GOG Galaxy SDK, found through GOG_GALAXY_SDK, with the game's client from the environment.",
+  "downloads": {
+    "galaxy": {
+      "path": "${GOG_GALAXY_SDK}"
+    }
+  },
+  "format": 1,
+  "keys": {
+    "GOG_GALAXY_CLIENT_ID": {
+      "description": "The game's Galaxy SDK client id, from its page in the GOG Developer Portal."
+    },
+    "GOG_GALAXY_CLIENT_SECRET": {
+      "description": "The client's secret, from the same page. GOG expects it to ship in the game."
+    }
+  },
+  "license": "Proprietary",
+  "name": "galaxy",
+  "platforms": {
+    "macos": {
+      "defines": [
+        "SLASH_GALAXY_CLIENT_ID=\"${GOG_GALAXY_CLIENT_ID}\"",
+        "SLASH_GALAXY_CLIENT_SECRET=\"${GOG_GALAXY_CLIENT_SECRET}\""
+      ],
+      "include": [
+        "{galaxy}/Include"
+      ],
+      "libraries": [
+        "{galaxy}/Libraries/libGalaxy64.dylib"
+      ],
+      "sources": [
+        "src"
+      ]
+    },
+    "windows": {
+      "defines": [
+        "SLASH_GALAXY_CLIENT_ID=\"${GOG_GALAXY_CLIENT_ID}\"",
+        "SLASH_GALAXY_CLIENT_SECRET=\"${GOG_GALAXY_CLIENT_SECRET}\""
+      ],
+      "files": [
+        "{galaxy}/Libraries/Galaxy64.dll"
+      ],
+      "include": [
+        "{galaxy}/Include"
+      ],
+      "libraries": [
+        "{galaxy}/Libraries/Galaxy64.lib"
+      ],
+      "sources": [
+        "src"
+      ]
+    }
+  },
+  "register": "slash_galaxy::register_backends",
+  "vendor": "GOG",
+  "version": "1"
+}

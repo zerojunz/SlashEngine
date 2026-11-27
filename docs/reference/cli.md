@@ -939,26 +939,29 @@ was wrong, and exits with 2:
 
 ### publish
 
-Publishes a game's exports to a store, so players can download them: itch.io or Steam.
+Publishes a game's exports to a store, so players can download them: itch.io, Steam, the Epic
+Games Store or GOG.
 
 ```bash
 slash-cli publish <store> [options]
 ```
 
-`<store>` is `itch` or `steam`. [`export_presets.json`](project-format.md#stores)'s `stores`
-section says where builds go: `stores.itch` names the game's itch.io project and each preset's
-channel, `stores.steam` the game's app id, each preset's depot and the branch builds are set live
-on. Without `--upload`, publish prints the plan and changes nothing: each build's `preset`,
+`<store>` is `itch`, `steam`, `epic` or `gog`. [`export_presets.json`](project-format.md#stores)'s
+`stores` section says where builds go: `stores.itch` names the game's itch.io project and each
+preset's channel, `stores.steam` the game's app id, each preset's depot and the branch builds are
+set live on, `stores.epic` the game's organization and product, each preset's artifact and the
+label builds are set live with, `stores.gog` the game's product, its presets and languages and the
+private branch builds go to. Without `--upload`, publish prints the plan and changes nothing: each build's `preset`,
 `platform`, `output` folder and where it goes, the `command` an upload runs, and what an upload
 `needs`. The
 [`publish.run`](commands.md#publishrun) command does the same over MCP, JSON-RPC and REST.
 
 | Flag | Meaning |
 | --- | --- |
-| `--preset <name>` | A preset, or a platform for its defaults, to publish; repeat for more (default: `stores.itch.channels`, else every preset but iOS ones; `stores.steam.depots`) |
+| `--preset <name>` | A preset, or a platform for its defaults, to publish; repeat for more (default: `stores.itch.channels`, else every preset but iOS ones; `stores.steam.depots`; `stores.epic.artifacts`; `stores.gog.presets`, else every Windows and macOS preset) |
 | `--upload` | Export each build and upload it. Players can see an upload, so an agent asks first |
 | `--no-build` | Upload what earlier exports left in the presets' output folders instead of exporting again |
-| `--version <version>` | The version the store shows: itch.io's user version, the Steam build's description (default: `project.json`'s `version`) |
+| `--version <version>` | The version the store shows: itch.io's user version, the Steam build's description, the Epic build version before its platform, GOG's build version (default: `project.json`'s `version`) |
 | `--project <dir>` | Game folder with `project.json` (default `.`) |
 | `--engine <dir>` | Engine sources, as for [export](#export) |
 
@@ -1011,17 +1014,68 @@ slash-cli publish steam --preset windows
 A failed upload, or one whose output doesn't say the build finished, fails with steamcmd's
 `exit_code` and `tail`.
 
+#### Epic Games Store
+
+Each preset is exported, then uploaded by BuildPatchTool, Epic's upload tool from the Epic
+Developer Portal's Downloads page, run as a program of its own with `-mode=UploadBinary`: its output folder is
+the build root, `.slash/publish/epic/cloud` BuildPatchTool's working folder, and `app_launch` the
+program Epic's launcher starts (`<Game>.exe`, or `<Game>.app/Contents/MacOS/<Game>`). An artifact
+takes each build version once, whatever its platform, so a build goes up as the version with its
+platform after it (`1.4.0-Windows`, `1.4.0-Mac`), and one artifact can hold both. With
+`stores.epic.label`, a second command (`-mode=LabelBinary`) labels the build in the sandbox,
+which sets a `Live` build live; without it, builds wait in the Portal to be labelled. Only Windows
+and macOS presets can go to the Epic Games Store.
+
+BuildPatchTool is found in `SLASH_BUILDPATCHTOOL_PATH`, else on `PATH`, and signs in as the
+BuildPatchTool client whose id is in `EPIC_CLIENT_ID` and secret in `EPIC_CLIENT_SECRET`; all are
+checked before anything is built. The secret goes to BuildPatchTool as `-ClientSecretEnvVar`, its
+variable's name, so it never shows in a command line or the plan. Each build's output goes to
+`.slash/publish/epic-<preset>.log` and its last lines into the build's `push.tail`.
+
+```bash
+slash-cli publish epic --preset windows
+```
+
+The first build that fails stops the publish, with BuildPatchTool's `exit_code` and `tail`. A
+label that fails after its upload names the build in `pushed`: label it in the Portal, or publish
+it again as a new version.
+
+#### GOG
+
+Each preset is exported, then built and uploaded by GOG's Pipeline Builder, from the GOG
+Developer Portal, run as a program of its own: `GOGGalaxyPipelineBuilder build-game <project>
+--username <account> --password <password> --version <version>`, with `--branch` (and
+`--branch_password` from `GOG_BRANCH_PASSWORD`) when `stores.gog.branch` is set. The project is a
+Pipeline Builder project written to `.slash/publish/gog/<preset>.json`: the product, one depot
+holding the preset's output in `stores.gog.languages` and the task that starts the game
+(`<Game>.exe`, or `<Game>.app`). The plan's `project.json` is that file, with the output folder
+relative to the game; the file an upload writes gives it as an absolute path. GOG keeps one build
+per platform, and Pipeline Builder takes Windows (`windows`) and macOS (`osx`) builds. It
+publishes to private branches only, so `master` is refused: a build goes live there from the
+Developer Portal.
+
+Pipeline Builder is found in `SLASH_GOG_PIPELINE_BUILDER_PATH`, else on `PATH`, and signs in as
+the GOG account in `GOG_USERNAME` and `GOG_PASSWORD`; all are checked before anything is built.
+Each build's output goes to `.slash/publish/gog-<preset>.log` and its last lines, with the
+passwords taken out, into the build's `push.tail`.
+
+```bash
+slash-cli publish gog --preset windows
+```
+
+The first build that fails stops the publish, with Pipeline Builder's `exit_code` and `tail`.
+
 ### sdk
 
 ```bash
-slash-cli sdk add <folder|storekit|play-billing|steamworks|git URL|https archive> [--project <dir>] [--name <folder>] [--ref <ref>] [--sha256 <hash>] [--dry-run]
+slash-cli sdk add <folder|storekit|play-billing|steamworks|eos|galaxy|git URL|https archive> [--project <dir>] [--name <folder>] [--ref <ref>] [--sha256 <hash>] [--dry-run]
 slash-cli sdk check [--project <dir>] [--platform <name>] [--fetch]
 slash-cli sdk lock [--project <dir>] [--sdk <name>] [--dry-run]
 ```
 
 `sdk add` adds an [SDK package](sdk-format.md#sdk-add) to `project.json`'s `sdks`: a folder in
 the project where it is, or copied into `sdks/<name>` from a folder elsewhere, one of the
-engine's [store packages](services.md#stores) (`storekit`, `play-billing`, `steamworks`), a git repository (at
+engine's [store packages](services.md#stores) (`storekit`, `play-billing`, `steamworks`, `eos`, `galaxy`), a git repository (at
 `--ref`) or an `https://` archive (checked against `--sha256`). `--dry-run` checks the package
 and prints what it would add. `sdk check` checks the [packages](sdk-format.md#sdk-check), the
 presets' `sdks`, keys in the environment and every file a platform links (`--platform` for one),
@@ -1269,3 +1323,8 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `SLASH_BUTLER_PATH` | butler's program, when it isn't on `PATH` |
 | `STEAM_USERNAME` | The Steamworks account steamcmd signs in as, for [`publish steam --upload`](#publish); sign it in once by hand so steamcmd keeps its login |
 | `SLASH_STEAMCMD_PATH` | steamcmd's program, when it isn't on `PATH` |
+| `EPIC_CLIENT_ID`, `EPIC_CLIENT_SECRET` | The BuildPatchTool client's id and secret, from the product's BuildPatchTool Credentials page in the Epic Developer Portal, for [`publish epic --upload`](#publish); the secret is passed by its variable's name |
+| `SLASH_BUILDPATCHTOOL_PATH` | BuildPatchTool's program, when it isn't on `PATH` |
+| `GOG_USERNAME`, `GOG_PASSWORD` | The GOG account Pipeline Builder signs in as, for [`publish gog --upload`](#publish); its output is reported with the password taken out |
+| `GOG_BRANCH_PASSWORD` | The password of `stores.gog.branch`, when the branch has one |
+| `SLASH_GOG_PIPELINE_BUILDER_PATH` | GOG's Pipeline Builder program, when it isn't on `PATH` |

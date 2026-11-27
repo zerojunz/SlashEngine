@@ -217,6 +217,8 @@ add_executable(slash_tests
     test_sdk.cpp
     test_server.cpp
     test_steamworks.cpp
+    test_eos.cpp
+    test_galaxy.cpp
     test_work.cpp
     test_services.cpp
     test_shader.cpp
@@ -317,11 +319,36 @@ target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_BUTLER="$<TARGET_FILE:
 target_sources(slash_tests PRIVATE ${PROJECT_SOURCE_DIR}/export/sdks/steamworks/src/steamworks.cpp)
 target_include_directories(slash_tests PRIVATE fake_steamworks/public)
 
+# The eos package's glue code, compiled against a stand-in for Epic's SDK.
+target_sources(slash_tests PRIVATE ${PROJECT_SOURCE_DIR}/export/sdks/eos/src/eos.cpp)
+target_include_directories(slash_tests PRIVATE fake_eos/Include)
+if(WIN32)
+    target_link_libraries(slash_tests PRIVATE shell32) # the eos glue reads the command line
+endif()
+
+# The galaxy package's glue code, compiled against a stand-in for GOG's SDK.
+target_sources(slash_tests PRIVATE ${PROJECT_SOURCE_DIR}/export/sdks/galaxy/src/galaxy.cpp)
+target_include_directories(slash_tests PRIVATE fake_galaxy/Include)
+
 # A stand-in for Valve's steamcmd, so the Steam publish tests upload nowhere.
 add_executable(fake-steamcmd fake_steamcmd.cpp)
 slash_target_warnings(fake-steamcmd)
 add_dependencies(slash_tests fake-steamcmd)
 target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_STEAMCMD="$<TARGET_FILE:fake-steamcmd>")
+
+# A stand-in for Epic's BuildPatchTool, so the Epic Games Store publish tests upload nowhere.
+add_executable(fake-build-patch-tool fake_build_patch_tool.cpp)
+slash_target_warnings(fake-build-patch-tool)
+add_dependencies(slash_tests fake-build-patch-tool)
+target_compile_definitions(slash_tests
+    PRIVATE SLASH_FAKE_BUILD_PATCH_TOOL="$<TARGET_FILE:fake-build-patch-tool>")
+
+# A stand-in for GOG's Pipeline Builder, so the GOG publish tests upload nowhere.
+add_executable(fake-pipeline-builder fake_pipeline_builder.cpp)
+slash_target_warnings(fake-pipeline-builder)
+add_dependencies(slash_tests fake-pipeline-builder)
+target_compile_definitions(slash_tests
+    PRIVATE SLASH_FAKE_PIPELINE_BUILDER="$<TARGET_FILE:fake-pipeline-builder>")
 
 # A stand-in for Blender, so the .blend tests and the blend-models example run without it.
 add_executable(fake-blender fake_blender.cpp)

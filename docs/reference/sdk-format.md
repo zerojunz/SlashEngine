@@ -322,7 +322,7 @@ the project is listed where it is. Anything else is copied into `sdks/<name>` (o
 folder elsewhere, a git repository (an address ending in `.git`, or `git@` or `ssh://`, cloned
 with `--depth 1` at `--ref`), or an `https://` `.zip` or `.tar` archive with `sdk.json` at its
 root or in its one folder, checked against `--sha256` when given. `storekit`,
-`play-billing` and `steamworks` name the engine's own [store packages](services.md#stores), copied from its
+`play-billing`, `steamworks`, `eos` and `galaxy` name the engine's own [store packages](services.md#stores), copied from its
 `export/sdks/` folder. The command takes folders in the project, and URLs with the `build`
 capability. The reply names the package, its platforms and
 the keys to set.

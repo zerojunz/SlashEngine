@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","id":1,"method":"publish.run","params":{"store":"epic"}}
+{"jsonrpc":"2.0","id":2,"method":"publish.run","params":{"store":"epic","presets":["windows"],"version":"1.4.1"}}
+{"jsonrpc":"2.0","id":3,"method":"publish.run","params":{"store":"epic","presets":["steam-deck"]}}
