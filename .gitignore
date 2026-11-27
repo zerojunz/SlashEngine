@@ -13,3 +13,37 @@ node_modules/
 /import_unreal*/
 /unreal_editor_lookup/
 __pycache__/
+
+# Credentials and signing material: never commit these. Read secrets from environment variables
+# (CI secrets) instead; scripts/check-secrets.sh fails a commit that adds one.
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.p8
+*.pem
+*.key
+*.keystore
+*.jks
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.certSigningRequest
+*.keychain
+*.keychain-db
+AuthKey_*.p8
+id_rsa*
+id_ed25519*
+.netrc
+.npmrc
+.pypirc
+credentials.json
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+# steamcmd's login cache and sentry files, butler's saved login
+config.vdf
+ssfn*
+steamcmd/
+butler_creds

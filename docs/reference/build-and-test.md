@@ -119,3 +119,12 @@ find engine tools examples -name '*.cpp' -not -path '*/unreal/Source/*' | xargs 
 ```
 
 CI rejects unformatted code and any clang-tidy finding.
+
+CI's lint job also runs `scripts/check-owner-name.sh --pr` (the owner's name in files, the PR's title,
+body, commit messages and commit authors) and `scripts/check-secrets.sh --range`: gitleaks
+(`.gitleaks.toml`: its own rules plus the APPLE_\*, BENCH_\*, store and `SLASH_*_PASSWORD` variables)
+over the new commits, tracked files that hold credentials (`.env`, `*.p12`, `*.p8`, keystores,
+provisioning profiles, steamcmd's `config.vdf`, ...; `.gitignore` keeps them out too), and commit
+e-mails that name a machine (`login@host.local`). Run `scripts/check-secrets.sh` before pushing to
+check `origin/main..HEAD`, or `--all` for the whole history. Findings print redacted; a real secret
+is rotated first, then dropped from the branch.
