@@ -4536,6 +4536,33 @@ Reply input_actions(Session& session, const json::Value& params) {
             }
         }
     }
+    // The binding a prompt shows for each action, for the input the player last used or one named.
+    if (const json::Value* prompt = params.find("prompt"); prompt != nullptr) {
+        const std::string& wanted = prompt->as_string();
+        const std::optional<input::GamepadType> type = input::parse_gamepad_type(wanted);
+        if (wanted != "last" && wanted != "keyboard" && !type) {
+            return Reply::invalid_params(
+                {{"/prompt", "no input \"" + wanted +
+                                 "\"; expected last, keyboard or a gamepad kind (" +
+                                 "standard, xbox_one, ps5, switch_pro, ...)"}});
+        }
+        for (auto& [name, entry] : actions.as_object()) {
+            std::optional<input::Prompt> found;
+            if (wanted == "last") {
+                found = input::action_prompt(session.world(), name);
+            } else {
+                found = input::action_prompt(
+                    map, name, type ? input::InputKind::Gamepad : input::InputKind::Keyboard,
+                    type.value_or(input::GamepadType::Standard));
+            }
+            json::Value shown;
+            if (found) {
+                shown["label"] = found->label.label;
+                shown["glyph"] = found->label.glyph;
+            }
+            entry["prompt"] = std::move(shown);
+        }
+    }
     json::Value result;
     result["actions"] = std::move(actions);
     return Reply::success(std::move(result));
@@ -8374,8 +8401,9 @@ void register_builtin_commands(Registry& registry) {
         .name = "input.state",
         .description = "Returns what the game sees: actions pressed or just pressed or released "
                        "at the last tick (strength if partial), keys and mouse buttons held, the "
-                       "mouse position, fingers down, gamepad buttons and axes, and events "
-                       "queued.",
+                       "mouse position, fingers down, gamepads (buttons and axes held, name and "
+                       "kind, motion sensors, rumble with its seconds left), the input last used "
+                       "unless the keyboard, and events queued.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -8388,10 +8416,17 @@ void register_builtin_commands(Registry& registry) {
         .name = "input.actions",
         .description = "Returns input actions with their deadzone and the events bound to each: "
                        "the built-in ui_* actions and project.json's \"input\". Text editing "
-                       "actions (ui_text_*, ui_cut, ui_copy and so on) only when named.",
+                       "actions (ui_text_*, ui_cut, ui_copy and so on) only when named. With "
+                       "prompt, the button label and glyph to show for each.",
         .capabilities = {Read},
         .effect = Effect::Read,
-        .params = params_schema({{"names", names_property("Only these actions. Default: all.")}}),
+        .params = params_schema(
+            {{"names", names_property("Only these actions. Default: all.")},
+             {"prompt",
+              property("string", "Adds each action's prompt, {label, glyph} or null: for the "
+                                 "input the player last used (\"last\"), the keyboard and "
+                                 "mouse (\"keyboard\"), or a kind of gamepad (\"ps5\", "
+                                 "\"xbox_one\", \"switch_pro\", \"standard\", ...).")}}),
         .handler = input_actions,
     });
 

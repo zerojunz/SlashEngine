@@ -1,5 +1,6 @@
 add_library(slash_input
     src/event.cpp
+    src/gamepad.cpp
     src/sdl.cpp
     src/state.cpp)
 add_library(slash::input ALIAS slash_input)

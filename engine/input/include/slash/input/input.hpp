@@ -38,6 +38,11 @@ enum class EventType : std::uint8_t {
     // The text an input method (IME) is composing, as for Japanese, Chinese or Korean, before it
     // commits it as key events with unicode; empty text ends the composition.
     Ime,
+    // A gamepad connected (pressed) or disconnected, with its name (text), its kind (gamepad) and
+    // whether it rumbles and senses motion. A disconnection releases what the gamepad held.
+    JoypadConnection,
+    // What a gamepad's gyroscope and accelerometer read (gyro and accel).
+    JoypadSensor,
 };
 
 // Keyboard keys, by name ("A", "Space", "Left", "Kp Enter"). A physical key is where the key sits
@@ -252,9 +257,29 @@ enum class JoyAxis : std::uint8_t {
     TriggerRight,
 };
 
+// Kinds of gamepad, as the system reports them: which labels and glyphs their buttons have.
+// Standard is any other: its face buttons are named by where they are (south, east, west, north).
+enum class GamepadType : std::uint8_t {
+    Standard,
+    Xbox360,
+    XboxOne, // Xbox One and Xbox Series
+    Ps3,
+    Ps4,
+    Ps5,
+    SwitchPro,
+    JoyconLeft,
+    JoyconRight,
+    JoyconPair,
+};
+
 [[nodiscard]] std::string_view mouse_button_name(MouseButton button);
 [[nodiscard]] std::string_view joy_button_name(JoyButton button);
 [[nodiscard]] std::string_view joy_axis_name(JoyAxis axis);
+// "standard", "xbox_360", "xbox_one", "ps3", "ps4", "ps5", "switch_pro", "joycon_left",
+// "joycon_right" or "joycon_pair".
+[[nodiscard]] std::string_view gamepad_type_name(GamepadType type);
+[[nodiscard]] std::optional<GamepadType> parse_gamepad_type(std::string_view name);
+[[nodiscard]] std::span<const std::string_view> gamepad_type_names();
 
 // A binding's device that matches events from every device::ALL_DEVICES.
 inline constexpr int kAllDevices = -1;
@@ -308,11 +333,21 @@ struct Event {
     // JoypadMotion: where the axis is. A binding's axis_value says which way, -1 or 1.
     float axis_value = 0.0F;
 
+    // JoypadConnection: the kind of gamepad, and whether it can rumble and has motion sensors.
+    GamepadType gamepad = GamepadType::Standard;
+    bool can_rumble = false;
+    bool has_motion = false;
+    // JoypadSensor: the gyroscope's turn rate in radians a second and the accelerometer's
+    // reading in m/s^2 (gravity included), on the gamepad's axes: x to the right, y up and z
+    // toward the player, held flat.
+    Vec3f gyro;
+    Vec3f accel;
+
     std::string action;    // Action: the action's name
     float strength = 1.0F; // Action: how hard, from 0 to 1
 
     // Ime: the text being composed, and the part of it the input method has selected, in characters
-    // from its start.
+    // from its start. JoypadConnection: the gamepad's name.
     std::string text;
     int selection_start = 0;
     int selection_length = 0;
@@ -504,6 +539,94 @@ void release_pressed(world::World& world);
 // if any are named.
 [[nodiscard]] json::Value state_json(const world::World& world,
                                      std::span<const std::string> actions = {});
+
+// A gamepad connected now, as its last JoypadConnection said, with what its sensors last read.
+struct Gamepad {
+    int device = 0;
+    std::string name;
+    GamepadType type = GamepadType::Standard;
+    bool can_rumble = false;
+    bool has_motion = false;
+    Vec3f gyro;
+    Vec3f accel;
+};
+// The gamepads connected, by device.
+[[nodiscard]] std::vector<Gamepad> gamepads(const world::World& world);
+[[nodiscard]] std::optional<Gamepad> gamepad(const world::World& world, int device);
+// What a gamepad's motion sensors last read; zero for a gamepad without them.
+[[nodiscard]] Vec3f gamepad_gyro(const world::World& world, int device);
+[[nodiscard]] Vec3f gamepad_accelerometer(const world::World& world, int device);
+
+// A gamepad's vibration: its low (left, heavy) and high (right, light) frequency motors and,
+// on gamepads that have them (Xbox One and Series), the motors in the triggers, each from 0 to 1,
+// for seconds.
+struct Rumble {
+    float low = 0.0F;
+    float high = 0.0F;
+    float left_trigger = 0.0F;
+    float right_trigger = 0.0F;
+    float seconds = 0.0F;
+
+    friend bool operator==(const Rumble&, const Rumble&) = default;
+};
+// Starts a rumble on a gamepad, replacing the one it had; nothing, or seconds of 0, stops it.
+// Works whether or not the gamepad is there (input.state shows it), so tests and headless runs
+// see what a player would feel.
+void rumble(world::World& world, int device, Rumble rumble);
+void stop_rumble(world::World& world, int device);
+// The gamepad's rumble now, with the seconds it has left; all zero when it is still.
+[[nodiscard]] Rumble rumble_of(const world::World& world, int device);
+// Rumbles started or stopped since the last call, by device, for the platform to play
+// (SdlReader::update).
+[[nodiscard]] std::map<int, Rumble> take_rumbles(world::World& world);
+
+// What the player last used, for showing button prompts that match: the keyboard, the mouse, a
+// touch screen or a gamepad (and which). A key, button or touch press, or a stick or trigger
+// pushed past halfway, changes it; motion alone doesn't.
+enum class InputKind : std::uint8_t { Keyboard, Mouse, Touch, Gamepad };
+struct LastInput {
+    InputKind kind = InputKind::Keyboard;
+    int device = 0;
+
+    friend bool operator==(const LastInput&, const LastInput&) = default;
+};
+[[nodiscard]] LastInput last_input(const world::World& world);
+// "keyboard", "mouse", "touch" or "gamepad".
+[[nodiscard]] std::string_view input_kind_name(InputKind kind);
+
+// What to show for a binding in a prompt: a label in words ("Cross", "LB", "Space") and a glyph,
+// the name of the picture a game draws for it ("playstation_cross", "xbox_lb", "key_space"),
+// which it maps to its own images. Glyph names are the label's family (xbox, playstation,
+// nintendo, gamepad, key or mouse) and the label in snake case.
+struct ButtonLabel {
+    std::string label;
+    std::string glyph;
+
+    friend bool operator==(const ButtonLabel&, const ButtonLabel&) = default;
+};
+// A gamepad button's label on a kind of gamepad: the bottom face button is "A" on an Xbox
+// gamepad, "Cross" on a PlayStation one and "B" on a Nintendo one.
+[[nodiscard]] ButtonLabel joy_button_label(GamepadType type, JoyButton button);
+// A stick pushed one way (direction -1 or 1) or a trigger: "Left Stick Up", "RT", "R2", "ZR".
+[[nodiscard]] ButtonLabel joy_axis_label(GamepadType type, JoyAxis axis, float direction);
+// Any binding's label: keys by name, mouse buttons, gamepad buttons and axes as above.
+[[nodiscard]] ButtonLabel binding_label(const Event& binding,
+                                        GamepadType type = GamepadType::Standard);
+
+// The binding to show for an action, and its label: one for the kind of input given (by
+// default what the player last used), labelled for that gamepad's kind. Keyboard and mouse
+// prompts take a key binding first, then a mouse button; touch takes the same. nullopt when the
+// action is unknown or has nothing bound of that kind.
+struct Prompt {
+    Event binding;
+    ButtonLabel label;
+};
+[[nodiscard]] std::optional<Prompt> action_prompt(const world::World& world,
+                                                  std::string_view action,
+                                                  std::optional<LastInput> input = std::nullopt);
+// The same for a kind of gamepad, wherever the player is.
+[[nodiscard]] std::optional<Prompt> action_prompt(const Map& map, std::string_view action,
+                                                  InputKind kind, GamepadType type);
 
 // What a text field with focus asks of the platform, which is to turn on the input method and show
 // the on-screen keyboard: ui::text_input works it out each tick and SdlReader::set_text_input

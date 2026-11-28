@@ -203,9 +203,10 @@ constexpr std::array<std::string_view, 6> kJoyAxes{
     "left_x", "left_y", "right_x", "right_y", "trigger_left", "trigger_right",
 };
 
-constexpr std::array<std::string_view, 9> kTypes{
-    "key",           "mouse_button",  "mouse_motion", "screen_touch", "screen_drag",
-    "joypad_button", "joypad_motion", "action",       "ime",
+constexpr std::array<std::string_view, 11> kTypes{
+    "key",         "mouse_button",      "mouse_motion",  "screen_touch",
+    "screen_drag", "joypad_button",     "joypad_motion", "action",
+    "ime",         "joypad_connection", "joypad_sensor",
 };
 // Not an event of its own: input.inject turns it into key presses, one per character.
 constexpr std::string_view kTextType = "text";
@@ -217,7 +218,7 @@ constexpr std::size_t kMaxFingers = 32;
 constexpr std::uint16_t bit(EventType type) {
     return static_cast<std::uint16_t>(1U << static_cast<unsigned>(type));
 }
-constexpr std::uint16_t kAnyType = 0x1FF;
+constexpr std::uint16_t kAnyType = 0x7FF;
 constexpr std::uint16_t kBindingTypes = bit(EventType::Key) | bit(EventType::MouseButton) |
                                         bit(EventType::JoypadButton) | bit(EventType::JoypadMotion);
 constexpr std::uint16_t kPressTypes = bit(EventType::Key) | bit(EventType::MouseButton) |
@@ -233,7 +234,7 @@ struct Field {
     std::uint16_t binding_types = 0; // types whose bindings have it
 };
 
-constexpr std::array<Field, 24> kFields{{
+constexpr std::array<Field, 31> kFields{{
     {"type", kAnyType, kBindingTypes},
     {"device", kAnyType, kBindingTypes},
     {"pressed", kPressTypes, 0},
@@ -259,6 +260,13 @@ constexpr std::array<Field, 24> kFields{{
     {"strength", bit(EventType::Action), 0},
     {"text", bit(EventType::Ime), 0},
     {"selection", bit(EventType::Ime), 0},
+    {"connected", bit(EventType::JoypadConnection), 0},
+    {"name", bit(EventType::JoypadConnection), 0},
+    {"gamepad", bit(EventType::JoypadConnection), 0},
+    {"can_rumble", bit(EventType::JoypadConnection), 0},
+    {"has_motion", bit(EventType::JoypadConnection), 0},
+    {"gyro", bit(EventType::JoypadSensor), 0},
+    {"accel", bit(EventType::JoypadSensor), 0},
 }};
 
 template <std::size_t N>
@@ -327,6 +335,26 @@ json::Value point_property(std::string_view description) {
     schema["maxItems"] = 2;
     schema["description"] = description;
     return schema;
+}
+
+json::Value vector_property(std::string_view description) {
+    json::Value schema;
+    schema["type"] = "array";
+    schema["items"]["type"] = "number";
+    schema["minItems"] = 3;
+    schema["maxItems"] = 3;
+    schema["description"] = description;
+    return schema;
+}
+
+Vec3f vector(const json::Value& value) {
+    const json::Array& items = value.as_array();
+    return {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double()),
+            static_cast<float>(items[2].as_double())};
+}
+
+json::Value vector_json(Vec3f value) {
+    return json::Array{json::Value(value.x), json::Value(value.y), json::Value(value.z)};
 }
 
 EventType type_of(const json::Value& doc) {
@@ -515,6 +543,27 @@ json::Value event_schema(Use use) {
         selection["description"] =
             "ime: [start, length] of the part being converted, in characters of text.";
         properties["selection"] = std::move(selection);
+        properties["connected"] =
+            boolean_property("joypad_connection: the gamepad connected, or disconnected.");
+        properties["name"] = string_property("joypad_connection: the gamepad's name.");
+        json::Value gamepad = string_property(
+            "joypad_connection: which kind of gamepad, for its button labels (default "
+            "standard).");
+        json::Array gamepad_types;
+        for (const std::string_view name : gamepad_type_names()) {
+            gamepad_types.emplace_back(name);
+        }
+        gamepad["enum"] = std::move(gamepad_types);
+        properties["gamepad"] = std::move(gamepad);
+        properties["can_rumble"] = boolean_property("joypad_connection: it can rumble.");
+        properties["has_motion"] =
+            boolean_property("joypad_connection: it has a gyroscope and accelerometer.");
+        properties["gyro"] = vector_property(
+            "joypad_sensor: [x, y, z] turn rate in radians a second; x right, y up, z toward "
+            "the player.");
+        properties["accel"] = vector_property(
+            "joypad_sensor: [x, y, z] acceleration in m/s^2, gravity included (lying flat: "
+            "[0, 9.81, 0]).");
     }
     schema["required"] = json::Array{"type"};
     schema["additionalProperties"] = false;
@@ -627,6 +676,14 @@ std::vector<json::ValidationError> validate_event(const json::Value& doc, Use us
     case EventType::Action:
         require("action");
         break;
+    case EventType::JoypadConnection:
+        require("connected");
+        break;
+    case EventType::JoypadSensor:
+        if (doc.find("gyro") == nullptr && doc.find("accel") == nullptr) {
+            errors.push_back({path, kind + R"( need "gyro" or "accel")"});
+        }
+        break;
     case EventType::Ime: {
         require("text");
         const json::Value* text = doc.find("text");
@@ -729,6 +786,24 @@ Result<Event> parse_event(const json::Value& doc, Use use) {
     if (const json::Value* selection = doc.find("selection"); selection != nullptr) {
         event.selection_start = static_cast<int>(selection->as_array()[0].as_int());
         event.selection_length = static_cast<int>(selection->as_array()[1].as_int());
+    }
+    if (event.type == EventType::JoypadConnection) {
+        event.pressed = flag(doc, "connected");
+        if (const json::Value* name = doc.find("name"); name != nullptr) {
+            event.text = name->as_string();
+        }
+        if (const json::Value* gamepad = doc.find("gamepad"); gamepad != nullptr) {
+            event.gamepad =
+                parse_gamepad_type(gamepad->as_string()).value_or(GamepadType::Standard);
+        }
+        event.can_rumble = flag(doc, "can_rumble");
+        event.has_motion = flag(doc, "has_motion");
+    }
+    if (const json::Value* gyro = doc.find("gyro"); gyro != nullptr) {
+        event.gyro = vector(*gyro);
+    }
+    if (const json::Value* accel = doc.find("accel"); accel != nullptr) {
+        event.accel = vector(*accel);
     }
     return event;
 }
@@ -867,6 +942,25 @@ json::Value event_json(const Event& event, Use use) {
             out["selection"] = json::Array{event.selection_start, event.selection_length};
         }
         break;
+    case EventType::JoypadConnection:
+        out["connected"] = event.pressed;
+        if (!event.text.empty()) {
+            out["name"] = event.text;
+        }
+        if (event.gamepad != GamepadType::Standard) {
+            out["gamepad"] = gamepad_type_name(event.gamepad);
+        }
+        if (event.can_rumble) {
+            out["can_rumble"] = true;
+        }
+        if (event.has_motion) {
+            out["has_motion"] = true;
+        }
+        break;
+    case EventType::JoypadSensor:
+        out["gyro"] = vector_json(event.gyro);
+        out["accel"] = vector_json(event.accel);
+        break;
     }
     return out;
 }
@@ -922,6 +1016,8 @@ std::optional<Match> match(const Event& binding, const Event& event, float deadz
     case EventType::ScreenDrag:
     case EventType::Action:
     case EventType::Ime:
+    case EventType::JoypadConnection:
+    case EventType::JoypadSensor:
         break;
     }
     return std::nullopt;

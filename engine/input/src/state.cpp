@@ -61,7 +61,12 @@ struct InputState {
     std::map<int, Vec2> touches;
     std::set<std::pair<int, JoyButton>> joy_buttons;
     std::map<std::pair<int, JoyAxis>, float> joy_axes;
-    int mouse_from_touch = -1; // the finger the mouse follows, or -1
+    int mouse_from_touch = -1;                      // the finger the mouse follows, or -1
+    std::map<int, Gamepad> gamepads;                // connected, by device
+    std::map<int, std::pair<Vec3f, Vec3f>> sensors; // gyro and accel, by device
+    std::map<int, Rumble> rumbles;                  // rumbling now, with the seconds left
+    std::map<int, Rumble> rumble_changes;           // started or stopped since take_rumbles
+    LastInput last;
 };
 
 using Handle = std::shared_ptr<InputState>;
@@ -94,7 +99,7 @@ const InputState* state_of(const world::World& world) {
 
 bool is_motion(EventType type) {
     return type == EventType::MouseMotion || type == EventType::ScreenDrag ||
-           type == EventType::JoypadMotion;
+           type == EventType::JoypadMotion || type == EventType::JoypadSensor;
 }
 
 // Whether two motions come from the same mouse, finger or gamepad axis.
@@ -109,6 +114,11 @@ bool same_source(const Event& a, const Event& b) {
 bool accumulate(Event& earlier, const Event& next) {
     if (next.type == EventType::JoypadMotion) {
         earlier.axis_value = next.axis_value;
+        return true;
+    }
+    if (next.type == EventType::JoypadSensor) {
+        earlier.gyro = next.gyro;
+        earlier.accel = next.accel;
         return true;
     }
     if (earlier.relative.has_value() != next.relative.has_value() ||
@@ -185,7 +195,72 @@ void release_action(InputState& state, ActionState& action) {
 
 // Updates what is held, emulates mouse from touch and touch from mouse, then each action the event
 // is bound to.
+// Lets go of what a disconnected gamepad held: its buttons, axes and the actions they pressed.
+void release_device(InputState& state, int device) {
+    std::erase_if(state.joy_buttons, [&](const auto& held) { return held.first == device; });
+    std::erase_if(state.joy_axes, [&](const auto& held) { return held.first.first == device; });
+    for (auto& [name, action] : state.actions) {
+        bool changed = false;
+        for (auto& [key, slot] : action.slots) {
+            if (key.first == device && (slot.pressed || slot.raw_strength != 0.0F)) {
+                slot = {};
+                changed = true;
+            }
+        }
+        if (changed) {
+            const bool was_pressed = action.pressed;
+            update_cache(action);
+            if (was_pressed && !action.pressed) {
+                action.released_tick = state.tick;
+            }
+        }
+    }
+}
+
+// What the player last used, from presses (not motion, which a resting stick or a nudged mouse
+// sends).
+void note_input(InputState& state, const Event& event, bool emulated) {
+    if (emulated) {
+        return;
+    }
+    switch (event.type) {
+    case EventType::Key:
+        if (event.pressed && !event.echo) {
+            state.last = {.kind = InputKind::Keyboard, .device = event.device};
+        }
+        break;
+    case EventType::MouseButton:
+        if (event.pressed) {
+            state.last = {.kind = InputKind::Mouse, .device = event.device};
+        }
+        break;
+    case EventType::ScreenTouch:
+        if (event.pressed) {
+            state.last = {.kind = InputKind::Touch, .device = event.device};
+        }
+        break;
+    case EventType::JoypadButton:
+        if (event.pressed) {
+            state.last = {.kind = InputKind::Gamepad, .device = event.device};
+        }
+        break;
+    case EventType::JoypadMotion:
+        if (std::abs(event.axis_value) >= 0.5F) {
+            state.last = {.kind = InputKind::Gamepad, .device = event.device};
+        }
+        break;
+    case EventType::MouseMotion:
+    case EventType::ScreenDrag:
+    case EventType::Action:
+    case EventType::Ime:
+    case EventType::JoypadConnection:
+    case EventType::JoypadSensor:
+        break;
+    }
+}
+
 void apply(InputState& state, Event event, bool emulated) {
+    note_input(state, event, emulated);
     switch (event.type) {
     case EventType::Key:
         if (!event.echo) {
@@ -292,6 +367,25 @@ void apply(InputState& state, Event event, bool emulated) {
         break;
     case EventType::JoypadMotion:
         state.joy_axes[{event.device, event.axis}] = event.axis_value;
+        break;
+    case EventType::JoypadConnection:
+        if (event.pressed) {
+            state.gamepads[event.device] = {.device = event.device,
+                                            .name = event.text,
+                                            .type = event.gamepad,
+                                            .can_rumble = event.can_rumble,
+                                            .has_motion = event.has_motion,
+                                            .gyro = {},
+                                            .accel = {}};
+        } else {
+            state.gamepads.erase(event.device);
+            state.sensors.erase(event.device);
+            state.rumbles.erase(event.device);
+            release_device(state, event.device);
+        }
+        break;
+    case EventType::JoypadSensor:
+        state.sensors[event.device] = {event.gyro, event.accel};
         break;
     case EventType::Action:
     case EventType::Ime:
@@ -674,17 +768,27 @@ void install(world::World& world, Map map, Settings settings) {
             InputState fresh;
             fresh.map = std::move(current->map);
             fresh.settings = current->settings;
+            // Gamepads stay plugged in.
+            fresh.gamepads = std::move(current->gamepads);
+            fresh.sensors = std::move(current->sensors);
             *current = std::move(fresh);
         }
     });
     world.add_system(
         "input",
-        [](world::World& in_world, double /*tick_seconds*/) {
+        [](world::World& in_world, double tick_seconds) {
             InputState* current = state_of(in_world);
             if (current == nullptr) {
                 return;
             }
             current->tick = in_world.tick();
+            // Rumbles run out on their own; the platform stops the motors at the same time.
+            std::erase_if(current->rumbles, [&](auto& entry) {
+                entry.second.seconds -= static_cast<float>(tick_seconds);
+                // Within a microsecond is done, whatever float rounding leaves.
+                constexpr float kDone = 1e-6F;
+                return entry.second.seconds <= kDone;
+            });
             current->applied.clear();
             std::vector<Pending> queue = std::move(current->queue);
             current->queue.clear();
@@ -845,6 +949,115 @@ float get_joy_axis(const world::World& world, int device, JoyAxis axis) {
     return found != state->joy_axes.end() ? found->second : 0.0F;
 }
 
+std::vector<Gamepad> gamepads(const world::World& world) {
+    std::vector<Gamepad> out;
+    if (const InputState* state = state_of(world); state != nullptr) {
+        for (const auto& [device, pad] : state->gamepads) {
+            if (auto found = gamepad(world, device)) {
+                out.push_back(std::move(*found));
+            }
+        }
+    }
+    return out;
+}
+
+std::optional<Gamepad> gamepad(const world::World& world, int device) {
+    const InputState* state = state_of(world);
+    if (state == nullptr) {
+        return std::nullopt;
+    }
+    const auto found = state->gamepads.find(device);
+    if (found == state->gamepads.end()) {
+        return std::nullopt;
+    }
+    Gamepad out = found->second;
+    if (const auto sensed = state->sensors.find(device); sensed != state->sensors.end()) {
+        out.gyro = sensed->second.first;
+        out.accel = sensed->second.second;
+    }
+    return out;
+}
+
+Vec3f gamepad_gyro(const world::World& world, int device) {
+    const InputState* state = state_of(world);
+    if (state == nullptr) {
+        return {};
+    }
+    const auto found = state->sensors.find(device);
+    return found != state->sensors.end() ? found->second.first : Vec3f{};
+}
+
+Vec3f gamepad_accelerometer(const world::World& world, int device) {
+    const InputState* state = state_of(world);
+    if (state == nullptr) {
+        return {};
+    }
+    const auto found = state->sensors.find(device);
+    return found != state->sensors.end() ? found->second.second : Vec3f{};
+}
+
+void rumble(world::World& world, int device, Rumble rumble) {
+    InputState* state = state_of(world);
+    if (state == nullptr) {
+        return;
+    }
+    rumble.low = std::clamp(rumble.low, 0.0F, 1.0F);
+    rumble.high = std::clamp(rumble.high, 0.0F, 1.0F);
+    rumble.left_trigger = std::clamp(rumble.left_trigger, 0.0F, 1.0F);
+    rumble.right_trigger = std::clamp(rumble.right_trigger, 0.0F, 1.0F);
+    const bool still = rumble.low == 0.0F && rumble.high == 0.0F && rumble.left_trigger == 0.0F &&
+                       rumble.right_trigger == 0.0F;
+    if (still || !(rumble.seconds > 0.0F)) {
+        state->rumbles.erase(device);
+        state->rumble_changes[device] = {};
+        return;
+    }
+    state->rumbles[device] = rumble;
+    state->rumble_changes[device] = rumble;
+}
+
+void stop_rumble(world::World& world, int device) {
+    rumble(world, device, {});
+}
+
+Rumble rumble_of(const world::World& world, int device) {
+    const InputState* state = state_of(world);
+    if (state == nullptr) {
+        return {};
+    }
+    const auto found = state->rumbles.find(device);
+    return found != state->rumbles.end() ? found->second : Rumble{};
+}
+
+std::map<int, Rumble> take_rumbles(world::World& world) {
+    InputState* state = state_of(world);
+    if (state == nullptr) {
+        return {};
+    }
+    return std::exchange(state->rumble_changes, {});
+}
+
+LastInput last_input(const world::World& world) {
+    const InputState* state = state_of(world);
+    return state != nullptr ? state->last : LastInput{};
+}
+
+std::optional<Prompt> action_prompt(const world::World& world, std::string_view action,
+                                    std::optional<LastInput> input) {
+    const InputState* state = state_of(world);
+    if (state == nullptr) {
+        return std::nullopt;
+    }
+    const LastInput used = input.value_or(state->last);
+    GamepadType type = GamepadType::Standard;
+    if (used.kind == InputKind::Gamepad) {
+        if (const auto found = state->gamepads.find(used.device); found != state->gamepads.end()) {
+            type = found->second.type;
+        }
+    }
+    return action_prompt(state->map, action, used.kind, type);
+}
+
 std::span<const Event> events(const world::World& world) {
     const InputState* state = state_of(world);
     return state != nullptr ? std::span<const Event>(state->applied) : std::span<const Event>();
@@ -942,6 +1155,40 @@ json::Value state_json(const world::World& world, std::span<const std::string> a
             joypads[key.first]["axes"][std::string(joy_axis_name(key.second))] = value;
         }
     }
+    // Sensors and motors to four places, which is finer than they report and reads shorter.
+    const auto short_float = [](float value) {
+        constexpr double kPlaces = 10000.0;
+        return json::Value(std::round(static_cast<double>(value) * kPlaces) / kPlaces);
+    };
+    const auto vector_json = [&](Vec3f value) {
+        return json::Array{short_float(value.x), short_float(value.y), short_float(value.z)};
+    };
+    for (const auto& [device, pad] : state->gamepads) {
+        json::Value& entry = joypads[device];
+        entry["name"] = pad.name;
+        entry["gamepad"] = gamepad_type_name(pad.type);
+        if (pad.can_rumble) {
+            entry["can_rumble"] = true;
+        }
+        if (pad.has_motion) {
+            entry["has_motion"] = true;
+        }
+    }
+    for (const auto& [device, sensed] : state->sensors) {
+        joypads[device]["gyro"] = vector_json(sensed.first);
+        joypads[device]["accel"] = vector_json(sensed.second);
+    }
+    for (const auto& [device, shaking] : state->rumbles) {
+        json::Value entry;
+        entry["low"] = short_float(shaking.low);
+        entry["high"] = short_float(shaking.high);
+        if (shaking.left_trigger != 0.0F || shaking.right_trigger != 0.0F) {
+            entry["left_trigger"] = short_float(shaking.left_trigger);
+            entry["right_trigger"] = short_float(shaking.right_trigger);
+        }
+        entry["seconds"] = short_float(shaking.seconds);
+        joypads[device]["rumble"] = std::move(entry);
+    }
     if (!joypads.empty()) {
         json::Array pads;
         for (auto& [device, pad] : joypads) {
@@ -949,6 +1196,15 @@ json::Value state_json(const world::World& world, std::span<const std::string> a
             pads.push_back(std::move(pad));
         }
         out["joypads"] = std::move(pads);
+    }
+    // Left out while it is the keyboard, as it is until something else is used.
+    if (state->last != LastInput{}) {
+        json::Value last;
+        last["kind"] = input_kind_name(state->last.kind);
+        if (state->last.device != 0) {
+            last["device"] = state->last.device;
+        }
+        out["last_input"] = std::move(last);
     }
     if (!state->queue.empty()) {
         out["queued"] = state->queue.size();

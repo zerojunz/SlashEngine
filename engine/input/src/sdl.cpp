@@ -310,11 +310,55 @@ void wheel(const Queue& queue, MouseButton button, float amount, Vec2 position) 
     queue(event);
 }
 
+GamepadType gamepad_type(SDL_Gamepad* gamepad) {
+    switch (SDL_GetGamepadType(gamepad)) {
+    case SDL_GAMEPAD_TYPE_XBOX360:
+        return GamepadType::Xbox360;
+    case SDL_GAMEPAD_TYPE_XBOXONE:
+        return GamepadType::XboxOne;
+    case SDL_GAMEPAD_TYPE_PS3:
+        return GamepadType::Ps3;
+    case SDL_GAMEPAD_TYPE_PS4:
+        return GamepadType::Ps4;
+    case SDL_GAMEPAD_TYPE_PS5:
+        return GamepadType::Ps5;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+        return GamepadType::SwitchPro;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+        return GamepadType::JoyconLeft;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+        return GamepadType::JoyconRight;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+        return GamepadType::JoyconPair;
+    default:
+        return GamepadType::Standard;
+    }
+}
+
+// SDL takes motor strengths from 0 to 65535.
+Uint16 motor(float strength) {
+    constexpr float kFull = 65535.0F;
+    return static_cast<Uint16>(std::lround(std::clamp(strength, 0.0F, 1.0F) * kFull));
+}
+
 } // namespace
 
 SdlReader::~SdlReader() {
     for (const auto& [device, gamepad] : gamepads_) {
         SDL_CloseGamepad(gamepad);
+    }
+}
+
+void SdlReader::update(world::World& world) {
+    for (const auto& [device, shake] : take_rumbles(world)) {
+        const auto found = gamepads_.find(device);
+        if (found == gamepads_.end()) {
+            continue;
+        }
+        const auto milliseconds = static_cast<Uint32>(std::lround(shake.seconds * 1000.0F));
+        (void)SDL_RumbleGamepad(found->second, motor(shake.low), motor(shake.high), milliseconds);
+        (void)SDL_RumbleGamepadTriggers(found->second, motor(shake.left_trigger),
+                                        motor(shake.right_trigger), milliseconds);
     }
 }
 
@@ -443,8 +487,47 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         devices_[event.gdevice.which] = device;
         gamepads_[device] = gamepad;
         const char* name = SDL_GetGamepadName(gamepad);
-        log::info("gamepad connected",
-                  {{"device", device}, {"name", name != nullptr ? name : "unknown"}});
+        Event connected;
+        connected.type = EventType::JoypadConnection;
+        connected.device = device;
+        connected.pressed = true;
+        connected.text = name != nullptr ? name : "";
+        connected.gamepad = gamepad_type(gamepad);
+        const SDL_PropertiesID properties = SDL_GetGamepadProperties(gamepad);
+        connected.can_rumble =
+            SDL_GetBooleanProperty(properties, SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
+        // Both sensors on, so gyro aiming and tilt work without asking.
+        connected.has_motion = SDL_GamepadHasSensor(gamepad, SDL_SENSOR_GYRO) &&
+                               SDL_GamepadHasSensor(gamepad, SDL_SENSOR_ACCEL) &&
+                               SDL_SetGamepadSensorEnabled(gamepad, SDL_SENSOR_GYRO, true) &&
+                               SDL_SetGamepadSensorEnabled(gamepad, SDL_SENSOR_ACCEL, true);
+        queue(connected);
+        log::info("gamepad connected", {{"device", device},
+                                        {"name", name != nullptr ? name : "unknown"},
+                                        {"gamepad", gamepad_type_name(connected.gamepad)}});
+        return;
+    }
+    case SDL_EVENT_GAMEPAD_SENSOR_UPDATE: {
+        const auto found = devices_.find(event.gsensor.which);
+        if (found == devices_.end()) {
+            return;
+        }
+        // SDL reports the two sensors apart; the event carries both, as last read.
+        auto& [gyro, accel] = sensors_[found->second];
+        const Vec3f value{event.gsensor.data[0], event.gsensor.data[1], event.gsensor.data[2]};
+        if (event.gsensor.sensor == SDL_SENSOR_GYRO) {
+            gyro = value;
+        } else if (event.gsensor.sensor == SDL_SENSOR_ACCEL) {
+            accel = value;
+        } else {
+            return;
+        }
+        Event sensed;
+        sensed.type = EventType::JoypadSensor;
+        sensed.device = found->second;
+        sensed.gyro = gyro;
+        sensed.accel = accel;
+        queue(sensed);
         return;
     }
     case SDL_EVENT_GAMEPAD_REMOVED: {
@@ -455,20 +538,14 @@ void SdlReader::read(const SDL_Event& event, world::World& world) {
         const int device = found->second;
         SDL_CloseGamepad(gamepads_[device]);
         gamepads_.erase(device);
+        sensors_.erase(device);
         devices_.erase(found);
-        // Unplugged mid-press, it lets go of its buttons and sticks.
-        Event release;
-        release.device = device;
-        release.type = EventType::JoypadButton;
-        for (unsigned button = 0; button <= static_cast<unsigned>(JoyButton::Touchpad); ++button) {
-            release.joy_button = static_cast<JoyButton>(button);
-            queue(release);
-        }
-        release.type = EventType::JoypadMotion;
-        for (unsigned axis = 0; axis <= static_cast<unsigned>(JoyAxis::TriggerRight); ++axis) {
-            release.axis = static_cast<JoyAxis>(axis);
-            queue(release);
-        }
+        // Unplugged mid-press, it lets go of its buttons and sticks (the input state does that
+        // for a disconnection).
+        Event disconnected;
+        disconnected.type = EventType::JoypadConnection;
+        disconnected.device = device;
+        queue(disconnected);
         log::info("gamepad disconnected", {{"device", device}});
         return;
     }

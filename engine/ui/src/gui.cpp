@@ -424,6 +424,8 @@ bool is_pressed(const input::Event& event) {
     case input::EventType::MouseMotion:
     case input::EventType::ScreenDrag:
     case input::EventType::Ime:
+    case input::EventType::JoypadConnection:
+    case input::EventType::JoypadSensor:
         break;
     }
     return false;
@@ -2160,6 +2162,9 @@ private:
             break;
         case input::EventType::Ime:
             ime_event(event);
+            break;
+        case input::EventType::JoypadConnection:
+        case input::EventType::JoypadSensor:
             break;
         }
         if (!handled_ &&
