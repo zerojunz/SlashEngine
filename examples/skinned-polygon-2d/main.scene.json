@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "mid_bone": {
+      "components": {
+        "Bone2D": {},
+        "Transform2D": {"children": ["tip_bone"], "position": [40, 0]}
+      }
+    },
+    "root_bone": {
+      "components": {
+        "Bone2D": {},
+        "Transform2D": {"children": ["mid_bone"]}
+      }
+    },
+    "skin": {
+      "components": {
+        "Polygon2D": {
+          "color": [0.35, 0.75, 0.45, 1],
+          "polygon": [[0, -12], [30, -10], [60, -8], [90, -5], [120, -1], [120, 1], [90, 5],
+                      [60, 8], [30, 10], [0, 12]]
+        },
+        "Transform2D": {}
+      }
+    },
+    "tentacle": {
+      "components": {
+        "Skeleton2D": {},
+        "Transform2D": {"children": ["root_bone", "skin"], "position": [200, 150]}
+      }
+    },
+    "tip_bone": {
+      "components": {
+        "Bone2D": {"length": 40},
+        "Transform2D": {"position": [40, 0]}
+      }
+    }
+  },
+  "format": 1
+}

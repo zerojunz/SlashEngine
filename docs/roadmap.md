@@ -1481,7 +1481,8 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [ ] WebRTC peers
         - [x] Gamepad rumble, gyro and controller button glyphs
         - [x] HTTP requests from game code
-        - [ ] 2D skeletons: `Skeleton2D`, `Bone2D` and skinned `Polygon2D`
+        - [x] 2D skeletons: `Skeleton2D`, `Bone2D` and skinned `Polygon2D`; `skeleton.bind` rests
+          the bones and weights the points, and `skeleton.get` lists a `Skeleton2D`'s bones
         - [ ] Dedicated server exports
         - [ ] Sample games, `samples/pong` first
         - [ ] Motion blur and lens effects (film grain, chromatic aberration, lens flares)

@@ -2696,6 +2696,15 @@ SLASH_COMPONENT(Hair2D, groom, root_line, tint, simulate, collide, sort_order, s
 // vertex_colors (one per point, else white), or, when polygons lists index lists into polygon, each
 // of those in turn, later ones over earlier ones. A texture samples at uv (one per point, in
 // pixels) or else at the points themselves.
+// One bone a Polygon2D's points follow, with a weight for each point (missing ones are 0).
+struct BoneWeights2D {
+    entt::entity bone{entt::null};
+    std::vector<float> weights;
+
+    friend bool operator==(const BoneWeights2D&, const BoneWeights2D&) = default;
+};
+SLASH_REFLECT(BoneWeights2D, bone, weights)
+
 struct Polygon2D {
     std::vector<Vec2> polygon;
     std::vector<std::vector<int>> polygons;
@@ -2710,11 +2719,41 @@ struct Polygon2D {
     bool visible = true;
     int light_layers = 1;
     std::string filter = "inherit"; // "inherit", "linear" or "nearest"
+    // Skinning (slash/world/skeleton2d.hpp): each point moves with the bones of this Skeleton2D
+    // that weigh it, by how far each has moved from its rest, blended by weight.
+    entt::entity skeleton{entt::null};
+    std::vector<BoneWeights2D> bone_weights;
 
     friend bool operator==(const Polygon2D&, const Polygon2D&) = default;
 };
 SLASH_COMPONENT(Polygon2D, polygon, polygons, color, vertex_colors, offset, texture, uv, tint,
-                sort_order, sort_order_relative, visible, light_layers, filter)
+                sort_order, sort_order_relative, visible, light_layers, filter, skeleton,
+                bone_weights)
+
+// The root of a 2D skeleton: the Bone2D entities in its Transform2D tree are its bones, and
+// Polygon2Ds whose skeleton is this entity bend with them (slash/world/skeleton2d.hpp).
+struct Skeleton2D {
+    // Draws its polygons as they were weighted, leaving out how the bones have moved.
+    bool show_rest_only = false;
+
+    friend bool operator==(const Skeleton2D&, const Skeleton2D&) = default;
+};
+SLASH_COMPONENT(Skeleton2D, show_rest_only)
+
+// One bone of a Skeleton2D, anywhere in its Transform2D tree: its Transform2D is its pose, and
+// rest_* the Transform2D it had when polygons were weighted to it (in the same parent's space).
+// A point weighted to it moves by the way from its rest to its pose.
+struct Bone2D {
+    Vec2 rest_position;
+    float rest_rotation = 0.0F; // radians, clockwise
+    Vec2 rest_scale{1.0F, 1.0F};
+    // Pixels along its x axis, for weighting points to it; 0 reaches to its first child bone (16
+    // pixels with none).
+    float length = 0.0F;
+
+    friend bool operator==(const Bone2D&, const Bone2D&) = default;
+};
+SLASH_COMPONENT(Bone2D, rest_position, rest_rotation, rest_scale, length)
 
 // A 2D character from a .character.json recipe (slash/world/character.hpp): the character_2d
 // system keeps its cut-out's bones as children, <id>_<bone>, each a Transform2D and a Polygon2D,

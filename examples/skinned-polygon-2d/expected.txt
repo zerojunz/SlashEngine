@@ -1,0 +1,16 @@
+scene.open {"path":"main.scene.json"}
+{"entities":5,"path":"main.scene.json"}
+skeleton.bind {"id":"tentacle","polygons":["skin"]}
+{"polygons":[{"bones":["root_bone","mid_bone","tip_bone"],"id":"skin","points":10}],"rested":3}
+tip at [120.0, -1.0]
+step {"tick_seconds":0.1,"ticks":10}
+{"tick":10,"ticks":10}
+skeleton.get {"bones":["tip_bone"],"id":"tentacle"}
+{"bones":[{"id":"root_bone"},{"id":"mid_bone","parent":"root_bone"},{"id":"tip_bone","parent":"mid_bone","pose":{"position":[72.216,30.532],"rotation":1.2},"rest":{"position":[80.0,0.0],"rotation":0.0},"tip":[120.0,0.0]}],"polygons":["skin"]}
+tip at [87.6, 67.5]
+component.set {"components":{"Skeleton2D":{"show_rest_only":true}},"id":"tentacle"}
+{"changed":{"Skeleton2D":{"show_rest_only":true}},"id":"tentacle"}
+tip at [120.0, -1.0]
+component.set {"components":{"Skeleton2D":{"show_rest_only":false}},"id":"tentacle"}
+{"changed":{"Skeleton2D":{"show_rest_only":false}},"id":"tentacle"}
+tip at [87.6, 67.5]

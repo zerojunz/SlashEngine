@@ -4491,6 +4491,34 @@ maze of tiles and a duck across its pond.
 - An outline on a navigation layer the tile set doesn't have, or with no area, fails
   validation.
 
+## 2D skeletons
+
+A `Skeleton2D` bends `Polygon2D`s with bones, for cut-out characters and creatures drawn from
+one texture: each point of a skinned polygon moves the way the bones weighting it moved from their
+rest to their pose, blended by weight. `examples/skinned-polygon-2d` curls a tentacle.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Skeleton2D` | `show_rest_only` `false` (draws its polygons as they were weighted, leaving out how the bones moved) |
+| `Bone2D` | `rest_position` `[0, 0]`, `rest_rotation` `0`, `rest_scale` `[1, 1]` (its `Transform2D` when polygons were weighted to it, in its parent's space), `length` `0` (pixels along its x axis that weighting reaches; 0 reaches to its first child bone, 16 with none) |
+
+- A skeleton's bones are the `Bone2D` entities anywhere in its `Transform2D` tree, parents first;
+  their `Transform2D` is their pose, so animations, IK and game code move bones as any entity.
+  Entities between bones carry them as parents do. A `top_level` entity or another `Skeleton2D`
+  starts a tree of its own.
+- A `Polygon2D` is skinned by its `skeleton` (the `Skeleton2D`'s ID) and `bone_weights`, a list of
+  `{"bone": <Bone2D ID>, "weights": [a weight a point]}`; missing weights are 0, and a point no
+  bone weighs stays put. Keep the polygon beside the bones (under the skeleton, or elsewhere), not
+  under a bone, or it moves twice.
+- [`skeleton.bind`](commands.md#skeletonbind) binds polygons in one call: it sets each bone's
+  rest to its pose and weights each point to the two bones nearest it, by the inverse fourth power
+  of its distance to each bone's segment. [`skeleton.get`](commands.md#skeletonget) lists the bones
+  with their rest, pose and tip.
+- Points are bent after flesh moves them ([`Flesh2D`](#characters)) and before the polygon is
+  placed; triangles are cut from the rest shape, so a bent polygon keeps its triangles. A weight
+  naming an entity that isn't one of the skeleton's bones is left out, and
+  [`frame.summary`](commands.md#framesummary)'s problems name it.
+
 ## 2D camera
 
 A `Camera2D` chooses the part of the world the window shows. Without one the window shows world
@@ -5642,7 +5670,7 @@ cloth, and only one prop may be at a point; `scene validate` reports each at its
 | `Flesh3D` | `enabled` `true`, `stiffness` `0.5` (0 soft to 1 firm), `damping` `0.5`, `jiggle` `0.5` (how far and long flesh swings after the body moves), `activation` `0` (every muscle's), `automatic` `true`, `muscles` `{}` (activations by muscle name, kind or group), `substeps` `4` (1 to 16) |
 | `Flesh2D` | `Flesh3D`'s, and `view` `"skin"` (`"muscles"` or `"skeleton"` drawn over the cut-out) |
 | `Character2D` | `recipe` `""`, `pixels_per_meter` `100`, `flip_h` `false`, `look_at` none, `jaw_open` `0`, `hand_front` `""`, `hand_back` `""`, `expressions` `{}` (ARKit's [expression shapes](#faces) by name, 0 to 1) |
-| `Polygon2D` | `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `tint` `[1, 1, 1, 1]`, `sort_order` `0`, `sort_order_relative` `true`, `visible` `true`, `light_layers` `1`, `filter` `"inherit"` |
+| `Polygon2D` | `polygon` `[]` (points in its space), `polygons` `[]` (lists of indices into it, each drawn as its own polygon; empty draws `polygon` whole), `color` `[1, 1, 1, 1]`, `vertex_colors` `[]` (a color a point, else `color`), `offset` `[0, 0]`, `texture` `""`, `uv` `[]` (texture pixels a point, else the point itself), `tint` `[1, 1, 1, 1]`, `sort_order` `0`, `sort_order_relative` `true`, `visible` `true`, `light_layers` `1`, `filter` `"inherit"`, `skeleton` none and `bone_weights` `[]` (its [2D skeleton](#2d-skeletons)) |
 
 The storyboard's `character_rules` entries (in `storyboard/design.json`) cover the recipes in
 their links, or every one with neither links nor refs: `silhouette_difference` (how different, 0

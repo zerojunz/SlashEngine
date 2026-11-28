@@ -69,7 +69,7 @@ as `entity.get`, reject it as an unknown param.
 | Hair | [`hair.get`](#hairget) |
 | Damage | [`damage.apply`](#damageapply), [`damage.state`](#damagestate), [`damage.check`](#damagecheck) |
 | Animations | [`animation.eval`](#animationeval), [`animation.seek`](#animationseek) |
-| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.bake_maps`](#modelbake_maps), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`solid.get`](#csgget) |
+| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.bake_maps`](#modelbake_maps), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`skeleton.bind`](#skeletonbind), [`solid.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`blockmap.set`](#gridmapset), [`blockmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.import`](#terrainimport), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
@@ -1888,12 +1888,13 @@ hips' height, by which animations' positions scale when they play on another mod
 Returns the bones of the model an entity's `Model3D` draws, and the
 [animations posing them](scene-format.md#skeletons-and-model-animations): its `Animator`'s
 animation from a model, then its `Skeleton3D`, then its [IK modifiers](scene-format.md#ik-modifiers).
-Bones named get their pose as it is drawn.
+Bones named get their pose as it is drawn. Given a [`Skeleton2D`](scene-format.md#2d-skeletons), it
+returns that skeleton's bones instead (below).
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity whose `Model3D` draws a model |
-| `bones` | array of strings | the tree | Bones to pose |
+| `id` | string | required | An entity whose `Model3D` draws a model, or a `Skeleton2D` |
+| `bones` | array of strings | the tree | Bones to pose (2D: their entity IDs) |
 
 Needs: `read`.
 
@@ -1914,6 +1915,46 @@ Needs: `read`.
 
 A bone the model hasn't fails at `/bones/<n>` with "did you mean", and an entity that draws no
 model, or a model with no nodes (an OBJ model), at `/id`.
+
+For a `Skeleton2D`, `bones` is each `Bone2D` in its tree, parents first, with its `id` and its
+`parent` bone (left out for one with none); a bone named in `bones` also gets its `rest` and `pose`
+(`position` and `rotation` in the skeleton's space) and its `tip`, where its length reaches at
+rest. `polygons` lists the `Polygon2D`s it bends.
+
+```json
+{"bones":[{"id":"upper"},{"id":"lower","parent":"upper","pose":{"position":[50,0],"rotation":1.571},"rest":{"position":[50,0],"rotation":0},"tip":[100,0]}],"polygons":["skin"]}
+```
+
+### skeleton.bind
+
+Binds `Polygon2D`s to a [`Skeleton2D`](scene-format.md#2d-skeletons) so its bones bend them: sets
+each `Bone2D`'s rest to its pose, then weights each polygon's points to the bones nearest them and
+sets the polygon's `skeleton`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `Skeleton2D` |
+| `polygons` | array of strings | those it bends | IDs of `Polygon2D`s to bind |
+| `rest` | boolean | `true` | Sets each bone's rest to its pose first |
+| `weights` | boolean | `true` | Weights the points; `false` only sets the polygons' `skeleton` |
+| `bones_per_point` | integer 1 to 4 | 2 | Bones each point follows, nearest first |
+
+Needs: `read`, `edit`.
+
+```json
+{"id": "arm", "polygons": ["skin"]}
+```
+
+```json
+{"polygons":[{"bones":["upper","lower"],"id":"skin","points":6}],"rested":2}
+```
+
+- A point's weights add to 1, kept to 3 places: each of its nearest bones weighs it by the inverse
+  fourth power of its distance (plus a pixel) to the bone's segment, from its origin to its tip.
+  Bones that weigh no point are left out of `bone_weights`.
+- `rested` is how many bones had their rest set; it is left out with `rest` false.
+- An entity with no `Skeleton2D`, or a skeleton with no bones, fails at `/id`; a polygon ID that
+  isn't one at `/polygons/<n>`.
 
 ### solid.get
 

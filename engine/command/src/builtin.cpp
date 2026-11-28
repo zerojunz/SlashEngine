@@ -4,6 +4,7 @@
 #include "procedural.hpp"
 #include "project_map.hpp"
 #include "selection.hpp"
+#include "skeleton2d.hpp"
 
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
@@ -3418,11 +3419,14 @@ Reply skeleton_get(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
+    if (world.ecs().all_of<world::Skeleton2D>(entity)) {
+        return detail::skeleton_get_2d(session, entity, params);
+    }
     const auto* instance = world.ecs().try_get<world::Model3D>(entity);
     if (instance == nullptr || instance->mesh.empty()) {
-        return param_error(
-            code::kInvalidParams, "/id",
-            quoted(id) + (instance == nullptr ? " has no Model3D" : "'s Model3D draws no model"));
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + (instance == nullptr ? " has no Model3D or Skeleton2D"
+                                                             : "'s Model3D draws no model"));
     }
     auto loaded = session.assets().load<scene3d::Model>(instance->mesh);
     if (!loaded) {
@@ -8248,13 +8252,15 @@ void register_builtin_commands(Registry& registry) {
         .description = "Returns the bones of an entity's model (each with its parent) and the "
                        "animations posing them. Bones named get their pose as drawn: position, "
                        "rotation (radians, as Skeleton3D's) and scale in the parent, and "
-                       "world_position.",
+                       "world_position. A Skeleton2D's: its Bone2Ds (each with its parent) and "
+                       "the polygons it bends; bones named get rest, pose and tip in its space.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity whose Model3D draws a model.")},
-                {"bones", names_property("Bones to pose. Default: the tree, without poses.")},
+                {"id", id_property("An entity whose Model3D draws a model, or a Skeleton2D.")},
+                {"bones", names_property("Bones to pose (2D: their IDs). Default: the tree, "
+                                         "without poses.")},
             },
             {"id"}),
         .handler = skeleton_get,
@@ -8935,6 +8941,7 @@ void register_builtin_commands(Registry& registry) {
     register_navigation_commands(registry);
     register_npc_commands(registry);
     register_ragdoll_commands(registry);
+    detail::register_skeleton2d_commands(registry);
     register_character_commands(registry);
     register_face_commands(registry);
     register_creature_commands(registry);
