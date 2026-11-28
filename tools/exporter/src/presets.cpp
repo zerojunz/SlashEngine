@@ -163,6 +163,12 @@ void check_preset(const std::string& name, const json::Value& preset,
         errors.push_back({path + "/icon", "expected a file inside the project, separated by '/', "
                                           "with no \".\" or \"..\" parts"});
     }
+    if (const json::Value* server = preset.find("dedicated_server");
+        server != nullptr && server->as_bool() && platform != "linux" && platform != "windows" &&
+        platform != "macos") {
+        errors.push_back({path + "/dedicated_server",
+                          "only linux, windows and macos presets can export a dedicated server"});
+    }
     for (const std::string_view section : {"macos", "windows", "linux", "android", "ios"}) {
         if (preset.find(section) != nullptr && platform != section) {
             errors.push_back({path + "/" + std::string(section),
@@ -408,6 +414,11 @@ json::Value presets_schema() {
                                 "as: each recipe with that tier in its quality has it applied, "
                                 "and the rest ship as written.")},
             {"sdks", std::move(sdks)},
+            {"dedicated_server",
+             property("boolean",
+                      "Exports a dedicated server (linux, windows and macos): it runs with no "
+                      "window, GPU or sound, ticking in real time until stopped, and ships "
+                      "without textures and baked lighting. Default false.")},
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
             {"linux", std::move(linux_section)},
@@ -485,6 +496,9 @@ Result<Presets> parse_presets(const json::Value& presets) {
         }
         if (const json::Value* quality = value.find("model_quality"); quality != nullptr) {
             preset.model_quality = quality->as_string();
+        }
+        if (const json::Value* server = value.find("dedicated_server"); server != nullptr) {
+            preset.dedicated_server = server->as_bool();
         }
         if (const json::Value* sdks = value.find("sdks"); sdks != nullptr) {
             preset.sdks.emplace();

@@ -113,6 +113,9 @@ struct Preset {
     // The SDK packages it links, by name; nullopt means every one with a section for the
     // platform (slash/exporter/sdk.hpp).
     std::optional<std::vector<std::string>> sdks;
+    // A dedicated server: built to run as one (runtime::GameOptions::server), its data without
+    // the files only drawing reads (textures, baked lighting). Desktop platforms only.
+    bool dedicated_server = false;
     MacosOptions macos;
     WindowsOptions windows;
     AndroidOptions android;

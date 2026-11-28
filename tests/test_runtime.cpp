@@ -10,6 +10,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/services/services.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/server.hpp"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_stdinc.h>
@@ -166,6 +167,12 @@ TEST_CASE("game arguments") {
     // Launchers add their own single-dash arguments; those are ignored.
     CHECK(runtime::parse_game_args({"-NSDocumentRevisionsDebugMode", "YES"}).ok());
     CHECK_FALSE(runtime::parse_game_args({"--headless"}).ok());
+    // A server runs until stopped, so it needs no --ticks.
+    auto server = runtime::parse_game_args({"--server"});
+    REQUIRE(server.ok());
+    CHECK(server.value().server);
+    CHECK(server.value().max_ticks == 0);
+    CHECK(runtime::parse_game_args({"--headless", "--server"}).ok());
     CHECK_FALSE(runtime::parse_game_args({"--ticks", "ten"}).ok());
     auto typo = runtime::parse_game_args({"--tick", "3"});
     REQUIRE_FALSE(typo.ok());
@@ -194,6 +201,35 @@ TEST_CASE("a game loads its main scene and runs headless") {
           100.0F);
     CHECK_FALSE(summary.find("quit_requested")->as_bool());
     CHECK_FALSE(game.value()->frame());
+}
+
+TEST_CASE("a dedicated server runs headless in real time, draws nothing and says it is one") {
+    {
+        auto game = runtime::Game::start({.data_dir = SLASH_TEST_DATA_DIR "/game",
+                                          .headless = false,
+                                          .server = true,
+                                          .max_ticks = 6});
+        REQUIRE_MESSAGE(game.ok(), (game.ok() ? std::string() : game.error().message));
+        CHECK(game.value()->server());
+        CHECK(game.value()->headless());
+        CHECK(slash::world::is_dedicated_server(game.value()->world()));
+        CHECK(game.value()->loop().real_time());
+        const auto started = std::chrono::steady_clock::now();
+        while (game.value()->frame()) {
+        }
+        // Six ticks at the project's 50 a second take a tenth of a second or more, by the clock.
+        CHECK(std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(80));
+        const json::Value summary = game.value()->summary();
+        CHECK(summary.find("ticks")->as_int() == 6);
+        CHECK(summary.find("server")->as_bool());
+        CHECK(summary.find("sprites")->as_int() == 0);
+    }
+    // A game that isn't one says so.
+    auto player = runtime::Game::start(
+        {.data_dir = SLASH_TEST_DATA_DIR "/game", .headless = true, .max_ticks = 1});
+    REQUIRE_MESSAGE(player.ok(), (player.ok() ? std::string() : player.error().message));
+    CHECK_FALSE(slash::world::is_dedicated_server(player.value()->world()));
+    CHECK(player.value()->summary().find("server") == nullptr);
 }
 
 TEST_CASE("a game starts with the project's V-Sync mode and frame cap") {

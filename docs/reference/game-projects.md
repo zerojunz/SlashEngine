@@ -2,7 +2,7 @@
 
 Game projects and exports: project.json, presets and building for each platform.
 
-Status: current · Updated: 2026-11-22
+Status: current · Updated: 2026-11-26
 
 A game is a folder with a `project.json` (name, version, main scene; `$cli schema project`) and
 its scenes. `slash-cli init` creates one. `engine/runtime` runs it: `Game` loads the main scene
@@ -12,6 +12,7 @@ the same loop works on the web and on phones.
 ```bash
 game=./build/dev/tools/slash-game/slash-game
 $game --data tests/data/game --headless --ticks 60     # run a project as its export would
+$game --data tests/data/game --server                  # run it as a dedicated server
 $cli project validate tests/data/game
 $cli export linux --project path/to/game --test        # build, lay out and run headless
 ```
@@ -110,3 +111,18 @@ Games support OS versions from 2020 on: macOS 11, iOS 14, Windows 10 (an MSVC bu
 version is 10.0; llvm-mingw builds keep 6.0, since Windows 11 won't start a MinGW executable
 marked 10.0), Android 11 (API level 30, targeting 36), and Chrome 85, Firefox 79 and Safari 15
 (pinned in `export/CMakeLists.txt`).
+
+## Dedicated servers
+
+A preset with `"dedicated_server": true` (`macos`, `windows` and `linux`) exports the game as a
+dedicated server, for a multiplayer game's players to join over [the network](networking.md). It
+runs with no window, GPU, sound or screen reader, ticking at the project's `tick_hz` in real time
+until stopped (Ctrl+C, `SIGTERM`, or `--ticks` for a test), and draws nothing. Any game runs this
+way with `--server` (`$game --data path/to/game --server`). Its data leaves out the files only
+drawing reads, textures (and their forms), lightmaps, baked voxel lighting, splats and IES
+profiles, though they are still checked; the export's result gives `dedicated_server`'s
+`stripped_files` and `stripped_bytes`. On Windows it is a console program; on macOS it is still
+an app bundle, run as `<binary>.app/Contents/MacOS/<binary>`. Game code asks
+`world::is_dedicated_server(world)` (`slash/world/server.hpp`) to host instead of join and to skip
+what only players see, and the summary a server prints when it stops has `"server": true`. Save
+data goes in the user's folder, as a player's does.

@@ -39,7 +39,11 @@ struct GameOptions {
     // next to the executable (inside the app bundle on macOS, the root on the web).
     std::string data_dir;
     bool headless = false;
-    // Stop after this many ticks; 0 runs until the window closes. Headless runs must set it.
+    // Runs as a dedicated server (slash/world/server.hpp): headless, ticking in real time until
+    // stopped (or max_ticks), drawing nothing. Exports with dedicated_server set it.
+    bool server = false;
+    // Stop after this many ticks; 0 runs until the window closes. Headless runs must set it, but
+    // servers.
     std::uint64_t max_ticks = 0;
     // The game's own code linked in, as exports link it: the function SLASH_GAME_MODULE defines.
     // Without it, a project with gameplay sources loads the library slash-cli build makes, and
@@ -63,6 +67,7 @@ struct GameOptions {
 inline constexpr std::string_view kGameUsage =
     "Options:\n"
     "  --headless       Run with no window or GPU (needs --ticks)\n"
+    "  --server         Run as a dedicated server: headless, in real time until stopped\n"
     "  --ticks <n>      Stop after n fixed ticks and print a JSON summary\n"
     "  --data <dir>     Folder with project.json (default: the exported data folder)\n"
     "  --help           Show this message\n";
@@ -106,6 +111,8 @@ public:
     // Assets from the data folder, for gameplay code; prefab files are read through it too.
     [[nodiscard]] asset::Assets& assets() noexcept { return assets_; }
     [[nodiscard]] bool headless() const noexcept { return platform_.headless(); }
+    // Whether it runs as a dedicated server (GameOptions::server).
+    [[nodiscard]] bool server() const noexcept { return server_; }
     // The device drawing to the window: the null device when headless or no GPU backend works.
     // Its set_vsync changes V-Sync while the game runs, e.g. from an options menu.
     [[nodiscard]] render::RenderDevice& renderer() noexcept { return *renderer_; }
@@ -147,6 +154,7 @@ private:
     std::unique_ptr<audio::SdlOutput> audio_output_;
     std::unique_ptr<audio::SdlInput> audio_input_;
     bool draw_failed_ = false;
+    bool server_ = false;
     // What became of XR when the project enables it, for summary().
     json::Value xr_;
     bool headset_failed_ = false;

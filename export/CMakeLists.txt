@@ -12,6 +12,8 @@
 #   SLASH_GAME_MICROPHONE_USAGE  why, shown when macOS and iOS ask for the microphone
 #   SLASH_GAME_AI       ON if the game calls language models (it has a providers.json)
 #   SLASH_GAME_ANALYTICS  ON if project.json's services.analytics names an endpoint
+#   SLASH_GAME_SERVER   ON for a dedicated server: it always runs as one (--server), and on
+#                       Windows is a console program
 #   SLASH_GAME_TRACKING_USAGE  why the game asks to track the player, for Apple's prompt
 #   SLASH_GAME_SOURCES  the game's own C++ code (project.json's gameplay.sources): absolute
 #                       paths of folders, whose .cpp files are compiled in, and files
@@ -165,6 +167,9 @@ if(SLASH_GAME_AI)
 endif()
 if(SLASH_GAME_ANALYTICS)
     target_compile_definitions(game PRIVATE SLASH_GAME_ANALYTICS)
+endif()
+if(SLASH_GAME_SERVER)
+    target_compile_definitions(game PRIVATE SLASH_GAME_SERVER)
 endif()
 # Built as the engine is, with no exceptions or RTTI, as the tools build the game's code.
 slash_engine_target(game)
@@ -458,7 +463,8 @@ elseif(APPLE)
     install(DIRECTORY ${SLASH_GAME_DATA}/
         DESTINATION ${SLASH_GAME_BINARY}.app/Contents/Resources/data COMPONENT game)
 else()
-    if(WIN32)
+    # A server runs in a console, where it logs and Ctrl+C stops it.
+    if(WIN32 AND NOT SLASH_GAME_SERVER)
         set_target_properties(game PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
     # The icon, as the executable's first icon resource: Explorer shows it, and SDL gives it to
