@@ -1,0 +1,11 @@
+{
+  "entities": {
+    "hero": {
+      "components": {
+        "Sprite2D": {"texture": "hero.png"},
+        "Transform2D": {"position": [64, 48]}
+      }
+    }
+  },
+  "format": 1
+}

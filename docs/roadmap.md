@@ -1483,7 +1483,8 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] HTTP requests from game code
         - [x] 2D skeletons: `Skeleton2D`, `Bone2D` and skinned `Polygon2D`; `skeleton.bind` rests
           the bones and weights the points, and `skeleton.get` lists a `Skeleton2D`'s bones
-        - [ ] Dedicated server exports
+        - [x] Dedicated server exports: a preset's `dedicated_server` and `--server`; servers tick in
+          real time with no window, GPU or sound, and ship without textures
         - [ ] Sample games, `samples/pong` first
         - [ ] Motion blur and lens effects (film grain, chromatic aberration, lens flares)
         - [ ] Sky atmosphere and volumetric clouds, as Unreal's

@@ -18,7 +18,9 @@ A world's multiplayer runs on a peer: it admits the peers that join, tells clien
 other through the server, relays their packets and calls remote procedures on entities, and
 replicates entities and their fields. Sessions and exported games give every world one, offline
 until it hosts or joins, and agents drive it with the `net.*` commands. Game code also calls web APIs
-with [HTTP requests](#http-requests).
+with [HTTP requests](#http-requests). A game exported as a
+[dedicated server](game-projects.md#dedicated-servers) runs headless in real time, and its code
+hosts when `world::is_dedicated_server(world)` says so.
 
 ## Peers
 

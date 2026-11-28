@@ -16,6 +16,7 @@
 #include "slash/ui/ui.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
+#include "slash/world/server.hpp"
 #include "slash/xr/openxr.hpp"
 
 #include <SDL3/SDL_events.h>
@@ -46,13 +47,16 @@ std::vector<std::string> plugin_library_folders() {
 } // namespace
 
 Result<GameOptions> parse_game_args(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 3> kOptions{"--headless", "--ticks", "--data"};
+    constexpr std::array<std::string_view, 4> kOptions{"--headless", "--server", "--ticks",
+                                                       "--data"};
     GameOptions options;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
         const bool has_value = i + 1 < args.size();
         if (arg == "--headless") {
             options.headless = true;
+        } else if (arg == "--server") {
+            options.server = true;
         } else if (arg == "--ticks" && has_value) {
             const std::string& value = args[++i];
             const char* end = value.data() + value.size();
@@ -71,8 +75,8 @@ Result<GameOptions> parse_game_args(const std::vector<std::string>& args) {
             return make_error(ErrorCode::InvalidArgument, std::move(message));
         }
     }
-    if (options.headless && options.max_ticks == 0) {
-        return make_error(ErrorCode::InvalidArgument, "--headless needs --ticks");
+    if (options.headless && !options.server && options.max_ticks == 0) {
+        return make_error(ErrorCode::InvalidArgument, "--headless needs --ticks, or --server");
     }
     return options;
 }
@@ -100,7 +104,9 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     config.title = project.value().name;
     config.width = project.value().window_width;
     config.height = project.value().window_height;
-    config.headless = options.headless;
+    // A server has no window: it ticks in real time and draws nothing.
+    const bool headless = options.headless || options.server;
+    config.headless = headless;
     // The window is made for the driver the game draws with, which falls back to OpenGL where its
     // GPU backend doesn't work. Asking needs video started, so the platform calls back.
     std::string driver = project.value().rendering_driver;
@@ -116,7 +122,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         project.value().linux_display_driver == "wayland" ? "wayland,x11" : "x11,wayland";
 #endif
     // Made hidden where a screen reader's adapter attaches first, as Windows needs.
-    config.hidden = !options.headless && accessibility::available() &&
+    config.hidden = !headless && accessibility::available() &&
                     project.value().accessibility_support != "disabled";
     auto platform = platform::Platform::create(config);
     if (!platform) {
@@ -125,8 +131,12 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
 
     auto game = std::unique_ptr<Game>(
         new Game(std::move(project).value(), std::move(platform).value(), data_dir));
+    // Before the game's code and scene load, so both can ask.
+    game->server_ = options.server;
+    world::set_dedicated_server(game->world_, options.server);
     // Save data (slash/platform/save_data.hpp) goes in the player's folder for the game; a
     // headless run's, a test's or a playtest's in the project's, so they never touch a player's.
+    // A server keeps its own in the user's folder too.
     std::string saves =
         options.headless ? std::string() : platform::user_save_folder(game->project_.name);
     if (saves.empty()) {
@@ -169,6 +179,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     }
     auto loop = platform::Loop::create(game->platform_, {.tick_hz = game->project_.tick_hz,
                                                          .max_ticks = options.max_ticks,
+                                                         .real_time = options.server,
                                                          .max_fps = game->project_.max_fps});
     if (!loop) {
         return loop.error();
@@ -235,7 +246,7 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
         options.register_backends(backends);
     }
     const auto& endpoint = game->project_.services.analytics_endpoint;
-    if (endpoint && options.analytics_post && !options.headless) {
+    if (endpoint && options.analytics_post && !headless) {
         // Events, and the install's ID, wait in the game's user folder until the server takes
         // them.
         std::string store;
@@ -438,8 +449,8 @@ bool Game::frame() {
         }
     });
     mark(render::LatencyMarker::SimulationEnd);
-    // The frame that runs the last tick is drawn too.
-    if (running || loop_->stats().ticks != ticks) {
+    // The frame that runs the last tick is drawn too; a server draws nothing.
+    if (!server_ && (running || loop_->stats().ticks != ticks)) {
         mark(render::LatencyMarker::RenderSubmitStart);
         draw();
         mark(render::LatencyMarker::RenderSubmitEnd);
@@ -547,6 +558,9 @@ json::Value Game::summary() const {
     summary["ticks"] = loop_->stats().ticks;
     summary["quit_requested"] = loop_->stats().quit_requested;
     summary["headless"] = platform_.headless();
+    if (server_) {
+        summary["server"] = true;
+    }
     summary["renderer"] = render::backend_name(renderer_->backend());
     if (!project_.latency_reduction.empty()) {
         summary["latency_reduction"] = latency_ != nullptr;

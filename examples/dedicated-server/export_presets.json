@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "presets": {
+    "linux": {"platform": "linux"},
+    "linux-server": {"dedicated_server": true, "platform": "linux"}
+  }
+}

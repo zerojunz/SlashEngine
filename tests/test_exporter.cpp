@@ -134,6 +134,10 @@ TEST_CASE("export presets report every error with its path") {
                                 "windows": {"timestamp_url": "ftp://example.com"}}}})",
                             "/presets/w/windows/timestamp_url"),
                    "http"));
+    CHECK(contains(error_at(R"({"format": 1, "presets": {"a": {"platform": "android",
+                                "dedicated_server": true}}})",
+                            "/presets/a/dedicated_server"),
+                   "only linux, windows and macos"));
     CHECK(contains(error_at(R"({"format": 1, "presets": {"bad name": {"platform": "web"}}})",
                             "/presets/bad name"),
                    "letters, digits"));
@@ -980,6 +984,65 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
     CHECK(std::filesystem::exists(data / "sprites" / "ground.tileset.json"));
     CHECK(std::filesystem::exists(data / "main.scene.json"));
     CHECK_FALSE(std::filesystem::exists(data / "sprites" / "notes.md"));
+    std::filesystem::remove_all(folder);
+}
+
+TEST_CASE("a dedicated server preset ships no textures or baked lighting, but checks them") {
+    auto presets = exporter::parse_presets(parse(R"({"format": 1, "presets": {
+        "server": {"platform": "linux", "dedicated_server": true}, "game": {"platform": "linux"}}})"));
+    REQUIRE(presets.ok());
+    CHECK(presets.value().at("server").dedicated_server);
+    CHECK_FALSE(presets.value().at("game").dedicated_server);
+
+    const std::filesystem::path folder = "exporter_server_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "sprites");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    write("project.json", R"({"format": 1, "name": "Arena", "main_scene": "main.scene.json"})");
+    write("export_presets.json", R"({"format": 1, "presets": {"server": {"platform": ")" + host +
+                                     R"(", "dedicated_server": true}}})");
+    // A sprite the server never draws, and a scene with a mistake so the export stops after
+    // staging.
+    write("main.scene.json", R"({"format": 1, "entities": {"hero": {"components": {
+        "Transform2D": {}, "Sprite2D": {"texture": "sprites/hero.png"}, "Bogus": {}}}}})");
+    const slash::render::Image image{
+        .width = 2, .height = 1, .pixels = {255, 0, 0, 255, 0, 0, 255, 255}};
+    write("sprites/hero.png", slash::render::encode_png(image).value());
+    write("sprites/broken.png", "not an image");
+    write("sprites/hero.frames.json",
+          R"({"format": 1, "animations": {"walk": {"texture": "sprites/hero.png"}}})");
+
+    exporter::ExportOptions options;
+    options.target = "server";
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    REQUIRE(error->find("errors") != nullptr);
+    std::vector<std::string> problems;
+    for (const json::Value& problem : error->find("errors")->as_array()) {
+        problems.push_back(problem.find("file")->as_string() + " " +
+                           problem.find("message")->as_string());
+    }
+    std::ranges::sort(problems);
+    REQUIRE(problems.size() == 2);
+    // A broken texture is still found, though it wouldn't ship.
+    CHECK(contains(problems[0], "main.scene.json"));
+    CHECK(contains(problems[1], "sprites/broken.png"));
+    const std::filesystem::path data = folder / ".slash" / "export" / "server" / "data";
+    CHECK(std::filesystem::exists(data / "main.scene.json"));
+    CHECK(std::filesystem::exists(data / "sprites" / "hero.frames.json"));
+    CHECK_FALSE(std::filesystem::exists(data / "sprites" / "hero.png"));
     std::filesystem::remove_all(folder);
 }
 

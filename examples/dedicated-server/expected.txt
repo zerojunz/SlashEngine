@@ -1,0 +1,10 @@
+preset linux: game
+preset linux-server: dedicated server
+-- as a server
+server: hosting the match
+kept to real time: yes
+{"headless":true,"renderer":"null","server":true,"sprites":0,"ticks":10}
+-- as a player, headless
+player: would join a server
+kept to real time: no
+{"headless":true,"renderer":"null","sprites":1,"ticks":1}

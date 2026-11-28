@@ -14,6 +14,7 @@ add_library(slash_world
     src/flesh.cpp
     src/flesh2d.cpp
     src/skeleton2d.cpp
+    src/server.cpp
     src/flesh_solver.cpp
     src/damage.cpp
     src/face.cpp

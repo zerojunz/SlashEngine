@@ -74,6 +74,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         slash::log::error("usage error", {{"detail", options.error().message}});
         return SDL_APP_FAILURE;
     }
+#ifdef SLASH_GAME_SERVER
+    // A dedicated server export always runs as one.
+    options.value().server = true;
+#endif
 #ifdef SLASH_GAMEPLAY_LINKED
     options.value().gameplay = slash_game_module;
 #endif
@@ -133,9 +137,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
                        {.open = {.project_root = game.value()->data_dir(), .write_replays = false},
                         .wait = game.value()->headless()});
 #endif
-    if (!game.value()->headless()) {
+    if (!game.value()->headless() || game.value()->server()) {
         // Without a renderer to pace frames with vsync, iterate at the tick rate instead of
-        // spinning. Browsers ignore this and use animation frames.
+        // spinning, as a server does too. Browsers ignore this and use animation frames.
         const std::string rate = std::to_string(game.value()->project().tick_hz);
         SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, rate.c_str());
     }

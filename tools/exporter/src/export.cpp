@@ -613,6 +613,26 @@ std::optional<std::string> with_compiled_shader(std::string_view text,
 }
 
 // How many texture forms an export made, read from the library's cache and left out.
+// What a dedicated server's data leaves out: the files only drawing reads.
+struct Stripped {
+    std::int64_t files = 0;
+    std::int64_t bytes = 0;
+};
+
+bool server_strips(DataFile kind) {
+    switch (kind) {
+    case DataFile::Texture:
+    case DataFile::Lightmap:
+    case DataFile::LightmapTexels:
+    case DataFile::VoxelLighting3D:
+    case DataFile::Splats:
+    case DataFile::Ies:
+        return true;
+    default:
+        return false;
+    }
+}
+
 struct FormCounts {
     std::int64_t made = 0;
     std::int64_t cached = 0;
@@ -759,7 +779,7 @@ std::optional<std::string> with_quality(std::string_view text, const std::string
 // as the preset's model_quality tier makes them.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 std::string_view target, const Preset& preset, const std::string& library_dir,
-                Failure& failure) {
+                Stripped& stripped, Failure& failure) {
     std::error_code error;
     fs::remove_all(data, error);
     fs::create_directories(data, error);
@@ -855,6 +875,12 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             item["path"] = problem.path;
             item["message"] = problem.message;
             problems.push_back(std::move(item));
+        }
+        // Checked, but left out of a server, which draws nothing.
+        if (preset.dedicated_server && server_strips(kind)) {
+            ++stripped.files;
+            stripped.bytes += text ? static_cast<std::int64_t>(text.value().size()) : 0;
+            continue;
         }
         fs::create_directories((data / relative).parent_path(), error);
         std::optional<std::string> compiled = std::move(tiered);
@@ -1600,8 +1626,14 @@ ExportResult export_game(const ExportOptions& options) {
     const fs::path data = fs::absolute(work / "data", error);
     const std::string library_dir =
         options.library.empty() ? library::default_dir() : options.library;
-    if (!stage_data(project_dir, project.value(), data, platform, preset, library_dir, failure)) {
+    Stripped stripped;
+    if (!stage_data(project_dir, project.value(), data, platform, preset, library_dir, stripped,
+                    failure)) {
         return fail(failure, log_path);
+    }
+    if (preset.dedicated_server) {
+        log::info("dedicated server data",
+                  {{"stripped_files", stripped.files}, {"stripped_bytes", stripped.bytes}});
     }
     // The platform's icons, made from the preset's icon, the project's or the engine's.
     if (const std::vector<IconProblem> problems =
@@ -1750,6 +1782,9 @@ ExportResult export_game(const ExportOptions& options) {
         configure.emplace_back("-DSLASH_GAME_MICROPHONE=ON");
         configure.push_back("-DSLASH_GAME_MICROPHONE_USAGE=" + sound.input_usage_description);
     }
+    // A dedicated server runs as one, with no window; Windows makes it a console program.
+    configure.emplace_back(preset.dedicated_server ? "-DSLASH_GAME_SERVER=ON"
+                                                   : "-DSLASH_GAME_SERVER=OFF");
     // Games that enable XR ask Android for the OpenXR runtime in their manifest.
     configure.emplace_back(project.value().xr.enabled ? "-DSLASH_GAME_XR=ON"
                                                       : "-DSLASH_GAME_XR=OFF");
@@ -2125,6 +2160,11 @@ ExportResult export_game(const ExportOptions& options) {
     out["executable"] = display(executable);
     out["bytes"] = folder_bytes(output);
     out["log"] = display(log_path);
+    if (preset.dedicated_server) {
+        json::Value& server = out["dedicated_server"];
+        server["stripped_files"] = stripped.files;
+        server["stripped_bytes"] = stripped.bytes;
+    }
     // The image the icons were made from: the project's file, or the engine's icon.
     out["icon"] =
         icon_images.value().source.empty() ? std::string("default") : icon_images.value().source;
