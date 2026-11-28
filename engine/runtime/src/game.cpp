@@ -255,6 +255,8 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     if (backends.ads || !backends.analytics.empty() || backends.purchases || backends.games) {
         services::set_backends(game->world_, std::move(backends));
     }
+    // Game code's HTTP requests, through the client main() gives.
+    net::install_http(game->world_, options.http_sender);
     // The vendor's latency reduction, which the SDK packages' register functions added.
     if (const std::string& name = game->project_.latency_reduction; !name.empty()) {
         auto reducer = render::make_latency_reducer(name, *game->renderer_);

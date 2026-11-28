@@ -5,6 +5,7 @@
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/command/net.hpp"
 #include "slash/command/work.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/jobs.hpp"
@@ -363,6 +364,32 @@ Session::Session(const world::ComponentRegistry& component_registry,
     services::use_test_backend(world_);
     // Offline until net.host or net.join puts it on the network.
     net::install(world_);
+    // Game code's HTTP requests: answered from net.http_fake's fakes, then the network.
+    net::HttpSender network;
+    if (allowed(Capability::Network)) {
+        network = [](net::HttpRequest request, std::function<void(net::HttpReply)> done) {
+            ai::HttpRequest sent;
+            sent.url = std::move(request.url);
+            sent.method = std::move(request.method);
+            sent.headers = std::move(request.headers);
+            sent.body = std::move(request.body);
+            sent.content_type = std::move(request.content_type);
+            sent.timeout_seconds = request.timeout_seconds;
+            ai::post_in_background(ai::http_transport(), std::move(sent),
+                                   [done = std::move(done)](Result<ai::HttpResponse> reply) {
+                                       net::HttpReply out;
+                                       if (reply) {
+                                           out.status = reply.value().status;
+                                           out.headers = std::move(reply.value().headers);
+                                           out.body = std::move(reply.value().body);
+                                       } else {
+                                           out.error = reply.error().message;
+                                       }
+                                       done(std::move(out));
+                                   });
+        };
+    }
+    install_session_http(world_, std::move(network));
     // A headset agents move with xr.set, started when the project enables XR.
     xr::install(world_, xr_settings(project));
     xr::use_test_interface(world_);

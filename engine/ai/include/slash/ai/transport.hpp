@@ -31,6 +31,8 @@ struct HttpResponse {
     int status = 0;
     std::string body;        // the whole body, unless a 200's went to the sink
     std::string retry_after; // the Retry-After header, for a 429 or 503
+    // Every header, as the server sent them (not on the web, where fetch() keeps them).
+    std::vector<std::pair<std::string, std::string>> headers;
 };
 
 // Receives a 200 response's body as it arrives; returning false stops the request.

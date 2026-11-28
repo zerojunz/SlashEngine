@@ -1,0 +1,16 @@
+scene.open {"path":"main.scene.json"}
+{"entities":0,"path":"main.scene.json"}
+net.http_fake {"body":[{"name":"Ada","score":9100},{"name":"Grace","score":5600},{"name":"Linus","score":3900}],"method":"GET","url_prefix":"https://scores.example.com/v1/scores"}
+{"fakes":1}
+net.http_fake {"body":{"rank":3},"method":"POST","status":201,"url_prefix":"https://scores.example.com/v1/scores"}
+{"fakes":2}
+step {"ticks":3}
+{"tick":3,"ticks":3}
+shown: Ada 9100; Grace 5600; Linus 3900; posted: HTTP 201
+net.http {}
+{"fakes":[{"bytes":89,"method":"GET","status":200,"url_prefix":"https://scores.example.com/v1/scores"},{"bytes":10,"method":"POST","status":201,"url_prefix":"https://scores.example.com/v1/scores"}],"requests":[{"bytes":89,"finished_tick":1,"id":1,"method":"GET","started_tick":0,"status":200,"url":"https://scores.example.com/v1/scores?top=3"},{"bytes":10,"finished_tick":2,"id":2,"method":"POST","started_tick":1,"status":201,"url":"https://scores.example.com/v1/scores"}]}
+net.http_fake {"clear":true,"status":503,"url_prefix":"https://scores.example.com/"}
+{"fakes":1}
+step {"ticks":2}
+{"tick":5,"ticks":2}
+shown: leaderboard unavailable: HTTP 503

@@ -11,9 +11,8 @@
 #include "slash/ai/world.hpp"
 #endif
 // Games that send analytics to a server of their own POST them with engine/ai's HTTP client.
-#ifdef SLASH_GAME_ANALYTICS
 #include "slash/ai/transport.hpp"
-#endif
+#include "slash/net/http.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -99,6 +98,30 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
             });
     };
 #endif
+    // Game code's HTTP requests go through engine/ai's client, one after another.
+    options.value().http_sender = [](slash::net::HttpRequest request,
+                                     std::function<void(slash::net::HttpReply)> done) {
+        slash::ai::HttpRequest sent;
+        sent.url = std::move(request.url);
+        sent.method = std::move(request.method);
+        sent.headers = std::move(request.headers);
+        sent.body = std::move(request.body);
+        sent.content_type = std::move(request.content_type);
+        sent.timeout_seconds = request.timeout_seconds;
+        slash::ai::post_in_background(
+            slash::ai::http_transport(), std::move(sent),
+            [done = std::move(done)](slash::Result<slash::ai::HttpResponse> reply) {
+                slash::net::HttpReply out;
+                if (reply) {
+                    out.status = reply.value().status;
+                    out.headers = std::move(reply.value().headers);
+                    out.body = std::move(reply.value().body);
+                } else {
+                    out.error = reply.error().message;
+                }
+                done(std::move(out));
+            });
+    };
     auto game = slash::runtime::Game::start(options.value());
     if (!game) {
         slash::log::error("could not start the game", {{"detail", game.error().message}});

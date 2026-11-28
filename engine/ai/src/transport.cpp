@@ -65,7 +65,7 @@ EM_JS(void, slash_ai_fetch,
           fetch(UTF8ToString(url), {
               method : verb,
               headers : JSON.parse(UTF8ToString(headers)),
-              body : verb === "GET" ? undefined : UTF8ToString(body),
+              body : verb === "GET" || verb === "HEAD" ? undefined : UTF8ToString(body),
               signal : controller.signal,
           })
               .then(async (response) => {
@@ -367,7 +367,7 @@ public:
         for (const auto& [name, value] : request.headers) {
             headers[name] = value;
         }
-        if (request.method != "GET") {
+        if (request.method != "GET" && request.method != "HEAD") {
             headers["Content-Type"] = request.content_type;
         }
         fetches()[id] = Fetch{.url = request.url,
@@ -536,7 +536,7 @@ public:
         for (const auto& [name, value] : request.headers) {
             http.set_header(name, value);
         }
-        if (request.method != "GET") {
+        if (request.method != "GET" && request.method != "HEAD") {
             http.set_header("Content-Type", request.content_type);
             http.body = request.body;
         }
@@ -547,6 +547,9 @@ public:
         http.response_handler = [&](const httplib::Response& response) {
             out.status = response.status;
             out.retry_after = response.get_header_value("Retry-After");
+            for (const auto& [name, value] : response.headers) {
+                out.headers.emplace_back(name, value);
+            }
             return !cancelled();
         };
         http.content_receiver = [&](const char* data, std::size_t size, std::uint64_t /*offset*/,

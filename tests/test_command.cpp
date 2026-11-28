@@ -1298,17 +1298,17 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input, network, XR and service events first, streams the world in,
-    // counts the wind's seconds and plays animations, runs ragdolls, drives vehicles, steps 2D and
-    // 3D physics, checks synchronizers' visibility, steps navigation, runs NPCs, moves the camera
-    // and parallax, runs particles, hands over models' replies and plays sound with built-in
-    // systems that run late. The particle systems are threaded: the CPU ones and GpuEmitter2D's
-    // run at the same time, and GpuEmitter3D's, which loads vector fields' textures as
-    // GpuEmitter2D's loads its own, runs after them.
+    // Every session applies input, network, HTTP replies, XR and service events first, streams the
+    // world in, counts the wind's seconds and plays animations, runs ragdolls, drives vehicles,
+    // steps 2D and 3D physics, checks synchronizers' visibility, steps navigation, runs NPCs, moves
+    // the camera and parallax, runs particles, hands over models' replies and plays sound with
+    // built-in systems that run late. The particle systems are threaded: the CPU ones and
+    // GpuEmitter2D's run at the same time, and GpuEmitter3D's, which loads vector fields' textures
+    // as GpuEmitter2D's loads its own, runs after them.
     CHECK(
         *engine.ok("engine.describe").find("systems") ==
         parse(
-            R"(["input", "multiplayer", "gui", "xr", "services", "world_streaming", "wind", "controls", "movement", "character_2d", "animation_player",
+            R"(["input", "multiplayer", "http", "gui", "xr", "services", "world_streaming", "wind", "controls", "movement", "character_2d", "animation_player",
                     "animation_tree", "ragdoll", "skeleton_modifiers", "path_follow", "ragdoll_2d", "vehicles_2d", "vehicles_3d", "physics2d", "physics3d", "ragdoll_2d_pose", "multiplayer_visibility", "flesh_2d", "flesh_3d", "fluids", "water", "navigation", "fauna", "npc", "quests", "foliage", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "vfx", "cpu_particles_2d", "cpu_particles_3d", "particle_simulation_2d", "particle_simulation_3d", "gpu_particles_2d", "gpu_particles_3d", "video", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
@@ -1317,6 +1317,8 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "multiplayer",
          "doc": "Polls the world's multiplayer peer: peers joining and leaving, raw packets, remote procedure calls, spawns and synchronizers.",
          "priority": -950},
+        {"name": "http", "doc": "Hands HTTP replies that arrived since the last tick to game code's callbacks.",
+         "priority": -940},
         {"name": "gui", "doc": "Sends input events to controls: hover, focus, buttons, sliders and text fields.",
          "priority": -900},
         {"name": "xr",
@@ -1411,11 +1413,11 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1090},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each Emitter2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 35, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
+         "threaded": true, "stage": 36, "reads": ["Transform2D", "WindSource2D", "PhysicsField2D"],
          "writes": ["Emitter2D"]},
         {"name": "cpu_particles_3d",
          "doc": "Emits, moves and ages each Emitter3D's particles.", "priority": 1100,
-         "threaded": true, "stage": 35, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
+         "threaded": true, "stage": 36, "reads": ["Transform3D", "WindSource3D", "PhysicsField3D"],
          "writes": ["Emitter3D"]},
         {"name": "particle_simulation_2d",
          "doc": "Runs each ParticleSimulation2D's stages over its Emitter2D: neighbors, curl noise, collision, attributes and events.",
@@ -1425,13 +1427,13 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1105},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GpuEmitter2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 38,
+         "threaded": true, "stage": 39,
          "reads": ["Transform2D", "Occluder2D", "TileLayer2D", "ScreenLayer", "Widget",
                    "Camera2D"],
          "writes": ["GpuEmitter2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GpuEmitter3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 39,
+         "threaded": true, "stage": 40,
          "reads": ["ParticleAttractorSphere3D", "ParticleAttractorBox3D",
                    "ParticleFlowField3D", "ParticleColliderSphere3D",
                    "ParticleColliderBox3D", "ParticleColliderSdf3D",

@@ -94,7 +94,7 @@ as `entity.get`, reject it as an unknown param.
 | Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale), [`l10n.extract`](#l10nextract), [`l10n.check`](#l10ncheck) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Save data | [`save.list`](#savelist), [`save.read`](#saveread), [`save.write`](#savewrite), [`save.delete`](#savedelete) |
-| Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose) |
+| Network | [`net.host`](#nethost), [`net.join`](#netjoin), [`net.state`](#netstate), [`net.rpc`](#netrpc), [`net.close`](#netclose), [`net.http`](#nethttp), [`net.http_fake`](#nethttp_fake) |
 | XR | [`xr.state`](#xrstate), [`xr.set`](#xrset) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit), [`style.mark`](#stylemark), [`style.check`](#stylecheck) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -5597,6 +5597,44 @@ Closes the connection and goes back offline; with `peer`, a server drops that pe
 | `peer` | integer, 2 or more | | A connected peer for the server to drop |
 
 Needs: `run`, `network`.
+
+### net.http
+
+Returns game code's [HTTP requests](networking.md#http-requests): those in flight (`pending`)
+and the last 32 finished, oldest first, with their method, URL, status, error, the ticks they
+started and finished at and the reply's size; and the fakes answering them. No params.
+
+Needs: `read`. From [examples/http-requests](../../examples/http-requests/):
+
+```json
+{"fakes":[{"bytes":89,"method":"GET","status":200,"url_prefix":"https://scores.example.com/v1/scores"},{"bytes":10,"method":"POST","status":201,"url_prefix":"https://scores.example.com/v1/scores"}],"requests":[{"bytes":89,"finished_tick":1,"id":1,"method":"GET","started_tick":0,"status":200,"url":"https://scores.example.com/v1/scores?top=3"},{"bytes":10,"finished_tick":2,"id":2,"method":"POST","started_tick":1,"status":201,"url":"https://scores.example.com/v1/scores"}]}
+```
+
+### net.http_fake
+
+Answers game code's HTTP requests whose URL starts with `url_prefix` with a canned reply, so
+playtests need no server. The latest fake that matches answers; requests none answers go over
+the network only in a session with the `network` capability, and otherwise fail with `no fake
+for <method> <url>`. Returns how many fakes there are.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `url_prefix` | string | | The URLs it answers |
+| `method` | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` or `HEAD` | any | Only this method |
+| `status` | integer, 100 to 599 | `200` | The reply's status |
+| `headers` | object of strings | none | The reply's headers |
+| `body` | any JSON value | `""` | A string as it is; other JSON written as JSON, with `Content-Type: application/json` |
+| `clear` | boolean | `false` | Drop every fake first; alone, just drops them |
+
+Needs: `run`.
+
+```json
+{"url_prefix": "https://scores.example.com/v1/scores", "method": "POST", "status": 201, "body": {"rank": 3}}
+```
+
+```json
+{"fakes":2}
+```
 
 ```json
 {"peer": 2087416063}

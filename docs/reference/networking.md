@@ -4,7 +4,7 @@ Games talk over the network. A peer is one machine's end of the game's network: 
 1, and each client joins it with an ID of its own. Transports are kinds of peer, so code written
 against `net::Peer` runs over any of them.
 
-Status: current · Updated: 2026-11-20
+Status: current · Updated: 2026-11-26
 
 Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT); see [THIRD_PARTY.md](../../THIRD_PARTY.md).
 
@@ -17,7 +17,8 @@ Parts of this area are ported from [Godot Engine](https://godotengine.org) (MIT)
 A world's multiplayer runs on a peer: it admits the peers that join, tells clients about each
 other through the server, relays their packets and calls remote procedures on entities, and
 replicates entities and their fields. Sessions and exported games give every world one, offline
-until it hosts or joins, and agents drive it with the `net.*` commands.
+until it hosts or joins, and agents drive it with the `net.*` commands. Game code also calls web APIs
+with [HTTP requests](#http-requests).
 
 ## Peers
 
@@ -335,6 +336,31 @@ tracking as the `multiplayer` part.
 
 [`examples/network-sessions`](../../examples/network-sessions/) plays a game on three sessions
 with these commands.
+
+## HTTP requests
+
+Game code reaches web APIs (leaderboards, news, downloads) through `slash/net/http.hpp`:
+`net::http_get(world, url, done)`, `http_post_json(world, url, json, done)`, or
+`http_request(world, {url, method, headers, body, content_type, timeout_seconds}, done)` for
+GET, POST, PUT, PATCH, DELETE and HEAD. A request returns its ID at once and never blocks the
+tick; `done(world, reply)` runs at the start of a later tick, from the `http` system (priority
+-940, after input and multiplayer), on the world's thread, so it may touch the world without locks. Replies that
+arrived together run in the order the requests were made. `reply.status` is 0 with `error` when
+the server couldn't be reached, the URL isn't http:// or https://, or nothing sends requests;
+`reply.header(name)` reads a header, ignoring case (headers aren't read on the web, where
+`fetch()` keeps them). `http_cancel(world, id)` forgets a request, and `http_requests(world)`
+lists those in flight and the last 32 finished.
+
+`net::install_http(world, sender)` sets how requests go. `runtime::Game` installs it with
+`GameOptions::http_sender`, which the game's `main()` (`engine/runtime/src/main.cpp`) gives
+engine/ai's HTTP client: natively on a background thread, one request after another, checking
+servers' certificates as [AI providers](providers.md) do, and through the browser's `fetch()`
+on the web, where CORS applies. Sessions install `net::HttpFakes`, canned replies by URL prefix
+and method that agents add with [`net.http_fake`](commands.md#nethttp_fake), and send what no
+fake answers over the network only with the `network` capability; [`net.http`](commands.md#nethttp)
+lists requests and fakes. [`examples/http-requests`](../../examples/http-requests/) reads and
+posts to a leaderboard with fakes standing in for the server; `tests/test_http.cpp` also talks
+to a local server.
 
 ## Engine notes: Networking
 

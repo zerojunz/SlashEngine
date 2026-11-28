@@ -1,5 +1,6 @@
 add_library(slash_net
     src/enet.cpp
+    src/http.cpp
     src/multiplayer.cpp
     src/peer.cpp
     src/websocket.cpp)

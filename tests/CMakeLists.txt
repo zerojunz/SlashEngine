@@ -121,6 +121,7 @@ add_executable(slash_tests
     test_latency.cpp
     test_save_data.cpp
     test_gamepad.cpp
+    test_http.cpp
     test_library.cpp
     test_library_music.cpp
     test_library_team.cpp

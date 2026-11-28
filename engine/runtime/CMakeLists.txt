@@ -21,4 +21,4 @@ set_source_files_properties(src/icon.cpp PROPERTIES
 add_library(slash_game_main INTERFACE)
 add_library(slash::game_main ALIAS slash_game_main)
 target_sources(slash_game_main INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
-target_link_libraries(slash_game_main INTERFACE slash::runtime SDL3::SDL3-static)
+target_link_libraries(slash_game_main INTERFACE slash::runtime slash::ai SDL3::SDL3-static)
