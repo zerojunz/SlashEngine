@@ -1005,7 +1005,8 @@ void register_physics_3d_components(ComponentRegistry& registry) {
                                     "Sprite2D's.",
                              .choices = {"inherit", "linear", "nearest"}});
 
-    registry.add<Polygon2D>()
+    ComponentType& polygon_2d = registry.add<Polygon2D>();
+    polygon_2d
         .set_doc("A filled polygon: its points in its entity's space, filled with a color, colors "
                  "per point or a texture, or several polygons over the same points, later ones "
                  "over earlier ones.")
@@ -1027,7 +1028,33 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("visible", {.doc = "Drawn when on."})
         .describe("light_layers", {.doc = "Which 2D lights light it, as Sprite2D's."})
         .describe("filter", {.doc = "How its texture is sampled, as Sprite2D's.",
-                             .choices = {"inherit", "linear", "nearest"}});
+                             .choices = {"inherit", "linear", "nearest"}})
+        .describe("skeleton", {.doc = "ID of the Skeleton2D whose bones bend it; its points "
+                                      "follow the bones that weigh them. Keep it beside the "
+                                      "bones, not under them, or it moves twice."})
+        .describe("bone_weights",
+                  {.doc = "The bones that move its points (skeleton.bind fills them): each a "
+                          "bone and a weight per point, blended by weight; a point no bone "
+                          "weighs stays put."});
+    describe_members(polygon_2d, "bone_weights[]",
+                     {{"bone", {.doc = "ID of a Bone2D of its skeleton."}},
+                      {"weights", {.doc = "A weight per point, 0 to 1; missing ones are 0."}}});
+
+    registry.add<Skeleton2D>()
+        .set_doc("The root of a 2D skeleton: the Bone2Ds in its Transform2D tree are its bones, "
+                 "and Polygon2Ds whose skeleton is this entity bend with them.")
+        .describe("show_rest_only", {.doc = "Draws its polygons as they were weighted, leaving "
+                                            "out how its bones have moved."});
+
+    registry.add<Bone2D>()
+        .set_doc("A bone of the Skeleton2D above it: its Transform2D is its pose, and rest_* the "
+                 "Transform2D it had when polygons were weighted to it. Points weighted to it "
+                 "move as it moves from rest. skeleton.bind sets rest to the pose.")
+        .describe("rest_position", {.doc = "Its rest position in its parent's space."})
+        .describe("rest_rotation", {.doc = "Its rest rotation, radians clockwise."})
+        .describe("rest_scale", {.doc = "Its rest scale."})
+        .describe("length", {.doc = "Pixels along its x axis that skeleton.bind weights points "
+                                    "near; 0 reaches to its first child bone (16 with none)."});
 
     registry.add<Character2D>()
         .set_doc("A 2D character built from a .character.json recipe: its cut-out's bones are "

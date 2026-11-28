@@ -17,6 +17,7 @@ add_library(slash_command
     src/texture_tools.cpp
     src/physics_debug.cpp
     src/ragdoll.cpp
+    src/skeleton2d.cpp
     src/character.cpp
     src/face.cpp
     src/animation_layers.cpp
@@ -64,5 +65,5 @@ endif()
 # Placing is the same everywhere, as the navigation geometry it reads, and so are
 # lighting.check's measures and generated characters, faces and creatures.
 set_source_files_properties(src/place.cpp src/lighting.cpp src/character.cpp src/face.cpp src/creature.cpp
-    src/animation_layers.cpp PROPERTIES
+    src/animation_layers.cpp src/skeleton2d.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")

@@ -18,6 +18,7 @@
 #include "slash/world/flesh.hpp"
 #include "slash/world/fluid.hpp"
 #include "slash/world/hair.hpp"
+#include "slash/world/skeleton2d.hpp"
 #include "slash/world/water.hpp"
 #include "slash/world/wind.hpp"
 
@@ -1915,11 +1916,22 @@ void CanvasRenderer::gather_polygons(DrawState& state) {
         const Vec4 tint{
             polygon.tint.x * from_parents.modulate.x, polygon.tint.y * from_parents.modulate.y,
             polygon.tint.z * from_parents.modulate.z, polygon.tint.w * from_parents.modulate.w};
-        // Flesh moves a character's parts' points (slash/world/flesh.hpp).
+        // Flesh moves a character's parts' points (slash/world/flesh.hpp), then a skeleton's
+        // bones bend them (slash/world/skeleton2d.hpp).
         const std::vector<Vec2>* moved = world::flesh_offsets_2d(world, entity);
-        const auto corner = [&](std::size_t i) {
+        std::vector<Vec2> points(polygon.polygon.size());
+        for (std::size_t i = 0; i < points.size(); ++i) {
             const Vec2 flesh = moved != nullptr && i < moved->size() ? (*moved)[i] : Vec2{};
-            const Vec2 at = place.apply(polygon.polygon[i] + polygon.offset + flesh);
+            points[i] = polygon.polygon[i] + polygon.offset + flesh;
+        }
+        if (auto skin = world::skin_2d(world, tree, entity, points)) {
+            if (!skin->problem.empty()) {
+                state.problem(entity, skin->path, skin->problem);
+            }
+            points = std::move(skin->points);
+        }
+        const auto corner = [&](std::size_t i) {
+            const Vec2 at = place.apply(points[i]);
             const Vec4 color =
                 i < polygon.vertex_colors.size() ? polygon.vertex_colors[i] : polygon.color;
             const Vec2 uv = i < polygon.uv.size() ? polygon.uv[i] : polygon.polygon[i];
