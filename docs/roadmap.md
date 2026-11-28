@@ -1479,7 +1479,7 @@ characters and animals, vehicles on wheel joints, fracture of 2D polygons, and 2
         - [x] Exports ship the engine's third-party notices (`licenses/slashengine/`)
         - [x] Save data for game code
         - [ ] WebRTC peers
-        - [ ] Gamepad rumble, gyro and controller button glyphs
+        - [x] Gamepad rumble, gyro and controller button glyphs
         - [ ] HTTP requests from game code
         - [ ] 2D skeletons: `Skeleton2D`, `Bone2D` and skinned `Polygon2D`
         - [ ] Dedicated server exports

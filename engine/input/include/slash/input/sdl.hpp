@@ -16,7 +16,8 @@ namespace slash::input {
 
 // Turns SDL's events into input events and queues them in a world: keys by SDL keycode and
 // scancode, the mouse and fingers in window coordinates (the space sprites and controls are drawn
-// in), and gamepads, opened as they connect and numbered from 0. SDL's own mouse events made from
+// in), and gamepads, opened as they connect and numbered from 0, each announced with a
+// joypad_connection event and its motion sensors turned on. SDL's own mouse events made from
 // touches are skipped, since the input state emulates the mouse from touches itself. A window
 // losing focus releases everything. Typed text, from the keyboard, an input method or an on-screen
 // keyboard, comes as key presses with a character and no key, and an input method's composition as
@@ -41,16 +42,21 @@ public:
     // method's position a text field asks for. Changes only what differs from the last call.
     void set_text_input(SDL_Window* window, const TextInput& request);
 
+    // Plays the rumbles game code started or stopped since the last call (input::rumble) on the
+    // gamepads; call it after each tick.
+    void update(world::World& world);
+
     // The gamepads connected, by device number.
     [[nodiscard]] std::size_t gamepads() const noexcept { return gamepads_.size(); }
 
 private:
     int finger_index(std::uint64_t finger, bool add);
 
-    std::map<std::uint32_t, int> devices_; // SDL joystick ID to device number
-    std::map<int, SDL_Gamepad*> gamepads_; // device number to the open gamepad
-    std::map<std::uint64_t, int> fingers_; // SDL finger ID to finger index
-    TextInput text_input_;                 // the last request applied
+    std::map<std::uint32_t, int> devices_;           // SDL joystick ID to device number
+    std::map<int, SDL_Gamepad*> gamepads_;           // device number to the open gamepad
+    std::map<std::uint64_t, int> fingers_;           // SDL finger ID to finger index
+    std::map<int, std::pair<Vec3f, Vec3f>> sensors_; // gyro and accel last read, by device
+    TextInput text_input_;                           // the last request applied
     std::function<bool(const Event&)> filter_;
 };
 

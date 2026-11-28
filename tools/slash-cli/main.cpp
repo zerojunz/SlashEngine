@@ -1065,6 +1065,8 @@ int cmd_run(const std::vector<std::string>& args) {
             if (engine.session->playing()) {
                 game.step(tick_seconds);
             }
+            // Rumbles the tick started or stopped.
+            input_reader.update(game);
             // The input method and on-screen keyboard follow the TextField being edited.
             if (!config.headless) {
                 input_reader.set_text_input(platform.value().window(), slash::ui::text_input(game));

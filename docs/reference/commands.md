@@ -4360,6 +4360,8 @@ runs. Each event has a `type`:
 | `action` | `action`, `pressed`, `strength` | An action pressed or released by name, with a `strength` from 0 to 1 (default 1) |
 | `text` | `text` | Types text into the [text field](scene-format.md#text-fields) being edited: one key press per character, with the character in `unicode` and no key, as an input method or on-screen keyboard sends it |
 | `ime` | `text`, `selection` | What an input method (for Japanese, Chinese or Korean) is composing, shown at the caret: `selection` is `[start, length]` in characters of the part being converted. `""` ends the composition; a `text` event commits the result |
+| `joypad_connection` | `connected`, `name`, `gamepad`, `can_rumble`, `has_motion` | A gamepad connected or disconnected. `gamepad` is its kind, for [button labels](input.md#gamepads): `standard` (the default), `xbox_360`, `xbox_one`, `ps3`, `ps4`, `ps5`, `switch_pro`, `joycon_left`, `joycon_right` or `joycon_pair`. Disconnecting lets go of what it held |
+| `joypad_sensor` | `gyro`, `accel` | What a gamepad's motion sensors read, as `[x, y, z]`: the gyroscope in radians a second, the accelerometer in m/s^2 with gravity (`[0, 9.81, 0]` lying flat); x right, y up, z toward the player |
 
 A `key` event also takes `unicode`, the one character the key types (`{"type": "key", "key":
 "A", "unicode": "a", "pressed": true}`); a key with no `unicode` edits a text field but types
@@ -4372,14 +4374,15 @@ an event's type doesn't have are errors, and so are misspelled names, with the c
   it. To hold a key, inject the press, `step` as long as it is held, then inject the release.
 - A touch also clicks the left mouse button, unless `project.json` turns
   `pointer.mouse_from_touch` off.
-- A motion right after another from the same mouse, finger or stick merges into it.
+- A motion right after another from the same mouse, finger, stick or gamepad's sensors merges
+  into it.
 - In a running game, events apply at the next tick of the game loop.
 
 ### input.state
 
 Returns what the game sees: actions pressed or changed at the last tick, the keys and mouse
-buttons held, the mouse position, fingers down, gamepad buttons and axes away from rest, and
-events still queued.
+buttons held, the mouse position, fingers down, gamepads (buttons and axes away from rest, name
+and kind, motion sensors and rumble), the input the player last used, and events still queued.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4402,6 +4405,13 @@ Needs: `read`. After a tap of Space, half a stick up and letting go of D:
 - `just_pressed` and `just_released` are listed when true.
 - `keys` are labels, as `key` names them; `mouse.buttons`, `touches` and `joypads` are listed
   when something is held. `queued` counts events waiting for the next tick.
+- A connected gamepad's entry in `joypads` has its `name`, `gamepad` kind, `can_rumble` and
+  `has_motion`, and its sensors' last `gyro` and `accel`; one rumbling has `rumble`: `low`,
+  `high`, the triggers' motors if they run, and the `seconds` left. From
+  [examples/gamepad-feedback](../../examples/gamepad-feedback/), after R2 fired:
+  `"joypads":[{"axes":{"trigger_right":1.0},"can_rumble":true,"device":0,"gamepad":"ps5","has_motion":true,"name":"DualSense Wireless Controller","rumble":{"high":0.5,"left_trigger":0.0,"low":0.75,"right_trigger":1.0,"seconds":0.2}}]`.
+- `last_input` is what the player last pressed, `{"kind": "mouse"}`, `"touch"` or `"gamepad"`
+  (with its `device` past 0); it is left out while it is the keyboard.
 - An action the game doesn't have is an error at its place in `actions`, with the closest name.
 
 ### input.actions
@@ -4412,6 +4422,7 @@ and `project.json`'s `input`, as the game uses them.
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `names` | array of strings | all but the [text editing actions](project-format.md#input-actions) | Only these actions |
+| `prompt` | string | none | Adds each action's `prompt`: `last` for the input the player last used, `keyboard`, or a kind of gamepad (`ps5`, `xbox_one`, `switch_pro`, ...) |
 
 Needs: `read`.
 
@@ -4425,6 +4436,17 @@ Needs: `read`.
 
 Bindings are written as in `project.json`. A game that rebinds actions while it runs, e.g. from
 an options menu, shows its bindings as they are now.
+
+With `prompt`, each action has the label and glyph a button prompt shows for it
+([`input::action_prompt`](input.md#gamepads)), or `null` when nothing of that kind is bound:
+
+```json
+{"names": ["jump"], "prompt": "switch_pro"}
+```
+
+```json
+{"actions":{"jump":{"deadzone":0.2,"events":[{"physical_key":"Space","type":"key"},{"button":"a","type":"joypad_button"}],"prompt":{"glyph":"nintendo_b","label":"B"}}}}
+```
 
 ## Audio
 

@@ -1,0 +1,38 @@
+scene.open {"path":"main.scene.json"}
+{"entities":0,"path":"main.scene.json"}
+step {"tick_seconds":0.0625}
+{"tick":1,"ticks":1}
+hint: Press Space to jump (key_space); yaw 0.000
+input.inject {"events":[{"can_rumble":true,"connected":true,"gamepad":"ps5","has_motion":true,"name":"DualSense Wireless Controller","type":"joypad_connection"},{"button":"a","pressed":true,"type":"joypad_button"},{"button":"a","pressed":false,"type":"joypad_button"}]}
+{"queued":3,"tick":1}
+step {"tick_seconds":0.0625}
+{"tick":2,"ticks":1}
+hint: Press Cross to jump (playstation_cross); yaw 0.000
+input.inject {"events":[{"axis":"trigger_right","axis_value":1,"type":"joypad_motion"}]}
+{"queued":1,"tick":2}
+step {"tick_seconds":0.0625}
+{"tick":3,"ticks":1}
+input.state {"actions":["fire"]}
+{"actions":{"fire":{"just_pressed":true,"pressed":true}},"joypads":[{"axes":{"trigger_right":1.0},"can_rumble":true,"device":0,"gamepad":"ps5","has_motion":true,"name":"DualSense Wireless Controller","rumble":{"high":0.5,"left_trigger":0.0,"low":0.75,"right_trigger":1.0,"seconds":0.2}}],"last_input":{"kind":"gamepad"},"mouse":{"position":[0.0,0.0]},"tick":2}
+input.inject {"events":[{"axis":"trigger_right","axis_value":0,"type":"joypad_motion"}]}
+{"queued":1,"tick":3}
+step {"tick_seconds":0.0625,"ticks":4}
+{"tick":7,"ticks":4}
+input.state {"actions":["fire"]}
+{"actions":{"fire":{"pressed":false}},"joypads":[{"can_rumble":true,"device":0,"gamepad":"ps5","has_motion":true,"name":"DualSense Wireless Controller"}],"last_input":{"kind":"gamepad"},"mouse":{"position":[0.0,0.0]},"tick":6}
+input.inject {"events":[{"axis":"trigger_left","axis_value":1,"type":"joypad_motion"},{"accel":[0,9.81,0],"gyro":[0,2,0],"type":"joypad_sensor"}]}
+{"queued":2,"tick":7}
+step {"tick_seconds":0.0625,"ticks":4}
+{"tick":11,"ticks":4}
+hint: Press Cross to jump (playstation_cross); yaw 0.500
+input.actions {"names":["aim","fire","jump"],"prompt":"last"}
+{"actions":{"aim":{"deadzone":0.2,"events":[{"button":"right","type":"mouse_button"},{"axis":"trigger_left","axis_value":1.0,"type":"joypad_motion"}],"prompt":{"glyph":"playstation_l2","label":"L2"}},"fire":{"deadzone":0.2,"events":[{"button":"left","type":"mouse_button"},{"axis":"trigger_right","axis_value":1.0,"type":"joypad_motion"}],"prompt":{"glyph":"playstation_r2","label":"R2"}},"jump":{"deadzone":0.2,"events":[{"physical_key":"Space","type":"key"},{"button":"a","type":"joypad_button"}],"prompt":{"glyph":"playstation_cross","label":"Cross"}}}}
+input.actions {"names":["jump"],"prompt":"switch_pro"}
+{"actions":{"jump":{"deadzone":0.2,"events":[{"physical_key":"Space","type":"key"},{"button":"a","type":"joypad_button"}],"prompt":{"glyph":"nintendo_b","label":"B"}}}}
+input.inject {"events":[{"button":"left","position":[10,10],"pressed":true,"type":"mouse_button"},{"connected":false,"type":"joypad_connection"}]}
+{"queued":2,"tick":11}
+step {"tick_seconds":0.0625}
+{"tick":12,"ticks":1}
+hint: Press Space to jump (key_space); yaw 0.500
+input.state {"actions":["aim"]}
+{"actions":{"aim":{"just_released":true,"pressed":false}},"last_input":{"kind":"mouse"},"mouse":{"buttons":["left"],"position":[10.0,10.0]},"tick":11}

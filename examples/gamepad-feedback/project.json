@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "input": {
+    "aim": {
+      "events": [
+        {"button": "right", "type": "mouse_button"},
+        {"axis": "trigger_left", "axis_value": 1, "type": "joypad_motion"}
+      ]
+    },
+    "fire": {
+      "events": [
+        {"button": "left", "type": "mouse_button"},
+        {"axis": "trigger_right", "axis_value": 1, "type": "joypad_motion"}
+      ]
+    },
+    "jump": {
+      "events": [
+        {"physical_key": "Space", "type": "key"},
+        {"button": "a", "type": "joypad_button"}
+      ]
+    }
+  },
+  "main_scene": "main.scene.json",
+  "name": "Gamepad feedback",
+  "version": "0.1.0"
+}
