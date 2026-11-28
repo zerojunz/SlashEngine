@@ -63,8 +63,10 @@ public:
                                                 const slash::ai::CancelFlag* /*cancel*/) override {
         requests.push_back(request);
         const Reply& reply = replies_[std::min(requests.size(), replies_.size()) - 1];
-        return slash::ai::HttpResponse{
-            .status = reply.status, .body = reply.body, .retry_after = reply.retry_after};
+        return slash::ai::HttpResponse{.status = reply.status,
+                                       .body = reply.body,
+                                       .retry_after = reply.retry_after,
+                                       .headers = {}};
     }
 
     [[nodiscard]] json::Value body(std::size_t index = 0) const {

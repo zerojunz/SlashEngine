@@ -3,6 +3,7 @@
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/net/enet.hpp"
+#include "slash/net/http.hpp"
 #include "slash/net/multiplayer.hpp"
 #include "slash/net/websocket.hpp"
 #include "slash/platform/file.hpp"
@@ -252,6 +253,101 @@ Reply net_close(Session& session, const json::Value& params) {
     return Reply::success(std::move(out));
 }
 
+// The fakes a session answers HTTP requests from, kept beside the world.
+struct SessionHttp {
+    net::HttpFakes fakes;
+};
+using SessionHttpHandle = std::shared_ptr<SessionHttp>;
+
+SessionHttp* session_http(world::World& world) {
+    auto* found = world.ecs().ctx().find<SessionHttpHandle>();
+    return found != nullptr ? found->get() : nullptr;
+}
+
+json::Value record_json(const net::HttpRecord& record) {
+    json::Value out;
+    out["id"] = record.id;
+    out["method"] = record.method;
+    out["url"] = record.url;
+    out["started_tick"] = record.started_tick;
+    if (record.done) {
+        out["status"] = record.status;
+        if (!record.error.empty()) {
+            out["error"] = record.error;
+        }
+        out["finished_tick"] = record.finished_tick;
+        out["bytes"] = record.bytes;
+    } else {
+        out["pending"] = true;
+    }
+    return out;
+}
+
+Reply net_http(Session& session, const json::Value& /*params*/) {
+    json::Array requests;
+    for (const net::HttpRecord& record : net::http_requests(session.world())) {
+        requests.push_back(record_json(record));
+    }
+    json::Array fakes;
+    if (const SessionHttp* http = session_http(session.world()); http != nullptr) {
+        for (const net::HttpFake& fake : http->fakes.fakes()) {
+            json::Value entry;
+            entry["url_prefix"] = fake.url_prefix;
+            if (!fake.method.empty()) {
+                entry["method"] = fake.method;
+            }
+            entry["status"] = fake.status;
+            entry["bytes"] = fake.body.size();
+            fakes.push_back(std::move(entry));
+        }
+    }
+    json::Value out;
+    out["requests"] = std::move(requests);
+    out["fakes"] = std::move(fakes);
+    return Reply::success(std::move(out));
+}
+
+Reply net_http_fake(Session& session, const json::Value& params) {
+    SessionHttp* http = session_http(session.world());
+    if (http == nullptr) {
+        return Reply::failure(
+            make_error(ErrorCode::NotFound, "this world answers no HTTP requests"));
+    }
+    if (const json::Value* clear = params.find("clear"); clear != nullptr && clear->as_bool()) {
+        http->fakes.clear();
+    }
+    if (const json::Value* prefix = params.find("url_prefix"); prefix != nullptr) {
+        net::HttpFake fake;
+        fake.url_prefix = prefix->as_string();
+        if (const json::Value* method = params.find("method"); method != nullptr) {
+            fake.method = method->as_string();
+        }
+        if (const json::Value* status = params.find("status"); status != nullptr) {
+            fake.status = static_cast<int>(status->as_int());
+        }
+        if (const json::Value* headers = params.find("headers"); headers != nullptr) {
+            for (const auto& [name, value] : headers->as_object()) {
+                fake.headers.emplace_back(name, value.as_string());
+            }
+        }
+        if (const json::Value* body = params.find("body"); body != nullptr) {
+            // Text as it is; any other JSON as JSON, with its content type.
+            if (body->is_string()) {
+                fake.body = body->as_string();
+            } else {
+                fake.body = json::write(*body, json::Style::Compact);
+                fake.headers.emplace_back("Content-Type", "application/json");
+            }
+        }
+        http->fakes.add(std::move(fake));
+    } else if (params.find("clear") == nullptr) {
+        return Reply::invalid_params({{"", R"(give "url_prefix", "clear" or both)"}});
+    }
+    json::Value out;
+    out["fakes"] = http->fakes.fakes().size();
+    return Reply::success(std::move(out));
+}
+
 Reply net_state(Session& session, const json::Value& params) {
     world::World& world = session.world();
     const net::Multiplayer& multiplayer = net::multiplayer(world);
@@ -345,8 +441,53 @@ Reply net_rpc(Session& session, const json::Value& params) {
 
 } // namespace
 
+void install_session_http(world::World& world, net::HttpSender network) {
+    auto http = std::make_shared<SessionHttp>();
+    // The fakes live as long as the world, which keeps the sender that reads them.
+    net::install_http(world,
+                      [http, sender = http->fakes.sender(std::move(network))](
+                          net::HttpRequest request, std::function<void(net::HttpReply)> done) {
+                          sender(std::move(request), std::move(done));
+                      });
+    world.ecs().ctx().insert_or_assign<SessionHttpHandle>(std::move(http));
+}
+
 void register_net_commands(Registry& registry) {
     using enum Capability;
+    registry.add({
+        .name = "net.http",
+        .description = "Returns game code's HTTP requests (in flight, and the last 32 finished: "
+                       "method, URL, status, error, ticks, bytes) and the fakes answering them.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({}),
+        .handler = net_http,
+    });
+    json::Value fake_status = integer_property("The reply's status. Default: 200.", 100, 599);
+    json::Value fake_headers = property("object", "The reply's headers, by name.");
+    fake_headers["additionalProperties"]["type"] = "string";
+    json::Value fake_body;
+    fake_body["description"] = "The reply's body: a string as it is, other JSON as JSON.";
+    json::Value fake_method = property("string", "Only this method. Default: any.");
+    fake_method["enum"] = json::Array{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"};
+    registry.add({
+        .name = "net.http_fake",
+        .description = "Answers game code's HTTP requests whose URL starts with url_prefix with a "
+                       "canned reply, the latest fake first, so playtests need no server; clear "
+                       "drops the fakes first. Requests no fake answers go to the network only "
+                       "with the network capability. Returns how many fakes there are.",
+        .capabilities = {Run},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"url_prefix", property("string", "e.g. \"https://api.example.com/scores\".")},
+            {"method", std::move(fake_method)},
+            {"status", std::move(fake_status)},
+            {"headers", std::move(fake_headers)},
+            {"body", std::move(fake_body)},
+            {"clear", property("boolean", "Drop every fake first. Default: false.")},
+        }),
+        .handler = net_http_fake,
+    });
     registry.add({
         .name = "net.host",
         .description =

@@ -6,6 +6,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 #include "slash/input/sdl.hpp"
+#include "slash/net/http.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/run.hpp"
 #include "slash/plugin/plugins.hpp"
@@ -50,6 +51,9 @@ struct GameOptions {
     // Sends analytics to project.json's services.analytics.endpoint, when it names one: main()
     // gives it engine/ai's HTTP client. Windowed games only, so test runs send nothing.
     services::HttpPoster analytics_post = nullptr;
+    // Sends game code's HTTP requests (net::http_request): main() gives it engine/ai's HTTP
+    // client. Without it requests fail.
+    net::HttpSender http_sender = nullptr;
     // Plugins linked into the game, by entry function: those an export compiled from their
     // sources, and iOS and web exports' libraries (the slash_game_plugins function it writes).
     std::map<std::string, SlashPluginEntry, std::less<>>
