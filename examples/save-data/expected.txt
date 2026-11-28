@@ -1,0 +1,8 @@
+folder: .slash/saves/ (headless)
+slots: autosave (version 1.4.0) slot-1 (version 1.4.0)
+slot-1: {"health":72,"inventory":["key","lantern"],"level":3}, written by 1.4.0
+Slot 2: a save slot's name is 1 to 64 lowercase letters, digits, '_' and '-', not "Slot 2"
+slot-2: save slot slot-2 is empty
+slots: slot-1 (version 1.4.0)
+save.read slot-1: {"health":72,"inventory":["key","lantern"],"level":3}
+slots: boss-fight (version 1.4.0) slot-1 (version 1.4.0)

@@ -7,7 +7,8 @@ add_library(slash_platform
     src/memory.cpp
     src/platform.cpp
     src/process.cpp
-    src/run.cpp)
+    src/run.cpp
+    src/save_data.cpp)
 add_library(slash::platform ALIAS slash_platform)
 
 target_include_directories(slash_platform PUBLIC include)
@@ -26,4 +27,8 @@ elseif(WIN32)
     target_link_libraries(slash_platform PRIVATE dwrite crypt32)
 elseif(NOT EMSCRIPTEN AND NOT ANDROID)
     target_link_libraries(slash_platform PRIVATE ${CMAKE_DL_LIBS})
+endif()
+# Save data on the web (src/save_data.cpp) is kept in the browser's IndexedDB through IDBFS.
+if(EMSCRIPTEN)
+    target_link_options(slash_platform PUBLIC -lidbfs.js)
 endif()
